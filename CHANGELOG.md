@@ -2,6 +2,49 @@
 
 All notable changes to nimiq.bitmesh. Each PR bumps the version and adds an entry.
 
+## [0.9.0] — 2026-06-26
+
+### Added — G9 (Rust core): head beacon (`0x32`) + validity-window guard / packet GC — non-money-path
+
+The relay budget made real (PROTOCOL.md "Validity window — the relay budget", RISKS.md #1 —
+"the single constraint that most shapes the design"). An Albatross tx is valid only for
+`[validityStartHeight, validityStartHeight + 7200)` (≈ 2 h); that window is the **entire mesh
+relay budget**. G9 lets a deep-offline signer anchor to a fresh head, and GCs dead txs so the
+mesh never carries them. New logic lives in dedicated modules to keep every file < 800 lines.
+Still opaque-bytes only — reads a public head height, no signing/broadcast/keys (`// G3:` /
+`// G8:` anchors preserved).
+
+- `crates/bitmesh-core/src/beacon.rs` — the **clock-free building blocks** (new module):
+  - **`HeadBeacon`** `{height u32 | blockHash 32 | networkId 1}` + `encode_beacon` /
+    `decode_beacon` (panic-free, exact-length) — the `nimiqHeadBeacon` (`0x32`) payload.
+  - **`HeadCache`** — every node caches the **latest** head it has heard (monotonic — an
+    older/equal beacon is ignored; a `networkId` mismatch is rejected). The G3 signer anchors
+    `validityStartHeight` to it.
+  - **`BeaconScheduler`** — a rate-limiter (one emit per `BEACON_TICK_MS`), caller-driven like
+    the G7 `SyncScheduler`.
+  - **`is_expired(head, validUntil)`** — the guard: a tx is dead only when **both** a head and
+    a window are known and `head >= validUntil` (no head ⇒ never GC blindly).
+- `crates/bitmesh-core/src/gateway.rs` — `MeshGateway::head_beacon()` (new default seam,
+  `None` for the chain-less `MockGateway`); `RpcGateway` sources the height from its existing
+  read-only RPC `block_number` (**no new networking**) on its testnet `networkId`.
+- `crates/bitmesh-core/src/engine.rs` — wires it into the worker: a **gateway** floods a
+  beacon via `emit_head_beacon` (rate-limited, gateway-only); every node caches an inbound
+  `0x32` (`handle_head_beacon`) then floods it onward; the **validity-window guard** drops an
+  expired `nimiqTx` in `handle_tx` (neither relayed nor stored — packet GC); `flood_local_tx`
+  stamps `validUntil = cachedHead + VALIDITY_WINDOW` when a head is known. `now`/`head` are
+  injectable (worker clock + cached beacon) so tests are deterministic.
+- `crates/bitmesh-core/src/node.rs` — FFI: **`poll_beacon()`** (gateway emits if the tick is
+  due; non-blocking, ADR-0002), **`cached_head_height() -> Option<u32>`**, and
+  **`anchored_intent(recipient, value)`** which builds a `TransferIntent` anchored to the
+  freshest cached head — returning `None` (refusing to pre-date) when no beacon has been heard.
+- Tests: `beacon.rs` unit tests (codec round-trip, monotonic cache, network-mismatch reject,
+  `is_expired`, scheduler) + `beacon_e2e_tests.rs` end-to-end — (a) a gateway emits a beacon, a
+  node caches it, and a signed intent's `validityStartHeight` equals the cached head; (b) a node
+  GCs / refuses to relay a tx past its window (and still relays a live one); (c) monotonic
+  beacon (older ignored); plus deep-offline refuses-to-anchor. All offline/deterministic; the
+  shared wire-frame builders + spy radio moved to `test_support.rs` (keeps each test file
+  < 800 lines).
+
 ## [0.8.0] — 2026-06-26
 
 ### Added — G8 (Rust core): gateway broadcast (TESTNET) — MONEY-PATH, Andjroo-authorized

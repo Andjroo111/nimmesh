@@ -12,6 +12,7 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use crate::beacon::HeadBeacon;
 use crate::nimiq::hex::bytes_to_hex;
 use crate::rpc::GatewayRpc;
 use crate::transport::{mock_tx_id, MeshError, TxId};
@@ -98,6 +99,15 @@ pub trait MeshGateway: Send + Sync {
             tx_id: ctx.tx_id,
             status: receipt.status,
         })
+    }
+
+    /// G9: this gateway's current chain head, for the `nimiqHeadBeacon` (`0x32`) emit.
+    ///
+    /// `None` for a gateway with no live chain view (the record-only [`MockGateway`] by
+    /// default). The real [`RpcGateway`] sources the height from its RPC `block_number`.
+    /// The engine floods the returned beacon so deep-offline signers anchor a fresh head.
+    fn head_beacon(&self) -> Option<HeadBeacon> {
+        None
     }
 }
 
@@ -251,6 +261,16 @@ impl MeshGateway for RpcGateway {
                 status: ReceiptStatus::Failed,
             }),
         }
+    }
+
+    /// G9: snapshot the live head height from the RPC (`block_number`) into a beacon on this
+    /// gateway's testnet `networkId`. A transient RPC failure yields `None`, so no stale
+    /// beacon is emitted. The `blockHash` is zeroed — G8's RPC exposes only the height, and
+    /// height is the validity anchor (the hash is informational, sourced once a `getBlock`
+    /// slice exists). No NEW networking: reuses the existing read-only `block_number` call.
+    fn head_beacon(&self) -> Option<HeadBeacon> {
+        let height = self.rpc.block_number().ok()?;
+        Some(HeadBeacon::new(height, self.network_id))
     }
 }
 

@@ -13,97 +13,24 @@
 //! - gotcha **(d)** teardown releases the radio with no leaked node (weak-edge discipline);
 //! - the harness knobs: **latency / loss / partition**.
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
-use std::thread::ThreadId;
-use std::time::{Duration, Instant};
+use std::sync::Arc;
+use std::time::Duration;
 
-use crate::codec::encode;
 use crate::default_network;
 use crate::engine::PaymentStatus;
-use crate::envelope::{encode_envelope, NimiqEnvelope};
 use crate::fragment::fragment_message;
 use crate::gateway::{MeshGateway, MockGateway, Receipt, ReceiptStatus, RpcGateway};
 use crate::mock_radio::{MeshHarness, MockEther, MockRadio};
 use crate::node::MeshNode;
-use crate::packet::{MessageType, Packet, BROADCAST_RECIPIENT};
+use crate::packet::MessageType;
 use crate::radio::BleRadio;
 use crate::relay::RelayPolicy;
 use crate::rpc::MockRpc;
-use crate::transport::{mock_tx_id, MeshError, TxId};
-
-const SETTLE: Duration = Duration::from_secs(3);
-
-/// Poll `f` until it is true or `timeout` elapses; returns its final value.
-fn wait_until<F: Fn() -> bool>(f: F, timeout: Duration) -> bool {
-    let deadline = Instant::now() + timeout;
-    while Instant::now() < deadline {
-        if f() {
-            return true;
-        }
-        std::thread::sleep(Duration::from_millis(2));
-    }
-    f()
-}
-
-/// A real `nimiqTx` (0x30) wire frame carrying an opaque `tx_wire` inside the TLV
-/// envelope — exactly what an origin floods.
-fn make_tx_packet(sender: [u8; 8], tx_wire: &[u8], ttl: u8, ts: u64) -> Vec<u8> {
-    let mut env = NimiqEnvelope::new(tx_wire.to_vec());
-    env.tx_id = Some(mock_tx_id(tx_wire).0);
-    let payload = encode_envelope(&env).expect("envelope encodes");
-    let mut p = Packet::new(MessageType::NimiqTx, sender, payload);
-    p.recipient_id = Some(BROADCAST_RECIPIENT);
-    p.ttl = ttl;
-    p.timestamp_ms = ts;
-    encode(&p).expect("packet encodes")
-}
-
-/// Like [`make_tx_packet`] but stamps a `validUntil` height in the TLV envelope, so a
-/// gateway's validity-window check (head vs `validUntil`) is exercised end to end.
-fn make_tx_packet_valid_until(
-    sender: [u8; 8],
-    tx_wire: &[u8],
-    valid_until: u32,
-    ttl: u8,
-    ts: u64,
-) -> Vec<u8> {
-    let mut env = NimiqEnvelope::new(tx_wire.to_vec());
-    env.tx_id = Some(mock_tx_id(tx_wire).0);
-    env.valid_until = Some(valid_until);
-    let payload = encode_envelope(&env).expect("envelope encodes");
-    let mut p = Packet::new(MessageType::NimiqTx, sender, payload);
-    p.recipient_id = Some(BROADCAST_RECIPIENT);
-    p.ttl = ttl;
-    p.timestamp_ms = ts;
-    encode(&p).expect("packet encodes")
-}
-
-/// A real `nimiqTxReceipt` (0x31) wire frame: payload is `txId(32) | status(1)`.
-fn make_receipt_packet(
-    sender: [u8; 8],
-    tx_id: TxId,
-    status: ReceiptStatus,
-    ttl: u8,
-    ts: u64,
-) -> Vec<u8> {
-    let mut payload = tx_id.0.to_vec();
-    payload.push(status.code());
-    let mut p = Packet::new(MessageType::NimiqTxReceipt, sender, payload);
-    p.recipient_id = Some(BROADCAST_RECIPIENT);
-    p.ttl = ttl;
-    p.timestamp_ms = ts;
-    encode(&p).expect("packet encodes")
-}
-
-/// A real `fragment` (0x20) wire frame carrying one fragment payload.
-fn make_fragment_packet(sender: [u8; 8], frag_payload: Vec<u8>, ttl: u8, ts: u64) -> Vec<u8> {
-    let mut p = Packet::new(MessageType::Fragment, sender, frag_payload);
-    p.recipient_id = Some(BROADCAST_RECIPIENT);
-    p.ttl = ttl;
-    p.timestamp_ms = ts;
-    encode(&p).expect("packet encodes")
-}
+use crate::test_support::{
+    make_fragment_packet, make_receipt_packet, make_tx_packet, make_tx_packet_valid_until,
+    wait_until, SpyRadio, SETTLE,
+};
+use crate::transport::{mock_tx_id, MeshError};
 
 // --- The headline end-to-end test ------------------------------------------------
 
@@ -176,54 +103,6 @@ fn gateway_submits_once_despite_two_relay_paths() {
 }
 
 // --- Gotcha (a): non-blocking on_packet_received -------------------------------
-
-/// A `BleRadio` that records every `send` with the thread it ran on — used to prove the
-/// relay's `radio.send` never happens synchronously inside `on_packet_received`.
-struct SpyRadio {
-    sends: Mutex<Vec<(String, ThreadId)>>,
-    stopped: AtomicBool,
-}
-
-impl SpyRadio {
-    fn new() -> Arc<Self> {
-        Arc::new(SpyRadio {
-            sends: Mutex::new(Vec::new()),
-            stopped: AtomicBool::new(false),
-        })
-    }
-    fn send_count(&self) -> usize {
-        self.sends.lock().unwrap().len()
-    }
-    fn send_threads(&self) -> Vec<ThreadId> {
-        self.sends.lock().unwrap().iter().map(|(_, t)| *t).collect()
-    }
-    fn send_peers(&self) -> Vec<String> {
-        self.sends
-            .lock()
-            .unwrap()
-            .iter()
-            .map(|(p, _)| p.clone())
-            .collect()
-    }
-}
-
-impl BleRadio for SpyRadio {
-    fn start_advertising(&self) {}
-    fn start_scanning(&self) {}
-    fn send(&self, peer_id: String, _bytes: Vec<u8>) {
-        if self.stopped.load(Ordering::SeqCst) {
-            return;
-        }
-        self.sends
-            .lock()
-            .unwrap()
-            .push((peer_id, std::thread::current().id()));
-    }
-    fn disconnect(&self, _peer_id: String) {}
-    fn stop(&self) {
-        self.stopped.store(true, Ordering::SeqCst);
-    }
-}
 
 #[test]
 fn on_packet_received_never_re_enters_radio_send_synchronously() {

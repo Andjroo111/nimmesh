@@ -30,12 +30,16 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 use std::time::Instant;
 
+use crate::beacon::{
+    decode_beacon, encode_beacon, is_expired, BeaconScheduler, HeadBeacon, HeadCache,
+};
 use crate::codec::{decode, encode};
 use crate::dedup::DedupCache;
 use crate::envelope::{decode_envelope, encode_envelope, NimiqEnvelope};
 use crate::fragment::{parse_fragment, Reassembler};
 use crate::gateway::{MeshGateway, ReceiptStatus, SubmitContext};
 use crate::gcs::GcsFilter;
+use crate::nimiq::VALIDITY_WINDOW;
 use crate::packet::{MessageType, Packet, BROADCAST_RECIPIENT, DEFAULT_TTL, PEER_ID_LEN};
 use crate::radio::BleRadio;
 use crate::relay::{relayed_ttl, RelayPolicy};
@@ -112,6 +116,11 @@ pub struct WorkerCtx {
     /// The origin's payment ledger + its settle signal.
     origin: Mutex<OriginShared>,
     settled: Condvar,
+    /// G9: the freshest head height this node has heard via a `nimiqHeadBeacon` (`0x32`).
+    /// Written by the worker on a beacon receipt, read by the FFI signer/intent path to
+    /// anchor `validityStartHeight` — so it is shared (behind a `Mutex`), unlike the
+    /// worker-thread-local [`WorkerState`].
+    head: Mutex<HeadCache>,
     /// Monotonic per-node sequence used as the packet `timestamp_ms` so each flooded
     /// packet has a unique blind [`RelayKey`] (the mock's deterministic clock).
     seq: AtomicU64,
@@ -126,6 +135,11 @@ pub struct WorkerCtx {
     rsr_sent: AtomicUsize,
     /// G7: count of inbound `isRSR` catch-up packets this node has received.
     rsr_received: AtomicUsize,
+    /// G9: count of `nimiqHeadBeacon` (`0x32`) frames this gateway has flooded.
+    beacon_emitted: AtomicUsize,
+    /// G9: count of `nimiqTx` packets dropped (GC'd) because their validity window had
+    /// already closed against the cached head — neither relayed nor stored.
+    expired_dropped: AtomicUsize,
 }
 
 impl WorkerCtx {
@@ -141,6 +155,7 @@ impl WorkerCtx {
             peers: Mutex::new(HashSet::new()),
             origin: Mutex::new(OriginShared::default()),
             settled: Condvar::new(),
+            head: Mutex::new(HeadCache::default()),
             seq: AtomicU64::new(1),
             forwarded: AtomicUsize::new(0),
             send_attempts: AtomicUsize::new(0),
@@ -149,6 +164,8 @@ impl WorkerCtx {
             recent_stored: AtomicUsize::new(0),
             rsr_sent: AtomicUsize::new(0),
             rsr_received: AtomicUsize::new(0),
+            beacon_emitted: AtomicUsize::new(0),
+            expired_dropped: AtomicUsize::new(0),
         }
     }
 
@@ -208,6 +225,27 @@ impl WorkerCtx {
     #[cfg(test)]
     pub(crate) fn rsr_received(&self) -> usize {
         self.rsr_received.load(Ordering::Relaxed)
+    }
+    #[cfg(test)]
+    pub(crate) fn beacon_emitted(&self) -> usize {
+        self.beacon_emitted.load(Ordering::Relaxed)
+    }
+    #[cfg(test)]
+    pub(crate) fn expired_dropped(&self) -> usize {
+        self.expired_dropped.load(Ordering::Relaxed)
+    }
+
+    /// G9: cache a head beacon (monotonic; validates `networkId`). Returns whether the
+    /// cached head advanced. Called by the worker on a `nimiqHeadBeacon` receipt.
+    pub(crate) fn cache_head(&self, beacon: &HeadBeacon) -> bool {
+        self.head.lock().unwrap().accept(beacon)
+    }
+
+    /// G9: the freshest head height this node has heard, or `None`. The G3 signer/intent
+    /// path anchors `validityStartHeight` to this (a deep-offline signer uses the freshest
+    /// head it has heard, never a stale one).
+    pub(crate) fn cached_head(&self) -> Option<u32> {
+        self.head.lock().unwrap().latest()
     }
 
     pub(crate) fn status(&self, tx_id: &TxId) -> PaymentStatus {
@@ -318,6 +356,8 @@ pub(crate) struct WorkerState {
     recent: RecentCache,
     /// G7: rate-limiter for the 30 s periodic `requestSync` maintenance tick.
     sync: SyncScheduler,
+    /// G9: rate-limiter for the periodic gateway head-beacon emit (one per tick).
+    beacon: BeaconScheduler,
     start: Instant,
 }
 
@@ -330,6 +370,7 @@ impl WorkerState {
             reassembler: Reassembler::new(),
             recent: RecentCache::new(),
             sync: SyncScheduler::new(),
+            beacon: BeaconScheduler::new(),
             start: Instant::now(),
         }
     }
@@ -359,6 +400,15 @@ pub(crate) fn flood_local_tx(ctx: &WorkerCtx, tx_wire: Vec<u8>, st: &mut WorkerS
     let mut env = NimiqEnvelope::new(tx_wire);
     env.tx_id = Some(tx_id.0);
     env.want_receipt = true;
+    // G9: stamp the relay budget from the freshest head we have heard
+    // (`validUntil = head + VALIDITY_WINDOW`, RISKS.md #1) so every honest node can GC this
+    // packet once its ~2 h window closes. With no beacon heard yet we leave it unset rather
+    // than guess a window.
+    if env.valid_until.is_none() {
+        if let Some(head) = ctx.cached_head() {
+            env.valid_until = Some(head.saturating_add(VALIDITY_WINDOW));
+        }
+    }
     let Ok(payload) = encode_envelope(&env) else {
         // Oversized opaque blob (> 255-B TLV value): refuse to flood, stay Pending.
         return tx_id;
@@ -395,6 +445,35 @@ pub(crate) fn maintenance_tick(ctx: &WorkerCtx, st: &mut WorkerState) {
     let now = st.now_ms();
     if st.sync.due(now) {
         emit_request_sync(ctx, st);
+    }
+}
+
+/// G9: a **gateway** floods a `nimiqHeadBeacon` (`0x32`) carrying its freshest head height
+/// so deep-offline signers anchor `validityStartHeight` to a current head (RISKS.md #1).
+/// Sources the height from the gateway's RPC (`block_number`, via
+/// [`MeshGateway::head_beacon`]); rate-limited to one emit per
+/// [`crate::beacon::BEACON_TICK_MS`] like the G7 sync tick (caller-driven, clock-free). A
+/// non-gateway node, or a head-fetch failure, emits nothing. The gateway also caches its
+/// own head so its local signer anchors fresh.
+pub(crate) fn emit_head_beacon(ctx: &WorkerCtx, st: &mut WorkerState) {
+    let Some(gateway) = &ctx.gateway else {
+        return; // only a gateway (internet + RPC) beacons heads.
+    };
+    let now = st.now_ms();
+    if !st.beacon.due(now) {
+        return; // rate-limited: at most one beacon per tick.
+    }
+    let Some(beacon) = gateway.head_beacon() else {
+        return; // no live head (transient RPC failure / chain-less mock): emit nothing.
+    };
+    ctx.cache_head(&beacon);
+    let packet = ctx.build_packet(MessageType::NimiqHeadBeacon, encode_beacon(&beacon));
+    // Remember our own beacon so its echo back through the mesh is not re-flooded.
+    st.relay_seen.insert(relay_key(&packet));
+    remember(ctx, st, &packet);
+    ctx.beacon_emitted.fetch_add(1, Ordering::Relaxed);
+    if let Ok(bytes) = encode(&packet) {
+        ctx.flood(bytes);
     }
 }
 
@@ -436,10 +515,12 @@ fn dispatch_packet(ctx: &WorkerCtx, packet: Packet, src: Option<&str>, st: &mut 
     match packet.msg_type {
         MessageType::NimiqTx => handle_tx(ctx, packet, src, st),
         MessageType::NimiqTxReceipt => handle_receipt(ctx, packet, src, st),
+        // G9: a gateway's head beacon — cache the freshest head, then flood it onward.
+        MessageType::NimiqHeadBeacon => handle_head_beacon(ctx, packet, src, st),
         // G6: the fragment path — carry the fragment onward and feed the reassembler.
         MessageType::Fragment => handle_fragment(ctx, packet, src, st),
-        // HeadBeacon, G11 `noiseEncrypted` (0x11), and any other relayable type: blind
-        // dedup + remember + adaptive TTL relay. A `noiseEncrypted` blob is **opaque** to
+        // G11 `noiseEncrypted` (0x11) and any other relayable type: blind dedup + remember
+        // + adaptive TTL relay. A `noiseEncrypted` blob is **opaque** to
         // the relay (transport-privacy) — only its two endpoints decrypt it via a Noise
         // `Session`; the mesh just carries the sealed bytes like any flooded packet.
         _ => {
@@ -474,6 +555,14 @@ fn handle_request_sync(ctx: &WorkerCtx, packet: Packet, src: Option<&str>, st: &
 fn handle_tx(ctx: &WorkerCtx, packet: Packet, src: Option<&str>, st: &mut WorkerState) {
     // Blind relay dedup first — every role shares it.
     if !st.relay_seen.insert(relay_key(&packet)) {
+        return;
+    }
+    // G9 validity-window guard / packet GC (RISKS.md #1): if this tx's window has already
+    // closed against the freshest head we have heard, DROP it — a node must neither relay
+    // nor store a dead tx. We can judge only once a beacon has set our head AND the tx
+    // carries a `validUntil`; otherwise it falls through unchanged (G7 behaviour).
+    if is_expired(ctx.cached_head(), tx_valid_until(&packet)) {
+        ctx.expired_dropped.fetch_add(1, Ordering::Relaxed);
         return;
     }
     // G7: cache it for store-and-forward (so we can serve a rejoining peer this tx later).
@@ -528,6 +617,28 @@ fn handle_receipt(ctx: &WorkerCtx, packet: Packet, src: Option<&str>, st: &mut W
         };
         ctx.settle(tx_id, payment_status);
     }
+    relay_onward(ctx, packet, src, st);
+}
+
+/// G9: the optional `validUntil` height a `nimiqTx` packet carries in its envelope — the
+/// input to the [`is_expired`] guard. Returns `None` for any non-decodable payload or a tx
+/// without a window (the relay stays blind to the opaque `txWire`; it reads only the public
+/// envelope field that bounds the relay budget).
+fn tx_valid_until(packet: &Packet) -> Option<u32> {
+    decode_envelope(&packet.payload).ok()?.valid_until
+}
+
+/// G9: handle an inbound `nimiqHeadBeacon` (`0x32`). Blind-dedup, cache the freshest head
+/// (monotonic; `networkId`-validated), remember it for store-and-forward, then flood it
+/// onward so deep-offline nodes downstream also anchor a current head.
+fn handle_head_beacon(ctx: &WorkerCtx, packet: Packet, src: Option<&str>, st: &mut WorkerState) {
+    if !st.relay_seen.insert(relay_key(&packet)) {
+        return;
+    }
+    if let Some(beacon) = decode_beacon(&packet.payload) {
+        ctx.cache_head(&beacon);
+    }
+    remember(ctx, st, &packet);
     relay_onward(ctx, packet, src, st);
 }
 

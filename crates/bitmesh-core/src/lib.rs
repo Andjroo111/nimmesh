@@ -79,6 +79,16 @@ pub mod relay;
 pub mod gcs;
 pub mod store_forward;
 
+// G9: the head beacon (`nimiqHeadBeacon = 0x32`) + the validity-window guard / packet GC
+// (PROTOCOL.md "Validity window — the relay budget", RISKS.md #1). `beacon` owns the
+// clock-free building blocks: the `HeadBeacon` payload codec, the monotonic per-node
+// `HeadCache` (freshest head heard; the G3 signer anchors `validityStartHeight` to it), a
+// `BeaconScheduler` rate-limiter (a gateway floods at most one beacon per tick, sourcing
+// the height from its RPC `block_number`), and `is_expired` — the guard the `engine`
+// applies so a node never relays or stores a `nimiqTx` whose ~2 h window has closed.
+// Non-money-path: reads a public head height, carries opaque references — no signing/broadcast.
+pub mod beacon;
+
 // G3: offline Nimiq Albatross signing (TESTNET, money-path / Andjroo-gated). `nimiq` is the
 // byte-exact transaction signer — `serializeContent` (67 B), the full `Basic`-format wire
 // blob (139 B), the `Blake2b-256` tx hash, and the user-friendly `NQ`-IBAN address codec —
@@ -100,9 +110,15 @@ pub mod nimiq;
 pub mod noise;
 
 // G5 headless end-to-end + the four ADR-0002 callback-boundary tests. Internal so they
-// can drive crate-private observability hooks; only compiled under `cfg(test)`.
+// can drive crate-private observability hooks; only compiled under `cfg(test)`. The G9
+// head-beacon / validity-window-guard e2e tests live in `beacon_e2e_tests`; both suites
+// share the wire-frame builders + spy radio in `test_support` (keeps each file < 800 lines).
+#[cfg(test)]
+mod beacon_e2e_tests;
 #[cfg(test)]
 mod e2e_tests;
+#[cfg(test)]
+mod test_support;
 
 /// The Nimiq network this build is talking to.
 ///

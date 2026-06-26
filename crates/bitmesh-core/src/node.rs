@@ -25,8 +25,8 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use crate::engine::{
-    emit_request_sync, flood_local_tx, maintenance_tick, process_inbound, PaymentStatus, WorkerCtx,
-    WorkerState,
+    emit_head_beacon, emit_request_sync, flood_local_tx, maintenance_tick, process_inbound,
+    PaymentStatus, WorkerCtx, WorkerState,
 };
 use crate::gateway::MeshGateway;
 use crate::packet::PEER_ID_LEN;
@@ -50,6 +50,8 @@ enum Job {
     RequestSync,
     /// G7: a maintenance poll — issues a `requestSync` only if the 30 s tick is due.
     SyncTick,
+    /// G9: a beacon poll — a gateway floods a `nimiqHeadBeacon` only if the tick is due.
+    BeaconTick,
     /// Drain and exit (teardown).
     Shutdown,
 }
@@ -108,6 +110,11 @@ fn run_worker(ctx: Arc<WorkerCtx>, rx: Receiver<Job>, policy: RelayPolicy) {
             Job::SyncTick => {
                 let _ = catch_unwind(AssertUnwindSafe(|| {
                     maintenance_tick(&ctx, &mut st);
+                }));
+            }
+            Job::BeaconTick => {
+                let _ = catch_unwind(AssertUnwindSafe(|| {
+                    emit_head_beacon(&ctx, &mut st);
                 }));
             }
         }
@@ -215,6 +222,45 @@ impl MeshNode {
         if let Some(tx) = self.job_tx.lock().unwrap().as_ref() {
             let _ = tx.send(Job::SyncTick);
         }
+    }
+
+    /// G9: a **gateway** floods a `nimiqHeadBeacon` (`0x32`) with its freshest head height
+    /// so deep-offline signers anchor `validityStartHeight` to a current head (RISKS.md #1).
+    /// The shim calls this on a timer; it emits only when the beacon tick is due (the worker
+    /// rate-limits it) and only on a gateway node — a plain node enqueues a harmless no-op.
+    /// **Non-blocking (ADR-0002 gotcha a):** only enqueues; the worker sources the height
+    /// from the gateway RPC and floods off the callback thread.
+    pub fn poll_beacon(&self) {
+        if let Some(tx) = self.job_tx.lock().unwrap().as_ref() {
+            let _ = tx.send(Job::BeaconTick);
+        }
+    }
+
+    /// G9: the freshest chain-head height this node has heard via a `nimiqHeadBeacon`
+    /// (`0x32`), or `None` before any beacon has arrived. The signer anchors
+    /// `validityStartHeight` to this — a deep-offline signer uses the freshest head it has
+    /// heard, never a stale one (non-blocking read).
+    pub fn cached_head_height(&self) -> Option<u32> {
+        self.ctx.cached_head()
+    }
+
+    /// G9: build a [`crate::nimiq::TransferIntent`] anchored to the freshest cached head
+    /// (`validityStartHeight = latest beacon height`), ready to hand to a `KeyOrigin` signer.
+    /// Returns `None` when no beacon has been heard yet — refusing to pre-date a tx to a
+    /// stale/zero head (RISKS.md #1: "set `validityStartHeight = latest known head`; never
+    /// pre-date"). Testnet by default; this constructs no signature and touches no key.
+    pub fn anchored_intent(
+        &self,
+        recipient: String,
+        value: u64,
+    ) -> Option<crate::nimiq::TransferIntent> {
+        let head = self.ctx.cached_head()?;
+        Some(crate::nimiq::TransferIntent {
+            recipient,
+            value,
+            validity_start_height: head,
+            network: crate::default_network(),
+        })
     }
 
     /// Tear the node down: stop the worker and release the radio. Idempotent; also runs
@@ -341,6 +387,16 @@ impl MeshNode {
     #[cfg(test)]
     pub(crate) fn rsr_received(&self) -> usize {
         self.ctx.rsr_received()
+    }
+    /// G9: `nimiqHeadBeacon` frames this gateway has flooded.
+    #[cfg(test)]
+    pub(crate) fn beacon_emitted(&self) -> usize {
+        self.ctx.beacon_emitted()
+    }
+    /// G9: `nimiqTx` packets dropped (GC'd) for a closed validity window.
+    #[cfg(test)]
+    pub(crate) fn expired_dropped(&self) -> usize {
+        self.ctx.expired_dropped()
     }
 }
 
