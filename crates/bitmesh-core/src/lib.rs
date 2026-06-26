@@ -26,6 +26,14 @@
 
 uniffi::setup_scaffolding!();
 
+// G4: the bitmesh wire protocol — packet model, byte codec (encode/decode + PKCS#7
+// padding), and the Nimiq TLV envelope. Pure Rust, non-money-path (opaque bytes only;
+// no signing, no broadcast). Lives in dedicated modules to keep this file the thin
+// FFI surface; the codec is the canonical wire implementation (LOOP.md).
+pub mod codec;
+pub mod envelope;
+pub mod packet;
+
 /// The Nimiq network this build is talking to.
 ///
 /// **Testnet by default, money-path-gated** (core value #7): the loop never flips to

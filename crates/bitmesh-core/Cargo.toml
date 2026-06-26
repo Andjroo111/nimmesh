@@ -21,3 +21,8 @@ path = "src/bin/uniffi-bindgen.rs"
 # Pure proc-macro mode (uniffi::setup_scaffolding!) — no UDL file, no build.rs.
 [dependencies]
 uniffi = { workspace = true, features = ["cli"] }
+
+# proptest drives the G4 wire-codec property/fuzz tests: decode() never panics on
+# arbitrary bytes, and any valid packet/envelope round-trips byte-for-byte.
+[dev-dependencies]
+proptest = "1.8.0"

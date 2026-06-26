@@ -2,6 +2,38 @@
 
 All notable changes to nimiq.bitmesh. Each PR bumps the version and adds an entry.
 
+## [Unreleased]
+
+### Added — G4: bitmesh wire protocol + packet codec (pure Rust)
+
+- `crates/bitmesh-core/src/packet.rs` — the in-memory **packet model** and on-wire
+  constants: the 14-byte big-endian header (`version=1`, `MessageType`, `ttl=7`,
+  `timestamp`, `flags`, `payloadLength`), the five flag bits (`0x01` hasRecipient ·
+  `0x02` hasSignature · `0x04` isCompressed · `0x08` hasRoute · `0x10` isRSR), and the
+  `MessageType` enum (`fragment=0x20`, `requestSync=0x21`, `nimiqTx=0x30`,
+  `nimiqTxReceipt=0x31`, `nimiqHeadBeacon=0x32`). `hasRecipient`/`hasSignature` are
+  derived from field presence so the model can never disagree with the bytes.
+- `crates/bitmesh-core/src/codec.rs` — byte-level `encode()` / `decode()` with strict,
+  panic-free bounds checking, plus **PKCS#7-style block padding** up to the smallest of
+  `[256, 512, 1024, 2048]`. Decode recomputes the exact packet length from the header
+  and ignores trailing padding (no PKCS#7 unpad oracle); a real ~205-B `nimiqTx` pads
+  cleanly into the 256 block. A typed `CodecError` rejects unknown version / type /
+  flag bits and truncated frames.
+- `crates/bitmesh-core/src/envelope.rs` — the **Nimiq TLV envelope** (`1B type | 1B len
+  | value`): `0x01` txWire (required, **opaque** bytes), `0x02` networkId (required, 1B,
+  default **testnet = 5**), `0x03` validUntil (u32 BE), `0x04` txId (32B), `0x05`
+  encMemo, `0x06` wantReceipt. Unknown TLV types are skipped for forward-compat; fixed-
+  width fields must carry their exact length; the two required fields must be present.
+- `crates/bitmesh-core/tests/wire_proptests.rs` — `proptest` property/fuzz tests: `decode`
+  and `decode_envelope` **never panic** on arbitrary/malformed input, and any valid
+  packet / envelope (incl. an envelope nested inside a `nimiqTx` packet) round-trips
+  byte-for-byte. Plus per-message-type round-trip, padding-block, and rejection unit
+  tests.
+- `txWire` is carried as **opaque bytes** end to end — no signing, no broadcast, no key
+  material (that is G3/G8, money-path and Andjroo-gated). Non-money-path; auto-merge.
+- Local gate green: `cargo fmt --check`, `cargo clippy --all-targets --all-features
+  -- -D warnings`, `cargo test --all` (28 tests), and `scripts/size-guard.sh`.
+
 ## [0.1.0] — 2026-06-26
 
 ### Added — G1: Rust core scaffold + UniFFI + CI
