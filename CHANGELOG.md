@@ -2,7 +2,7 @@
 
 All notable changes to nimiq.bitmesh. Each PR bumps the version and adds an entry.
 
-## [Unreleased]
+## [0.2.0] — 2026-06-26
 
 ### Added — G4: bitmesh wire protocol + packet codec (pure Rust)
 
@@ -33,6 +33,34 @@ All notable changes to nimiq.bitmesh. Each PR bumps the version and adds an entr
   material (that is G3/G8, money-path and Andjroo-gated). Non-money-path; auto-merge.
 - Local gate green: `cargo fmt --check`, `cargo clippy --all-targets --all-features
   -- -D warnings`, `cargo test --all` (28 tests), and `scripts/size-guard.sh`.
+### Added — G2: provider seam + `MockMeshTransport` (mock pay-loop, no radio)
+
+- **`transport.rs`** — the frozen `MeshTransport` seam (start/stop/`broadcast`/
+  `set_receiver` + a `PacketHandler` deliver-via-callback), plus an in-memory,
+  channel-based `MockMeshTransport` and a `MockMesh` graph that wires several virtual
+  nodes into a relay topology — **no Bluetooth, no `tokio`, no external deps**. Carries
+  **opaque `Vec<u8>`** payloads end to end. Includes a temporary `MeshFrame` mock
+  framing (TTL + a `(type, txId)` dedup key around an opaque payload) with `// G4:`
+  anchors marking where the real bitmesh packet codec replaces it.
+- **`gateway.rs`** — the `MeshGateway` seam (`submit(txWire) -> Receipt`) + a
+  record-only `MockGateway`/mock-RPC that stores submissions and emits a `Receipt`
+  (`Accepted`/`Expired`/`Failed`), **no real network**. `// G8:` anchor marks where the
+  real `sendRawTransaction` lands (money-path, gated).
+- **`provider.rs`** — a `MeshProvider { kind: Mock | Real }` factory mirroring the
+  fleet `ChainProvider kind:mock|real` pattern; `Mock` is fully wired, `Real` is a
+  documented `// G5:` / `// G8:` seam stub.
+- **`payment.rs`** — the `MeshPayment` orchestrator tying **origin → relay → gateway →
+  receipt** (`OriginNode`/`RelayNode`/`GatewayNode`, `PaymentStatus`). Blind relays
+  dedup + TTL-decrement + re-flood and **never inspect the opaque payload**.
+  `// G3:` anchor marks where the real signed-tx bytes from `sign_offline()` ride the
+  same `Vec<u8>` path.
+- **End-to-end mock pay-loop test**: an opaque payload floods from an offline origin
+  through ≥1 relay to a gateway, which records the submission and emits a receipt that
+  propagates back; the origin observes `Settled`. Plus dedup-across-two-paths (one
+  submission), reject→`Failed` (unconfirmed-until-inclusion honesty), and
+  unreachable-gateway→`Pending` cases. 19 unit tests green locally
+  (`fmt`/`clippy -D warnings`/`test --all`/size-guard). No version bump (loop tags at
+  merge); non-money-path.
 
 ## [0.1.0] — 2026-06-26
 
