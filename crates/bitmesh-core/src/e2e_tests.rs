@@ -465,3 +465,147 @@ fn fragmented_receipt_reassembles_and_settles_the_origin() {
     assert_eq!(origin.wait_payment(&tx_id, SETTLE), PaymentStatus::Settled);
     h.shutdown();
 }
+
+// --- G7: store-and-forward via GCS gossip-sync ----------------------------------
+
+#[test]
+fn offline_node_catches_up_via_gcs_gossip_sync() {
+    // PROTOCOL.md "Store-and-forward = GCS gossip-sync": node A floods several packets
+    // while node B is **out of range** (not yet linked), so B hears none of them. When B
+    // rejoins it issues a `requestSync` advertising its (empty) GCS "have" filter; A
+    // unicasts back exactly the packets B is missing, flagged `isRSR`. B must end up with
+    // the full set and no duplicates — all inside the 15-min retention window.
+    let mut h = MeshHarness::new();
+    let a = h.add_node("a", &[1]);
+    let b = h.add_node("b", &[2]);
+
+    // A originates N packets while B is offline (unlinked → A sends to no one, but caches
+    // each in its store-and-forward cache).
+    let n = 12usize;
+    for i in 0..n {
+        a.submit_local_tx(format!("offline-tx-{i}").into_bytes());
+    }
+    assert!(
+        wait_until(|| a.recent_stored() >= n, Duration::from_secs(1)),
+        "A never cached its own floods"
+    );
+    assert_eq!(
+        b.recent_stored(),
+        0,
+        "B should have heard nothing while offline"
+    );
+
+    // B rejoins the mesh and asks for a catch-up.
+    h.connect("a", "b");
+    b.request_sync();
+
+    // A serves every missing packet; B absorbs them all, exactly once.
+    assert!(
+        wait_until(|| b.recent_stored() >= n, SETTLE),
+        "B did not catch up via gossip-sync"
+    );
+    assert_eq!(b.recent_stored(), n, "B caught up with the wrong count");
+    assert_eq!(
+        b.rsr_received(),
+        n,
+        "B received the wrong number of isRSR replies"
+    );
+    assert_eq!(
+        a.rsr_sent(),
+        n,
+        "A replied with the wrong number of missing packets"
+    );
+
+    // Idempotent: B now advertises the full set, so a second sync pulls nothing new and
+    // leaks no duplicates into B's cache.
+    b.request_sync();
+    std::thread::sleep(Duration::from_millis(40));
+    assert_eq!(b.recent_stored(), n, "a duplicate leaked into B's cache");
+    assert_eq!(a.rsr_sent(), n, "A re-sent packets B already had");
+
+    h.shutdown();
+}
+
+#[test]
+fn gossip_sync_only_sends_the_packets_a_peer_lacks() {
+    // B already has SOME of A's packets (it was online for the first few, then dropped).
+    // On rejoin, A's reply must cover only the gap — not the packets B already holds.
+    let mut h = MeshHarness::new();
+    let a = h.add_node("a", &[1]);
+    let b = h.add_node("b", &[2]);
+    h.connect("a", "b");
+
+    // First few packets arrive while B is connected (B caches them via the relay path).
+    let early = 4usize;
+    for i in 0..early {
+        a.submit_local_tx(format!("early-{i}").into_bytes());
+    }
+    assert!(
+        wait_until(|| b.recent_stored() >= early, Duration::from_secs(1)),
+        "B never heard the early packets"
+    );
+
+    // B drops offline; A floods more that B misses.
+    h.ether().partition("a", "b");
+    let late = 7usize;
+    for i in 0..late {
+        a.submit_local_tx(format!("late-{i}").into_bytes());
+    }
+    assert!(wait_until(
+        || a.recent_stored() >= early + late,
+        Duration::from_secs(1)
+    ));
+
+    // B rejoins and syncs: A should send back only the `late` packets B is missing.
+    h.ether().heal("a", "b");
+    b.request_sync();
+    assert!(
+        wait_until(|| b.recent_stored() >= early + late, SETTLE),
+        "B did not fill the gap"
+    );
+    assert_eq!(b.recent_stored(), early + late);
+    assert_eq!(
+        a.rsr_sent(),
+        late,
+        "A re-sent packets B already had instead of only the gap"
+    );
+
+    h.shutdown();
+}
+
+#[test]
+fn maintenance_poll_is_rate_limited_to_the_tick() {
+    // The 30 s maintenance tick must fire its first poll but rate-limit the rest, so a
+    // burst of polls issues at most one `requestSync` (which a peer answers once).
+    let mut h = MeshHarness::new();
+    let a = h.add_node("a", &[1]);
+    let b = h.add_node("b", &[2]);
+
+    // A originates one packet while B is offline (unlinked), so the ONLY way B can learn
+    // of it is via gossip-sync — not the normal flood.
+    a.submit_local_tx(b"only-tx".to_vec());
+    assert!(wait_until(
+        || a.recent_stored() >= 1,
+        Duration::from_secs(1)
+    ));
+
+    // B rejoins, then hammers its maintenance poll; only the first is due within one tick.
+    h.connect("a", "b");
+    for _ in 0..10 {
+        b.poll_sync();
+    }
+    assert!(
+        wait_until(|| b.recent_stored() >= 1, SETTLE),
+        "the first maintenance poll never synced B"
+    );
+    std::thread::sleep(Duration::from_millis(40));
+    // A answered exactly one sync round (one missing packet), not ten.
+    assert_eq!(
+        a.rsr_sent(),
+        1,
+        "maintenance poll was not rate-limited to the tick"
+    );
+    assert_eq!(b.recent_stored(), 1);
+
+    h.shutdown();
+}

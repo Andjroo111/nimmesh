@@ -2,6 +2,49 @@
 
 All notable changes to nimiq.bitmesh. Each PR bumps the version and adds an entry.
 
+## [0.5.0] — 2026-06-26
+
+### Added — G7 (Rust core): store-and-forward via GCS gossip-sync (PROTOCOL.md "Store-and-forward = GCS gossip-sync")
+
+The key offline-origination piece: a node that was **out of range** when packets flooded
+the mesh catches up on what it missed when it rejoins — within Nimiq's ~2 h validity
+window. New logic lives in dedicated modules to keep every file under the 800-line ceiling.
+
+- `crates/bitmesh-core/src/gcs.rs` — a **Golomb-Coded-Set membership filter**:
+  - Hashes each member id uniformly into `[0, N·M)` (`M = 100`), sorts, delta-encodes, and
+    **Golomb-Rice codes** the deltas (parameter `P = 6`, the near-optimal Rice modulus for
+    the gap distribution). **No false negatives**; false-positive rate **1/M = 0.01**.
+  - `~8.6` bits/id → a `360`-id filter is a deterministic `≤ ~388 B`, under the **400 B**
+    budget (`GCS_MAX_BYTES` / `GCS_MAX_ITEMS`). Panic-free `from_bytes`/`contains` over
+    hostile peer bytes (a corrupt filter degrades to "absent", never a crash).
+  - Tests: membership (no false negatives across 1–500 ids), an **empirical fp-rate check
+    near 0.01** (100k disjoint queries), wire round-trip, byte-budget, hostile-input.
+- `crates/bitmesh-core/src/store_forward.rs` — the **recent-packet cache + sync cadence**:
+  - `RecentCache` — a bounded, **clock-free** store (≤ **1000** entries, **900 s** (15 min)
+    retention, **15 s** active window; oldest evicted) keyed by a header-derived
+    `packet_id` (type + sender + timestamp; TTL/payload excluded so a relayed copy keeps a
+    stable id). Like the G6 reassembler, the caller passes a monotonic `now_ms`, so tests
+    are deterministic. `build_filter` / `missing` drive the sync exchange.
+  - `SyncScheduler` — a clock-free rate-limiter firing at most once per **30 s** tick.
+- `crates/bitmesh-core/src/engine.rs` — wires it into the worker:
+  - every accepted packet (origin/relay/gateway/fragment) is **remembered** in the cache;
+  - **`requestSync` (`type 0x21`, ttl 0, local-only)** — `emit_request_sync` floods this
+    node's GCS "have" filter to direct peers (never relayed); a peer that receives one
+    unicasts back each cached packet **not** in the filter, flagged **`isRSR` (`0x10`)**;
+  - an inbound `isRSR` reply is delivered **locally only** (TTL zeroed → never re-flooded)
+    through the normal handlers, so it settles / submits / caches like any other packet;
+  - `maintenance_tick` issues a `requestSync` only when the 30 s tick is due.
+- `crates/bitmesh-core/src/node.rs` — FFI: **`request_sync()`** (force a catch-up on
+  rejoin) and **`poll_sync()`** (the periodic maintenance poll). Both **non-blocking**
+  (enqueue only, ADR-0002 gotcha a); the worker does the GCS work off the callback thread.
+- Tests (`e2e_tests.rs`): a **simulated rejoin** — A floods 12 packets while B is
+  partitioned/offline; B rejoins, `request_sync`s with its stale (empty) filter, and
+  receives exactly the missed packets via `isRSR`, ending with the **full set and no
+  duplicates**; a **gap-only** sync (B already holds some); and **tick rate-limiting**.
+
+`txWire` stays **opaque** end to end — no signing, no broadcast, no key material (`// G3:`
+/ `// G8:` anchors preserved; money-path Andjroo-gated).
+
 ## [0.4.0] — 2026-06-26
 
 ### Added — G6 (Rust core): relay-engine refinements (PROTOCOL.md "TTL / hop cap & relay")

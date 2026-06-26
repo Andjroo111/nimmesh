@@ -24,7 +24,10 @@ use std::thread::JoinHandle;
 #[cfg(test)]
 use std::time::Duration;
 
-use crate::engine::{flood_local_tx, process_inbound, PaymentStatus, WorkerCtx, WorkerState};
+use crate::engine::{
+    emit_request_sync, flood_local_tx, maintenance_tick, process_inbound, PaymentStatus, WorkerCtx,
+    WorkerState,
+};
 use crate::gateway::MeshGateway;
 use crate::packet::PEER_ID_LEN;
 use crate::radio::BleRadio;
@@ -43,6 +46,10 @@ enum Job {
     },
     /// A locally-originated tx to flood (`submit_local_tx`).
     LocalTx(Vec<u8>),
+    /// G7: force-issue a `requestSync` now (e.g. just rejoined the mesh).
+    RequestSync,
+    /// G7: a maintenance poll — issues a `requestSync` only if the 30 s tick is due.
+    SyncTick,
     /// Drain and exit (teardown).
     Shutdown,
 }
@@ -91,6 +98,16 @@ fn run_worker(ctx: Arc<WorkerCtx>, rx: Receiver<Job>, policy: RelayPolicy) {
             Job::LocalTx(wire) => {
                 let _ = catch_unwind(AssertUnwindSafe(|| {
                     flood_local_tx(&ctx, wire, &mut st);
+                }));
+            }
+            Job::RequestSync => {
+                let _ = catch_unwind(AssertUnwindSafe(|| {
+                    emit_request_sync(&ctx, &mut st);
+                }));
+            }
+            Job::SyncTick => {
+                let _ = catch_unwind(AssertUnwindSafe(|| {
+                    maintenance_tick(&ctx, &mut st);
                 }));
             }
         }
@@ -163,6 +180,25 @@ impl MeshNode {
     /// The current status of a payment by its `txId` bytes (non-blocking).
     pub fn payment_status(&self, tx_id: Vec<u8>) -> PaymentStatus {
         self.ctx.status(&to_tx_id(&tx_id))
+    }
+
+    /// G7: force-issue a gossip-sync round now — advertise what this node has as a GCS
+    /// filter so peers unicast back whatever it is missing. Call on **rejoining** the mesh
+    /// (a node that was out of range / offline) to catch up on packets within the 15-min
+    /// retention window. **Non-blocking (ADR-0002 gotcha a):** only enqueues.
+    pub fn request_sync(&self) {
+        if let Some(tx) = self.job_tx.lock().unwrap().as_ref() {
+            let _ = tx.send(Job::RequestSync);
+        }
+    }
+
+    /// G7: the periodic maintenance poll. The shim calls this on a timer; it issues a
+    /// `requestSync` only when the 30 s tick is actually due (the worker rate-limits it).
+    /// **Non-blocking:** only enqueues.
+    pub fn poll_sync(&self) {
+        if let Some(tx) = self.job_tx.lock().unwrap().as_ref() {
+            let _ = tx.send(Job::SyncTick);
+        }
     }
 
     /// Tear the node down: stop the worker and release the radio. Idempotent; also runs
@@ -274,6 +310,21 @@ impl MeshNode {
     #[cfg(test)]
     pub(crate) fn connected_peers(&self) -> usize {
         self.ctx.peer_count()
+    }
+    /// G7: packets newly stored in this node's recent-packet (store-and-forward) cache.
+    #[cfg(test)]
+    pub(crate) fn recent_stored(&self) -> usize {
+        self.ctx.recent_stored()
+    }
+    /// G7: `isRSR` catch-up replies this node has unicast to sync requesters.
+    #[cfg(test)]
+    pub(crate) fn rsr_sent(&self) -> usize {
+        self.ctx.rsr_sent()
+    }
+    /// G7: inbound `isRSR` catch-up packets this node has received.
+    #[cfg(test)]
+    pub(crate) fn rsr_received(&self) -> usize {
+        self.ctx.rsr_received()
     }
 }
 

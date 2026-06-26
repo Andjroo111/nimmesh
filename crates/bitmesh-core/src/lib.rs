@@ -59,6 +59,16 @@ pub mod transport;
 pub mod fragment;
 pub mod relay;
 
+// G7: store-and-forward via GCS gossip-sync (PROTOCOL.md "Store-and-forward = GCS
+// gossip-sync"). `gcs` is the compact Golomb-Coded-Set membership filter (fpr 0.01,
+// ≤ 400 B) a node uses to advertise what it has; `store_forward` is the bounded,
+// clock-free recent-packet cache (≤ 1000 / 900 s retention) plus the 30 s maintenance
+// scheduler. The `engine` wires them into the `requestSync` (0x21, ttl 0, local-only) →
+// `isRSR` unicast catch-up so an out-of-range originator/gateway rejoining within 15 min
+// recovers the packets it missed. Opaque-bytes only — no signing/broadcast (G3/G8).
+pub mod gcs;
+pub mod store_forward;
+
 // G5 headless end-to-end + the four ADR-0002 callback-boundary tests. Internal so they
 // can drive crate-private observability hooks; only compiled under `cfg(test)`.
 #[cfg(test)]

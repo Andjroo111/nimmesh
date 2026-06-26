@@ -35,9 +35,11 @@ use crate::dedup::DedupCache;
 use crate::envelope::{decode_envelope, encode_envelope, NimiqEnvelope};
 use crate::fragment::{parse_fragment, Reassembler};
 use crate::gateway::{MeshGateway, ReceiptStatus};
+use crate::gcs::GcsFilter;
 use crate::packet::{MessageType, Packet, BROADCAST_RECIPIENT, DEFAULT_TTL, PEER_ID_LEN};
 use crate::radio::BleRadio;
 use crate::relay::{relayed_ttl, RelayPolicy};
+use crate::store_forward::{packet_id, RecentCache, SyncScheduler};
 use crate::transport::{mock_tx_id, TxId};
 
 /// Where a payment stands from the origin's point of view (FFI-visible).
@@ -118,6 +120,12 @@ pub struct WorkerCtx {
     send_attempts: AtomicUsize,
     send_ok: AtomicUsize,
     send_fail: AtomicUsize,
+    /// G7: count of packets newly stored in the recent-packet cache (store-and-forward).
+    recent_stored: AtomicUsize,
+    /// G7: count of `isRSR` catch-up replies this node has unicast to a sync requester.
+    rsr_sent: AtomicUsize,
+    /// G7: count of inbound `isRSR` catch-up packets this node has received.
+    rsr_received: AtomicUsize,
 }
 
 impl WorkerCtx {
@@ -138,6 +146,9 @@ impl WorkerCtx {
             send_attempts: AtomicUsize::new(0),
             send_ok: AtomicUsize::new(0),
             send_fail: AtomicUsize::new(0),
+            recent_stored: AtomicUsize::new(0),
+            rsr_sent: AtomicUsize::new(0),
+            rsr_received: AtomicUsize::new(0),
         }
     }
 
@@ -185,6 +196,18 @@ impl WorkerCtx {
     #[cfg(test)]
     pub(crate) fn send_fail(&self) -> usize {
         self.send_fail.load(Ordering::Relaxed)
+    }
+    #[cfg(test)]
+    pub(crate) fn recent_stored(&self) -> usize {
+        self.recent_stored.load(Ordering::Relaxed)
+    }
+    #[cfg(test)]
+    pub(crate) fn rsr_sent(&self) -> usize {
+        self.rsr_sent.load(Ordering::Relaxed)
+    }
+    #[cfg(test)]
+    pub(crate) fn rsr_received(&self) -> usize {
+        self.rsr_received.load(Ordering::Relaxed)
     }
 
     pub(crate) fn status(&self, tx_id: &TxId) -> PaymentStatus {
@@ -254,6 +277,13 @@ impl WorkerCtx {
         p
     }
 
+    /// Fire-and-forget unicast of `bytes` to a single connected peer — the targeted
+    /// delivery a G7 `isRSR` gossip-sync reply uses (never a flood).
+    fn unicast(&self, peer: &str, bytes: Vec<u8>) {
+        self.send_attempts.fetch_add(1, Ordering::Relaxed);
+        self.radio.send(peer.to_string(), bytes);
+    }
+
     /// Fire-and-forget flood of `bytes` to every connected peer. Snapshots the peer set
     /// first so the radio is never called while holding the lock (no re-entrancy hazard).
     fn flood(&self, bytes: Vec<u8>) {
@@ -284,6 +314,10 @@ pub(crate) struct WorkerState {
     gateway_seen: DedupCache<TxId>,
     policy: RelayPolicy,
     reassembler: Reassembler,
+    /// G7: the bounded recent-packet cache served by GCS gossip-sync.
+    recent: RecentCache,
+    /// G7: rate-limiter for the 30 s periodic `requestSync` maintenance tick.
+    sync: SyncScheduler,
     start: Instant,
 }
 
@@ -294,6 +328,8 @@ impl WorkerState {
             gateway_seen: DedupCache::new(GATEWAY_CACHE_CAP),
             policy,
             reassembler: Reassembler::new(),
+            recent: RecentCache::new(),
+            sync: SyncScheduler::new(),
             start: Instant::now(),
         }
     }
@@ -301,6 +337,16 @@ impl WorkerState {
     /// Monotonic milliseconds since this worker started — the reassembler's logical clock.
     fn now_ms(&self) -> u64 {
         self.start.elapsed().as_millis() as u64
+    }
+}
+
+/// G7: remember a packet in the recent-packet cache so this node can later serve it to a
+/// peer catching up via gossip-sync. Bumps `recent_stored` only on a fresh insert (the
+/// store-and-forward "no duplicates" invariant the rejoin test asserts).
+fn remember(ctx: &WorkerCtx, st: &mut WorkerState, packet: &Packet) {
+    let now = st.now_ms();
+    if st.recent.insert(packet_id(packet), packet.clone(), now) {
+        ctx.recent_stored.fetch_add(1, Ordering::Relaxed);
     }
 }
 
@@ -318,13 +364,38 @@ pub(crate) fn flood_local_tx(ctx: &WorkerCtx, tx_wire: Vec<u8>, st: &mut WorkerS
         return tx_id;
     };
     let packet = ctx.build_packet(MessageType::NimiqTx, payload);
-    // Remember our own packet so its echo back through the mesh is not re-flooded.
+    // Remember our own packet so its echo back through the mesh is not re-flooded, and so
+    // gossip-sync can later serve it to a peer that was out of range when we flooded it.
     st.relay_seen.insert(relay_key(&packet));
+    remember(ctx, st, &packet);
     ctx.record_pending(tx_id);
     if let Ok(bytes) = encode(&packet) {
         ctx.flood(bytes);
     }
     tx_id
+}
+
+/// G7: build this node's "what I have" GCS filter and flood a `requestSync` (`0x21`,
+/// **ttl 0 → local-only**, never relayed) to direct peers. Each peer replies by unicasting
+/// back the packets the filter does not cover, flagged `isRSR`. Driven by an explicit
+/// rejoin call (`request_sync`) and by the 30 s maintenance tick.
+pub(crate) fn emit_request_sync(ctx: &WorkerCtx, st: &mut WorkerState) {
+    let now = st.now_ms();
+    let payload = st.recent.build_filter(now).to_bytes();
+    let mut packet = ctx.build_packet(MessageType::RequestSync, payload);
+    packet.ttl = 0; // local-only: peers receive it but the hop floor stops any relay.
+    if let Ok(bytes) = encode(&packet) {
+        ctx.flood(bytes);
+    }
+}
+
+/// G7: the 30 s maintenance tick. Issues a `requestSync` at most once per
+/// [`crate::store_forward::SYNC_TICK_MS`] (the scheduler rate-limits on the worker clock).
+pub(crate) fn maintenance_tick(ctx: &WorkerCtx, st: &mut WorkerState) {
+    let now = st.now_ms();
+    if st.sync.due(now) {
+        emit_request_sync(ctx, st);
+    }
 }
 
 /// The hot path: one inbound frame from the radio, with the peer it arrived on (`src`,
@@ -337,21 +408,63 @@ pub(crate) fn process_inbound(
     bytes: &[u8],
     st: &mut WorkerState,
 ) {
-    let Ok(packet) = decode(bytes) else {
+    let Ok(mut packet) = decode(bytes) else {
         return; // not a well-formed bitmesh packet — drop.
     };
+    // G7: an `isRSR` gossip-sync reply is a targeted catch-up for a packet we missed.
+    // Deliver it locally only (never re-flood — the unicast already reached us), then it
+    // settles / submits / caches through the normal handlers like any other packet.
+    if packet.flags.is_rsr {
+        ctx.rsr_received.fetch_add(1, Ordering::Relaxed);
+        packet.flags.is_rsr = false;
+        packet.ttl = 0; // zero TTL → the relay hop floor drops it: delivered, never re-flooded.
+        dispatch_packet(ctx, packet, None, st);
+        return;
+    }
+    // G7: a `requestSync` advertises what a peer has; reply with what it is missing. It is
+    // ttl-0 local-only and is never relayed onward.
+    if packet.msg_type == MessageType::RequestSync {
+        handle_request_sync(ctx, packet, src, st);
+        return;
+    }
+    dispatch_packet(ctx, packet, src, st);
+}
+
+/// Route a (non-`isRSR`, non-`requestSync`) packet to its type handler. Shared by the
+/// inbound path and by locally-delivered reassembled / catch-up packets.
+fn dispatch_packet(ctx: &WorkerCtx, packet: Packet, src: Option<&str>, st: &mut WorkerState) {
     match packet.msg_type {
         MessageType::NimiqTx => handle_tx(ctx, packet, src, st),
         MessageType::NimiqTxReceipt => handle_receipt(ctx, packet, src, st),
         // G6: the fragment path — carry the fragment onward and feed the reassembler.
         MessageType::Fragment => handle_fragment(ctx, packet, src, st),
-        // RequestSync / HeadBeacon: defined but their semantics land at G7/G9. For now
-        // flood them generically (blind dedup + adaptive TTL relay) so the mesh stays a
-        // faithful relay substrate.
+        // HeadBeacon (and any other relayable type): blind dedup + remember + adaptive
+        // TTL relay, so the mesh stays a faithful relay + store-and-forward substrate.
         _ => {
             if st.relay_seen.insert(relay_key(&packet)) {
+                remember(ctx, st, &packet);
                 relay_onward(ctx, packet, src, st);
             }
+        }
+    }
+}
+
+/// G7: handle an inbound `requestSync`. Decode the peer's GCS "have" filter and unicast
+/// back every cached packet **not** covered by it, flagged `isRSR`. Requires the source
+/// peer (the unicast target); a source-unattributed sync request is dropped.
+fn handle_request_sync(ctx: &WorkerCtx, packet: Packet, src: Option<&str>, st: &mut WorkerState) {
+    let Some(src) = src else {
+        return; // can't unicast a reply without knowing who asked.
+    };
+    let Some(filter) = GcsFilter::from_bytes(&packet.payload) else {
+        return; // malformed filter — drop.
+    };
+    let now = st.now_ms();
+    for mut missing in st.recent.missing(&filter, now) {
+        missing.flags.is_rsr = true;
+        if let Ok(bytes) = encode(&missing) {
+            ctx.unicast(src, bytes);
+            ctx.rsr_sent.fetch_add(1, Ordering::Relaxed);
         }
     }
 }
@@ -361,6 +474,8 @@ fn handle_tx(ctx: &WorkerCtx, packet: Packet, src: Option<&str>, st: &mut Worker
     if !st.relay_seen.insert(relay_key(&packet)) {
         return;
     }
+    // G7: cache it for store-and-forward (so we can serve a rejoining peer this tx later).
+    remember(ctx, st, &packet);
     // Gateway role: the one endpoint allowed to read the envelope + submit.
     if let Some(gw) = &ctx.gateway {
         if let Ok(env) = decode_envelope(&packet.payload) {
@@ -392,6 +507,8 @@ fn handle_receipt(ctx: &WorkerCtx, packet: Packet, src: Option<&str>, st: &mut W
     if !st.relay_seen.insert(relay_key(&packet)) {
         return;
     }
+    // G7: cache it so an offline ORIGIN rejoining within 15 min catches up on its receipt.
+    remember(ctx, st, &packet);
     // Origin role: correlate the receipt to a pending payment (idempotent; a no-op for
     // nodes that aren't the origin of this tx).
     if let Some((tx_id, status)) = decode_receipt(&packet.payload) {
@@ -413,6 +530,8 @@ fn handle_fragment(ctx: &WorkerCtx, packet: Packet, src: Option<&str>, st: &mut 
     if !st.relay_seen.insert(relay_key(&packet)) {
         return;
     }
+    // G7: cache the fragment packet so gossip-sync can replay it to a rejoining peer.
+    remember(ctx, st, &packet);
     // Parse the chunk before we move `packet` into the relay step.
     let parsed = parse_fragment(&packet.payload);
     let now = st.now_ms();
@@ -438,15 +557,9 @@ fn handle_fragment(ctx: &WorkerCtx, packet: Packet, src: Option<&str>, st: &mut 
 /// settle), never re-floods. A reassembled fragment-of-a-fragment is impossible
 /// (`fragment_message` never wraps a `fragment` payload), so this can't recurse.
 fn dispatch_reassembled(ctx: &WorkerCtx, packet: Packet, st: &mut WorkerState) {
-    match packet.msg_type {
-        MessageType::NimiqTx => handle_tx(ctx, packet, None, st),
-        MessageType::NimiqTxReceipt => handle_receipt(ctx, packet, None, st),
-        _ => {
-            if st.relay_seen.insert(relay_key(&packet)) {
-                relay_onward(ctx, packet, None, st);
-            }
-        }
-    }
+    // TTL is already zeroed, so `relay_onward` drops at the hop floor — this only ever
+    // *delivers* (gateway submit / origin settle / cache), never re-floods.
+    dispatch_packet(ctx, packet, None, st);
 }
 
 /// Blind degree-adaptive, jittered, source-excluding TTL re-flood. Never reads the opaque
