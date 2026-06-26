@@ -34,7 +34,7 @@ use crate::codec::{decode, encode};
 use crate::dedup::DedupCache;
 use crate::envelope::{decode_envelope, encode_envelope, NimiqEnvelope};
 use crate::fragment::{parse_fragment, Reassembler};
-use crate::gateway::{MeshGateway, ReceiptStatus};
+use crate::gateway::{MeshGateway, ReceiptStatus, SubmitContext};
 use crate::gcs::GcsFilter;
 use crate::packet::{MessageType, Packet, BROADCAST_RECIPIENT, DEFAULT_TTL, PEER_ID_LEN};
 use crate::radio::BleRadio;
@@ -486,10 +486,18 @@ fn handle_tx(ctx: &WorkerCtx, packet: Packet, src: Option<&str>, st: &mut Worker
                 .map(TxId)
                 .unwrap_or_else(|| mock_tx_id(&env.tx_wire));
             if st.gateway_seen.insert(tx_id) {
-                // G8: the real gateway validates networkId + the validity window here,
-                //     then calls `sendRawTransaction(rawHex)` against a public Albatross
-                //     TESTNET RPC (money-path, gated). The mock only RECORDS the bytes.
-                if let Ok(receipt) = gw.submit(env.tx_wire.clone()) {
+                // G8: the real `RpcGateway` validates `networkId` + the validity window
+                //     (querying the live head) here, then calls `sendRawTransaction(rawHex)`
+                //     against a public Albatross TESTNET RPC (money-path). The mock only
+                //     RECORDS the bytes. A transient gateway error yields NO receipt (Err),
+                //     so another gateway / a later retry can still carry the tx.
+                let submit_ctx = SubmitContext {
+                    tx_id,
+                    tx_wire: env.tx_wire.clone(),
+                    network_id: env.network_id,
+                    valid_until: env.valid_until,
+                };
+                if let Ok(receipt) = gw.submit_validated(submit_ctx) {
                     let payload = encode_receipt(&receipt.tx_id, receipt.status);
                     let reply = ctx.build_packet(MessageType::NimiqTxReceipt, payload);
                     st.relay_seen.insert(relay_key(&reply));

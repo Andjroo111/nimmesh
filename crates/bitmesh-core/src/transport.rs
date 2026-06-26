@@ -21,12 +21,17 @@ pub enum MeshError {
     /// The real provider ([`crate::provider::MeshProvider::real`]) was requested but its
     /// backing (G5 BLE radio + G8 RPC gateway) is not wired yet.
     NotStarted,
+    /// G8: a **transient** gateway/RPC failure (network down, node overload). The engine
+    /// emits no receipt so another gateway / a later retry can still carry the tx — a
+    /// terminal rejection is surfaced as a `Failed` receipt instead, not this error.
+    Gateway(String),
 }
 
 impl fmt::Display for MeshError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             MeshError::NotStarted => write!(f, "mesh backing is not available yet"),
+            MeshError::Gateway(reason) => write!(f, "gateway broadcast failed: {reason}"),
         }
     }
 }

@@ -18,9 +18,31 @@ crate-type = ["cdylib", "staticlib", "lib"]
 name = "uniffi-bindgen"
 path = "src/bin/uniffi-bindgen.rs"
 
+# G8: the live-broadcast tool. Built only with `--features gateway-rpc`, so a plain
+# `cargo test` (default features) never compiles or runs it — `cargo test` stays offline.
+[[example]]
+name = "live_testnet_broadcast"
+required-features = ["gateway-rpc"]
+
+[features]
+# G8: the real blocking HTTP JSON-RPC gateway client (`ureq` + `serde_json`) + the
+# keypair-entropy source for the live example. OFF by default so the pure-protocol core
+# stays dependency-light and WASM-friendly; the `gateway::RpcGateway` + `rpc::MockRpc`
+# (offline tests) need no feature. TESTNET-only either way (every constructor is guarded).
+gateway-rpc = ["dep:ureq", "dep:serde_json", "dep:getrandom"]
+
 # Pure proc-macro mode (uniffi::setup_scaffolding!) — no UDL file, no build.rs.
 [dependencies]
 uniffi = { workspace = true, features = ["cli"] }
+
+# G8: gateway broadcast (TESTNET, money-path). `ureq` is a lightweight BLOCKING HTTP client
+# (no tokio) for the Albatross JSON-RPC POST; `serde_json` builds/parses the JSON-RPC 2.0
+# envelope; `getrandom` seeds the live example's ephemeral testnet keypair. All three are
+# OPTIONAL and pulled in ONLY by the `gateway-rpc` feature — the protocol core never links
+# them. The pure-protocol path + the offline `MockRpc` tests compile without them.
+ureq = { version = "2", optional = true, features = ["json"] }
+serde_json = { version = "1", optional = true }
+getrandom = { version = "0.2", optional = true }
 
 # G11: optional encrypted memo / 1:1 chat. `snow` is the Noise Protocol implementation
 # driving the `Noise_XX_25519_ChaChaPoly_SHA256` mutual-auth, identity-hiding handshake;

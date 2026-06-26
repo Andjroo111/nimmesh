@@ -9,8 +9,11 @@
 //! `sendRawTransaction(rawHex)` against a public Albatross **testnet** RPC. That is a
 //! money-path goal, PR-only behind Andjroo — see the `// G8:` anchor in `submit`.
 
+use std::sync::Arc;
 use std::sync::Mutex;
 
+use crate::nimiq::hex::bytes_to_hex;
+use crate::rpc::GatewayRpc;
 use crate::transport::{mock_tx_id, MeshError, TxId};
 use crate::NetworkId;
 
@@ -59,6 +62,22 @@ impl ReceiptStatus {
     }
 }
 
+/// The decoded envelope context the engine hands a gateway alongside the opaque wire, so
+/// the gateway can validate `networkId` + the validity window before broadcasting without
+/// re-parsing the TLV. The `tx_id` is the SAME key the origin tracks its payment by, so
+/// the receipt the gateway returns correlates back to the right pending payment.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SubmitContext {
+    /// The receipt/dedup key (origin's `txId` if present, else the mock derivation).
+    pub tx_id: TxId,
+    /// The opaque signed-tx wire bytes (broadcast verbatim as hex; never inspected here).
+    pub tx_wire: Vec<u8>,
+    /// The envelope's `networkId` — the gateway drops a mismatch (PROTOCOL.md §gateway).
+    pub network_id: u8,
+    /// The envelope's optional `validUntil` height — the gateway drops if `head >= validUntil`.
+    pub valid_until: Option<u32>,
+}
+
 /// The frozen gateway seam: take opaque signed-tx bytes, return a receipt.
 ///
 /// The relay/orchestrator depend only on this trait, so the G8 RPC gateway drops in
@@ -66,6 +85,20 @@ impl ReceiptStatus {
 pub trait MeshGateway: Send + Sync {
     /// Submit the opaque signed-tx wire; record/broadcast it and return a receipt.
     fn submit(&self, tx_wire: Vec<u8>) -> Result<Receipt, MeshError>;
+
+    /// Submit with the decoded envelope context (`networkId` + validity window + `txId`).
+    ///
+    /// The default delegates to [`MeshGateway::submit`] and keys the receipt by `ctx.tx_id`
+    /// — the record-only [`MockGateway`] keeps its exact behaviour. The real
+    /// [`RpcGateway`] overrides this to enforce the testnet `networkId`, drop an expired tx
+    /// (querying the live head), and call `sendRawTransaction(rawHex)`.
+    fn submit_validated(&self, ctx: SubmitContext) -> Result<Receipt, MeshError> {
+        let receipt = self.submit(ctx.tx_wire)?;
+        Ok(Receipt {
+            tx_id: ctx.tx_id,
+            status: receipt.status,
+        })
+    }
 }
 
 /// A record-only [`MeshGateway`] for the mock pay-loop: no network, no money path.
@@ -123,10 +156,109 @@ impl MeshGateway for MockGateway {
     }
 }
 
+// --- RpcGateway: the real online hop (G8, money-path, TESTNET-only) ------------------
+
+/// The real [`MeshGateway`]: validate then broadcast a signed Nimiq tx over a
+/// [`GatewayRpc`]. This is the one place the mesh touches the internet (PROTOCOL.md
+/// §"Gateway broadcast"). It is generic over the RPC seam, so the wiring + validity-window
+/// logic is fully unit-tested offline against [`crate::rpc::MockRpc`]; the live example
+/// injects the feature-gated `HttpGatewayRpc`.
+///
+/// On a `nimiqTx` it:
+/// 1. **guards `networkId`** — anything but the configured testnet id is a [`ReceiptStatus::Failed`];
+/// 2. **checks the validity window** — fetches the head height and, if `head >= validUntil`,
+///    returns [`ReceiptStatus::Expired`] WITHOUT broadcasting (RISKS.md #1);
+/// 3. **broadcasts** `sendRawTransaction(rawHex)` — a terminal RPC rejection is
+///    [`ReceiptStatus::Failed`]; acceptance is [`ReceiptStatus::Accepted`];
+/// 4. a **transient** RPC/transport error surfaces as `Err(MeshError::Gateway)` so the
+///    engine emits NO receipt and another gateway / a retry can still carry the tx.
+///
+/// **Testnet-only:** the `network_id` it enforces is fixed to [`NetworkId::Testnet`] at
+/// construction, and the injected RPC client is itself testnet-guarded.
+pub struct RpcGateway {
+    rpc: Arc<dyn GatewayRpc>,
+    /// The Albatross network-id byte this gateway accepts (always testnet `5`).
+    network_id: u8,
+}
+
+impl RpcGateway {
+    /// Build a testnet gateway over an injected RPC client. The enforced `networkId` is
+    /// fixed to [`NetworkId::Testnet`] — there is no constructor that accepts mainnet.
+    pub fn new(rpc: Arc<dyn GatewayRpc>) -> Self {
+        RpcGateway {
+            rpc,
+            network_id: NetworkId::Testnet.wire_id(),
+        }
+    }
+
+    /// The network-id byte this gateway broadcasts for (testnet `5`).
+    pub fn network_id(&self) -> u8 {
+        self.network_id
+    }
+
+    /// The shared RPC client handle (so the live example can poll inclusion with it).
+    pub fn rpc(&self) -> Arc<dyn GatewayRpc> {
+        self.rpc.clone()
+    }
+}
+
+impl MeshGateway for RpcGateway {
+    /// Direct, contextless broadcast (no validity-window check, since the bare wire carries
+    /// no `validUntil`). Used when a caller has only the opaque bytes; the engine always
+    /// goes through [`MeshGateway::submit_validated`] instead.
+    fn submit(&self, tx_wire: Vec<u8>) -> Result<Receipt, MeshError> {
+        self.submit_validated(SubmitContext {
+            tx_id: mock_tx_id(&tx_wire),
+            tx_wire,
+            network_id: self.network_id,
+            valid_until: None,
+        })
+    }
+
+    fn submit_validated(&self, ctx: SubmitContext) -> Result<Receipt, MeshError> {
+        // 1. networkId guard — never broadcast a tx for the wrong network.
+        if ctx.network_id != self.network_id {
+            return Ok(Receipt {
+                tx_id: ctx.tx_id,
+                status: ReceiptStatus::Failed,
+            });
+        }
+        // 2. validity window — drop (Expired) if the head is already past validUntil. A
+        //    transient head-fetch failure is propagated so no receipt is emitted.
+        if let Some(valid_until) = ctx.valid_until {
+            let head = self
+                .rpc
+                .block_number()
+                .map_err(|e| MeshError::Gateway(e.to_string()))?;
+            if head >= valid_until {
+                return Ok(Receipt {
+                    tx_id: ctx.tx_id,
+                    status: ReceiptStatus::Expired,
+                });
+            }
+        }
+        // 3. broadcast. A terminal rejection (bad tx, insufficient funds) is Failed; a
+        //    transient transport/overload error propagates so another gateway can retry.
+        let raw_hex = bytes_to_hex(&ctx.tx_wire);
+        match self.rpc.send_raw_transaction(&raw_hex) {
+            Ok(_hash) => Ok(Receipt {
+                tx_id: ctx.tx_id,
+                status: ReceiptStatus::Accepted,
+            }),
+            Err(e) if e.is_transient() => Err(MeshError::Gateway(e.to_string())),
+            Err(_) => Ok(Receipt {
+                tx_id: ctx.tx_id,
+                status: ReceiptStatus::Failed,
+            }),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::default_network;
+    use crate::rpc::MockRpc;
 
     #[test]
     fn status_codes_roundtrip() {
@@ -161,5 +293,85 @@ mod tests {
             gw.submit(b"x".to_vec()).unwrap().status,
             ReceiptStatus::Expired
         );
+    }
+
+    fn ctx(wire: &[u8], network_id: u8, valid_until: Option<u32>) -> SubmitContext {
+        SubmitContext {
+            tx_id: mock_tx_id(wire),
+            tx_wire: wire.to_vec(),
+            network_id,
+            valid_until,
+        }
+    }
+
+    #[test]
+    fn rpc_gateway_broadcasts_and_accepts() {
+        let rpc = Arc::new(MockRpc::new(1_000));
+        let gw = RpcGateway::new(rpc.clone());
+        assert_eq!(gw.network_id(), 5);
+
+        let wire = vec![0xAB; 139];
+        let receipt = gw
+            .submit_validated(ctx(&wire, 5, Some(8_200)))
+            .expect("accepted");
+        assert_eq!(receipt.status, ReceiptStatus::Accepted);
+        assert_eq!(receipt.tx_id, mock_tx_id(&wire));
+        // Broadcast EXACTLY the hex of the opaque wire, once.
+        assert_eq!(rpc.broadcasts(), vec![bytes_to_hex(&wire)]);
+    }
+
+    #[test]
+    fn rpc_gateway_drops_expired_without_broadcasting() {
+        // head (1000) >= validUntil (1000) -> the window has closed.
+        let rpc = Arc::new(MockRpc::new(1_000));
+        let gw = RpcGateway::new(rpc.clone());
+        let receipt = gw
+            .submit_validated(ctx(b"stale", 5, Some(1_000)))
+            .expect("verdict");
+        assert_eq!(receipt.status, ReceiptStatus::Expired);
+        assert!(rpc.broadcasts().is_empty(), "expired tx must not broadcast");
+    }
+
+    #[test]
+    fn rpc_gateway_rejects_wrong_network() {
+        let rpc = Arc::new(MockRpc::new(1_000));
+        let gw = RpcGateway::new(rpc.clone());
+        // Mainnet networkId (24) on a testnet gateway -> Failed, never broadcast.
+        let receipt = gw
+            .submit_validated(ctx(b"wrong-net", 24, Some(8_200)))
+            .expect("verdict");
+        assert_eq!(receipt.status, ReceiptStatus::Failed);
+        assert!(rpc.broadcasts().is_empty());
+    }
+
+    #[test]
+    fn rpc_gateway_terminal_rejection_is_failed_receipt() {
+        let rpc = Arc::new(MockRpc::new(1_000));
+        rpc.reject_with("Invalid transaction");
+        let gw = RpcGateway::new(rpc.clone());
+        let receipt = gw
+            .submit_validated(ctx(b"bad-tx", 5, Some(8_200)))
+            .expect("verdict");
+        assert_eq!(receipt.status, ReceiptStatus::Failed);
+    }
+
+    #[test]
+    fn rpc_gateway_transient_failure_emits_no_receipt() {
+        let rpc = Arc::new(MockRpc::new(1_000));
+        rpc.fail_transient("connection refused");
+        let gw = RpcGateway::new(rpc.clone());
+        // A transient error is propagated as Err so the engine emits NO receipt.
+        let err = gw.submit_validated(ctx(b"tx", 5, Some(8_200))).unwrap_err();
+        assert!(matches!(err, MeshError::Gateway(_)));
+    }
+
+    #[test]
+    fn rpc_gateway_no_valid_until_skips_head_check() {
+        // With no validUntil, the gateway broadcasts without consulting the head.
+        let rpc = Arc::new(MockRpc::new(0));
+        let gw = RpcGateway::new(rpc.clone());
+        let receipt = gw.submit(b"no-window".to_vec()).expect("accepted");
+        assert_eq!(receipt.status, ReceiptStatus::Accepted);
+        assert_eq!(rpc.broadcasts().len(), 1);
     }
 }

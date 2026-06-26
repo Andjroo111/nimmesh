@@ -23,12 +23,13 @@ use crate::default_network;
 use crate::engine::PaymentStatus;
 use crate::envelope::{encode_envelope, NimiqEnvelope};
 use crate::fragment::fragment_message;
-use crate::gateway::{MeshGateway, MockGateway, Receipt, ReceiptStatus};
+use crate::gateway::{MeshGateway, MockGateway, Receipt, ReceiptStatus, RpcGateway};
 use crate::mock_radio::{MeshHarness, MockEther, MockRadio};
 use crate::node::MeshNode;
 use crate::packet::{MessageType, Packet, BROADCAST_RECIPIENT};
 use crate::radio::BleRadio;
 use crate::relay::RelayPolicy;
+use crate::rpc::MockRpc;
 use crate::transport::{mock_tx_id, MeshError, TxId};
 
 const SETTLE: Duration = Duration::from_secs(3);
@@ -50,6 +51,26 @@ fn wait_until<F: Fn() -> bool>(f: F, timeout: Duration) -> bool {
 fn make_tx_packet(sender: [u8; 8], tx_wire: &[u8], ttl: u8, ts: u64) -> Vec<u8> {
     let mut env = NimiqEnvelope::new(tx_wire.to_vec());
     env.tx_id = Some(mock_tx_id(tx_wire).0);
+    let payload = encode_envelope(&env).expect("envelope encodes");
+    let mut p = Packet::new(MessageType::NimiqTx, sender, payload);
+    p.recipient_id = Some(BROADCAST_RECIPIENT);
+    p.ttl = ttl;
+    p.timestamp_ms = ts;
+    encode(&p).expect("packet encodes")
+}
+
+/// Like [`make_tx_packet`] but stamps a `validUntil` height in the TLV envelope, so a
+/// gateway's validity-window check (head vs `validUntil`) is exercised end to end.
+fn make_tx_packet_valid_until(
+    sender: [u8; 8],
+    tx_wire: &[u8],
+    valid_until: u32,
+    ttl: u8,
+    ts: u64,
+) -> Vec<u8> {
+    let mut env = NimiqEnvelope::new(tx_wire.to_vec());
+    env.tx_id = Some(mock_tx_id(tx_wire).0);
+    env.valid_until = Some(valid_until);
     let payload = encode_envelope(&env).expect("envelope encodes");
     let mut p = Packet::new(MessageType::NimiqTx, sender, payload);
     p.recipient_id = Some(BROADCAST_RECIPIENT);
@@ -386,6 +407,59 @@ fn partition_isolates_the_gateway_and_keeps_pending() {
     let tx2 = origin.submit_local_tx(b"now-it-flows".to_vec());
     assert_eq!(origin.wait_payment(&tx2, SETTLE), PaymentStatus::Settled);
     h.shutdown();
+}
+
+// --- G8: the real RpcGateway over a MockRpc (offline, no network) ----------------
+
+#[test]
+fn full_pay_loop_settles_through_rpc_gateway() {
+    // The real G8 gateway (RpcGateway) wired into the mesh, backed by an offline MockRpc.
+    // origin <-> relay <-> gateway: the receipt of a real broadcast settles the origin,
+    // and the gateway broadcast EXACTLY the opaque bytes the origin flooded — once.
+    let mut h = MeshHarness::new();
+    let rpc = Arc::new(MockRpc::new(1_000));
+    let gw: Arc<dyn MeshGateway> = Arc::new(RpcGateway::new(rpc.clone()));
+    let origin = h.add_node("origin", &[1]);
+    h.add_node("relay", &[2]);
+    h.add_gateway("gw", &[3], gw);
+    h.connect("origin", "relay");
+    h.connect("relay", "gw");
+
+    let opaque = b"signed-testnet-tx-bytes".to_vec();
+    let tx_id = origin.submit_local_tx(opaque.clone());
+    assert_eq!(origin.wait_payment(&tx_id, SETTLE), PaymentStatus::Settled);
+    // The gateway broadcast exactly the hex of the opaque wire, exactly once.
+    assert_eq!(
+        rpc.broadcasts(),
+        vec![crate::nimiq::hex::bytes_to_hex(&opaque)]
+    );
+    h.shutdown();
+}
+
+#[test]
+fn rpc_gateway_never_broadcasts_an_expired_tx() {
+    // The money-path safety property: a tx whose validity window has already closed
+    // (head >= validUntil) is DROPPED — the gateway never puts it on chain. Feed a gateway
+    // node a nimiqTx stamped validUntil=500 while the node's RPC head is 1000.
+    let spy = SpyRadio::new();
+    let radio: Arc<dyn BleRadio> = spy.clone();
+    let rpc = Arc::new(MockRpc::new(1_000));
+    let gw: Arc<dyn MeshGateway> = Arc::new(RpcGateway::new(rpc.clone()));
+    let node = MeshNode::new_gateway_with_policy(vec![3], radio, gw, RelayPolicy::deterministic());
+    node.on_peer_connected("peer".to_string());
+
+    node.on_packet_received(make_tx_packet_valid_until([1; 8], b"stale", 500, 7, 100));
+    // The gateway emits an (Expired) receipt back into the mesh …
+    assert!(
+        wait_until(|| spy.send_count() >= 1, Duration::from_secs(1)),
+        "gateway never emitted an expired receipt"
+    );
+    // … but it NEVER broadcast the expired tx to the chain.
+    assert!(
+        rpc.broadcasts().is_empty(),
+        "an expired tx must never reach sendRawTransaction"
+    );
+    node.shutdown();
 }
 
 // --- G6: source-link exclusion --------------------------------------------------

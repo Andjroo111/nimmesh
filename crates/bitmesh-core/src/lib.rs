@@ -50,6 +50,16 @@ pub mod provider;
 pub mod radio;
 pub mod transport;
 
+// G8: the one online hop — gateway broadcast (TESTNET-only, money-path). `rpc` is the
+// blocking Albatross JSON-RPC seam (`GatewayRpc`): a deterministic `MockRpc` (always
+// compiled, keeps `cargo test` offline) plus a real `ureq` HTTP client gated behind the
+// `gateway-rpc` feature so the pure-protocol core stays dependency-light + WASM-friendly.
+// The `gateway::RpcGateway` validates `networkId` (must be testnet 5) + the validity
+// window against the live head, then calls `sendRawTransaction(rawHex)`; on accept it
+// floods a `nimiqTxReceipt` back. Every constructor is testnet-guarded — there is no path
+// to a mainnet RPC. The live-broadcast tool is `examples/live_testnet_broadcast.rs`.
+pub mod rpc;
+
 // G6: relay-engine refinements over the G5 basic TTL/dedup/flood relay. `relay` adds
 // degree-adaptive probabilistic flooding (high-degree threshold), injectable relay
 // jitter (10–220 ms, real in prod / zero in tests), and the TTL hop-cap transform that
@@ -186,9 +196,13 @@ pub fn echo_bytes(payload: Vec<u8>) -> Vec<u8> {
 //      `node::MeshNode::submit_signed_transfer`. The seed never crosses this boundary —
 //      only a public key + signature leave the enclave. TESTNET-default, Andjroo-gated.
 //
-// G8: `gateway_broadcast(raw_hex) -> receipt` — validate (networkId + validity
-//      window) then `sendRawTransaction` against a public Albatross testnet RPC.
-//      MONEY-PATH, gated. Not implemented.
+// G8: DONE — gateway broadcast lives in [`rpc`] + [`gateway::RpcGateway`]. The engine
+//      hands a gateway node the decoded envelope (`gateway::SubmitContext`); `RpcGateway`
+//      validates `networkId` (testnet 5) + the validity window against the live head, then
+//      calls `sendRawTransaction(rawHex)` over the `rpc::GatewayRpc` seam and floods a
+//      `nimiqTxReceipt` (0x31) back. TESTNET-only (every constructor is testnet-guarded);
+//      the real HTTP client is behind the `gateway-rpc` feature; `cargo test` runs against
+//      `rpc::MockRpc` (offline). The live tool: `examples/live_testnet_broadcast.rs`.
 
 #[cfg(test)]
 mod tests {

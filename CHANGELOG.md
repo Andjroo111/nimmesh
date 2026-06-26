@@ -2,6 +2,43 @@
 
 All notable changes to nimiq.bitmesh. Each PR bumps the version and adds an entry.
 
+## [0.8.0] — 2026-06-26
+
+### Added — G8 (Rust core): gateway broadcast (TESTNET) — MONEY-PATH, Andjroo-authorized
+
+The one online hop: a gateway node takes a signed-tx blob off the mesh and puts it on the
+**Nimiq Albatross TESTNET** via plain JSON-RPC (`sendRawTransaction`), then floods a
+`nimiqTxReceipt (0x31)` back. **TESTNET-only (`networkId = 5`)** — every constructor is
+testnet-guarded and there is no path to a mainnet RPC. `cargo test` stays fully offline.
+
+- `crates/bitmesh-core/src/rpc.rs` — the blocking Albatross **JSON-RPC client seam**
+  (`GatewayRpc`: `block_number`, `get_account`, `send_raw_transaction`, `get_transaction`),
+  modelled on the fleet's `sendhome`/`nimiq.sale` clients (JSON-RPC 2.0 over HTTP POST,
+  `{ result: { data } }` unwrap, transient-vs-terminal error split — **never** the
+  `@nimiq/core` consensus client). Ships `MockRpc` (deterministic, always compiled, keeps
+  the test suite offline) + `HttpGatewayRpc` (real `ureq` blocking client) gated behind the
+  new **`gateway-rpc`** cargo feature so the pure-protocol core stays dependency-light +
+  WASM-friendly. `guard_testnet` refuses any non-testnet network or known mainnet host
+  (`rpc.nimiqwatch.com`).
+- `crates/bitmesh-core/src/gateway.rs` — the real **`RpcGateway`** (a `MeshGateway` over any
+  `GatewayRpc`) + the `SubmitContext` the engine hands it. On a `nimiqTx` it **guards
+  `networkId`** (testnet 5), **checks the validity window** against the live head (drops +
+  `Expired` receipt if `head >= validUntil`, never broadcasting), then
+  **`sendRawTransaction(rawHex)`** (terminal rejection → `Failed`; accept → `Accepted`); a
+  transient RPC error yields no receipt so another gateway / a retry can still carry the tx.
+  `MeshGateway::submit_validated` is a new default-method seam (`MockGateway` unchanged).
+- `crates/bitmesh-core/src/engine.rs` — the gateway role now calls `submit_validated` with
+  the decoded envelope (`networkId` + `validUntil` + `txId`); receipt keyed by the origin's
+  `txId`, relay-anyway preserved, `on_packet_received` stays non-blocking (worker thread).
+- `crates/bitmesh-core/examples/live_testnet_broadcast.rs` — the **live broadcast tool**
+  (built with `--features gateway-rpc`): generates/loads a testnet keypair via the core,
+  prints the `NQ…` address, optional faucet tap (`faucet.pos.nimiq-testnet.com/tapit`),
+  fetches the head, **signs with the core's G3 signer**, broadcasts, and polls inclusion —
+  printing the tx hash + block + explorer URL. Injectable RPC URL/seed; testnet-guarded.
+- Tests: `RpcGateway` broadcast/expired-drop/wrong-network/terminal/transient against
+  `MockRpc`, the `guard_testnet` refusals, and two end-to-end mesh tests (full pay loop
+  settles through the real `RpcGateway`; an expired tx is never broadcast) — all offline.
+
 ## [0.7.0] — 2026-06-26
 
 ### Added — G3 (Rust core): offline Nimiq signing (TESTNET) — MONEY-PATH, Andjroo-gated
