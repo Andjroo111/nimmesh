@@ -85,7 +85,7 @@ Scaffold + mock harness + codec first (all CI-testable headless), then the money
 | G3  | Offline Nimiq signing core (TESTNET) — `signOffline()`      |   **yes**  |   **no**   | G1            | todo   |
 | G4  | bitmesh wire protocol + packet codec (pure Rust)           |     no     |    yes     | G1            | ✅ done |
 | G5  | BLE mesh transport — concurrent central+peripheral (iOS+Android) | no   |    yes     | G2, G4        | 🟡 Rust core done · native shim pending (Xcode/Apple ID) |
-| G6  | Relay engine — TTL/hop-cap + dedup + degree-adaptive + frag |     no     |    yes     | G4, G5        | todo   |
+| G6  | Relay engine — TTL/hop-cap + dedup + degree-adaptive + frag |     no     |    yes     | G4, G5        | ✅ done |
 | G7  | Store-and-forward — GCS gossip-sync catch-up               |     no     |    yes     | G6            | todo   |
 | G8  | Gateway broadcast node (TESTNET) — `sendRawTransaction`     |   **yes**  |   **no**   | G3, G7        | todo   |
 | G9  | Head-beacon + validity-window guard + packet GC            |     no     |    yes     | G4, G8        | todo   |
@@ -180,3 +180,10 @@ architecture = thin native shim (ADR-0002); native build host = Mac Mini primary
   throughout. Issue #5 stays **open** for the native Swift/Kotlin shim (Apple ID gate).
   Loop continues: G6 (relay refinements) → G7 (store-and-forward) → G11 (encrypted memo),
   then the money-path/native walls.
+- **2026-06-26** — **G6 merged** (PR #19, v0.4.0): relay refinements in new `relay.rs` +
+  `fragment.rs` — degree-adaptive probabilistic flood (threshold 6, injectable seeded
+  RNG), injectable relay jitter (10–220 ms `RealDelay` in prod / `NoDelay` in tests),
+  **source-link exclusion** (was missing in G5), and `fragment=0x20` split + bounded
+  reassembler (128/30 s, TTL-zeroed). **76 tests green** incl. property tests for
+  loop-freedom, dedup-at-most-once, sparse-tree reachability, and a fuzzed
+  split→reassemble round-trip — all deterministic (ran twice byte-identical). Next: G7.
