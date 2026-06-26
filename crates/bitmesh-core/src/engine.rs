@@ -1,0 +1,411 @@
+//! # engine — the real-packet relay / gateway / origin logic
+//!
+//! The protocol brain that runs **off** the radio's callback thread (ADR-0002 gotcha a):
+//! [`crate::node::MeshNode`] cheaply enqueues every BLE event, and a dedicated worker
+//! thread drains the queue and calls into this module. Everything here speaks the **real
+//! G4 wire codec** ([`crate::codec`], [`crate::packet`], [`crate::envelope`]) — the
+//! temporary G2 `MeshFrame` framing is gone.
+//!
+//! Three roles, one code path:
+//!
+//! - **relay** (every node, always): decode → **blind** LRU dedup on a packet-header
+//!   identity → TTL-decrement → re-flood. The opaque `txWire` is *never* inspected here
+//!   (core value #3, trustless relay).
+//! - **gateway** (a node with internet, modelled by an injected [`MeshGateway`]): on a
+//!   `nimiqTx`, dedup on `txId`, submit once (the mock records; **G8** does the real
+//!   `sendRawTransaction`), and flood a `nimiqTxReceipt` back.
+//! - **origin** (the node that called `submit_local_tx`): on a matching
+//!   `nimiqTxReceipt`, flip its payment `Pending → Settled / Failed`.
+//!
+//! `txWire` is **opaque** end to end — no signing, no broadcast, no key material (that is
+//! G3/G8, money-path and Andjroo-gated).
+
+use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
+#[cfg(test)]
+use std::time::{Duration, Instant};
+
+use crate::codec::{decode, encode};
+use crate::dedup::DedupCache;
+use crate::envelope::{decode_envelope, encode_envelope, NimiqEnvelope};
+use crate::gateway::{MeshGateway, ReceiptStatus};
+use crate::packet::{MessageType, Packet, BROADCAST_RECIPIENT, DEFAULT_TTL, PEER_ID_LEN};
+use crate::radio::BleRadio;
+use crate::transport::{mock_tx_id, TxId};
+
+/// Where a payment stands from the origin's point of view (FFI-visible).
+///
+/// `Pending` until a gateway receipt arrives; honours unconfirmed-until-inclusion
+/// (core value #5) — only an `Accepted` receipt yields `Settled`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum PaymentStatus {
+    /// Sent (or relaying); no gateway receipt seen yet.
+    Pending,
+    /// A gateway accepted the tx into the mempool.
+    Settled,
+    /// A gateway rejected the tx (expired / failed).
+    Failed,
+}
+
+/// LRU bound for the blind packet-relay dedup (hostile-flood ceiling, RISKS.md #4).
+const RELAY_CACHE_CAP: usize = 2048;
+/// LRU bound for the gateway's per-`txId` submit-once dedup.
+const GATEWAY_CACHE_CAP: usize = 1024;
+/// A `nimiqTxReceipt` payload is exactly `txId(32) | status(1)`.
+const RECEIPT_PAYLOAD_LEN: usize = 33;
+
+/// The **blind** relay dedup key: `(type, senderID, timestamp)` — all packet-header
+/// fields, never the opaque payload (PROTOCOL.md dedup intent). For a flooded `nimiqTx`
+/// this header tuple is the packet's identity; the endpoints separately correlate
+/// receipts by the envelope `txId`.
+type RelayKey = (u8, [u8; PEER_ID_LEN], u64);
+
+fn relay_key(p: &Packet) -> RelayKey {
+    (p.msg_type.to_u8(), p.sender_id, p.timestamp_ms)
+}
+
+/// Encode a `nimiqTxReceipt` payload: `txId(32) | status(1)`.
+fn encode_receipt(tx_id: &TxId, status: ReceiptStatus) -> Vec<u8> {
+    let mut v = Vec::with_capacity(RECEIPT_PAYLOAD_LEN);
+    v.extend_from_slice(&tx_id.0);
+    v.push(status.code());
+    v
+}
+
+/// Decode a `nimiqTxReceipt` payload, returning `None` on any malformed input.
+fn decode_receipt(payload: &[u8]) -> Option<(TxId, ReceiptStatus)> {
+    if payload.len() != RECEIPT_PAYLOAD_LEN {
+        return None;
+    }
+    let mut id = [0u8; 32];
+    id.copy_from_slice(&payload[..32]);
+    Some((TxId(id), ReceiptStatus::from_code(payload[32])))
+}
+
+/// State the origin tracks for its in-flight payments.
+#[derive(Default)]
+struct OriginShared {
+    payments: HashMap<TxId, PaymentStatus>,
+}
+
+/// The shared context the worker thread operates on. Crucially it holds **no**
+/// `Arc<MeshNode>` — only the radio (strong) plus plain state — so the node↔radio↔node
+/// graph stays a tree and a torn-down node is reclaimed (ADR-0002 gotcha d).
+pub struct WorkerCtx {
+    /// This node's 8-byte protocol sender id (header `senderID`).
+    pub(crate) sender_id: [u8; PEER_ID_LEN],
+    /// The native radio. Held **strongly**; the radio holds the node weakly.
+    pub(crate) radio: Arc<dyn BleRadio>,
+    /// Present iff this node also acts as a gateway (internet + RPC at G8).
+    pub(crate) gateway: Option<Arc<dyn MeshGateway>>,
+    /// Currently-connected BLE peers; a flood writes to each.
+    peers: Mutex<HashSet<String>>,
+    /// The origin's payment ledger + its settle signal.
+    origin: Mutex<OriginShared>,
+    settled: Condvar,
+    /// Monotonic per-node sequence used as the packet `timestamp_ms` so each flooded
+    /// packet has a unique blind [`RelayKey`] (the mock's deterministic clock).
+    seq: AtomicU64,
+    /// Observability counters (test + future telemetry hooks).
+    forwarded: AtomicUsize,
+    send_attempts: AtomicUsize,
+    send_ok: AtomicUsize,
+    send_fail: AtomicUsize,
+}
+
+impl WorkerCtx {
+    pub(crate) fn new(
+        sender_id: [u8; PEER_ID_LEN],
+        radio: Arc<dyn BleRadio>,
+        gateway: Option<Arc<dyn MeshGateway>>,
+    ) -> Self {
+        WorkerCtx {
+            sender_id,
+            radio,
+            gateway,
+            peers: Mutex::new(HashSet::new()),
+            origin: Mutex::new(OriginShared::default()),
+            settled: Condvar::new(),
+            seq: AtomicU64::new(1),
+            forwarded: AtomicUsize::new(0),
+            send_attempts: AtomicUsize::new(0),
+            send_ok: AtomicUsize::new(0),
+            send_fail: AtomicUsize::new(0),
+        }
+    }
+
+    pub(crate) fn add_peer(&self, peer: String) {
+        self.peers.lock().unwrap().insert(peer);
+    }
+
+    pub(crate) fn remove_peer(&self, peer: &str) {
+        self.peers.lock().unwrap().remove(peer);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn peer_count(&self) -> usize {
+        self.peers.lock().unwrap().len()
+    }
+
+    /// Record the async outcome of a fire-and-forget `send` (ADR-0002 gotcha b). Cheap:
+    /// just a counter bump, never a re-entrant `send`.
+    pub(crate) fn note_send_result(&self, ok: bool) {
+        if ok {
+            self.send_ok.fetch_add(1, Ordering::Relaxed);
+        } else {
+            self.send_fail.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn forwarded_count(&self) -> usize {
+        self.forwarded.load(Ordering::Relaxed)
+    }
+    #[cfg(test)]
+    pub(crate) fn send_attempts(&self) -> usize {
+        self.send_attempts.load(Ordering::Relaxed)
+    }
+    #[cfg(test)]
+    pub(crate) fn send_ok(&self) -> usize {
+        self.send_ok.load(Ordering::Relaxed)
+    }
+    #[cfg(test)]
+    pub(crate) fn send_fail(&self) -> usize {
+        self.send_fail.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn status(&self, tx_id: &TxId) -> PaymentStatus {
+        self.origin
+            .lock()
+            .unwrap()
+            .payments
+            .get(tx_id)
+            .copied()
+            .unwrap_or(PaymentStatus::Pending)
+    }
+
+    /// Block (up to `timeout`) until `tx_id` leaves `Pending`, returning the final status
+    /// (or the last-known status on timeout).
+    #[cfg(test)]
+    pub(crate) fn wait(&self, tx_id: TxId, timeout: Duration) -> PaymentStatus {
+        let deadline = Instant::now() + timeout;
+        let mut guard = self.origin.lock().unwrap();
+        loop {
+            let status = guard
+                .payments
+                .get(&tx_id)
+                .copied()
+                .unwrap_or(PaymentStatus::Pending);
+            if status != PaymentStatus::Pending {
+                return status;
+            }
+            let now = Instant::now();
+            if now >= deadline {
+                return status;
+            }
+            let (g, _) = self.settled.wait_timeout(guard, deadline - now).unwrap();
+            guard = g;
+        }
+    }
+
+    fn record_pending(&self, tx_id: TxId) {
+        self.origin
+            .lock()
+            .unwrap()
+            .payments
+            .entry(tx_id)
+            .or_insert(PaymentStatus::Pending);
+    }
+
+    fn settle(&self, tx_id: TxId, status: PaymentStatus) {
+        let mut g = self.origin.lock().unwrap();
+        if let Some(slot) = g.payments.get_mut(&tx_id) {
+            if *slot == PaymentStatus::Pending {
+                *slot = status;
+                drop(g);
+                self.settled.notify_all();
+            }
+        }
+    }
+
+    fn next_seq(&self) -> u64 {
+        self.seq.fetch_add(1, Ordering::Relaxed)
+    }
+
+    /// Build a fresh broadcast packet originated by this node.
+    fn build_packet(&self, msg_type: MessageType, payload: Vec<u8>) -> Packet {
+        let mut p = Packet::new(msg_type, self.sender_id, payload);
+        p.recipient_id = Some(BROADCAST_RECIPIENT);
+        p.ttl = DEFAULT_TTL;
+        p.timestamp_ms = self.next_seq();
+        p
+    }
+
+    /// Fire-and-forget flood of `bytes` to every connected peer. Snapshots the peer set
+    /// first so the radio is never called while holding the lock (no re-entrancy hazard).
+    fn flood(&self, bytes: Vec<u8>) {
+        let peers: Vec<String> = self.peers.lock().unwrap().iter().cloned().collect();
+        for peer in peers {
+            self.send_attempts.fetch_add(1, Ordering::Relaxed);
+            self.radio.send(peer, bytes.clone());
+        }
+    }
+}
+
+/// The worker thread's persistent dedup caches (single-threaded; no locks on the hot
+/// path).
+pub(crate) struct WorkerState {
+    relay_seen: DedupCache<RelayKey>,
+    gateway_seen: DedupCache<TxId>,
+}
+
+impl WorkerState {
+    pub(crate) fn new() -> Self {
+        WorkerState {
+            relay_seen: DedupCache::new(RELAY_CACHE_CAP),
+            gateway_seen: DedupCache::new(GATEWAY_CACHE_CAP),
+        }
+    }
+}
+
+/// Origin path: encode a real `nimiqTx` packet around the **opaque** `tx_wire` and flood
+/// it. Records the payment as `Pending`. Returns the (mock) `txId`.
+pub(crate) fn flood_local_tx(ctx: &WorkerCtx, tx_wire: Vec<u8>, st: &mut WorkerState) -> TxId {
+    // G3: `tx_wire` is OPAQUE. Real signed Nimiq tx bytes come from `sign_offline()`
+    //     (money-path, gated) and ride this exact `Vec<u8>` path unchanged.
+    let tx_id = mock_tx_id(&tx_wire);
+    let mut env = NimiqEnvelope::new(tx_wire);
+    env.tx_id = Some(tx_id.0);
+    env.want_receipt = true;
+    let Ok(payload) = encode_envelope(&env) else {
+        // Oversized opaque blob (> 255-B TLV value): refuse to flood, stay Pending.
+        return tx_id;
+    };
+    let packet = ctx.build_packet(MessageType::NimiqTx, payload);
+    // Remember our own packet so its echo back through the mesh is not re-flooded.
+    st.relay_seen.insert(relay_key(&packet));
+    ctx.record_pending(tx_id);
+    if let Ok(bytes) = encode(&packet) {
+        ctx.flood(bytes);
+    }
+    tx_id
+}
+
+/// The hot path: one inbound frame from the radio. Decodes with the real codec and
+/// dispatches by message type. Panic-free and infallible — a malformed/hostile frame is
+/// silently dropped (the caller additionally wraps this in `catch_unwind`, gotcha c).
+pub(crate) fn process_inbound(ctx: &WorkerCtx, bytes: &[u8], st: &mut WorkerState) {
+    let Ok(packet) = decode(bytes) else {
+        return; // not a well-formed bitmesh packet — drop.
+    };
+    match packet.msg_type {
+        MessageType::NimiqTx => handle_tx(ctx, packet, st),
+        MessageType::NimiqTxReceipt => handle_receipt(ctx, packet, st),
+        // Fragment / RequestSync / HeadBeacon: defined but their semantics land at
+        // G6/G7/G9. For now flood them generically (blind dedup + TTL) so the mesh
+        // stays a faithful relay substrate.
+        _ => relay_onward(ctx, packet, st),
+    }
+}
+
+fn handle_tx(ctx: &WorkerCtx, packet: Packet, st: &mut WorkerState) {
+    // Blind relay dedup first — every role shares it.
+    if !st.relay_seen.insert(relay_key(&packet)) {
+        return;
+    }
+    // Gateway role: the one endpoint allowed to read the envelope + submit.
+    if let Some(gw) = &ctx.gateway {
+        if let Ok(env) = decode_envelope(&packet.payload) {
+            let tx_id = env
+                .tx_id
+                .map(TxId)
+                .unwrap_or_else(|| mock_tx_id(&env.tx_wire));
+            if st.gateway_seen.insert(tx_id) {
+                // G8: the real gateway validates networkId + the validity window here,
+                //     then calls `sendRawTransaction(rawHex)` against a public Albatross
+                //     TESTNET RPC (money-path, gated). The mock only RECORDS the bytes.
+                if let Ok(receipt) = gw.submit(env.tx_wire.clone()) {
+                    let payload = encode_receipt(&receipt.tx_id, receipt.status);
+                    let reply = ctx.build_packet(MessageType::NimiqTxReceipt, payload);
+                    st.relay_seen.insert(relay_key(&reply));
+                    if let Ok(reply_bytes) = encode(&reply) {
+                        ctx.flood(reply_bytes);
+                    }
+                }
+            }
+        }
+    }
+    // PROTOCOL.md: a gateway relays the tx anyway so other gateways can also try (the
+    // mempool dedups on tx hash). A plain relay just forwards.
+    relay_onward(ctx, packet, st);
+}
+
+fn handle_receipt(ctx: &WorkerCtx, packet: Packet, st: &mut WorkerState) {
+    if !st.relay_seen.insert(relay_key(&packet)) {
+        return;
+    }
+    // Origin role: correlate the receipt to a pending payment (idempotent; a no-op for
+    // nodes that aren't the origin of this tx).
+    if let Some((tx_id, status)) = decode_receipt(&packet.payload) {
+        let payment_status = match status {
+            ReceiptStatus::Accepted => PaymentStatus::Settled,
+            _ => PaymentStatus::Failed,
+        };
+        ctx.settle(tx_id, payment_status);
+    }
+    relay_onward(ctx, packet, st);
+}
+
+/// Blind TTL-decrement re-flood (PROTOCOL.md hop cap: drop at `ttl <= 1`). Never reads
+/// the opaque payload.
+fn relay_onward(ctx: &WorkerCtx, mut packet: Packet, _st: &mut WorkerState) {
+    if packet.ttl <= 1 {
+        return;
+    }
+    packet.ttl -= 1;
+    if let Ok(bytes) = encode(&packet) {
+        ctx.forwarded.fetch_add(1, Ordering::Relaxed);
+        ctx.flood(bytes);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::packet::Packet;
+
+    #[test]
+    fn receipt_payload_round_trips() {
+        let id = mock_tx_id(b"hello");
+        for status in [
+            ReceiptStatus::Accepted,
+            ReceiptStatus::Expired,
+            ReceiptStatus::Failed,
+        ] {
+            let bytes = encode_receipt(&id, status);
+            assert_eq!(bytes.len(), RECEIPT_PAYLOAD_LEN);
+            let (back_id, back_status) = decode_receipt(&bytes).unwrap();
+            assert_eq!(back_id, id);
+            assert_eq!(back_status, status);
+        }
+    }
+
+    #[test]
+    fn decode_receipt_rejects_wrong_length() {
+        assert!(decode_receipt(&[]).is_none());
+        assert!(decode_receipt(&[0u8; 32]).is_none());
+        assert!(decode_receipt(&[0u8; 34]).is_none());
+    }
+
+    #[test]
+    fn relay_key_is_header_only_and_payload_blind() {
+        let mut a = Packet::new(MessageType::NimiqTx, [1; PEER_ID_LEN], vec![1, 2, 3]);
+        a.timestamp_ms = 42;
+        let mut b = a.clone();
+        b.payload = vec![9, 9, 9, 9]; // different payload …
+        assert_eq!(relay_key(&a), relay_key(&b)); // … same blind relay identity.
+        b.timestamp_ms = 43;
+        assert_ne!(relay_key(&a), relay_key(&b)); // header field changes the key.
+    }
+}

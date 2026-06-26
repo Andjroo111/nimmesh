@@ -2,6 +2,63 @@
 
 All notable changes to nimiq.bitmesh. Each PR bumps the version and adds an entry.
 
+## [0.3.0] — 2026-06-26
+
+### Added — G5 (Rust core): BLE mesh node + `BleRadio` seam (ADR-0002)
+
+Builds the **architecture ADR-0002 fixes**: the BLE radio stays native and the Rust core
+owns everything above the byte-stream seam, wired with UniFFI foreign traits as two
+objects pointing at each other. Native iOS/Android shim is deferred (needs Xcode +
+Andjroo's Apple ID); this is the **Rust-core part of #5**.
+
+- `crates/bitmesh-core/src/radio.rs` — the **`BleRadio` foreign trait**
+  (`#[uniffi::export(with_foreign)]`) the native shim implements: `start_advertising`,
+  `start_scanning`, `send(peer_id, bytes)` (**fire-and-forget**), `disconnect(peer_id)`,
+  `stop`. Rust holds `Arc<dyn BleRadio>` and only ever calls **out** to it. A "peer" is an
+  opaque BLE connection identity — the radio never sees a TTL or a packet.
+- `crates/bitmesh-core/src/node.rs` — **`MeshNode`** (`#[derive(uniffi::Object)]`), the
+  object the shim calls **in** to on every BLE event: `on_peer_connected`,
+  `on_peer_disconnected`, `on_packet_received(bytes)`, `on_send_result(peer, ok)`,
+  `submit_local_tx(tx_wire)`. `on_packet_received` is **NON-BLOCKING** — it only enqueues
+  to an internal channel and returns; a dedicated worker thread drains the queue and runs
+  decode → dedup → TTL-relay, calling `radio.send` **off** the callback thread.
+- `crates/bitmesh-core/src/engine.rs` — the real-packet **relay / gateway / origin**
+  logic. Wires the **G4 codec** into the mesh: the temporary `MeshFrame` framing is gone,
+  replaced by real bitmesh packets (`codec::encode`/`decode`, `MessageType::NimiqTx 0x30`
+  + the TLV envelope, `nimiqTxReceipt 0x31`). Relays operate on **real packet headers**
+  (TTL-decrement, blind LRU dedup on the `(type, senderID, timestamp)` header identity);
+  `txWire` stays **opaque** (no signing/broadcast — `// G3:` / `// G8:` anchors kept).
+- `crates/bitmesh-core/src/dedup.rs` — a bounded O(1) **LRU** "have I seen this?" set
+  (not a bloom filter; capped against hostile-flood DoS, RISKS.md #4).
+- `crates/bitmesh-core/src/mock_radio.rs` — **`MockRadio`** (a pure-Rust `BleRadio`) + a
+  **`MockEther`** virtual topology with controllable **latency / loss / partition**, and a
+  **`MeshHarness`** that wires N `MeshNode`s into a mesh. The headless `kind: mock` test
+  substrate (RISKS.md Part A) — the whole demo loop runs under `cargo test`, no phone.
+- `crates/bitmesh-core/src/e2e_tests.rs` — the **full headless end-to-end test**:
+  `submit_local_tx(opaque_bytes)` on an offline origin → real-packet flood at TTL=7 → a
+  blind relay (TTL-decrement + LRU dedup) → a mock gateway records the bytes + emits a
+  `nimiqTxReceipt 0x31` → receipt propagates back → origin observes **Settled**. Plus the
+  diamond-path single-submit, the rejected→Failed, latency, total-loss→Pending, and
+  partition cases.
+- **The four ADR-0002 callback gotchas, each engineered + tested:** (a) `on_packet_received`
+  is non-blocking — a test asserts `radio.send` never re-enters synchronously on the
+  callback thread (it only ever runs on the worker thread); (b) `send` is fire-and-forget,
+  outcomes arrive via `on_send_result` — tested for both delivered + dropped hops; (c) the
+  worker wraps each job in `catch_unwind` so a **panicking handler can't abort** the worker
+  (tested with a panicking gateway) — the hot path is infallible; (d) the node↔radio
+  refcount cycle is broken by a **weak edge** (node holds the radio strongly, the radio
+  holds the node weakly) — a teardown/leak test proves `shutdown` releases the radio and
+  the node is reclaimed with no leak.
+- **Replaced** the G2 temporary `MeshFrame` framing + the `MeshTransport`/`MockMesh`
+  broadcast substrate (and the `payment.rs` orchestrator) with the canonical ADR-0002
+  radio model. `transport.rs` is slimmed to the shared value types (`TxId`, `mock_tx_id`,
+  `MeshError`); `provider.rs` now bundles a `BleRadio` + `MeshGateway` behind
+  `kind: mock | real`.
+- Generated Swift + Kotlin bindings verified (`BleRadio` foreign protocol + `MeshNode`
+  Rust-backed class) without Xcode / Android SDK.
+- Local gate green: `cargo fmt --check`, `cargo clippy --all-targets --all-features
+  -- -D warnings`, `cargo test --all` (50 unit + 5 proptests), and `scripts/size-guard.sh`.
+
 ## [0.2.0] — 2026-06-26
 
 ### Added — G4: bitmesh wire protocol + packet codec (pure Rust)

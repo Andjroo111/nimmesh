@@ -34,15 +34,26 @@ pub mod codec;
 pub mod envelope;
 pub mod packet;
 
-// G2: the radio-free mesh seams — transport, gateway, the kind:mock|real provider, and
-// the origin->relay->gateway->receipt orchestrator. These are headless Rust seams
-// (trait objects + threads, opaque `Vec<u8>` payloads); UniFFI export of a thin handle
-// is deferred to G5 when the real BLE transport lands. The real packet codec (G4), the
-// signer (G3), and the RPC gateway (G8) plug in behind these traits.
+// G5: the BLE mesh node + its byte-stream radio seam (ADR-0002). The native radio stays
+// behind the `BleRadio` foreign trait (`radio`); Rust drives it from `MeshNode` (`node`)
+// off a worker thread, speaking the real G4 codec via the relay/gateway/origin `engine`
+// (`dedup` is its LRU). `mock_radio` is the pure-Rust virtual-topology test substrate.
+// The `kind: mock | real` `provider` bundles a radio + gateway; `gateway` is the online
+// hop (mock now; real `sendRawTransaction` is G8). `transport` holds the shared ids.
+// Everything stays opaque-bytes only — no signing, no broadcast (G3/G8, money-path).
+pub mod dedup;
+pub mod engine;
 pub mod gateway;
-pub mod payment;
+pub mod mock_radio;
+pub mod node;
 pub mod provider;
+pub mod radio;
 pub mod transport;
+
+// G5 headless end-to-end + the four ADR-0002 callback-boundary tests. Internal so they
+// can drive crate-private observability hooks; only compiled under `cfg(test)`.
+#[cfg(test)]
+mod e2e_tests;
 
 /// The Nimiq network this build is talking to.
 ///

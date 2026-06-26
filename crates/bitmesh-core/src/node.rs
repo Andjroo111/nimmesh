@@ -1,0 +1,262 @@
+//! # node — `MeshNode`, the object the native shim calls *in* to (ADR-0002)
+//!
+//! The Rust half of the UniFFI foreign-trait pair. The native BLE shim calls a
+//! `MeshNode` method on **every** BLE event; the node calls **out** through its
+//! `Arc<dyn BleRadio>`. The two design rules that make this safe on iOS/Android:
+//!
+//! - **`on_packet_received` is NON-BLOCKING (ADR-0002 gotcha a).** On iOS, doing real
+//!   work here would re-enter CoreBluetooth's own dispatch queue. So it does the
+//!   absolute minimum — push the bytes onto an internal channel and return. A dedicated
+//!   **worker thread** drains the queue and runs the heavy decode → dedup → TTL-relay →
+//!   gateway logic ([`crate::engine`]), calling `radio.send` **off** the callback thread.
+//! - **The node→radio edge is strong; the radio→node edge is weak (gotcha d).** The node
+//!   owns the radio; the shim/mock radio holds the node weakly. On teardown the node
+//!   stops its worker, releases the radio, and is reclaimed with no leaked BLE handle.
+//!
+//! The worker wraps each job in `catch_unwind` (gotcha c) so a panic on a single hostile
+//! frame can never abort the process or wedge the mesh — the hot path is infallible.
+
+use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::{Arc, Mutex};
+use std::thread::JoinHandle;
+#[cfg(test)]
+use std::time::Duration;
+
+use crate::engine::{flood_local_tx, process_inbound, PaymentStatus, WorkerCtx, WorkerState};
+use crate::gateway::MeshGateway;
+use crate::packet::PEER_ID_LEN;
+use crate::radio::BleRadio;
+use crate::transport::{mock_tx_id, TxId};
+
+/// A unit of work handed from a BLE callback to the worker thread.
+enum Job {
+    /// Bytes that arrived on the radio (`on_packet_received`).
+    Inbound(Vec<u8>),
+    /// A locally-originated tx to flood (`submit_local_tx`).
+    LocalTx(Vec<u8>),
+    /// Drain and exit (teardown).
+    Shutdown,
+}
+
+/// Widen an FFI byte id into the fixed 8-byte protocol `senderID` (truncate/zero-pad).
+fn to_sender_id(bytes: &[u8]) -> [u8; PEER_ID_LEN] {
+    let mut id = [0u8; PEER_ID_LEN];
+    let n = bytes.len().min(PEER_ID_LEN);
+    id[..n].copy_from_slice(&bytes[..n]);
+    id
+}
+
+/// Widen an FFI byte id into a 32-byte [`TxId`] (truncate/zero-pad).
+fn to_tx_id(bytes: &[u8]) -> TxId {
+    let mut id = [0u8; 32];
+    let n = bytes.len().min(32);
+    id[..n].copy_from_slice(&bytes[..n]);
+    TxId(id)
+}
+
+/// The mesh node: the brain behind the BLE radio. Constructed with an `Arc<dyn BleRadio>`
+/// it drives; torn down with [`MeshNode::shutdown`] (also run on drop).
+#[derive(uniffi::Object)]
+pub struct MeshNode {
+    ctx: Arc<WorkerCtx>,
+    /// `Mutex` makes the `Sender` `Sync` (UniFFI objects must be `Sync`) and lets
+    /// shutdown drop it. `None` once shut down.
+    job_tx: Mutex<Option<Sender<Job>>>,
+    worker: Mutex<Option<JoinHandle<()>>>,
+    running: AtomicBool,
+}
+
+/// The worker thread: drain jobs and run the (heavy) protocol logic off the radio's
+/// callback thread. Each job is wrapped in `catch_unwind` so a panic on one frame can't
+/// kill the worker or the process (ADR-0002 gotcha c).
+fn run_worker(ctx: Arc<WorkerCtx>, rx: Receiver<Job>) {
+    let mut st = WorkerState::new();
+    while let Ok(job) = rx.recv() {
+        match job {
+            Job::Shutdown => break,
+            Job::Inbound(bytes) => {
+                let _ = catch_unwind(AssertUnwindSafe(|| {
+                    process_inbound(&ctx, &bytes, &mut st);
+                }));
+            }
+            Job::LocalTx(wire) => {
+                let _ = catch_unwind(AssertUnwindSafe(|| {
+                    flood_local_tx(&ctx, wire, &mut st);
+                }));
+            }
+        }
+    }
+}
+
+// --- FFI surface (the shim calls these) ------------------------------------------
+
+#[uniffi::export]
+impl MeshNode {
+    /// Create a node driving `radio` and bring the radio up (advertise + scan).
+    ///
+    /// `sender_id` is the 8-byte protocol id (truncated/zero-padded). The returned
+    /// `Arc<MeshNode>` is the handle the shim holds **weakly**.
+    #[uniffi::constructor]
+    pub fn new(sender_id: Vec<u8>, radio: Arc<dyn BleRadio>) -> Arc<Self> {
+        Self::build(sender_id, radio, None)
+    }
+
+    /// A peer connected (`CBPeripheral` / GATT link up). Cheap: record it as a flood
+    /// target.
+    pub fn on_peer_connected(&self, peer_id: String) {
+        self.ctx.add_peer(peer_id);
+    }
+
+    /// A peer disconnected. Cheap: stop flooding to it.
+    pub fn on_peer_disconnected(&self, peer_id: String) {
+        self.ctx.remove_peer(&peer_id);
+    }
+
+    /// Bytes arrived from a peer. **NON-BLOCKING (ADR-0002 gotcha a):** only enqueue and
+    /// return — no decode, no dedup, and never a synchronous `radio.send`. The worker
+    /// thread does all of that off this callback thread.
+    pub fn on_packet_received(&self, bytes: Vec<u8>) {
+        if let Some(tx) = self.job_tx.lock().unwrap().as_ref() {
+            let _ = tx.send(Job::Inbound(bytes));
+        }
+    }
+
+    /// The async outcome of a fire-and-forget `radio.send` (ADR-0002 gotcha b). Cheap:
+    /// records the outcome; never re-enters the radio.
+    pub fn on_send_result(&self, peer_id: String, ok: bool) {
+        let _ = peer_id;
+        self.ctx.note_send_result(ok);
+    }
+
+    /// Originate a payment: flood an **opaque** signed-tx blob as a real `nimiqTx` and
+    /// track it until a receipt settles it. Returns the (mock) 32-byte `txId` to poll
+    /// with [`MeshNode::payment_status`]. The flood itself runs on the worker thread.
+    pub fn submit_local_tx(&self, tx_wire: Vec<u8>) -> Vec<u8> {
+        // G3: `tx_wire` is OPAQUE — real signed bytes come from `sign_offline()`
+        //     (money-path, gated). Compute the id eagerly so the caller gets it now; the
+        //     worker recomputes the same id when it floods.
+        let tx_id = mock_tx_id(&tx_wire);
+        if let Some(tx) = self.job_tx.lock().unwrap().as_ref() {
+            let _ = tx.send(Job::LocalTx(tx_wire));
+        }
+        tx_id.0.to_vec()
+    }
+
+    /// The current status of a payment by its `txId` bytes (non-blocking).
+    pub fn payment_status(&self, tx_id: Vec<u8>) -> PaymentStatus {
+        self.ctx.status(&to_tx_id(&tx_id))
+    }
+
+    /// Tear the node down: stop the worker and release the radio. Idempotent; also runs
+    /// on drop (the weak edge that breaks the refcount cycle — ADR-0002 gotcha d).
+    pub fn shutdown(&self) {
+        self.do_shutdown();
+    }
+}
+
+// --- Internal + test-facing surface (not exported across FFI) --------------------
+
+impl MeshNode {
+    /// Shared constructor for the plain and gateway-enabled nodes.
+    pub(crate) fn build(
+        sender_id: Vec<u8>,
+        radio: Arc<dyn BleRadio>,
+        gateway: Option<Arc<dyn MeshGateway>>,
+    ) -> Arc<Self> {
+        let ctx = Arc::new(WorkerCtx::new(
+            to_sender_id(&sender_id),
+            radio.clone(),
+            gateway,
+        ));
+        let (tx, rx) = channel();
+        let worker_ctx = ctx.clone();
+        let worker = std::thread::spawn(move || run_worker(worker_ctx, rx));
+        // Bring the radio up. Real BLE starts advertising + scanning concurrently.
+        radio.start_advertising();
+        radio.start_scanning();
+        Arc::new(MeshNode {
+            ctx,
+            job_tx: Mutex::new(Some(tx)),
+            worker: Mutex::new(Some(worker)),
+            running: AtomicBool::new(true),
+        })
+    }
+
+    /// Build a node that also acts as a **gateway** (the one online hop). Mock/test only;
+    /// the real RPC gateway is G8 (money-path, FFI-exported then).
+    pub(crate) fn new_gateway(
+        sender_id: Vec<u8>,
+        radio: Arc<dyn BleRadio>,
+        gateway: Arc<dyn MeshGateway>,
+    ) -> Arc<Self> {
+        Self::build(sender_id, radio, Some(gateway))
+    }
+
+    fn do_shutdown(&self) {
+        if !self.running.swap(false, Ordering::SeqCst) {
+            return; // already shut down — idempotent.
+        }
+        if let Some(tx) = self.job_tx.lock().unwrap().take() {
+            let _ = tx.send(Job::Shutdown);
+        }
+        if let Some(worker) = self.worker.lock().unwrap().take() {
+            let _ = worker.join();
+        }
+        // Release the radio (gotcha d). Safe to call even mid-flight; `send` is f-a-f.
+        self.ctx.radio.stop();
+    }
+
+    /// Block until `tx_id` settles (test helper).
+    #[cfg(test)]
+    pub(crate) fn wait_payment(&self, tx_id: &[u8], timeout: Duration) -> PaymentStatus {
+        self.ctx.wait(to_tx_id(tx_id), timeout)
+    }
+
+    /// How many packets this node has relayed onward (test/observability hook).
+    #[cfg(test)]
+    pub(crate) fn forwarded_count(&self) -> usize {
+        self.ctx.forwarded_count()
+    }
+    /// How many `radio.send` writes this node has attempted.
+    #[cfg(test)]
+    pub(crate) fn send_attempts(&self) -> usize {
+        self.ctx.send_attempts()
+    }
+    /// How many sends were reported delivered via `on_send_result`.
+    #[cfg(test)]
+    pub(crate) fn send_ok(&self) -> usize {
+        self.ctx.send_ok()
+    }
+    /// How many sends were reported failed via `on_send_result`.
+    #[cfg(test)]
+    pub(crate) fn send_fail(&self) -> usize {
+        self.ctx.send_fail()
+    }
+    /// Currently-connected peer count.
+    #[cfg(test)]
+    pub(crate) fn connected_peers(&self) -> usize {
+        self.ctx.peer_count()
+    }
+}
+
+impl Drop for MeshNode {
+    fn drop(&mut self) {
+        self.do_shutdown();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn id_helpers_truncate_and_pad() {
+        assert_eq!(to_sender_id(&[1, 2, 3]), [1, 2, 3, 0, 0, 0, 0, 0]);
+        assert_eq!(to_sender_id(&[9; 12]), [9; 8]);
+        let id = to_tx_id(&[7; 4]);
+        assert_eq!(&id.0[..4], &[7, 7, 7, 7]);
+        assert_eq!(id.0[4], 0);
+    }
+}
