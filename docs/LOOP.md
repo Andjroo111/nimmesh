@@ -84,7 +84,7 @@ Scaffold + mock harness + codec first (all CI-testable headless), then the money
 | G2  | Provider seam + `MockMeshTransport` (full pay loop in CI)   |     no     |    yes     | G1            | ✅ done |
 | G3  | Offline Nimiq signing core (TESTNET) — `signOffline()`      |   **yes**  |   **no**   | G1            | todo   |
 | G4  | bitmesh wire protocol + packet codec (pure Rust)           |     no     |    yes     | G1            | ✅ done |
-| G5  | BLE mesh transport — concurrent central+peripheral (iOS+Android) | no   |    yes     | G2, G4        | todo   |
+| G5  | BLE mesh transport — concurrent central+peripheral (iOS+Android) | no   |    yes     | G2, G4        | 🟡 Rust core done · native shim pending (Xcode/Apple ID) |
 | G6  | Relay engine — TTL/hop-cap + dedup + degree-adaptive + frag |     no     |    yes     | G4, G5        | todo   |
 | G7  | Store-and-forward — GCS gossip-sync catch-up               |     no     |    yes     | G6            | todo   |
 | G8  | Gateway broadcast node (TESTNET) — `sendRawTransaction`     |   **yes**  |   **no**   | G3, G7        | todo   |
@@ -171,3 +171,12 @@ architecture = thin native shim (ADR-0002); native build host = Mac Mini primary
   trait + MeshNode + MockRadio, wiring G4 codec into the G2 seams) → G6 (relay) → G7
   (store-and-forward). Walls: **G3** (offline signing, money-path → needs key-origin call)
   and **G5 native shim** (needs Xcode on the Mini = Andjroo's Apple ID).
+- **2026-06-26** — **G5 Rust core merged** (PR #18, v0.3.0): the ADR-0002 radio model —
+  `BleRadio` foreign trait + `MeshNode` + `MockRadio` virtual-mesh harness + `engine.rs`
+  relaying **real G4 codec packets** (NimiqTx 0x30 + TLV + receipt 0x31). G2's mock
+  framing removed. **50 unit + 5 proptests green**, incl. tests for all four ADR-0002
+  UniFFI gotchas (non-blocking receive via thread-id spy, fire-and-forget outcomes,
+  panic-surviving worker, weak-edge teardown). Money-path still zero — txWire opaque
+  throughout. Issue #5 stays **open** for the native Swift/Kotlin shim (Apple ID gate).
+  Loop continues: G6 (relay refinements) → G7 (store-and-forward) → G11 (encrypted memo),
+  then the money-path/native walls.
