@@ -90,7 +90,7 @@ Scaffold + mock harness + codec first (all CI-testable headless), then the money
 | G8  | Gateway broadcast node (TESTNET) — `sendRawTransaction`     |   **yes**  |   **no**   | G3, G7        | todo   |
 | G9  | Head-beacon + validity-window guard + packet GC            |     no     |    yes     | G4, G8        | todo   |
 | G10 | Wallet + UI — keygen/import, address validation, pending→settled | **yes** |  **no**   | G3, G8        | todo   |
-| G11 | Optional encrypted memo / chat (Noise XX)                  |     no     |    yes     | G5, G6        | todo   |
+| G11 | Optional encrypted memo / chat (Noise XX)                  |     no     |    yes     | G5, G6        | ✅ done |
 | G12 | Hardening — verify-before-relay, rate limits, NACK, anti-spam | **yes** |  **no**   | G8, G10       | todo   |
 | G13 | TESTNET end-to-end demo + mainnet-gating doc               |   **yes**  |   **no**   | G8,G9,G10,G12 | todo   |
 
@@ -195,3 +195,13 @@ architecture = thin native shim (ADR-0002); native build host = Mac Mini primary
   no re-flood). **93 tests** incl. a real offline→rejoin→catch-up (12 missed packets
   recovered, idempotent re-sync) + gap-only + rate-limit. Launching **G11** (encrypted
   memo/chat, Noise XX) — the last non-money-path goal before the walls.
+- **2026-06-26** — **G11 merged** (PR #21, v0.6.0): `noise.rs` — Noise_XX_25519_ChaChaPoly
+  _SHA256 (snow) mutual-auth handshake, a Curve25519 transport identity (SEPARATE from any
+  wallet seed) + SHA-256 fingerprint, two ChaChaPoly states + a 1024-msg RFC-6479 replay
+  window; `encMemo` (0x05) + `noiseEncrypted` (0x11) wired; relayed opaquely. **107 tests**
+  incl. handshake, memo+chat round-trip, replay-rejection, wrong-key + tamper failure.
+  ⏸️ **LOOP PAUSED.** Every non-money-path goal is done (G1/G2/G4/G5-core/G6/G7/G11).
+  Remaining are all **Andjroo-gated**: money-path **G3** (offline signing — needs the
+  key-origin decision), **G8/G10/G12/G13**, and the **G5 native shim** (needs Xcode on the
+  Mini = Andjroo's Apple ID). G9 (head-beacon/GC) is coupled to the G8 gateway. The loop
+  will resume on Andjroo's go.
