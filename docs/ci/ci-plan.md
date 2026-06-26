@@ -1,9 +1,11 @@
 # CI plan — nimiq.bitmesh
 
-The **green gate is GitHub Actions** (this project cannot be compiled on the Mac Mini —
-no Rust, no full Xcode, no Android SDK). The gh token has `workflow` scope, so the loop
-arms `.github/workflows/` as part of **G1**. This file is the spec the G1 workflow
-implements; keep it in sync.
+**Rust is installed on the Mini**, so the **Rust core is gated LOCALLY** (`cargo test`
++ `cargo clippy` + `cargo fmt`). **GitHub Actions is a backstop + the cross-platform
+check** (Linux re-run of the core gate, plus the iOS/Android jobs once those targets
+exist). The gh token has `workflow` scope, so the loop arms `.github/workflows/` as part
+of **G1**. Native toolchains (Xcode + Android SDK/NDK) are added at G5. Keep this file in
+sync with the workflow.
 
 ## Jobs
 

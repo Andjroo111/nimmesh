@@ -38,24 +38,26 @@ mesh until one device with a connection broadcasts it. Testnet-first, money-path
 - **Non-money-path goals auto-merge** when green (scaffold, codec, relay, store-and-
   forward, transport plumbing, mock harness, head-beacon, encrypted-memo transport).
 
-### Toolchain reality (READ THIS — differs from the web fleet)
+### Toolchain — build locally, Rust-first
 
-This Mac Mini has **no Rust, no full Xcode (CLI tools only), no Android SDK** — it
-**cannot compile this app locally.** Therefore:
+The stack was chosen **on merit** (a true mesh needs native BLE; Rust owns the brain),
+**not** on what the Mini happened to have. Toolchains are installed as the work needs
+them, and the loop builds + verifies **locally**:
 
-- **The green gate is GitHub Actions CI**, not a local build. The gh token has
-  `workflow` scope, so the loop arms and maintains `.github/workflows/`.
-  - `core` job (ubuntu): `cargo test` + `cargo clippy -D warnings` + `cargo fmt --check`
-    + property/fuzz tests for the protocol + the full mock pay-loop end-to-end.
-  - `ios` job (macos runner): build the `.xcframework` + `xcodebuild build` (and test
-    where simulator-runnable).
-  - `android` job (ubuntu): `cargo ndk` + `./gradlew assembleDebug` + unit tests.
-- **On-device BLE mesh interop** (iOS↔iOS, iOS↔Android, Android↔Android), **TestFlight/
-  Play internal builds, and look-and-feel** are verified on **Andjroo's Mac + real
-  phones** — the loop cannot do these and must hand Andjroo a "what to test" note.
-- The loop may **optionally** request Rust be installed on the Mini for faster core
-  iteration; until then, CI is the sole gate. (Local Rust would let `cargo test` the
-  core without a CI round-trip — Andjroo's call.)
+- **Rust is installed on the Mini** (rustup stable + clippy + rustfmt). The **Rust core
+  is the green gate, built + tested LOCALLY**: `cargo test` + `cargo clippy -D warnings`
+  + `cargo fmt --check` + property/fuzz tests + the full mock pay-loop end-to-end. No CI
+  round-trip needed for core work (G1–G4, G6–G9, and the logic of G3/G8).
+- **GitHub Actions CI is a backstop + the cross-platform check** (the gh token has
+  `workflow` scope): it re-runs the core gate on Linux, and once native targets exist
+  runs the `ios` job (macos runner: `.xcframework` + `xcodebuild`) and `android` job
+  (`cargo ndk` + `./gradlew assembleDebug`).
+- **Native toolchains (Xcode + Android SDK/NDK) are added when we reach the native shim
+  (G5)** — installed on the Mini for local app builds, or run on Andjroo's Mac; decided
+  at G5. They are **not** needed for the Rust core (G1–G4).
+- **On-device BLE mesh interop** (iOS↔iOS, iOS↔Android, Android↔Android), TestFlight /
+  Play-internal builds, and look-and-feel are verified on **real phones** — the loop
+  hands Andjroo a "what to test" note for these.
 
 ## Goals — worked top-down, one PR per goal
 
@@ -78,8 +80,10 @@ Scaffold + mock harness + codec first (all CI-testable headless), then the money
 | G12 | Hardening — verify-before-relay, rate limits, NACK, anti-spam | **yes** |  **no**   | G8, G10       | todo   |
 | G13 | TESTNET end-to-end demo + mainnet-gating doc               |   **yes**  |   **no**   | G8,G9,G10,G12 | todo   |
 
-\* G1 is the first scaffold PR: **open it for Andjroo's review (don't auto-merge)** so
-CI is proven once; subsequent green non-money-path PRs auto-merge.
+\* G1 lands the **Rust core crate + UniFFI scaffolding + a green local `cargo test`**
+(the native iOS/Android app targets are deferred to G5, when their toolchains land).
+Open the first PR for Andjroo's review (**don't auto-merge**); subsequent green
+non-money-path PRs auto-merge.
 
 **MVP (testnet):** G1–G10 + G12–G13. G11 is an enhancement.
 
@@ -88,8 +92,10 @@ CI is proven once; subsequent green non-money-path PRs auto-merge.
 1. Pick the top open goal whose deps are merged. Re-read this file + GOAL + RISKS.
 2. Branch `feat/gN-...`. Build it. Keep every file **< 800 lines**. Record real
    decisions in `docs/adr/`.
-3. **Verify via CI** (push branch → Actions): core tests + clippy + fmt green; for
-   native goals, the relevant `ios`/`android` job green. Add tests proving the goal.
+3. **Verify locally first** — `cargo test` + `cargo clippy -D warnings` + `cargo fmt
+   --check` + the file-size guard, all green on the Mini. Push the branch so CI
+   re-checks on Linux (+ the `ios`/`android` job for native goals). Add tests proving
+   the goal.
 4. Open a PR linking the issue. Bump version + add a CHANGELOG entry.
 5. **Non-money-path + green → squash-merge.** New repo is unprotected, so don't trust
    `--auto`: poll `gh pr checks --watch`, then `gh pr merge --squash` once green.
