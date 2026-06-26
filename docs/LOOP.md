@@ -81,9 +81,9 @@ Scaffold + mock harness + codec first (all CI-testable headless), then the money
 | #   | Goal                                                        | money-path | auto-merge | deps          | status |
 | --- | ---------------------------------------------------------- | :--------: | :--------: | ------------- | ------ |
 | G1  | Scaffold + shared Rust core skeleton + dev-build + CI       |     no     |    yes*    | —             | ✅ done |
-| G2  | Provider seam + `MockMeshTransport` (full pay loop in CI)   |     no     |    yes     | G1            | todo   |
+| G2  | Provider seam + `MockMeshTransport` (full pay loop in CI)   |     no     |    yes     | G1            | ✅ done |
 | G3  | Offline Nimiq signing core (TESTNET) — `signOffline()`      |   **yes**  |   **no**   | G1            | todo   |
-| G4  | bitmesh wire protocol + packet codec (pure Rust)           |     no     |    yes     | G1            | todo   |
+| G4  | bitmesh wire protocol + packet codec (pure Rust)           |     no     |    yes     | G1            | ✅ done |
 | G5  | BLE mesh transport — concurrent central+peripheral (iOS+Android) | no   |    yes     | G2, G4        | todo   |
 | G6  | Relay engine — TTL/hop-cap + dedup + degree-adaptive + frag |     no     |    yes     | G4, G5        | todo   |
 | G7  | Store-and-forward — GCS gossip-sync catch-up               |     no     |    yes     | G6            | todo   |
@@ -163,3 +163,11 @@ architecture = thin native shim (ADR-0002); native build host = Mac Mini primary
   passed. Ran the `bitmesh-ble-layer-decision` workflow → **ADR-0002** (thin native radio
   shim, Mac Mini primary build host; both decided on merit). Building G2 (mock pay-loop
   harness) + G4 (wire codec) in parallel isolated worktrees. Next wall: G3 (money-path).
+- **2026-06-26** — **G4 merged** (PR #16, v0.2.0): wire packet codec + Nimiq TLV envelope,
+  28 tests incl. 5 proptests. **G2 merged** (PR #17, rebased onto G4): provider seam
+  (`MeshTransport`/`MeshGateway`/`MeshProvider kind:mock|real`) + `MockMeshTransport` +
+  the end-to-end origin→relay→gateway→receipt mock pay-loop. Core now at **37 unit + 5
+  proptests, all green**. Non-money-path runway left before Andjroo: G5-Rust-core (BleRadio
+  trait + MeshNode + MockRadio, wiring G4 codec into the G2 seams) → G6 (relay) → G7
+  (store-and-forward). Walls: **G3** (offline signing, money-path → needs key-origin call)
+  and **G5 native shim** (needs Xcode on the Mini = Andjroo's Apple ID).
