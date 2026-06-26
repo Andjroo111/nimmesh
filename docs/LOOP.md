@@ -86,7 +86,7 @@ Scaffold + mock harness + codec first (all CI-testable headless), then the money
 | G4  | bitmesh wire protocol + packet codec (pure Rust)           |     no     |    yes     | G1            | ✅ done |
 | G5  | BLE mesh transport — concurrent central+peripheral (iOS+Android) | no   |    yes     | G2, G4        | 🟡 Rust core done · native shim pending (Xcode/Apple ID) |
 | G6  | Relay engine — TTL/hop-cap + dedup + degree-adaptive + frag |     no     |    yes     | G4, G5        | ✅ done |
-| G7  | Store-and-forward — GCS gossip-sync catch-up               |     no     |    yes     | G6            | todo   |
+| G7  | Store-and-forward — GCS gossip-sync catch-up               |     no     |    yes     | G6            | ✅ done |
 | G8  | Gateway broadcast node (TESTNET) — `sendRawTransaction`     |   **yes**  |   **no**   | G3, G7        | todo   |
 | G9  | Head-beacon + validity-window guard + packet GC            |     no     |    yes     | G4, G8        | todo   |
 | G10 | Wallet + UI — keygen/import, address validation, pending→settled | **yes** |  **no**   | G3, G8        | todo   |
@@ -187,3 +187,11 @@ architecture = thin native shim (ADR-0002); native build host = Mac Mini primary
   reassembler (128/30 s, TTL-zeroed). **76 tests green** incl. property tests for
   loop-freedom, dedup-at-most-once, sparse-tree reachability, and a fuzzed
   split→reassemble round-trip — all deterministic (ran twice byte-identical). Next: G7.
+- **2026-06-26** — **G7 merged** (PR #20, v0.5.0): store-and-forward GCS gossip-sync —
+  `gcs.rs` (BIP158-style Golomb-Rice filter, no false negatives, empirical fpr ~0.01,
+  ≤400 B) + `store_forward.rs` (bounded clock-free RecentCache 1000/15 min + 30 s
+  `SyncScheduler`). `requestSync` (0x21, ttl 0, local-only) advertises a GCS filter; a
+  peer unicasts back only the packets it lacks, flagged `isRSR` (0x10, delivered locally,
+  no re-flood). **93 tests** incl. a real offline→rejoin→catch-up (12 missed packets
+  recovered, idempotent re-sync) + gap-only + rate-limit. Launching **G11** (encrypted
+  memo/chat, Noise XX) — the last non-money-path goal before the walls.
