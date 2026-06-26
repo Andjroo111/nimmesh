@@ -205,3 +205,17 @@ architecture = thin native shim (ADR-0002); native build host = Mac Mini primary
   key-origin decision), **G8/G10/G12/G13**, and the **G5 native shim** (needs Xcode on the
   Mini = Andjroo's Apple ID). G9 (head-beacon/GC) is coupled to the G8 gateway. The loop
   will resume on Andjroo's go.
+- **2026-06-26** — **G3 built (PR pending Andjroo, v0.7.0): offline Nimiq signing (TESTNET),
+  MONEY-PATH — DO NOT auto-merge.** Andjroo's key-origin call answered: a pluggable
+  `KeyOrigin` seam (`src/nimiq/`) with **both** origins — `AppSigner` (offline-first;
+  seed stays behind the `EnclaveKey` `with_foreign` trait → Secure Enclave / Keystore;
+  **only pubkey + 64-B signature cross FFI**, never the seed) and `DelegatedSigner` (a
+  `with_foreign` Nimiq Pay / Hub seam returning a pre-signed blob). Byte-exact Albatross
+  signer: `serializeContent` (67 B) + 139-B `Basic` wire + Blake2b-256 hash + 98-B
+  `SignatureProof` + `NQ`-IBAN address codec, **proven equal to `@nimiq/core` v2.7.0
+  byte-for-byte** against 4 committed fixtures (generator: `scripts/fixtures/`). Confirms
+  `ed25519-dalek` == `@nimiq/core`. `MeshNode::submit_signed_transfer` floods the `raw_hex`
+  as opaque bytes through the existing mesh path. **No broadcast / no RPC / no networking**
+  (G8 owns that). **115 tests** (107 lib + 8 new across tx/address/signer + the fixture
+  acceptance suite), fmt + clippy + size-guard green. Awaiting Andjroo's review/merge; the
+  native enclave + Nimiq Pay SDK sign-but-don't-broadcast paths are verified on-device later.

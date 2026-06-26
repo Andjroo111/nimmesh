@@ -163,13 +163,29 @@ impl MeshNode {
         self.ctx.note_send_result(ok);
     }
 
-    /// Originate a payment: flood an **opaque** signed-tx blob as a real `nimiqTx` and
-    /// track it until a receipt settles it. Returns the (mock) 32-byte `txId` to poll
-    /// with [`MeshNode::payment_status`]. The flood itself runs on the worker thread.
+    /// Originate a payment from an already-signed [`SignedTransfer`] (G3). The
+    /// `raw_hex` — produced by either `KeyOrigin` (the app-enclave [`AppSigner`] or the
+    /// delegated Nimiq Pay / Hub [`DelegatedSigner`]) — is decoded to the self-contained
+    /// ~139-byte wire blob and flooded as a real `nimiqTx`. Returns the 32-byte `txId` to
+    /// poll with [`MeshNode::payment_status`], or an empty vec if the blob is not valid hex.
+    /// **Still flows downstream as opaque bytes** — the mesh never inspects the payload.
+    pub fn submit_signed_transfer(&self, signed: crate::nimiq::SignedTransfer) -> Vec<u8> {
+        match crate::nimiq::signer::signed_transfer_wire(&signed) {
+            Ok(wire) => self.submit_local_tx(wire),
+            Err(_) => Vec::new(),
+        }
+    }
+
+    /// Originate a payment: flood an opaque signed-tx blob as a real `nimiqTx` and track it
+    /// until a receipt settles it. Returns the (mock) 32-byte `txId` to poll with
+    /// [`MeshNode::payment_status`]. The flood itself runs on the worker thread.
+    ///
+    /// G3: prefer [`MeshNode::submit_signed_transfer`], which takes a typed
+    /// [`crate::nimiq::SignedTransfer`] straight from a `KeyOrigin`; this raw-bytes entry
+    /// point remains for callers that already hold the serialized wire (and the test harness).
     pub fn submit_local_tx(&self, tx_wire: Vec<u8>) -> Vec<u8> {
-        // G3: `tx_wire` is OPAQUE — real signed bytes come from `sign_offline()`
-        //     (money-path, gated). Compute the id eagerly so the caller gets it now; the
-        //     worker recomputes the same id when it floods.
+        // The bytes are opaque to the mesh; only a gateway (G8) ever parses them. Compute the
+        // id eagerly so the caller gets it now; the worker recomputes the same id when it floods.
         let tx_id = mock_tx_id(&tx_wire);
         if let Some(tx) = self.job_tx.lock().unwrap().as_ref() {
             let _ = tx.send(Job::LocalTx(tx_wire));

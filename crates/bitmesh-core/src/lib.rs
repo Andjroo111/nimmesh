@@ -69,6 +69,16 @@ pub mod relay;
 pub mod gcs;
 pub mod store_forward;
 
+// G3: offline Nimiq Albatross signing (TESTNET, money-path / Andjroo-gated). `nimiq` is the
+// byte-exact transaction signer — `serializeContent` (67 B), the full `Basic`-format wire
+// blob (139 B), the `Blake2b-256` tx hash, and the user-friendly `NQ`-IBAN address codec —
+// all proven equal to `@nimiq/core` against committed fixtures. It exposes the pluggable
+// `KeyOrigin` seam: an app-enclave `AppSigner` (the seed stays behind the `EnclaveKey`
+// foreign trait, never crossing FFI) and a `DelegatedSigner` (Nimiq Pay / Hub) foreign
+// trait, both emitting a `SignedTransfer` whose `raw_hex` floods the mesh as opaque bytes
+// via `MeshNode::submit_signed_transfer`. PURE OFFLINE CRYPTO — no network, no broadcast (G8).
+pub mod nimiq;
+
 // G11: optional encrypted memo / 1:1 chat (PROTOCOL.md "Encryption"). `noise` is the
 // `Noise_XX_25519_ChaChaPoly_SHA256` mutual-auth, identity-hiding handshake plus the two
 // ChaChaPoly cipher states with a 1024-message sliding-window replay guard. The handshake
@@ -170,10 +180,11 @@ pub fn echo_bytes(payload: Vec<u8>) -> Vec<u8> {
     payload
 }
 
-// G3: `sign_offline(seed_handle, content_bytes) -> proof_bytes` — Ed25519 over the
-//      deterministic `serializeContent()` of a testnet transfer. MONEY-PATH, gated;
-//      the seed never crosses this boundary, only an opaque enclave handle in / a
-//      public proof out. Not implemented.
+// G3: DONE — offline Nimiq signing lives in [`nimiq`]. The `KeyOrigin` seam
+//      (`nimiq::AppSigner` over the `EnclaveKey` foreign trait, `nimiq::DelegatedSigner`)
+//      produces a `nimiq::SignedTransfer` whose `raw_hex` is submitted to the mesh via
+//      `node::MeshNode::submit_signed_transfer`. The seed never crosses this boundary —
+//      only a public key + signature leave the enclave. TESTNET-default, Andjroo-gated.
 //
 // G8: `gateway_broadcast(raw_hex) -> receipt` — validate (networkId + validity
 //      window) then `sendRawTransaction` against a public Albatross testnet RPC.

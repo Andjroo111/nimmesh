@@ -31,7 +31,21 @@ snow = "0.9"
 x25519-dalek = { version = "2", features = ["static_secrets", "getrandom"] }
 sha2 = "0.10"
 
+# G3: offline Nimiq Albatross transaction signing (TESTNET, money-path / gated).
+# `ed25519-dalek` is the RFC-8032 Ed25519 signer over the 67-byte `serializeContent()`
+# (single-signer Nimiq signing is plain Ed25519, no WASM, no consensus client);
+# `blake2` computes both the 32-byte tx hash (Blake2b-256 of the content) and the address
+# derivation (Blake2b-256(pubkey)[..20]). The base32 IBAN address codec and hex helpers are
+# implemented in-crate (no crate dep). The seed NEVER crosses the FFI boundary — only a
+# public key + signature leave the enclave seam (`EnclaveKey`). See `src/nimiq`.
+ed25519-dalek = "2"
+blake2 = "0.10"
+
 # proptest drives the G4 wire-codec property/fuzz tests: decode() never panics on
-# arbitrary bytes, and any valid packet/envelope round-trips byte-for-byte.
+# arbitrary bytes, and any valid packet/envelope round-trips byte-for-byte. serde_json
+# loads the @nimiq/core G3 reference fixtures (tests/fixtures) the signer is asserted
+# byte-exact against.
 [dev-dependencies]
 proptest = "1.8.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

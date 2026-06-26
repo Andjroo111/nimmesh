@@ -1,0 +1,4 @@
+node_modules/
+# generated locally; the committed canonical copy lives in
+# crates/bitmesh-core/tests/fixtures/g3_signing_fixtures.json
+g3_signing_fixtures.json

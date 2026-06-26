@@ -2,6 +2,50 @@
 
 All notable changes to nimiq.bitmesh. Each PR bumps the version and adds an entry.
 
+## [0.7.0] — 2026-06-26
+
+### Added — G3 (Rust core): offline Nimiq signing (TESTNET) — MONEY-PATH, Andjroo-gated
+
+The money-critical layer: turn a payment *intent* into a self-contained, self-authenticating
+**signed Albatross transaction blob** (GOAL.md north star), proven **byte-for-byte equal to
+`@nimiq/core`** (v2.7.0). Pure offline crypto — **no network, no RPC, no broadcast** (that is
+G8); the **seed never crosses the FFI boundary**. Testnet-only (`networkId = 5`) by default.
+
+- `crates/bitmesh-core/src/nimiq/` — new module tree (each file < 800 lines):
+  - **`tx.rs`** — byte-exact `serializeContent` (the **67-byte** signing payload), the full
+    **139-byte** `Basic`-format wire blob (`format || proof_type || pubkey || recipient ||
+    value || fee || vsh || network || signature`), the **Blake2b-256** tx hash, and the
+    standalone **98-byte** single-sig `SignatureProof` (`type || pubkey || merkle_len ||
+    sig`). Fee is always 0; data empty.
+  - **`address.rs`** — the 20-byte address + its user-friendly **`NQ`-IBAN** codec (Nimiq
+    base32 alphabet + mod-97 check digits), parse (checksum-verified) ⇄ format round-trip,
+    and `Address::from_public_key` = `Blake2b-256(pubkey)[..20]`.
+  - **`hex.rs`** — pure hex + big-endian byte helpers (ported from the fleet's `sendhome`).
+  - **`signer.rs`** — the pluggable **`KeyOrigin`** seam with **both** origins Andjroo asked
+    for: **`AppSigner`** (offline-first; signs locally via the **`EnclaveKey`** `with_foreign`
+    trait so the Secure Enclave / Android Keystore holds the seed — only a public key + a
+    64-byte signature ever cross FFI) and **`DelegatedSigner`** (a `with_foreign` seam the
+    native layer implements by calling **Nimiq Pay / Hub**, returning a pre-signed blob).
+    Both emit a `SignedTransfer { raw_hex, tx_hash, validity_start_height, valid_until_height }`
+    (`valid_until = vsh + VALIDITY_WINDOW(7200)`, RISKS.md #1). `// NATIVE:` notes mark the
+    on-device sign-but-DON'T-broadcast paths verified later.
+- `crates/bitmesh-core/src/node.rs` — **`MeshNode::submit_signed_transfer(SignedTransfer)`**
+  decodes `raw_hex` and floods it through the existing mesh path as **opaque bytes**
+  (replacing the G3 opaque stub); `submit_local_tx(Vec<u8>)` stays for raw-bytes callers.
+- `crates/bitmesh-core/src/lib.rs` — `pub mod nimiq`; the `G3:` anchor marked DONE.
+- **Byte-exactness proof** — `scripts/fixtures/gen-fixtures.mjs` generates reference
+  `{rawHex, txHash, serializeContent, proof, signature, addresses}` from `@nimiq/core` for
+  4 known `(privKey, recipient, value, vsh, testnet)` inputs; committed at
+  `crates/bitmesh-core/tests/fixtures/g3_signing_fixtures.json`. `tests/g3_signing_fixtures.rs`
+  reproduces each from the same inputs and asserts equality **byte-for-byte** (the acceptance
+  bar; a subtly-wrong serializer fails here). Confirms `ed25519-dalek` == `@nimiq/core`
+  (deterministic RFC-8032).
+- Deps: `ed25519-dalek`, `blake2` (runtime); `serde` + `serde_json` (dev, fixture load).
+  Base32 IBAN codec + hex are implemented in-crate (no extra dep).
+
+**Money-path safety:** seed never crosses FFI (only pubkey + signature do); testnet default;
+**no broadcast / no RPC / no networking** in this PR. **DO NOT MERGE without Andjroo's review.**
+
 ## [0.6.0] — 2026-06-26
 
 ### Added — G11 (Rust core): optional encrypted memo / 1:1 chat (Noise XX) — PROTOCOL.md "Encryption"
