@@ -88,7 +88,7 @@ Scaffold + mock harness + codec first (all CI-testable headless), then the money
 | G6  | Relay engine — TTL/hop-cap + dedup + degree-adaptive + frag |     no     |    yes     | G4, G5        | ✅ done |
 | G7  | Store-and-forward — GCS gossip-sync catch-up               |     no     |    yes     | G6            | ✅ done |
 | G8  | Gateway broadcast node (TESTNET) — `sendRawTransaction`     |   **yes**  |   **no**   | G3, G7        | ✅ done + LIVE on-chain proof |
-| G9  | Head-beacon + validity-window guard + packet GC            |     no     |    yes     | G4, G8        | todo   |
+| G9  | Head-beacon + validity-window guard + packet GC            |     no     |    yes     | G4, G8        | ✅ done |
 | G10 | Wallet + UI — keygen/import, address validation, pending→settled | **yes** |  **no**   | G3, G8        | todo   |
 | G11 | Optional encrypted memo / chat (Noise XX)                  |     no     |    yes     | G5, G6        | ✅ done |
 | G12 | Hardening — verify-before-relay, rate limits, NACK, anti-spam | **yes** |  **no**   | G8, G10       | todo   |
@@ -237,3 +237,13 @@ the signer — but our live example drives our core end-to-end for every money-c
   broadcast it → confirmed in block **4428402** (tx `9be04b74…d0e5c570`). #8 closed.
   Building **G9** (head-beacon + validity-window GC) — the last non-money-path core goal.
   After G9: only money-path (G10/G12/G13) + the **G5 native shim** (Apple ID, tonight w/ Andjroo).
+- **2026-06-26** — **G9 merged** (PR #25, v0.9.0): head-beacon (`beacon.rs`) — gateways
+  flood `nimiqHeadBeacon 0x32 {height,blockHash,networkId}` (rate-limited, reuses G8's
+  read-only `block_number`); every node keeps a monotonic `HeadCache`; `anchored_intent()`
+  refuses to pre-date and stamps `validityStartHeight` = freshest heard head; the engine
+  drops/GCs txs past their validity window. **149 tests**, deterministic, non-money-path.
+  #9 closed. ⏸️ **AUTONOMOUS CORE COMPLETE** — the full protocol (signing + wire codec +
+  mesh node/radio + relay + store-and-forward + gateway broadcast + head-beacon/validity-GC
+  + encrypted memo) is built, tested, and **live-proven on testnet**. Loop **paused**:
+  everything left — **G10 wallet/UI**, **G5 native BLE shim** (Apple ID), **G12 hardening**,
+  **G13 demo** — is the native session **tonight with Andjroo**.
