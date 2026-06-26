@@ -69,6 +69,16 @@ pub mod relay;
 pub mod gcs;
 pub mod store_forward;
 
+// G11: optional encrypted memo / 1:1 chat (PROTOCOL.md "Encryption"). `noise` is the
+// `Noise_XX_25519_ChaChaPoly_SHA256` mutual-auth, identity-hiding handshake plus the two
+// ChaChaPoly cipher states with a 1024-message sliding-window replay guard. The handshake
+// identity is a long-term Curve25519 **transport** static keypair — explicitly SEPARATE
+// from any Nimiq wallet seed (which does not exist here; G3/G10 own that, money-path) —
+// and its SHA-256 is the out-of-band-verifiable fingerprint. An encrypted memo rides a
+// `nimiqTx` via the `encMemo` TLV (0x05, `envelope`); a 1:1 chat rides a `noiseEncrypted`
+// (0x11, `packet`) message. PURE TRANSPORT-PRIVACY — no signing, no broadcast, no wallet.
+pub mod noise;
+
 // G5 headless end-to-end + the four ADR-0002 callback-boundary tests. Internal so they
 // can drive crate-private observability hooks; only compiled under `cfg(test)`.
 #[cfg(test)]

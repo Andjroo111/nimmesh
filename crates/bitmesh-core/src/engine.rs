@@ -438,8 +438,10 @@ fn dispatch_packet(ctx: &WorkerCtx, packet: Packet, src: Option<&str>, st: &mut 
         MessageType::NimiqTxReceipt => handle_receipt(ctx, packet, src, st),
         // G6: the fragment path — carry the fragment onward and feed the reassembler.
         MessageType::Fragment => handle_fragment(ctx, packet, src, st),
-        // HeadBeacon (and any other relayable type): blind dedup + remember + adaptive
-        // TTL relay, so the mesh stays a faithful relay + store-and-forward substrate.
+        // HeadBeacon, G11 `noiseEncrypted` (0x11), and any other relayable type: blind
+        // dedup + remember + adaptive TTL relay. A `noiseEncrypted` blob is **opaque** to
+        // the relay (transport-privacy) — only its two endpoints decrypt it via a Noise
+        // `Session`; the mesh just carries the sealed bytes like any flooded packet.
         _ => {
             if st.relay_seen.insert(relay_key(&packet)) {
                 remember(ctx, st, &packet);

@@ -22,6 +22,15 @@ path = "src/bin/uniffi-bindgen.rs"
 [dependencies]
 uniffi = { workspace = true, features = ["cli"] }
 
+# G11: optional encrypted memo / 1:1 chat. `snow` is the Noise Protocol implementation
+# driving the `Noise_XX_25519_ChaChaPoly_SHA256` mutual-auth, identity-hiding handshake;
+# `x25519-dalek` derives the long-term Curve25519 *transport* static public key from a
+# secret (deterministic identities for tests); `sha2` computes the static-key fingerprint
+# for out-of-band verification. TRANSPORT-PRIVACY ONLY — never wallet/seed/tx-signing.
+snow = "0.9"
+x25519-dalek = { version = "2", features = ["static_secrets", "getrandom"] }
+sha2 = "0.10"
+
 # proptest drives the G4 wire-codec property/fuzz tests: decode() never panics on
 # arbitrary bytes, and any valid packet/envelope round-trips byte-for-byte.
 [dev-dependencies]

@@ -2,6 +2,47 @@
 
 All notable changes to nimiq.bitmesh. Each PR bumps the version and adds an entry.
 
+## [0.6.0] — 2026-06-26
+
+### Added — G11 (Rust core): optional encrypted memo / 1:1 chat (Noise XX) — PROTOCOL.md "Encryption"
+
+A **pure transport-privacy** layer so an *optional* memo can ride a `nimiqTx` encrypted and
+two peers can exchange an *optional* 1:1 encrypted chat. **No money-path**: no wallet seed,
+no Nimiq tx signing, no broadcast; `txWire` stays opaque and the `G3:` / `G8:` anchors are
+untouched. The Noise static key is a **transport** key, never a wallet key.
+
+- `crates/bitmesh-core/src/noise.rs` — the Noise layer (new module, < 800 lines):
+  - **`Noise_XX_25519_ChaChaPoly_SHA256`** mutual-auth, identity-hiding handshake via the
+    `snow` crate (`Handshake` initiator/responder + the three XX messages; `handshake_xx`
+    drives both ends). Identities are exchanged only *after* the ephemeral DH (identity
+    hiding); each side captures the peer's static fingerprint at completion.
+  - **Transport identity** — `StaticIdentity`, a long-term **Curve25519 static keypair**
+    generated for this app's mesh session (`x25519-dalek`), **explicitly separate** from any
+    Nimiq wallet seed (which does not exist here; G3/G10 own that, money-path). The
+    **fingerprint** = **SHA-256** of the static public key (`fingerprint_of`), stable + 32 B,
+    for out-of-band verification. `Debug` never prints the secret.
+  - **Two ChaChaPoly cipher states** after the handshake (`Session`, `snow` stateless
+    transport — one key per direction) with a **1024-message sliding-window replay guard**
+    (`ReplayWindow`, RFC-6479 style, 1-based counters): a sealed blob is
+    `nonce(8, BE) || ciphertext||tag`; `decrypt` **authenticates first, then** runs the
+    replay filter so a forged/replayed nonce can't poison the window.
+  - Memo + chat helpers: `seal_memo`/`open_memo` (the `encMemo` blob) and
+    `seal_payload`/`open_payload` (inner `NoisePayloadType`: `chat = 0x01`,
+    `nimiqTx = 0x04`, `nimiqTxReceipt = 0x05` — inner bytes stay **opaque**).
+- `crates/bitmesh-core/src/packet.rs` + `codec.rs` — new **`noiseEncrypted = 0x11`**
+  `MessageType` for optional 1:1 encrypted chat; round-trips through the wire codec.
+- `crates/bitmesh-core/src/envelope.rs` — the `encMemo` TLV (`0x05`) carries a Noise-sealed
+  blob (the field already existed; now wired end-to-end with a round-trip test).
+- `crates/bitmesh-core/src/engine.rs` — a `noiseEncrypted` packet is relayed **opaque**
+  (blind dedup + store-and-forward + adaptive TTL relay); only its two endpoints decrypt it.
+  `on_packet_received` stays **non-blocking** (enqueue-only, ADR-0002).
+- Tests (in `noise.rs`): XX handshake completes between two parties (+ mutual fingerprint
+  match); memo + chat + targeted-nimiqTx encrypt→decrypt round-trips (memo through a real
+  envelope); the replay window **rejects** a replayed ciphertext, accepts out-of-order,
+  rejects too-old counters; a **mismatched static key fails to decrypt** (AEAD); tampered
+  ciphertext fails; fingerprint is **stable + 32 bytes**; deterministic via fixed transport
+  secrets (handshake ephemerals use `snow`'s builder — behavior asserted, not exact bytes).
+
 ## [0.5.0] — 2026-06-26
 
 ### Added — G7 (Rust core): store-and-forward via GCS gossip-sync (PROTOCOL.md "Store-and-forward = GCS gossip-sync")

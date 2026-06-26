@@ -282,6 +282,7 @@ mod tests {
         for ty in [
             MessageType::Fragment,
             MessageType::RequestSync,
+            MessageType::NoiseEncrypted,
             MessageType::NimiqTx,
             MessageType::NimiqTxReceipt,
             MessageType::NimiqHeadBeacon,

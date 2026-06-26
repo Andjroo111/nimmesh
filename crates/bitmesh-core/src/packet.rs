@@ -74,6 +74,10 @@ pub enum MessageType {
     Fragment = 0x20,
     /// `0x21` — a GCS gossip-sync request (store-and-forward; ttl 0, local-only).
     RequestSync = 0x21,
+    /// `0x11` — an optional 1:1 **Noise-encrypted** message (encrypted memo / chat, G11).
+    /// The payload is an opaque sealed blob; relays carry it blindly (transport-privacy
+    /// only — never a money-path). Inner type per [`crate::noise::NoisePayloadType`].
+    NoiseEncrypted = 0x11,
     /// `0x30` — a signed Nimiq tx, flooded broadcast-safe over the mesh.
     NimiqTx = 0x30,
     /// `0x31` — a gateway → mesh accepted/expired/failed ack, keyed by txId.
@@ -94,6 +98,7 @@ impl MessageType {
     /// than silently guessing — mesh input is hostile (GOAL.md core value #6).
     pub const fn from_u8(byte: u8) -> Option<Self> {
         match byte {
+            0x11 => Some(MessageType::NoiseEncrypted),
             0x20 => Some(MessageType::Fragment),
             0x21 => Some(MessageType::RequestSync),
             0x30 => Some(MessageType::NimiqTx),
