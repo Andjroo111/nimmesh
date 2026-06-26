@@ -82,7 +82,7 @@ Scaffold + mock harness + codec first (all CI-testable headless), then the money
 | --- | ---------------------------------------------------------- | :--------: | :--------: | ------------- | ------ |
 | G1  | Scaffold + shared Rust core skeleton + dev-build + CI       |     no     |    yes*    | —             | ✅ done |
 | G2  | Provider seam + `MockMeshTransport` (full pay loop in CI)   |     no     |    yes     | G1            | ✅ done |
-| G3  | Offline Nimiq signing core (TESTNET) — `signOffline()`      |   **yes**  |   **no**   | G1            | todo   |
+| G3  | Offline Nimiq signing core (TESTNET) — `signOffline()`      |   **yes**  |   **no**   | G1            | 🟡 Rust core done (byte-exact) · native enclave/Pay-delegate pending (on-device) |
 | G4  | bitmesh wire protocol + packet codec (pure Rust)           |     no     |    yes     | G1            | ✅ done |
 | G5  | BLE mesh transport — concurrent central+peripheral (iOS+Android) | no   |    yes     | G2, G4        | 🟡 Rust core done · native shim pending (Xcode/Apple ID) |
 | G6  | Relay engine — TTL/hop-cap + dedup + degree-adaptive + frag |     no     |    yes     | G4, G5        | ✅ done |
