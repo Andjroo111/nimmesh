@@ -1,0 +1,48 @@
+{
+  "$schema": "https://nimiq.tech/schemas/nimiq-stack.v1.json",
+  "schemaVersion": 1,
+  "name": "nimiq.bitmesh",
+  "chainApp": true,
+  "exempt": true,
+  "exemptReason": "Native true-BLE-mesh app (iOS Swift + Android Kotlin sharing a Rust core via UniFFI). A web PWA cannot act as a BLE peripheral, so the fleet vanilla-PWA + Bun/Hono web stack does not apply. Approved divergence — see docs/adr/0001.",
+  "stack": {
+    "framework": "native-ios-android",
+    "core": "rust-uniffi",
+    "ios": "swift-corebluetooth",
+    "android": "kotlin-android.bluetooth.le",
+    "build": "cargo-swift (.xcframework) + cargo-ndk (.so + Kotlin bindings)",
+    "packageManager": "cargo + spm + gradle"
+  },
+  "styling": {
+    "source": "tbd",
+    "notes": "Brand identity reserved for Andjroo (Nimiq-brand vs distinct mesh identity). nimiq-ui is web-only; native UI will mirror Nimiq tokens manually. See needs:owner."
+  },
+  "settlement": {
+    "pattern": "offline-sign / online-broadcast (mesh-relayed)",
+    "lib": "shared-rust-core",
+    "coreRole": "offline-crypto + first-hop broadcast",
+    "notes": "Signs Nimiq tx fully offline (Ed25519 over serializeContent, ~139B), relays the self-contained signed bytes over a Bitchat-derived BLE mesh, and a gateway node calls sendRawTransaction (plain JSON-RPC) at the first internet hop. Mirrors the fleet sign-offline/broadcast-online seam (sendhome + nimiq.sale). NEVER instantiates the @nimiq/core consensus client. Defaults to TESTNET (networkId=5); mainnet is gated behind Andjroo."
+  },
+  "deploy": {
+    "target": "app-store + play-store",
+    "region": null,
+    "storage": "on-device (secure enclave for keys)",
+    "autoDeploy": "none",
+    "edge": null,
+    "notes": "Distribution (TestFlight / Play internal) + provisioning reserved for Andjroo. No deploy by the loop. On-device BLE mesh interop verified on Andjroo's Mac + real phones."
+  },
+  "config": {
+    "tsconfig": null,
+    "lint": "cargo clippy + cargo fmt (+ swiftlint/ktlint where available)",
+    "fileSizeGuard": 800,
+    "ci": "github-actions (core on ubuntu, ios on macos runner, android on ubuntu)"
+  },
+  "autonomy": {
+    "autoMergeNonMoneyPath": true,
+    "moneyPathGated": true,
+    "moneyPathDefinition": "any goal that signs, handles keys/seed, or broadcasts a transaction",
+    "network": "testnet-default",
+    "mainnetSwitch": "andjroo-only"
+  },
+  "canonicalVersion": "0.0.1"
+}

@@ -1,0 +1,52 @@
+# Rust
+/target/
+**/target/
+Cargo.lock.bak
+*.rs.bk
+*.pdb
+
+# UniFFI / generated bindings build artifacts
+/bindings/generated/
+*.xcframework/
+*.so
+*.a
+*.dylib
+
+# Swift / Xcode
+.build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xcscmblueprint
+.swiftpm/
+
+# Android / Gradle
+.gradle/
+/android/build/
+/android/app/build/
+/android/local.properties
+*.apk
+*.aab
+*.keystore
+*.jks
+.cxx/
+
+# Node (tooling only, if any)
+node_modules/
+
+# Secrets / local config — NEVER commit
+*.env
+.env*
+secrets/
+local.properties
+google-services.json
+GoogleService-Info.plist
+*.mobileprovision
+*.p8
+*.p12
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
