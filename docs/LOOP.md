@@ -11,18 +11,26 @@
 Sign a Nimiq transaction with no internet; relay it phone-to-phone over a true BLE
 mesh until one device with a connection broadcasts it. Testnet-first, money-path-gated.
 
-## Stack (see [ADR-0001](./adr/0001-native-rust-core-uniffi-stack.md))
+## Stack (see [ADR-0001](./adr/0001-native-rust-core-uniffi-stack.md) + [ADR-0002](./adr/0002-ble-layer.md))
 
 - **Shared Rust core** (one crate) owns everything safety- and protocol-critical:
   Nimiq signing (Ed25519 + deterministic serializer), the bitmesh packet codec,
   TTL/hop relay, LRU dedup, GCS gossip-sync store-and-forward, Noise_XX session crypto,
-  gateway broadcast queue. **No WASM, no consensus client.** Headless unit/property/fuzz
-  tested in CI.
+  gateway broadcast queue, and the `MeshNode` orchestrator. **No WASM, no consensus
+  client.** Headless unit/property/fuzz tested. ~95% of the code is pure Rust.
+- **BLE layer = thin native radio shim** (ADR-0002, decided on merit, 21/25 vs 11/25):
+  the radio stays native; Rust owns everything above the byte-stream seam. Wired via
+  **UniFFI foreign traits** — Rust calls out to a `BleRadio` trait (start_advertising /
+  start_scanning / send / disconnect) the shim implements; the shim calls in to
+  `MeshNode` on every BLE event (on_packet_received / on_peer_* / on_send_result). The
+  radio never sees a TTL; the brain never sees a `CBPeripheral`. **Radio-in-Rust
+  (objc2/JNI/btleplug) is rejected** — background survival is OS-governed (no Rust gain)
+  and Android's ART has no JNI `DefineClass` (a Kotlin shim is forced regardless).
 - **iOS app** — Swift + CoreBluetooth (`CBCentralManager` + `CBPeripheralManager`
-  concurrently), consuming the core as an `.xcframework` (cargo-swift / UniFFI).
+  concurrently), consuming the core as an `.xcframework` (cargo-swift / UniFFI). ~600–900 LOC.
 - **Android app** — Kotlin + `android.bluetooth.le` (scanner+GATT central and
   advertiser+GATT server concurrently), consuming the core as a `.so` + Kotlin
-  bindings (cargo-ndk / UniFFI).
+  bindings (cargo-ndk / UniFFI). ~800–1100 LOC.
 - Protocol ported from **Bitchat** (`permissionlesstech/bitchat`, **The Unlicense /
   public domain** — free to port, no attribution/copyleft obligation).
 
@@ -52,12 +60,18 @@ them, and the loop builds + verifies **locally**:
   `workflow` scope): it re-runs the core gate on Linux, and once native targets exist
   runs the `ios` job (macos runner: `.xcframework` + `xcodebuild`) and `android` job
   (`cargo ndk` + `./gradlew assembleDebug`).
-- **Native toolchains (Xcode + Android SDK/NDK) are added when we reach the native shim
-  (G5)** — installed on the Mini for local app builds, or run on Andjroo's Mac; decided
-  at G5. They are **not** needed for the Rust core (G1–G4).
-- **On-device BLE mesh interop** (iOS↔iOS, iOS↔Android, Android↔Android), TestFlight /
-  Play-internal builds, and look-and-feel are verified on **real phones** — the loop
-  hands Andjroo a "what to test" note for these.
+- **The Mac Mini is the primary native build host** (ADR-0002): at G5 it gets full
+  **Xcode + Android SDK/NDK/JDK** + the seven Rust cross-targets, and each cycle builds
+  the Rust core, the **unsigned iOS `.xcframework`**, the **installable Android debug
+  APK** (auto-signed → fully unattended), and **compile-gates** the iOS device build
+  (`CODE_SIGNING_ALLOWED=NO`). GitHub Actions macOS stays a **metered backstop** gated to
+  native-touching PRs. None of this is needed for the Rust core (G1–G4). *One-time at G5:*
+  installing Xcode needs **Andjroo's Apple ID** + a `sudo xcodebuild -license accept`
+  (`needs:owner`); the Android SDK installs unattended.
+- **iOS signing / device installs / TestFlight / Play-release** require Andjroo's Apple
+  Developer account and **on-device BLE mesh interop** (iOS↔iOS, iOS↔Android,
+  Android↔Android — incl. the background overflow-UUID dead spot) needs **real phones**:
+  all `needs:owner`. The loop hands Andjroo a "what to test" note each native cycle.
 
 ## Goals — worked top-down, one PR per goal
 
@@ -66,7 +80,7 @@ Scaffold + mock harness + codec first (all CI-testable headless), then the money
 
 | #   | Goal                                                        | money-path | auto-merge | deps          | status |
 | --- | ---------------------------------------------------------- | :--------: | :--------: | ------------- | ------ |
-| G1  | Scaffold + shared Rust core skeleton + dev-build + CI       |     no     |    yes*    | —             | todo   |
+| G1  | Scaffold + shared Rust core skeleton + dev-build + CI       |     no     |    yes*    | —             | ✅ done |
 | G2  | Provider seam + `MockMeshTransport` (full pay loop in CI)   |     no     |    yes     | G1            | todo   |
 | G3  | Offline Nimiq signing core (TESTNET) — `signOffline()`      |   **yes**  |   **no**   | G1            | todo   |
 | G4  | bitmesh wire protocol + packet codec (pure Rust)           |     no     |    yes     | G1            | todo   |
@@ -80,10 +94,10 @@ Scaffold + mock harness + codec first (all CI-testable headless), then the money
 | G12 | Hardening — verify-before-relay, rate limits, NACK, anti-spam | **yes** |  **no**   | G8, G10       | todo   |
 | G13 | TESTNET end-to-end demo + mainnet-gating doc               |   **yes**  |   **no**   | G8,G9,G10,G12 | todo   |
 
-\* G1 lands the **Rust core crate + UniFFI scaffolding + a green local `cargo test`**
+\* G1 landed the **Rust core crate + UniFFI scaffolding + a green local `cargo test`**
 (the native iOS/Android app targets are deferred to G5, when their toolchains land).
-Open the first PR for Andjroo's review (**don't auto-merge**); subsequent green
-non-money-path PRs auto-merge.
+Like every non-money-path goal it **auto-merges on green** (build + an independent
+verify agent); Andjroo reviews post-hoc on GitHub. Money-path goals still stop for Andjroo.
 
 **MVP (testnet):** G1–G10 + G12–G13. G11 is an enhancement.
 
@@ -128,7 +142,11 @@ non-money-path PRs auto-merge.
   (TestFlight/internal-only until the testnet demo is proven?).
 - **Background-mesh UX honesty** — OK to ship the "keep one device foregrounded" pattern
   (iOS-background→Android-central is a hard dead spot)? Invest in the iOS-26 Live Activity path?
-- **Install Rust on the Mini?** (faster local core iteration vs CI-only gate.)
+- **Xcode install at G5** — needs Andjroo's **Apple ID** + a one-time `sudo xcodebuild
+  -license accept` on the Mini. (Rust ✅ installed; Android SDK installs unattended.)
+
+_Resolved on merit (no longer pending): Rust toolchain installed on the Mini; BLE-layer
+architecture = thin native shim (ADR-0002); native build host = Mac Mini primary (ADR-0002)._
 
 ## Cycle log
 
@@ -138,3 +156,10 @@ non-money-path PRs auto-merge.
   (portable); validity window = 120 batches × 60 blocks ≈ **2 h** (the mesh relay budget).
   Picked the stack (ADR-0001), wrote GOAL/LOOP/PROTOCOL/RISKS, filed G1–G13 + the
   `needs:owner` decisions issue. Next: G1 scaffold.
+- **2026-06-26** — Installed Rust (rustup stable) on the Mini → build + gate locally.
+  **G1 merged** (PR #15): `bitmesh-core` Cargo workspace + UniFFI proc-macro surface
+  (`core_version`/`NetworkId`/`echo_bytes`, 5 tests) + `uniffi-bindgen` (Swift+Kotlin
+  bindings generate, no Xcode/Android) + size-guard + CI `core` job — all green, verify
+  passed. Ran the `bitmesh-ble-layer-decision` workflow → **ADR-0002** (thin native radio
+  shim, Mac Mini primary build host; both decided on merit). Building G2 (mock pay-loop
+  harness) + G4 (wire codec) in parallel isolated worktrees. Next wall: G3 (money-path).
