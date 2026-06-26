@@ -9,8 +9,11 @@
 //! Three roles, one code path:
 //!
 //! - **relay** (every node, always): decode → **blind** LRU dedup on a packet-header
-//!   identity → TTL-decrement → re-flood. The opaque `txWire` is *never* inspected here
-//!   (core value #3, trustless relay).
+//!   identity → degree-adaptive relay decision → jittered TTL-decrement re-flood that
+//!   **excludes the source link**. The opaque `txWire` is *never* inspected here (core
+//!   value #3, trustless relay). The G6 relay sophistication (degree-adaptive flooding,
+//!   injectable jitter, the loop-free TTL hop cap) lives in [`crate::relay`]; the
+//!   `fragment = 0x20` split/reassemble path lives in [`crate::fragment`].
 //! - **gateway** (a node with internet, modelled by an injected [`MeshGateway`]): on a
 //!   `nimiqTx`, dedup on `txId`, submit once (the mock records; **G8** does the real
 //!   `sendRawTransaction`), and flood a `nimiqTxReceipt` back.
@@ -24,14 +27,17 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 #[cfg(test)]
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 
 use crate::codec::{decode, encode};
 use crate::dedup::DedupCache;
 use crate::envelope::{decode_envelope, encode_envelope, NimiqEnvelope};
+use crate::fragment::{parse_fragment, Reassembler};
 use crate::gateway::{MeshGateway, ReceiptStatus};
 use crate::packet::{MessageType, Packet, BROADCAST_RECIPIENT, DEFAULT_TTL, PEER_ID_LEN};
 use crate::radio::BleRadio;
+use crate::relay::{relayed_ttl, RelayPolicy};
 use crate::transport::{mock_tx_id, TxId};
 
 /// Where a payment stands from the origin's point of view (FFI-visible).
@@ -148,6 +154,12 @@ impl WorkerCtx {
         self.peers.lock().unwrap().len()
     }
 
+    /// This node's current peer degree, the input to the degree-adaptive relay decision
+    /// ([`RelayPolicy::should_relay`]).
+    fn peer_degree(&self) -> usize {
+        self.peers.lock().unwrap().len()
+    }
+
     /// Record the async outcome of a fire-and-forget `send` (ADR-0002 gotcha b). Cheap:
     /// just a counter bump, never a re-entrant `send`.
     pub(crate) fn note_send_result(&self, ok: bool) {
@@ -245,27 +257,50 @@ impl WorkerCtx {
     /// Fire-and-forget flood of `bytes` to every connected peer. Snapshots the peer set
     /// first so the radio is never called while holding the lock (no re-entrancy hazard).
     fn flood(&self, bytes: Vec<u8>) {
+        self.flood_excluding(bytes, None);
+    }
+
+    /// Like [`flood`](Self::flood) but skips `exclude` — the peer a relayed packet
+    /// arrived from. Never echoing a packet back out its source link (PROTOCOL.md
+    /// "source link is excluded") halves needless duplicate airtime on every hop.
+    fn flood_excluding(&self, bytes: Vec<u8>, exclude: Option<&str>) {
         let peers: Vec<String> = self.peers.lock().unwrap().iter().cloned().collect();
         for peer in peers {
+            if Some(peer.as_str()) == exclude {
+                continue;
+            }
             self.send_attempts.fetch_add(1, Ordering::Relaxed);
             self.radio.send(peer, bytes.clone());
         }
     }
 }
 
-/// The worker thread's persistent dedup caches (single-threaded; no locks on the hot
-/// path).
+/// The worker thread's persistent per-node state (single-threaded; no locks on the hot
+/// path): the dedup caches, the G6 relay [`RelayPolicy`] (degree-adaptive decision +
+/// injectable jitter/RNG), the fragment [`Reassembler`], and a monotonic clock used as
+/// the reassembler's logical time.
 pub(crate) struct WorkerState {
     relay_seen: DedupCache<RelayKey>,
     gateway_seen: DedupCache<TxId>,
+    policy: RelayPolicy,
+    reassembler: Reassembler,
+    start: Instant,
 }
 
 impl WorkerState {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(policy: RelayPolicy) -> Self {
         WorkerState {
             relay_seen: DedupCache::new(RELAY_CACHE_CAP),
             gateway_seen: DedupCache::new(GATEWAY_CACHE_CAP),
+            policy,
+            reassembler: Reassembler::new(),
+            start: Instant::now(),
         }
+    }
+
+    /// Monotonic milliseconds since this worker started — the reassembler's logical clock.
+    fn now_ms(&self) -> u64 {
+        self.start.elapsed().as_millis() as u64
     }
 }
 
@@ -292,24 +327,36 @@ pub(crate) fn flood_local_tx(ctx: &WorkerCtx, tx_wire: Vec<u8>, st: &mut WorkerS
     tx_id
 }
 
-/// The hot path: one inbound frame from the radio. Decodes with the real codec and
-/// dispatches by message type. Panic-free and infallible — a malformed/hostile frame is
-/// silently dropped (the caller additionally wraps this in `catch_unwind`, gotcha c).
-pub(crate) fn process_inbound(ctx: &WorkerCtx, bytes: &[u8], st: &mut WorkerState) {
+/// The hot path: one inbound frame from the radio, with the peer it arrived on (`src`,
+/// `None` if the shim couldn't attribute it). Decodes with the real codec and dispatches
+/// by message type. Panic-free and infallible — a malformed/hostile frame is silently
+/// dropped (the caller additionally wraps this in `catch_unwind`, gotcha c).
+pub(crate) fn process_inbound(
+    ctx: &WorkerCtx,
+    src: Option<&str>,
+    bytes: &[u8],
+    st: &mut WorkerState,
+) {
     let Ok(packet) = decode(bytes) else {
         return; // not a well-formed bitmesh packet — drop.
     };
     match packet.msg_type {
-        MessageType::NimiqTx => handle_tx(ctx, packet, st),
-        MessageType::NimiqTxReceipt => handle_receipt(ctx, packet, st),
-        // Fragment / RequestSync / HeadBeacon: defined but their semantics land at
-        // G6/G7/G9. For now flood them generically (blind dedup + TTL) so the mesh
-        // stays a faithful relay substrate.
-        _ => relay_onward(ctx, packet, st),
+        MessageType::NimiqTx => handle_tx(ctx, packet, src, st),
+        MessageType::NimiqTxReceipt => handle_receipt(ctx, packet, src, st),
+        // G6: the fragment path — carry the fragment onward and feed the reassembler.
+        MessageType::Fragment => handle_fragment(ctx, packet, src, st),
+        // RequestSync / HeadBeacon: defined but their semantics land at G7/G9. For now
+        // flood them generically (blind dedup + adaptive TTL relay) so the mesh stays a
+        // faithful relay substrate.
+        _ => {
+            if st.relay_seen.insert(relay_key(&packet)) {
+                relay_onward(ctx, packet, src, st);
+            }
+        }
     }
 }
 
-fn handle_tx(ctx: &WorkerCtx, packet: Packet, st: &mut WorkerState) {
+fn handle_tx(ctx: &WorkerCtx, packet: Packet, src: Option<&str>, st: &mut WorkerState) {
     // Blind relay dedup first — every role shares it.
     if !st.relay_seen.insert(relay_key(&packet)) {
         return;
@@ -338,10 +385,10 @@ fn handle_tx(ctx: &WorkerCtx, packet: Packet, st: &mut WorkerState) {
     }
     // PROTOCOL.md: a gateway relays the tx anyway so other gateways can also try (the
     // mempool dedups on tx hash). A plain relay just forwards.
-    relay_onward(ctx, packet, st);
+    relay_onward(ctx, packet, src, st);
 }
 
-fn handle_receipt(ctx: &WorkerCtx, packet: Packet, st: &mut WorkerState) {
+fn handle_receipt(ctx: &WorkerCtx, packet: Packet, src: Option<&str>, st: &mut WorkerState) {
     if !st.relay_seen.insert(relay_key(&packet)) {
         return;
     }
@@ -354,19 +401,77 @@ fn handle_receipt(ctx: &WorkerCtx, packet: Packet, st: &mut WorkerState) {
         };
         ctx.settle(tx_id, payment_status);
     }
-    relay_onward(ctx, packet, st);
+    relay_onward(ctx, packet, src, st);
 }
 
-/// Blind TTL-decrement re-flood (PROTOCOL.md hop cap: drop at `ttl <= 1`). Never reads
-/// the opaque payload.
-fn relay_onward(ctx: &WorkerCtx, mut packet: Packet, _st: &mut WorkerState) {
-    if packet.ttl <= 1 {
+/// G6 fragment path: carry the fragment onward (it's a normal flooded packet) and feed
+/// its chunk to the bounded [`Reassembler`]. When a set completes, the original message
+/// is reconstructed with **TTL zeroed** (PROTOCOL.md: "reassembled TTL zeroed") and
+/// dispatched **locally only** — it is never re-flooded, since the individual fragments
+/// already propagated it.
+fn handle_fragment(ctx: &WorkerCtx, packet: Packet, src: Option<&str>, st: &mut WorkerState) {
+    if !st.relay_seen.insert(relay_key(&packet)) {
         return;
     }
-    packet.ttl -= 1;
+    // Parse the chunk before we move `packet` into the relay step.
+    let parsed = parse_fragment(&packet.payload);
+    let now = st.now_ms();
+    relay_onward(ctx, packet, src, st);
+
+    let Some(fragment) = parsed else {
+        return; // malformed fragment header — carried but not reassembled.
+    };
+    if let Some((original_type, payload)) = st.reassembler.accept(fragment, now) {
+        if let Some(msg_type) = MessageType::from_u8(original_type) {
+            // Reconstruct the original message, TTL zeroed so it is delivered locally and
+            // never rebroadcast (the fragments already did the flooding).
+            let mut reassembled = Packet::new(msg_type, [0u8; PEER_ID_LEN], payload);
+            reassembled.ttl = 0;
+            reassembled.timestamp_ms = st.now_ms();
+            dispatch_reassembled(ctx, reassembled, st);
+        }
+    }
+}
+
+/// Dispatch a reassembled (TTL-0) message through the normal type handlers. `relay_onward`
+/// drops it at the hop floor, so this only ever *delivers* (gateway submit / origin
+/// settle), never re-floods. A reassembled fragment-of-a-fragment is impossible
+/// (`fragment_message` never wraps a `fragment` payload), so this can't recurse.
+fn dispatch_reassembled(ctx: &WorkerCtx, packet: Packet, st: &mut WorkerState) {
+    match packet.msg_type {
+        MessageType::NimiqTx => handle_tx(ctx, packet, None, st),
+        MessageType::NimiqTxReceipt => handle_receipt(ctx, packet, None, st),
+        _ => {
+            if st.relay_seen.insert(relay_key(&packet)) {
+                relay_onward(ctx, packet, None, st);
+            }
+        }
+    }
+}
+
+/// Blind degree-adaptive, jittered, source-excluding TTL re-flood. Never reads the opaque
+/// payload. The caller has already dedup'd (`relay_seen`); this decides whether/when to
+/// rebroadcast:
+///
+/// 1. **degree-adaptive** — drop here when a dense-mesh probability roll says so
+///    ([`RelayPolicy::should_relay`]);
+/// 2. **TTL hop cap** — [`relayed_ttl`] caps then decrements, dropping at the floor (the
+///    loop-freedom invariant);
+/// 3. **jitter** — a small injected delay before the write desynchronises neighbours
+///    (zero under the test policy);
+/// 4. **source exclusion** — never echo back out the link it arrived on (`src`).
+fn relay_onward(ctx: &WorkerCtx, mut packet: Packet, src: Option<&str>, st: &mut WorkerState) {
+    if !st.policy.should_relay(ctx.peer_degree()) {
+        return;
+    }
+    let Some(ttl) = relayed_ttl(packet.ttl) else {
+        return;
+    };
+    packet.ttl = ttl;
+    st.policy.apply_jitter();
     if let Ok(bytes) = encode(&packet) {
         ctx.forwarded.fetch_add(1, Ordering::Relaxed);
-        ctx.flood(bytes);
+        ctx.flood_excluding(bytes, src);
     }
 }
 

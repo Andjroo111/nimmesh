@@ -30,6 +30,7 @@ use std::time::Duration;
 use crate::gateway::MeshGateway;
 use crate::node::MeshNode;
 use crate::radio::{BleRadio, PeerId};
+use crate::relay::RelayPolicy;
 
 /// One queued transmission travelling through the ether.
 struct Transmit {
@@ -178,7 +179,9 @@ impl MockEther {
                     .get(&t.dst_peer)
                     .and_then(Weak::upgrade);
                 if let Some(node) = dst {
-                    node.on_packet_received(t.bytes);
+                    // Deliver with the source peer attributed (the destination's view of
+                    // the sender) so the worker can apply G6 source-link exclusion.
+                    node.on_packet_received_from(t.src_peer.clone(), t.bytes);
                 }
             }
             // Report the async write outcome back to the sender (ADR-0002 gotcha b).
@@ -316,9 +319,16 @@ impl MeshHarness {
     }
 
     /// Add a plain relay/origin node at `peer_id` with protocol `sender_id`.
+    ///
+    /// Uses the **deterministic** relay policy (zero-sleep jitter + fixed seed) so the
+    /// headless harness stays fast and reproducible — no real G6 jitter sleeps under test.
     pub fn add_node(&mut self, peer_id: &str, sender_id: &[u8]) -> Arc<MeshNode> {
         let radio = MockRadio::new(peer_id, self.ether.clone());
-        let node = MeshNode::new(sender_id.to_vec(), radio.clone());
+        let node = MeshNode::new_with_policy(
+            sender_id.to_vec(),
+            radio.clone(),
+            RelayPolicy::deterministic(),
+        );
         self.attach(peer_id, node, radio)
     }
 
@@ -330,7 +340,12 @@ impl MeshHarness {
         gateway: Arc<dyn MeshGateway>,
     ) -> Arc<MeshNode> {
         let radio = MockRadio::new(peer_id, self.ether.clone());
-        let node = MeshNode::new_gateway(sender_id.to_vec(), radio.clone(), gateway);
+        let node = MeshNode::new_gateway_with_policy(
+            sender_id.to_vec(),
+            radio.clone(),
+            gateway,
+            RelayPolicy::deterministic(),
+        );
         self.attach(peer_id, node, radio)
     }
 

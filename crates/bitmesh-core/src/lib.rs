@@ -50,6 +50,15 @@ pub mod provider;
 pub mod radio;
 pub mod transport;
 
+// G6: relay-engine refinements over the G5 basic TTL/dedup/flood relay. `relay` adds
+// degree-adaptive probabilistic flooding (high-degree threshold), injectable relay
+// jitter (10–220 ms, real in prod / zero in tests), and the TTL hop-cap transform that
+// makes the flood provably loop-free; `fragment` implements the `fragment = 0x20`
+// split/reassemble path (128 in-flight, 30 s lifetime) for payloads larger than one BLE
+// write. Still opaque-bytes only — no signing, no broadcast (G3/G8, money-path).
+pub mod fragment;
+pub mod relay;
+
 // G5 headless end-to-end + the four ADR-0002 callback-boundary tests. Internal so they
 // can drive crate-private observability hooks; only compiled under `cfg(test)`.
 #[cfg(test)]

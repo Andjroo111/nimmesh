@@ -22,11 +22,13 @@ use crate::codec::encode;
 use crate::default_network;
 use crate::engine::PaymentStatus;
 use crate::envelope::{encode_envelope, NimiqEnvelope};
+use crate::fragment::fragment_message;
 use crate::gateway::{MeshGateway, MockGateway, Receipt, ReceiptStatus};
 use crate::mock_radio::{MeshHarness, MockEther, MockRadio};
 use crate::node::MeshNode;
 use crate::packet::{MessageType, Packet, BROADCAST_RECIPIENT};
 use crate::radio::BleRadio;
+use crate::relay::RelayPolicy;
 use crate::transport::{mock_tx_id, MeshError, TxId};
 
 const SETTLE: Duration = Duration::from_secs(3);
@@ -67,6 +69,15 @@ fn make_receipt_packet(
     let mut payload = tx_id.0.to_vec();
     payload.push(status.code());
     let mut p = Packet::new(MessageType::NimiqTxReceipt, sender, payload);
+    p.recipient_id = Some(BROADCAST_RECIPIENT);
+    p.ttl = ttl;
+    p.timestamp_ms = ts;
+    encode(&p).expect("packet encodes")
+}
+
+/// A real `fragment` (0x20) wire frame carrying one fragment payload.
+fn make_fragment_packet(sender: [u8; 8], frag_payload: Vec<u8>, ttl: u8, ts: u64) -> Vec<u8> {
+    let mut p = Packet::new(MessageType::Fragment, sender, frag_payload);
     p.recipient_id = Some(BROADCAST_RECIPIENT);
     p.ttl = ttl;
     p.timestamp_ms = ts;
@@ -165,6 +176,14 @@ impl SpyRadio {
     fn send_threads(&self) -> Vec<ThreadId> {
         self.sends.lock().unwrap().iter().map(|(_, t)| *t).collect()
     }
+    fn send_peers(&self) -> Vec<String> {
+        self.sends
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(p, _)| p.clone())
+            .collect()
+    }
 }
 
 impl BleRadio for SpyRadio {
@@ -193,7 +212,7 @@ fn on_packet_received_never_re_enters_radio_send_synchronously() {
     let test_thread = std::thread::current().id();
     let spy = SpyRadio::new();
     let radio: Arc<dyn BleRadio> = spy.clone();
-    let node = MeshNode::new(vec![9], radio);
+    let node = MeshNode::new_with_policy(vec![9], radio, RelayPolicy::deterministic());
     node.on_peer_connected("x".to_string());
 
     // A foreign nimiqTx the node will relay (TTL 7 > 1, sender != ours).
@@ -277,7 +296,12 @@ fn worker_survives_a_panicking_handler() {
     // process. The worker wraps each job in catch_unwind, so it keeps draining.
     let spy = SpyRadio::new();
     let radio: Arc<dyn BleRadio> = spy.clone();
-    let node = MeshNode::new_gateway(vec![7], radio, Arc::new(PanicGateway));
+    let node = MeshNode::new_gateway_with_policy(
+        vec![7],
+        radio,
+        Arc::new(PanicGateway),
+        RelayPolicy::deterministic(),
+    );
     node.on_peer_connected("x".to_string());
 
     // First: a tx that drives the gateway to panic (caught; no send for this one).
@@ -302,7 +326,7 @@ fn teardown_releases_radio_and_leaks_no_node() {
     // weakly. Tearing the node down must stop the radio and free the node with no leak.
     let ether = MockEther::new();
     let radio = MockRadio::new("n", ether.clone());
-    let node = MeshNode::new(vec![1], radio.clone());
+    let node = MeshNode::new_with_policy(vec![1], radio.clone(), RelayPolicy::deterministic());
     radio.bind(Arc::downgrade(&node));
 
     let weak = Arc::downgrade(&node);
@@ -361,5 +385,83 @@ fn partition_isolates_the_gateway_and_keeps_pending() {
     h.ether().heal("relay", "gw");
     let tx2 = origin.submit_local_tx(b"now-it-flows".to_vec());
     assert_eq!(origin.wait_payment(&tx2, SETTLE), PaymentStatus::Settled);
+    h.shutdown();
+}
+
+// --- G6: source-link exclusion --------------------------------------------------
+
+#[test]
+fn relay_never_echoes_back_out_the_source_link() {
+    // PROTOCOL.md: "the source link is excluded." A node with two peers that receives a
+    // relayable packet *from* one of them must rebroadcast only to the *other* — never
+    // back out the link it arrived on.
+    let spy = SpyRadio::new();
+    let radio: Arc<dyn BleRadio> = spy.clone();
+    let node = MeshNode::new_with_policy(vec![9], radio, RelayPolicy::deterministic());
+    node.on_peer_connected("src".to_string());
+    node.on_peer_connected("other".to_string());
+
+    // A foreign nimiqTx arriving from "src" (TTL 7 > 1, degree 2 < threshold → relays).
+    let bytes = make_tx_packet([1; 8], b"opaque", 7, 7777);
+    node.on_packet_received_from("src".to_string(), bytes);
+
+    assert!(
+        wait_until(|| spy.send_count() >= 1, Duration::from_secs(1)),
+        "relay never forwarded"
+    );
+    // Give any (erroneous) second write a moment to surface, then assert exclusion.
+    std::thread::sleep(Duration::from_millis(20));
+    let peers = spy.send_peers();
+    assert!(
+        peers.contains(&"other".to_string()),
+        "did not relay to the non-source peer"
+    );
+    assert!(
+        !peers.contains(&"src".to_string()),
+        "relay echoed back out the source link"
+    );
+    node.shutdown();
+}
+
+// --- G6: fragmentation + reassembly through the live engine ---------------------
+
+#[test]
+fn fragmented_receipt_reassembles_and_settles_the_origin() {
+    // A receipt larger than one (hypothetical) BLE chunk arrives as several `fragment`
+    // (0x20) packets. The origin's reassembler must rebuild it, dispatch it locally
+    // (TTL zeroed → no re-flood), and settle the pending payment — exercising the whole
+    // fragment → reassemble → dispatch path through the engine, not just the unit module.
+    let mut h = MeshHarness::new();
+    let origin = h.add_node("origin", &[1]);
+    // Originate a payment so the origin has a Pending slot keyed by mock_tx_id(opaque).
+    let opaque = b"opaque-tx-awaiting-a-fragmented-receipt".to_vec();
+    let tx_id = origin.submit_local_tx(opaque.clone());
+    assert_eq!(
+        origin.wait_payment(&tx_id, Duration::from_millis(100)),
+        PaymentStatus::Pending
+    );
+
+    // Build the receipt payload (txId(32) | status(1)) and fragment it at a tiny 20-B
+    // chunk so it genuinely splits into multiple fragments.
+    let mut receipt_payload = mock_tx_id(&opaque).0.to_vec();
+    receipt_payload.push(ReceiptStatus::Accepted.code());
+    let frags = fragment_message(
+        MessageType::NimiqTxReceipt.to_u8(),
+        &receipt_payload,
+        20,
+        [42; 8],
+    );
+    assert!(
+        frags.len() > 1,
+        "a 33-B receipt at 20-B chunks must fragment"
+    );
+
+    // Deliver every fragment packet to the origin (distinct timestamps → distinct keys).
+    for (i, fp) in frags.into_iter().enumerate() {
+        let bytes = make_fragment_packet([2; 8], fp, 7, 9000 + i as u64);
+        origin.on_packet_received(bytes);
+    }
+
+    assert_eq!(origin.wait_payment(&tx_id, SETTLE), PaymentStatus::Settled);
     h.shutdown();
 }

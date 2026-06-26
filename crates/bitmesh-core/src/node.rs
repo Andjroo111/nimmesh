@@ -28,12 +28,19 @@ use crate::engine::{flood_local_tx, process_inbound, PaymentStatus, WorkerCtx, W
 use crate::gateway::MeshGateway;
 use crate::packet::PEER_ID_LEN;
 use crate::radio::BleRadio;
+use crate::relay::RelayPolicy;
 use crate::transport::{mock_tx_id, TxId};
 
 /// A unit of work handed from a BLE callback to the worker thread.
 enum Job {
-    /// Bytes that arrived on the radio (`on_packet_received`).
-    Inbound(Vec<u8>),
+    /// Bytes that arrived on the radio, plus the peer they came from (`None` if the shim
+    /// couldn't attribute the source — see `on_packet_received` vs the `_from` variant).
+    Inbound {
+        /// The connected peer the bytes arrived on (drives G6 source-link exclusion).
+        src: Option<String>,
+        /// The raw inbound frame.
+        bytes: Vec<u8>,
+    },
     /// A locally-originated tx to flood (`submit_local_tx`).
     LocalTx(Vec<u8>),
     /// Drain and exit (teardown).
@@ -71,14 +78,14 @@ pub struct MeshNode {
 /// The worker thread: drain jobs and run the (heavy) protocol logic off the radio's
 /// callback thread. Each job is wrapped in `catch_unwind` so a panic on one frame can't
 /// kill the worker or the process (ADR-0002 gotcha c).
-fn run_worker(ctx: Arc<WorkerCtx>, rx: Receiver<Job>) {
-    let mut st = WorkerState::new();
+fn run_worker(ctx: Arc<WorkerCtx>, rx: Receiver<Job>, policy: RelayPolicy) {
+    let mut st = WorkerState::new(policy);
     while let Ok(job) = rx.recv() {
         match job {
             Job::Shutdown => break,
-            Job::Inbound(bytes) => {
+            Job::Inbound { src, bytes } => {
                 let _ = catch_unwind(AssertUnwindSafe(|| {
-                    process_inbound(&ctx, &bytes, &mut st);
+                    process_inbound(&ctx, src.as_deref(), &bytes, &mut st);
                 }));
             }
             Job::LocalTx(wire) => {
@@ -100,7 +107,7 @@ impl MeshNode {
     /// `Arc<MeshNode>` is the handle the shim holds **weakly**.
     #[uniffi::constructor]
     pub fn new(sender_id: Vec<u8>, radio: Arc<dyn BleRadio>) -> Arc<Self> {
-        Self::build(sender_id, radio, None)
+        Self::build(sender_id, radio, None, RelayPolicy::production())
     }
 
     /// A peer connected (`CBPeripheral` / GATT link up). Cheap: record it as a flood
@@ -117,10 +124,19 @@ impl MeshNode {
     /// Bytes arrived from a peer. **NON-BLOCKING (ADR-0002 gotcha a):** only enqueue and
     /// return — no decode, no dedup, and never a synchronous `radio.send`. The worker
     /// thread does all of that off this callback thread.
+    ///
+    /// Source-unattributed: prefer [`on_packet_received_from`](Self::on_packet_received_from)
+    /// when the shim knows the originating peer, so the worker can apply G6 source-link
+    /// exclusion (never echo a relay back out the link it arrived on).
     pub fn on_packet_received(&self, bytes: Vec<u8>) {
-        if let Some(tx) = self.job_tx.lock().unwrap().as_ref() {
-            let _ = tx.send(Job::Inbound(bytes));
-        }
+        self.enqueue_inbound(None, bytes);
+    }
+
+    /// Like [`on_packet_received`](Self::on_packet_received) but records the connected
+    /// `peer_id` the bytes arrived on, so the relay excludes that source link when it
+    /// rebroadcasts (PROTOCOL.md). Equally non-blocking.
+    pub fn on_packet_received_from(&self, peer_id: String, bytes: Vec<u8>) {
+        self.enqueue_inbound(Some(peer_id), bytes);
     }
 
     /// The async outcome of a fire-and-forget `radio.send` (ADR-0002 gotcha b). Cheap:
@@ -159,11 +175,21 @@ impl MeshNode {
 // --- Internal + test-facing surface (not exported across FFI) --------------------
 
 impl MeshNode {
-    /// Shared constructor for the plain and gateway-enabled nodes.
+    /// Non-blocking enqueue shared by both inbound entry points.
+    fn enqueue_inbound(&self, src: Option<String>, bytes: Vec<u8>) {
+        if let Some(tx) = self.job_tx.lock().unwrap().as_ref() {
+            let _ = tx.send(Job::Inbound { src, bytes });
+        }
+    }
+
+    /// Shared constructor for the plain and gateway-enabled nodes. The `policy` carries
+    /// the G6 relay tunables + injected RNG/jitter (production = real jitter + time seed;
+    /// the harness/tests inject [`RelayPolicy::deterministic`] = zero sleep, fixed seed).
     pub(crate) fn build(
         sender_id: Vec<u8>,
         radio: Arc<dyn BleRadio>,
         gateway: Option<Arc<dyn MeshGateway>>,
+        policy: RelayPolicy,
     ) -> Arc<Self> {
         let ctx = Arc::new(WorkerCtx::new(
             to_sender_id(&sender_id),
@@ -172,7 +198,7 @@ impl MeshNode {
         ));
         let (tx, rx) = channel();
         let worker_ctx = ctx.clone();
-        let worker = std::thread::spawn(move || run_worker(worker_ctx, rx));
+        let worker = std::thread::spawn(move || run_worker(worker_ctx, rx, policy));
         // Bring the radio up. Real BLE starts advertising + scanning concurrently.
         radio.start_advertising();
         radio.start_scanning();
@@ -184,14 +210,24 @@ impl MeshNode {
         })
     }
 
-    /// Build a node that also acts as a **gateway** (the one online hop). Mock/test only;
-    /// the real RPC gateway is G8 (money-path, FFI-exported then).
-    pub(crate) fn new_gateway(
+    /// Build a plain node with a caller-chosen relay policy (the harness/tests pass
+    /// [`RelayPolicy::deterministic`] so there are no real jitter sleeps).
+    pub(crate) fn new_with_policy(
+        sender_id: Vec<u8>,
+        radio: Arc<dyn BleRadio>,
+        policy: RelayPolicy,
+    ) -> Arc<Self> {
+        Self::build(sender_id, radio, None, policy)
+    }
+
+    /// Build a gateway node with a caller-chosen relay policy (deterministic in tests).
+    pub(crate) fn new_gateway_with_policy(
         sender_id: Vec<u8>,
         radio: Arc<dyn BleRadio>,
         gateway: Arc<dyn MeshGateway>,
+        policy: RelayPolicy,
     ) -> Arc<Self> {
-        Self::build(sender_id, radio, Some(gateway))
+        Self::build(sender_id, radio, Some(gateway), policy)
     }
 
     fn do_shutdown(&self) {

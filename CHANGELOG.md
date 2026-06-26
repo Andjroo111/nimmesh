@@ -2,6 +2,59 @@
 
 All notable changes to nimiq.bitmesh. Each PR bumps the version and adds an entry.
 
+## [0.4.0] — 2026-06-26
+
+### Added — G6 (Rust core): relay-engine refinements (PROTOCOL.md "TTL / hop cap & relay")
+
+Builds the PROTOCOL.md relay sophistication on top of the G5 basic relay (which already
+did blind LRU dedup → TTL-decrement → flood). New logic is split into dedicated modules
+to keep every file well under the 800-line ceiling.
+
+- `crates/bitmesh-core/src/relay.rs` — the **G6 relay policy**:
+  - **Degree-adaptive probabilistic relay.** In a sparse mesh (peer-degree below the
+    high-degree threshold **6**) every flooded packet is always relayed; in a dense mesh
+    each is relayed only with probability **0.5**, damping broadcast storms. The decision
+    rides an **injectable, seeded `RelayRng`** (`XorShiftRng`) so tests are deterministic.
+  - **Relay jitter 10–220 ms** before a rebroadcast, via an **injectable `RelayDelay`
+    trait** — `RealDelay` (sleeps the worker thread) in production, `NoDelay` (zero-cost)
+    in tests, so the suite never actually sleeps.
+  - **`relayed_ttl`** — the loop-free TTL hop cap (`min(ttl, 7)` then decrement, drop at
+    the floor); capping a hostile over-large TTL is what makes the flood provably
+    loop-free.
+  - A `RelayPolicy` bundles the RNG + delay + tunables; `production()` (real jitter, time
+    seed) vs `deterministic()` (zero sleep, fixed seed) — the harness/tests use the latter.
+- `crates/bitmesh-core/src/fragment.rs` — the **`fragment = 0x20`** split/reassemble path
+  (defined-but-unused for today's ~205-B `nimiqTx`, implemented for larger/future
+  payloads). Fragment header **8 B fragmentID + 2 B index + 2 B total + 1 B originalType**;
+  `fragment_message` splits a payload at the BLE chunk (~469 B), and a bounded
+  **`Reassembler`** (≤ **128** in-flight, oldest evicted; **30 s** lifetime via a
+  caller-supplied logical clock) rebuilds it. Reassembled messages are dispatched with
+  **TTL zeroed** (delivered locally, never re-flooded).
+- `crates/bitmesh-core/src/engine.rs` — wires the above into the worker:
+  - relays now run the **degree-adaptive decision → jitter → TTL hop cap → flood**;
+  - **source-link exclusion** — a relay never echoes a packet back out the peer it
+    arrived on (new `flood_excluding`; the inbound source peer is threaded from the radio
+    callback through `process_inbound`);
+  - the `fragment` type feeds the reassembler and dispatches the rebuilt message locally;
+  - `WorkerState` now carries the `RelayPolicy` + `Reassembler` (worker-thread-local, no
+    locks on the hot path). `txWire` stays **opaque** — no signing/broadcast (`// G3:` /
+    `// G8:` anchors kept).
+- `crates/bitmesh-core/src/node.rs` — new **`on_packet_received_from(peer, bytes)`** FFI
+  method so the shim can attribute the source link (the source-unaware
+  `on_packet_received` still works); the relay policy is injected at construction
+  (production default; harness injects deterministic).
+- `crates/bitmesh-core/src/mock_radio.rs` — the harness delivers with the source peer
+  attributed and builds nodes with the **deterministic** (zero-sleep) policy.
+- `crates/bitmesh-core/tests/relay_proptests.rs` — **property tests** (proptest):
+  **loop-freedom** (TTL relay strictly terminates within the hop cap from any start),
+  **dedup correctness** (a key is reported "fresh" at most once), **fragment round-trip**
+  (any payload reassembles byte-for-byte, in any order), and **adaptive relay reaches the
+  gateway** across a random connected sparse tree. Plus engine-level e2e tests for
+  source-link exclusion and fragmented-receipt reassembly-then-settle.
+- Local gate green: `cargo fmt --check`, `cargo clippy --all-targets --all-features
+  -- -D warnings`, `cargo test --all` (67 unit + 4 relay proptests + 5 wire proptests),
+  and `scripts/size-guard.sh`. Non-money-path; opaque bytes only.
+
 ## [0.3.0] — 2026-06-26
 
 ### Added — G5 (Rust core): BLE mesh node + `BleRadio` seam (ADR-0002)
