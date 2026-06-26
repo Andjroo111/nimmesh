@@ -87,7 +87,7 @@ Scaffold + mock harness + codec first (all CI-testable headless), then the money
 | G5  | BLE mesh transport — concurrent central+peripheral (iOS+Android) | no   |    yes     | G2, G4        | 🟡 Rust core done · native shim pending (Xcode/Apple ID) |
 | G6  | Relay engine — TTL/hop-cap + dedup + degree-adaptive + frag |     no     |    yes     | G4, G5        | ✅ done |
 | G7  | Store-and-forward — GCS gossip-sync catch-up               |     no     |    yes     | G6            | ✅ done |
-| G8  | Gateway broadcast node (TESTNET) — `sendRawTransaction`     |   **yes**  |   **no**   | G3, G7        | todo   |
+| G8  | Gateway broadcast node (TESTNET) — `sendRawTransaction`     |   **yes**  |   **no**   | G3, G7        | ✅ done + LIVE on-chain proof |
 | G9  | Head-beacon + validity-window guard + packet GC            |     no     |    yes     | G4, G8        | todo   |
 | G10 | Wallet + UI — keygen/import, address validation, pending→settled | **yes** |  **no**   | G3, G8        | todo   |
 | G11 | Optional encrypted memo / chat (Noise XX)                  |     no     |    yes     | G5, G6        | ✅ done |
@@ -147,6 +147,17 @@ verify agent); Andjroo reviews post-hoc on GitHub. Money-path goals still stop f
 
 _Resolved on merit (no longer pending): Rust toolchain installed on the Mini; BLE-layer
 architecture = thin native shim (ADR-0002); native build host = Mac Mini primary (ADR-0002)._
+
+## Milestone — LIVE testnet proof (2026-06-26)
+
+**A transfer signed by `bitmesh-core` settled on the real Nimiq Albatross testnet.**
+G3 signer → G8 `HttpGatewayRpc::send_raw_transaction` → confirmed in block **4428402**
+(networkId 5, 139-byte basic transfer, fee 0, `executionResult=true`, 248 confirmations).
+tx `9be04b74c02c277de2c77ae11e8f0069fb8387cb24c8d609cc6b1da9d0e5c570` —
+[explorer](https://nimiq-testnet.observer/transactions/9be04b74c02c277de2c77ae11e8f0069fb8387cb24c8d609cc6b1da9d0e5c570).
+Proves our byte-exact serializer produces transactions the live network accepts.
+(Honest caveat: the chain proves a valid tx settled; chain-data-alone can't attribute
+the signer — but our live example drives our core end-to-end for every money-critical step.)
 
 ## Cycle log
 
@@ -219,3 +230,10 @@ architecture = thin native shim (ADR-0002); native build host = Mac Mini primary
   (G8 owns that). **115 tests** (107 lib + 8 new across tx/address/signer + the fixture
   acceptance suite), fmt + clippy + size-guard green. Awaiting Andjroo's review/merge; the
   native enclave + Nimiq Pay SDK sign-but-don't-broadcast paths are verified on-device later.
+- **2026-06-26** — **G3 merged** (PR #22, Andjroo-authorized) → then **G8 merged** (PR #24,
+  v0.8.0): gateway broadcast (`rpc.rs` `GatewayRpc`/`HttpGatewayRpc` via `ureq` behind the
+  `gateway-rpc` feature + testnet guard; `RpcGateway` wired into the engine). **136 tests**,
+  hermetic. **LIVE on-chain proof:** our core signed a testnet transfer + our gateway
+  broadcast it → confirmed in block **4428402** (tx `9be04b74…d0e5c570`). #8 closed.
+  Building **G9** (head-beacon + validity-window GC) — the last non-money-path core goal.
+  After G9: only money-path (G10/G12/G13) + the **G5 native shim** (Apple ID, tonight w/ Andjroo).
