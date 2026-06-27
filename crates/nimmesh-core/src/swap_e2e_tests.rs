@@ -259,3 +259,55 @@ fn responder_cannot_claim_before_the_secret_is_revealed() {
     assert!(nim_leg.claim([0u8; 32], 100).is_err()); // but without the real secret, no claim
     assert_eq!(nim_leg.outcome(), LegOutcome::Funded);
 }
+
+#[test]
+fn a_swap_funding_proof_rides_the_multi_hop_mesh_blindly() {
+    // F4b: a swap message floods through a relay it has no direct interest in, and reaches the far
+    // node over the REAL engine flood/relay/store-forward path — carried as opaque blind-relayed
+    // bytes, exactly like a `nimiqTx`. Proves the swap rides the actual mesh, not just the model.
+    use crate::codec::encode;
+    use crate::mock_radio::MeshHarness;
+    use crate::packet::{MessageType, Packet, BROADCAST_RECIPIENT};
+    use crate::swap_wire::{encode_swap, SwapEnvelope, SwapLegId, HASH_LEN, SWAP_ID_LEN};
+    use crate::test_support::{wait_until, SETTLE};
+
+    let mut h = MeshHarness::new();
+    let relay = h.add_node("relay", &[2]);
+    let dest = h.add_node("dest", &[3]);
+    h.connect("relay", "dest"); // origin -> relay -> dest; the relay is just a blind hop
+
+    // A funding-proof carrying an opaque ~248 B signed HTLC funding tx blob.
+    let env = SwapEnvelope {
+        swap_id: [0xB2; SWAP_ID_LEN],
+        leg: Some(SwapLegId::Nim),
+        tx_wire: Some(vec![0x11; 248]),
+        tx_id: Some([0xCD; HASH_LEN]),
+        network_id: Some(5),
+        ..Default::default()
+    };
+    let mut packet = Packet::new(
+        MessageType::SwapFundingProof,
+        [9u8; 8],
+        encode_swap(&env).unwrap(),
+    );
+    packet.recipient_id = Some(BROADCAST_RECIPIENT); // flood
+    let bytes = encode(&packet).unwrap();
+
+    // It arrives at the relay from some upstream peer the relay isn't otherwise linked to.
+    relay.on_packet_received_from("origin".to_string(), bytes);
+
+    // The relay carries it onward (blind) AND stores it so G7 store-and-forward can serve it...
+    assert!(
+        wait_until(|| relay.forwarded_count() >= 1, SETTLE),
+        "relay did not forward the swap packet onward"
+    );
+    assert!(
+        relay.recent_stored() >= 1,
+        "relay did not store the swap packet for store-and-forward"
+    );
+    // ...and it reaches the far node over the multi-hop mesh.
+    assert!(
+        wait_until(|| dest.recent_stored() >= 1, SETTLE),
+        "the swap packet never reached the destination node"
+    );
+}

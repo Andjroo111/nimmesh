@@ -526,6 +526,23 @@ fn dispatch_packet(ctx: &WorkerCtx, packet: Packet, src: Option<&str>, st: &mut 
         }
         // G6: the fragment path — carry the fragment onward and feed the reassembler.
         MessageType::Fragment => handle_fragment(ctx, packet, src, st),
+        // F4b (mesh swap): the swap packets (`0x40`–`0x44`: propose / accept / funding-proof /
+        // preimage-reveal / abort) ride the mesh as **blind-relayed opaque bytes** — exactly the
+        // `nimiqTx` / `noiseEncrypted` path: blind dedup → remember (so G7 store-and-forward can
+        // serve a swap message to a peer that was out of range, and a rejoining party catches up)
+        // → degree-adaptive TTL relay. The relay **never parses** the swap (terms, addresses, and
+        // the signed funding/claim tx blobs stay opaque, core value #3); a *participant* node
+        // decodes only its own `swapId` off this stream (Phase-D, needs a running in-app node).
+        MessageType::SwapPropose
+        | MessageType::SwapAccept
+        | MessageType::SwapFundingProof
+        | MessageType::SwapPreimageReveal
+        | MessageType::SwapAbort => {
+            if st.relay_seen.insert(relay_key(&packet)) {
+                remember(ctx, st, &packet);
+                relay_onward(ctx, packet, src, st);
+            }
+        }
         // G11 `noiseEncrypted` (0x11) and any other relayable type: blind dedup + remember
         // + adaptive TTL relay. A `noiseEncrypted` blob is **opaque** to
         // the relay (transport-privacy) — only its two endpoints decrypt it via a Noise

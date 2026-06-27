@@ -39,7 +39,7 @@ and `main` is at a clean point — proposed to Andjroo, not taken by the loop.
 | **F1** | Nimiq **HTLC tx serialization** — extend the signer from `Basic` to: HTLC **creation** (Extended format), `regular-transfer` (claim-with-preimage) and `timeout-resolve` (refund) proofs; **byte-exact vs `@nimiq/core` 2.7.0** with committed fixtures (`nimiq/htlc.rs` + `scripts/fixtures` HTLC cases) | no (testnet) | F0 | 🟡 funding tx + redeem content byte-exact (6 tests green); resolve **proof** = next sub-cycle (core-rs-albatross gate) |
 | **F2** | Swap **wire messages + codec** — MessageType `0x40–0x44` + the swap TLV envelope; encode/decode + proptests (`swap_wire.rs`, extend `packet.rs`/`envelope.rs`) | no | — | ✅ done (11 tests; `SwapEnvelope` TLV codec + per-kind required-field enforcement) |
 | **F3** | Swap **state machine** — `swap.rs`: roles (initiator/responder), lifecycle (`Proposed→Accepted→Funded→Revealed→Settled` / `Aborted`/`Refunded`), **height-anchored clock-free timelock ladder** + the `Δ_safe` safety gate (refuse unsafe-offline) | no | F2 | ✅ done (9 tests; `assess_ladder` gate + refund exit in every funded phase) |
-| **F4** | **Mesh integration + mock-counterparty e2e** — engine glue to flood/relay/store-forward swap msgs over the existing mesh; the `SwapLeg` trait + `NimiqLeg` + a mock `BitcoinLeg`; `swap_e2e_tests.rs` proving the happy path **+ all 4 adversarial paths** (no one-sided settlement) | no | F1, F3 | 🟡 atomicity proof done (`SwapLeg` + `MockLeg` + 6 e2e, no one-sided settlement); engine flood-wiring = F4b |
+| **F4** | **Mesh integration + mock-counterparty e2e** — engine glue to flood/relay/store-forward swap msgs over the existing mesh; the `SwapLeg` trait + `NimiqLeg` + a mock `BitcoinLeg`; `swap_e2e_tests.rs` proving the happy path **+ all 4 adversarial paths** (no one-sided settlement) | no | F1, F3 | ✅ done — atomicity proof (`SwapLeg`+`MockLeg`+6 e2e, no one-sided settlement) **+ F4b** explicit engine dispatch (`0x40–0x44` blind-relayed) + multi-hop mesh e2e |
 | **F5** | **Real Bitcoin leg seam + stub** — the `BitcoinLeg` P2WSH-HTLC trait surface + a documented stub + a "what Andjroo must provide" note (BTC node, funds). Real signer/watcher = **gated** | stub: no · real: **yes** | F4 | todo |
 | **F6** | **Swap UI** (nimiq-ui, screenshot-verified) — propose/scan/fund/reveal/status sheets, "this swap is safe offline / not safe now" honesty line. Built against real nimiq-ui refs | no | F4 | todo |
 
@@ -134,3 +134,12 @@ and `main` is at a clean point — proposed to Andjroo, not taken by the loop.
   packets through the real engine flood/relay/store-forward) + **F5** (Bitcoin-leg stub; real BTC =
   gated). The mock proves the protocol independent of the on-chain byte format (a live testnet
   validates the NIM redeem proof).
+- **2026-06-27** — **F4b done: swap packets wired through the real engine.** Added an explicit
+  `dispatch_packet` arm for `SwapPropose/Accept/FundingProof/PreimageReveal/Abort` (`0x40–0x44`) →
+  the same blind dedup → `remember` (G7 store-and-forward) → degree-adaptive `relay_onward` path
+  as `nimiqTx`/`noiseEncrypted` (the relay never parses the swap — terms + tx blobs stay opaque,
+  core value #3). New e2e `a_swap_funding_proof_rides_the_multi_hop_mesh_blindly`: a funding-proof
+  fed to a relay is forwarded onward + stored for S&F + reaches the far node over origin→relay→dest.
+  **238 lib tests green**, fmt/clippy/size-guard clean (engine.rs 789/800). Participant-side delivery
+  (a node decoding its own `swapId` off this stream) is Phase-D (needs a running in-app node). Next:
+  **F5** (NimiqLeg funding via `nimiq::htlc` + a BitcoinLeg gated stub).
