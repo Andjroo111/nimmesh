@@ -48,7 +48,24 @@ contract address. Decoded:
 
 → F1 reuses the existing `serialize_content` with a parameterized `sender_type` byte.
 
-## HTLC resolve **proof** (built in Rust, gated by `@nimiq/core` `.verify()`)
+## ⚠️ Correction (feasibility test): `@nimiq/core` JS canNOT verify a redeem proof
+
+A feasibility test (`scripts/fixtures/feasibility-test.mjs`) proved:
+
+- **HTLC funding/creation tx → ACCEPTED ✅** by `@nimiq/core`'s own `verify(networkId)` (248 B,
+  real signature). The funding leg is concretely real.
+- **HTLC redeem (claim-with-preimage) → `@nimiq/core` JS cannot help.** It refuses to `sign()`
+  HTLC redemptions, `fromPlain` won't construct a proof without the `raw` bytes, and the WASM
+  deserializer rejects hand-built proofs. This is a deliberate JS-binding limitation, **not** a
+  protocol limitation (Albatross validators enforce HTLC redemption; the `PlainHtlc*Proof` types
+  exist precisely because the chain verifies them; Nimiq ships NIM↔BTC atomic swaps in its wallet).
+
+**→ F1 gate correction:** the redeem **proof** is verified against the authoritative
+**core-rs-albatross** Rust crate (or a **live Nimiq testnet broadcast** of a real HTLC redeem —
+the repo already has the G8 `live_testnet_broadcast` tool), **not** `@nimiq/core` JS. The funding
+tx + all `serializeContent` payloads stay byte-exact-gated against `@nimiq/core` (it handles those).
+
+## HTLC resolve **proof** (built in Rust, gated by core-rs-albatross / live testnet)
 
 From the `@nimiq/core` `PlainHtlc*Proof` field sets; exact variant discriminants + order to be
 confirmed in F1 via `.verify()` (the Albatross `htlc_contract.rs` proof encoding):
