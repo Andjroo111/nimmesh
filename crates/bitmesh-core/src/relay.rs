@@ -192,10 +192,21 @@ impl RelayPolicy {
     /// Below [`HIGH_DEGREE_THRESHOLD`] → always relay (sparse mesh, reachability first).
     /// At/above it → relay only with [`RELAY_PROBABILITY`] (dense mesh fanout damping).
     pub fn should_relay(&mut self, degree: usize) -> bool {
-        if degree < self.threshold {
-            return true;
-        }
-        self.rng.bernoulli(self.probability)
+        self.should_relay_throttled(degree, 1.0)
+    }
+
+    /// Like [`should_relay`](Self::should_relay) but scales the relay probability by a
+    /// battery-aware `factor` in `[0, 1]` (G20). `factor = 1.0` reproduces `should_relay`
+    /// exactly — a sparse-mesh draw of `bernoulli(1.0)` short-circuits to `true` without
+    /// touching the RNG, so existing (deterministic) behaviour is unchanged. A lower factor
+    /// damps the fanout (a low-battery "good citizen" relays less); `0.0` never relays.
+    pub fn should_relay_throttled(&mut self, degree: usize, factor: f64) -> bool {
+        let base = if degree < self.threshold {
+            1.0
+        } else {
+            self.probability
+        };
+        self.rng.bernoulli((base * factor).clamp(0.0, 1.0))
     }
 
     /// Draw the next relay jitter delay (does not sleep).
@@ -287,6 +298,25 @@ mod tests {
         assert!(!drops.should_relay(HIGH_DEGREE_THRESHOLD));
         // …but even the "always drop" RNG still relays in a sparse mesh.
         assert!(drops.should_relay(HIGH_DEGREE_THRESHOLD - 1));
+    }
+
+    #[test]
+    fn throttle_factor_scales_the_relay_decision() {
+        // factor 0.0 → never relay, even in a sparse mesh (a critical-battery node).
+        let mut off = RelayPolicy::custom(Box::new(ConstRng(0)), Box::new(NoDelay));
+        assert!(!off.should_relay_throttled(0, 0.0));
+        assert!(!off.should_relay_throttled(HIGH_DEGREE_THRESHOLD, 0.0));
+
+        // factor 1.0 reproduces should_relay exactly: sparse always relays without an RNG draw.
+        let mut full = RelayPolicy::custom(Box::new(ConstRng(u64::MAX)), Box::new(NoDelay));
+        assert!(full.should_relay_throttled(0, 1.0));
+
+        // A reduced factor in a sparse mesh becomes a real probability roll: a draw of 0 is
+        // below 1.0 * 0.5 → relay; a max draw is above → drop.
+        let mut relays = RelayPolicy::custom(Box::new(ConstRng(0)), Box::new(NoDelay));
+        assert!(relays.should_relay_throttled(0, 0.5));
+        let mut drops = RelayPolicy::custom(Box::new(ConstRng(u64::MAX)), Box::new(NoDelay));
+        assert!(!drops.should_relay_throttled(0, 0.5));
     }
 
     #[test]

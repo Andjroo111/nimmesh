@@ -132,7 +132,7 @@ Rust-core logic (cargo-tested) + web UI (screenshot-verified). None handle keys 
 | G17 | Settlement closure both ways (receipt → "landed" for sender + receiver) | no | yes | A3 | todo |
 | G18 | Contacts + amount requests (request packet carries no keys)  | no | yes | A3 | todo |
 | G19 | Backup nudge (self-custody protection)                       | no | yes | A2 | ✅ done |
-| G20 | Good-citizen + battery-aware relay (stats + throttle)        | no | yes | G6 | todo |
+| G20 | Good-citizen + battery-aware relay (stats + throttle)        | no | yes | G6 | ✅ done |
 
 ### Phase C — money path & hardening (GATED: PR-only, `needs:owner`)
 
@@ -376,3 +376,21 @@ the signer — but our live example drives our core end-to-end for every money-c
   tiers screenshot-verified at 390px. **Honest scope:** no keys/balance in-app yet (C1 + Phase D), so
   the in-app nudge reads the displayed balance for now; the same call drives it for real once data lands.
   Next: **G20** (good-citizen + battery-aware relay).
+- **2026-06-27** — **G20 done** (#31, v0.13.0, non-money-path → auto-merge): good-citizen +
+  battery-aware relay. The mesh is its users, so participation must be visible **and** never cost the
+  user. New `citizen.rs` = the battery-derived `RelayPosture` (`Full → Reduced → Frugal → Off`:
+  charging is always Full; on battery it steps down — ≥50 % Full, ≥20 % half-fanout Reduced, ≥10 %
+  payment-critical-only Frugal, else Off = relay nothing for others, your own send/receive still work)
+  + the "you helped N payments" good-citizen counter; lock-free atomics **defaulting to full
+  participation** (no behaviour change for a node that never reports a battery). `relay.rs`
+  `should_relay_throttled(degree, factor)` (factor 1.0 is byte-identical to the old path);
+  `engine.rs` `relay_onward` now gates through `citizen::relay_allowed` + counts helped payments;
+  node FFI `set_battery` + `relay_stats`. **176 tests** (11 new incl. 2 e2e mesh round-trips:
+  critical-battery relays nothing / charging relays + counts), clippy/fmt/size-guard clean (engine.rs
+  trimmed 799→796 for headroom), iOS BUILD SUCCEEDED (new UniFFI records/enum compile). **Honest
+  scope / Phase D handoff:** the live "you helped N" UI line + the battery wiring need a running in-app
+  `MeshNode` + the device battery API (native shim) — the FFI is ready; the shim calls
+  `set_battery` from `UIDevice`/`BatteryManager` and surfaces `relay_stats`. ⏸️ **Phase B autonomous
+  goals G19+G20 shipped.** Remaining Phase B (G16 reachability/smart-queue, G17 settlement-closure,
+  G18 contacts/requests) are still autonomous-safe; G15's UI stamp + G20's UI line + battery wiring
+  are batched for Phase D. Phase C (money path) / D (native shim) / E (vision) remain Andjroo-gated.

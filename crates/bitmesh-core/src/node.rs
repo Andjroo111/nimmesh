@@ -25,6 +25,7 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use crate::balance::{flood_local_balance_query, CachedBalance};
+use crate::citizen::{relay_stats, RelayStats};
 use crate::engine::{
     emit_head_beacon, emit_request_sync, flood_local_tx, maintenance_tick, process_inbound,
     PaymentStatus, WorkerCtx, WorkerState,
@@ -275,6 +276,23 @@ impl MeshNode {
     pub fn cached_balance(&self, address: String) -> Option<CachedBalance> {
         let addr = Address::from_user_friendly(&address).ok()?;
         self.ctx.cached_balance(&addr)
+    }
+
+    /// G20: report this device's battery so the relay can be a **good citizen without
+    /// costing the user**. The native shim calls this on battery changes (iOS `UIDevice`,
+    /// Android `BatteryManager`): the relay then carries everything while charging / high,
+    /// damps its fanout when mid, carries only payment-critical traffic when low, and stops
+    /// relaying for others when critical — the user's own send/receive always work. `level_pct`
+    /// is clamped to 0..=100. **Non-blocking** (writes shared state the worker reads); no keys.
+    pub fn set_battery(&self, level_pct: u8, charging: bool) {
+        self.ctx.citizen.set_battery(level_pct, charging);
+    }
+
+    /// G20: the good-citizen relay stats for the UI — "you helped N payments reach the
+    /// network" (`payments_relayed`), total packets carried, and the current battery-derived
+    /// `posture`. Read-only; counts only what this node rebroadcast for others. Non-blocking.
+    pub fn relay_stats(&self) -> RelayStats {
+        relay_stats(&self.ctx)
     }
 
     /// G9: build a [`crate::nimiq::TransferIntent`] anchored to the freshest cached head

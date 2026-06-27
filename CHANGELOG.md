@@ -2,6 +2,36 @@
 
 All notable changes to nimiq.bitmesh. Each PR bumps the version and adds an entry.
 
+## [0.13.0] — 2026-06-27
+
+### Added — G20: good-citizen + battery-aware relay — non-money-path
+
+The mesh *is* its users: a payment reaches the internet only because someone nearby relayed it.
+G20 makes that participation visible and respectful of the user's battery.
+
+- `crates/bitmesh-core/src/citizen.rs` (new): the battery-derived `RelayPosture`
+  (`Full → Reduced → Frugal → Off`) and the good-citizen counter. `relay_posture(level, charging)`:
+  **charging always means `Full`** (be the best citizen while plugged in); on battery it steps down —
+  `Full` ≥ 50 %, `Reduced` ≥ 20 % (half fanout), `Frugal` ≥ 10 % (payment-critical traffic only),
+  else `Off` (relay nothing for others — the user's own send/receive still work). `CitizenState` is
+  lock-free atomics that **default to full participation** (100 %, charging) so a node that never
+  reports a battery behaves exactly as pre-G20. `BatteryState` + `RelayStats` are FFI records.
+- `relay.rs`: `should_relay_throttled(degree, factor)` scales the degree-adaptive probability by a
+  battery factor; `should_relay` delegates with `factor = 1.0` (a sparse-mesh `bernoulli(1.0)`
+  short-circuits without an RNG draw → existing deterministic behaviour byte-identical).
+- `engine.rs`: `relay_onward` now passes through `citizen::relay_allowed` (posture carries this packet
+  type **and** wins the battery-damped roll) and bumps the "payments helped" counter on a relayed `nimiqTx`.
+- `node.rs` (FFI): `set_battery(level_pct, charging)` (the native shim reports `UIDevice`/`BatteryManager`)
+  + `relay_stats() -> RelayStats` ("you helped N payments reach the network" + total + current posture).
+
+**Honest scope:** the live "you helped N" UI line + the battery wiring need a running in-app `MeshNode`
++ the device battery API = the **native shim (Phase D)**; the FFI is ready. The Rust core is the audited
+deliverable. Tests cover posture thresholds, type filtering, factor scaling, the helped-payment counter,
+and two e2e mesh round-trips (a critical-battery node relays nothing; a charging node relays + counts it).
+
+176 tests green (cargo), `cargo clippy -D warnings` + `cargo fmt --check` + size-guard clean, iOS
+`xcodebuild` BUILD SUCCEEDED against the regenerated xcframework (new UniFFI records/enum compile).
+
 ## [0.12.0] — 2026-06-27
 
 ### Added — G19: backup nudge (self-custody protection) — non-money-path

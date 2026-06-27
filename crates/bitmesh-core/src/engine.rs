@@ -34,6 +34,7 @@ use crate::balance::{BalanceCache, BalanceResponse, CachedBalance};
 use crate::beacon::{
     decode_beacon, encode_beacon, is_expired, BeaconScheduler, HeadBeacon, HeadCache,
 };
+use crate::citizen::CitizenState;
 use crate::codec::{decode, encode};
 use crate::dedup::DedupCache;
 use crate::envelope::{decode_envelope, encode_envelope, NimiqEnvelope};
@@ -129,8 +130,11 @@ pub struct WorkerCtx {
     /// Monotonic per-node sequence used as the packet `timestamp_ms` so each flooded
     /// packet has a unique blind [`RelayKey`] (the mock's deterministic clock).
     seq: AtomicU64,
-    /// Observability counters (test + future telemetry hooks).
-    forwarded: AtomicUsize,
+    /// G20: good-citizen + battery-aware relay state — relay posture (from the device
+    /// battery) plus the "payments helped" counter; [`crate::citizen::relay_allowed`] reads it.
+    pub(crate) citizen: CitizenState,
+    /// Observability counters; `forwarded` is also the G20 "packets relayed" stat (crate-visible).
+    pub(crate) forwarded: AtomicUsize,
     send_attempts: AtomicUsize,
     send_ok: AtomicUsize,
     send_fail: AtomicUsize,
@@ -165,6 +169,7 @@ impl WorkerCtx {
             head: Mutex::new(HeadCache::default()),
             balances: Mutex::new(BalanceCache::new()),
             seq: AtomicU64::new(1),
+            citizen: CitizenState::new(),
             forwarded: AtomicUsize::new(0),
             send_attempts: AtomicUsize::new(0),
             send_ok: AtomicUsize::new(0),
@@ -193,7 +198,7 @@ impl WorkerCtx {
 
     /// This node's current peer degree, the input to the degree-adaptive relay decision
     /// ([`RelayPolicy::should_relay`]).
-    fn peer_degree(&self) -> usize {
+    pub(crate) fn peer_degree(&self) -> usize {
         self.peers.lock().unwrap().len()
     }
 
@@ -375,7 +380,7 @@ impl WorkerCtx {
 pub(crate) struct WorkerState {
     pub(crate) relay_seen: DedupCache<RelayKey>,
     gateway_seen: DedupCache<TxId>,
-    policy: RelayPolicy,
+    pub(crate) policy: RelayPolicy,
     reassembler: Reassembler,
     /// G7: the bounded recent-packet cache served by GCS gossip-sync.
     recent: RecentCache,
@@ -733,7 +738,9 @@ pub(crate) fn relay_onward(
     src: Option<&str>,
     st: &mut WorkerState,
 ) {
-    if !st.policy.should_relay(ctx.peer_degree()) {
+    // G20: the battery-aware good-citizen gate — the posture must carry this packet type +
+    // win the (battery-damped) degree roll; a critical battery relays nothing for others.
+    if !crate::citizen::relay_allowed(ctx, packet.msg_type, st) {
         return;
     }
     let Some(ttl) = relayed_ttl(packet.ttl) else {
@@ -743,6 +750,7 @@ pub(crate) fn relay_onward(
     st.policy.apply_jitter();
     if let Ok(bytes) = encode(&packet) {
         ctx.forwarded.fetch_add(1, Ordering::Relaxed);
+        ctx.citizen.note_relay(packet.msg_type); // G20: count a payment we helped carry
         ctx.flood_excluding(bytes, src);
     }
 }

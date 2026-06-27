@@ -97,6 +97,15 @@ pub mod beacon;
 // head-beacon hash (follow-up). Read-only public state — no keys, no signing (non-money-path).
 pub mod balance;
 
+// G20: good-citizen + battery-aware relay (non-money-path). `citizen` owns the relay
+// `RelayPosture` derived from the device battery (Full → Reduced → Frugal → Off: relay
+// everything while charging/high, damp when mid, carry only the money path when low, stop
+// when critical — being a good citizen never costs the user) and the "you helped N payments
+// reach the network" good-citizen counter. The `engine` relay gate consults it; the node
+// FFI exposes `set_battery` + `relay_stats`. Reads only the battery + the packet's public
+// type, decides whether/how much to rebroadcast opaque bytes — no keys, no payload reads.
+pub mod citizen;
+
 // G19: the backup-nudge policy (self-custody protection, non-money-path). `backup` owns a
 // pure, clock-free, key-free decision — given the account's public state (backed-up?,
 // balance, days unprotected) it returns a `BackupUrgency` (None → Gentle → Important →

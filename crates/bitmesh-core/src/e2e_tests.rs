@@ -16,6 +16,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::citizen::RelayPosture;
 use crate::default_network;
 use crate::engine::PaymentStatus;
 use crate::fragment::fragment_message;
@@ -155,6 +156,60 @@ fn gateway_with_no_balance_answers_nothing() {
     std::thread::sleep(Duration::from_millis(80));
     assert_eq!(gateway.balance_answered(), 0);
     assert!(origin.test_cached_balance(&addr).is_none());
+    h.shutdown();
+}
+
+// --- G20: good-citizen + battery-aware relay -----------------------------------
+
+#[test]
+fn a_critical_battery_node_relays_nothing_for_others() {
+    // origin <-> relay <-> gw; the relay is on a critical battery (5%, unplugged) → posture
+    // Off. Being a good citizen must never cost the user, so it carries nothing for others:
+    // the payment can't reach the gateway and stays Pending (honest, unconfirmed-until-inclusion).
+    let mut h = MeshHarness::new();
+    let gw = Arc::new(MockGateway::new(default_network()));
+    let origin = h.add_node("origin", &[1]);
+    let relay = h.add_node("relay", &[2]);
+    let _gateway = h.add_gateway("gw", &[3], gw.clone());
+    h.connect("origin", "relay");
+    h.connect("relay", "gw");
+
+    relay.set_battery(5, false); // 5% on battery → RelayPosture::Off
+
+    let tx_id = origin.submit_local_tx(b"tx".to_vec());
+    assert_eq!(origin.wait_payment(&tx_id, SETTLE), PaymentStatus::Pending);
+    assert_eq!(gw.submission_count(), 0);
+    assert_eq!(relay.forwarded_count(), 0);
+    assert_eq!(relay.relay_stats().payments_relayed, 0);
+    assert!(matches!(relay.relay_stats().posture, RelayPosture::Off));
+
+    h.shutdown();
+}
+
+#[test]
+fn a_charging_node_relays_and_counts_helped_payments() {
+    // Same line, but the relay is plugged in (15% but charging) → posture Full. It carries
+    // the payment to the gateway, settles the origin, and counts itself a good citizen.
+    let mut h = MeshHarness::new();
+    let gw = Arc::new(MockGateway::new(default_network()));
+    let origin = h.add_node("origin", &[1]);
+    let relay = h.add_node("relay", &[2]);
+    let _gateway = h.add_gateway("gw", &[3], gw.clone());
+    h.connect("origin", "relay");
+    h.connect("relay", "gw");
+
+    relay.set_battery(15, true); // low %, but charging → full participation
+
+    let tx_id = origin.submit_local_tx(b"tx".to_vec());
+    assert_eq!(origin.wait_payment(&tx_id, SETTLE), PaymentStatus::Settled);
+    let stats = relay.relay_stats();
+    assert!(
+        stats.payments_relayed >= 1,
+        "the carried payment should be counted"
+    );
+    assert!(stats.packets_relayed >= 1);
+    assert!(matches!(stats.posture, RelayPosture::Full));
+
     h.shutdown();
 }
 
