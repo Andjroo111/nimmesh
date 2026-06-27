@@ -199,6 +199,18 @@ pub enum BtcError {
     Sighash,
 }
 
+impl std::fmt::Display for BtcError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BtcError::BadKey => write!(f, "invalid secp256k1 secret key"),
+            BtcError::BadLocktime => write!(f, "CLTV locktime does not fit a u32"),
+            BtcError::Sighash => write!(f, "could not compute the BIP143 sighash"),
+        }
+    }
+}
+
+impl std::error::Error for BtcError {}
+
 #[cfg(test)]
 mod tests {
     use super::*;

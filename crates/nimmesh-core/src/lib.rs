@@ -70,6 +70,11 @@ pub mod swap_builder;
 #[cfg(feature = "bitcoin-leg")]
 pub mod btc;
 
+/// Re-export of `rust-bitcoin` (behind `bitcoin-leg`) so tools/examples can build keys, addresses,
+/// and txids without a separate dependency declaration.
+#[cfg(feature = "bitcoin-leg")]
+pub use bitcoin;
+
 // Mesh swap (B2): the BTC gateway — broadcast + confirmation over a public signet indexer
 // (mempool.space), behind the `bitcoin-gateway` feature (adds `ureq`/`serde_json`). The one online
 // hop for the BTC leg; signet-only (mainnet base refused). See docs/swap/BTC-LEG.md.

@@ -30,6 +30,12 @@ required-features = ["gateway-rpc"]
 name = "live_testnet_htlc_swap"
 required-features = ["gateway-rpc"]
 
+# Mesh swap B3: the live signet BTC HTLC proof (fund P2WSH -> claim-with-preimage). Needs a one-time
+# signet faucet tap (captcha) to fund the printed address; then it completes automatically.
+[[example]]
+name = "live_signet_btc_htlc"
+required-features = ["bitcoin-gateway"]
+
 [features]
 # G8: the real blocking HTTP JSON-RPC gateway client (`ureq` + `serde_json`) + the
 # keypair-entropy source for the live example. OFF by default so the pure-protocol core
@@ -45,7 +51,7 @@ bitcoin-leg = ["dep:bitcoin"]
 # B2: the BTC gateway — broadcast + confirmation queries against a public signet indexer
 # (mempool.space/signet/api). Reuses the blocking `ureq` HTTP client + `serde_json` (same deps as
 # `gateway-rpc`). The on-device tx-building (`bitcoin-leg`) needs no HTTP; only a gateway node does.
-bitcoin-gateway = ["bitcoin-leg", "dep:ureq", "dep:serde_json"]
+bitcoin-gateway = ["bitcoin-leg", "dep:ureq", "dep:serde_json", "dep:getrandom"]
 
 # Pure proc-macro mode (uniffi::setup_scaffolding!) — no UDL file, no build.rs.
 [dependencies]
