@@ -1,0 +1,49 @@
+<!-- Nimiq QR code — self-contained: loads qr-creator (pinned 1.0.0) and renders
+     itself with the Nimiq default fill. Safe to embed among other snippets:
+     scoped via document.currentScript (no global queries, no load-event dependency). -->
+<canvas class="qr-code"
+        data-qr="nimiq:NQ07000000000000000000000000000000000000"
+        data-size="240"></canvas>
+<script src="https://cdn.jsdelivr.net/npm/qr-creator@1.0.0/dist/qr-creator.min.js"></script>
+<script>
+(() => {
+    // Scope to THIS snippet's canvas: walk back from the current script tag.
+    let el = document.currentScript;
+    while (el && !(el.matches && el.matches('canvas.qr-code[data-qr]'))) {
+        el = el.previousElementSibling;
+    }
+    const canvas = el;
+    if (!canvas) return;
+
+    // Nimiq default fill: radial gradient centered in the bottom-right corner
+    // with a radius the size of the QR code diagonal (nimiq-light-blue-bg).
+    const NIMIQ_FILL = {
+        type: 'radial-gradient',
+        position: [1, 1, 0, 1, 1, Math.sqrt(2)],
+        colorStops: [
+            [0, '#265DD7'],
+            [1, '#0582CA'], // nimiq-light-blue
+        ],
+    };
+
+    let tries = 0;
+    (function render() {
+        // Don't depend on window 'load' (may already have fired when embedded);
+        // poll briefly in case the qr-creator script tag was deferred/reordered.
+        if (typeof QrCreator === 'undefined') {
+            if (tries++ < 200) setTimeout(render, 25);
+            return;
+        }
+        if (canvas.dataset.qrRendered) return;
+        canvas.dataset.qrRendered = 'true';
+        QrCreator.render({
+            text: canvas.dataset.qr,
+            radius: 0.5,
+            ecLevel: 'M',
+            fill: NIMIQ_FILL,
+            background: null, // transparent
+            size: Number(canvas.dataset.size || 240),
+        }, canvas);
+    })();
+})();
+</script>

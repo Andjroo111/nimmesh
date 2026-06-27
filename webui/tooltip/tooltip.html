@@ -1,0 +1,14 @@
+<!-- Nimiq Tooltip (shown above an info-circle trigger, "top right" position).
+     Include tooltip.css. The box is absolutely positioned relative to .tooltip:
+       left = triggerWidth/2 - 25px (here 18/2 - 25 = -16px)
+       top  = -boxHeight           (here -66px for two lines at width 25rem)
+     Remove the "shown" class (and optionally the .tooltip-box element) to hide it.
+     Other placements: change the position-* class and recompute top/left per tooltip.css notes. -->
+<span class="tooltip position-top-right shown">
+    <a href="javascript:void(0);" tabindex="0" class="trigger">
+        <svg class="nq-icon" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="7.83301" x2="8" y2="11.333" stroke="currentColor" fill="none" stroke-linecap="round"/><circle cx="8" cy="4.75" r="0.5" fill="currentColor" stroke="currentColor" stroke-width="0.5"/><circle cx="8" cy="8" r="7.5" stroke="currentColor" fill="none"/></svg>
+    </a>
+    <div class="tooltip-box" style="top: -66px; left: -16px; width: 25rem;">
+        Transactions are free on Nimiq.
+    </div>
+</span>

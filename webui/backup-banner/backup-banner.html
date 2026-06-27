@@ -1,0 +1,13 @@
+<!-- Backup Banner — requires backup-banner.css + the legacy framework
+     (nimiq-style.min.css: html{font-size:8px}, .nq-orange, .nq-orange-bg,
+     .nq-button-pill, .nq-button-s, --nimiq-ease).
+     Variants:
+       .words  -> add classes "words nq-orange"   + button.nq-button-pill.orange
+                  (orange text on white, subtle inset border — recovery words not backed up)
+       .file   -> add classes "file nq-orange-bg" + button.nq-button-s.inverse
+                  (solid orange gradient, white text — login file not saved) -->
+
+<div class="backup-banner words nq-orange">
+  <span class="alert-text"><svg class="alert-icon" width="17" height="16" viewBox="0 0 17 16" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M15.913 13.333L9.68 1.433a1.333 1.333 0 0 0-2.362 0l-6.232 11.9a1.333 1.333 0 0 0 1.182 1.952H14.73a1.333 1.333 0 0 0 1.182-1.952zm-8.08-7.718a.667.667 0 0 1 1.334 0v4a.667.667 0 1 1-1.334 0v-4zm.682 7.674h.018a.983.983 0 0 0 .967-1.022 1.018 1.018 0 0 0-1.016-.978h-.019a.984.984 0 0 0-.965 1.02c.02.546.468.978 1.015.98z" fill="currentColor"/></svg> There is no &lsquo;forgot password&rsquo;</span>
+  <button class="nq-button-pill orange">Backup<svg class="nq-icon" width="16" height="12" viewBox="0 0 16 12" xmlns="http://www.w3.org/2000/svg"><path d="M10,1l5,5l-5,5" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="14" y1="6" x2="1" y2="6" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+</div>

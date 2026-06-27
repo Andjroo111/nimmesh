@@ -1,0 +1,343 @@
+/* Nimiq Account Header (wallet AddressOverview header)
+   Requires the legacy nimiq-style CSS (html{font-size:8px}, --nimiq-* vars,
+   .nq-button-pill / .nq-button-s / .nq-icon) + Mulish & Fira Mono fonts.
+   Composition of: AddressOverview.vue (.active-address + .actions),
+   SearchBar.vue, StakingButton.vue (+ green CTA tooltip), StakingIcon.vue,
+   vue-components Tooltip.vue (bottom subset).
+   All selectors namespaced under .account-header. */
+
+.account-header {
+    /* wallet themes.scss defaults */
+    --bg-primary: var(--nimiq-white);
+    --text-16: rgba(31, 35, 72, 0.16);
+    --text-22: rgba(31, 35, 72, 0.22);
+    --light-blue-40: rgba(5, 130, 202, 0.4);
+    --body-size: 2rem;
+    --h1-size: 3rem;
+    --large-button-size: 2rem;
+    --attr-duration: 300ms;
+    /* AddressOverview.vue layout vars (default: 1440px) */
+    --padding: 4rem;
+    --padding-bottom: 6rem;
+
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    background: var(--bg-primary);
+    color: var(--nimiq-blue);
+    font-family: 'Mulish', sans-serif;
+    /* composition chrome: room for the staking CTA tooltip (overlays the
+       transaction list in the wallet) */
+    padding-bottom: 9rem;
+}
+
+/* wallet global utilities */
+.account-header .flex-row { display: flex; flex-direction: row; }
+.account-header .ml-auto { margin-left: auto; }
+
+/* ---- active address row ---- */
+.account-header .active-address {
+    flex-shrink: 0;
+    align-items: center;
+    padding: calc(var(--padding) + 2rem);
+    padding-right: calc(var(--padding) + 4rem);
+    padding-bottom: var(--padding-bottom);
+}
+
+.account-header .active-address .identicon-wrapper {
+    position: relative;
+    margin-right: 4rem;
+}
+
+.account-header .active-address .identicon {
+    height: 11.25rem;
+    width: 11.25rem;
+    margin: -0.625rem 0; /* size identicon to be 90x80 px */
+    flex-shrink: 0;
+}
+.account-header .identicon img { width: 100%; height: 100%; }
+
+.account-header .active-address .meta {
+    flex-grow: 1;
+    min-width: 0;
+}
+.account-header .active-address .meta .flex-row { align-items: center; }
+
+.account-header .active-address .address,
+.account-header .active-address .label {
+    flex-grow: 1;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.account-header .active-address .label,
+.account-header .active-address .amount {
+    --size: var(--h1-size);
+    font-size: var(--size);
+    margin-top: 0.25rem;
+}
+
+.account-header .active-address .address,
+.account-header .active-address .fiat-amount {
+    --size: var(--body-size);
+    font-size: var(--size);
+    opacity: 0.5;
+}
+
+.account-header .active-address .label {
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+    margin-right: 3rem;
+    mask: linear-gradient(90deg, white, white calc(100% - 3rem), rgba(255,255,255, 0));
+}
+
+.account-header .active-address .address {
+    word-spacing: -0.2em;
+    font-family: 'Fira Mono', monospace;
+    transition: opacity .3s var(--nimiq-ease);
+}
+
+.account-header .active-address .copyable {
+    padding: 0.5rem 1rem;
+    margin-left: -1rem;
+    min-width: 0;
+    margin-right: 3rem;
+}
+
+.account-header .active-address .fiat-amount { margin-left: auto; }
+
+.account-header .active-address .amount,
+.account-header .active-address .fiat-amount { flex-shrink: 0; }
+
+.account-header .active-address .amount {
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+    white-space: nowrap;
+}
+
+.account-header .active-address .fiat-amount {
+    font-weight: 600;
+    line-height: 1;
+}
+
+/* ---- actions row ---- */
+.account-header .actions {
+    position: relative;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin: 0 var(--padding) 2rem;
+    padding: 0 3rem 0 2rem;
+}
+.account-header .actions button { flex-shrink: 0; }
+.account-header .actions .nq-button-pill { white-space: nowrap; }
+
+.account-header .actions .vertical-separator {
+    background: rgba(31, 35, 72, 0.15);
+    border-radius: 2rem;
+    width: 1.5px;
+    height: 3rem;
+    margin: 0.625rem .5rem 0.625rem 2rem;
+}
+
+.account-header .send,
+.account-header .receive {
+    margin: 0 0.5rem;
+    align-items: center;
+    padding: 1.125rem 2rem;
+    height: unset;
+    line-height: 1;
+    border-radius: 500px;
+    font-size: var(--large-button-size);
+}
+.account-header .send .nq-icon,
+.account-header .receive .nq-icon {
+    width: 1.5rem;
+    height: 1.5rem;
+    margin-right: 1rem;
+}
+.account-header .send { margin-left: 1.5rem; }
+.account-header .send .nq-icon { transform: rotateZ(-90deg); }
+.account-header .receive { margin-right: 0; }
+.account-header .receive .nq-icon { transform: rotateZ(90deg); }
+
+/* ---- search bar ---- */
+.account-header .actions .container {
+    width: 100%;
+    min-width: 5.5rem;
+}
+.account-header .search-bar {
+    --default-sb-width: clamp(5.5rem, 100%, 30rem);
+    position: relative;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    width: 100%;
+    cursor: text;
+    padding: 0.75rem 0;
+    min-width: var(--default-sb-width);
+    max-width: var(--default-sb-width);
+}
+.account-header .search-bar::after {
+    content: '';
+    position: absolute;
+    top: 0; right: 0; bottom: 0; left: 0;
+    box-shadow: inset 0 0 0 0.1875rem var(--text-16);
+    border-radius: 500px;
+    transition: box-shadow var(--attr-duration) var(--nimiq-ease);
+}
+.account-header .search-bar:hover::after {
+    box-shadow: inset 0 0 0 0.1875rem var(--text-22);
+}
+.account-header .search-bar:focus-within { color: var(--nimiq-light-blue); }
+.account-header .search-bar:focus-within > svg { opacity: 1; }
+.account-header .search-bar:focus-within::after {
+    box-shadow: inset 0 0 0 0.1875rem var(--light-blue-40);
+}
+.account-header .search-bar > svg {
+    flex-grow: 0;
+    margin-left: 1.75rem;
+    margin-right: 1rem;
+    flex-shrink: 0;
+    opacity: 0.4;
+    width: 1.75rem;
+    height: 1.75rem;
+    transition: opacity var(--attr-duration) var(--nimiq-ease);
+}
+.account-header .search-bar input {
+    font-family: inherit;
+    font-weight: 600;
+    color: inherit;
+    flex-grow: 1;
+    border: 0;
+    line-height: 2.75rem;
+    font-size: var(--body-size);
+    margin: 0;
+    padding: 0;
+    padding-right: 4rem;
+    background: none;
+    min-width: 0;
+}
+.account-header .search-bar input:focus { outline: none; }
+.account-header .search-bar input::placeholder {
+    font-weight: normal;
+    color: inherit;
+    opacity: 0.4;
+}
+
+/* ---- staking button + green CTA tooltip ---- */
+.account-header .staking-button {
+    position: relative;
+    height: 6.75rem;
+    margin: -1.25rem 0;
+}
+.account-header .staking-button svg { font-size: 6.75rem; }
+.account-header .staking-button.show-text {
+    display: flex;
+    align-items: center;
+}
+.account-header .stake {
+    display: block;
+    background-color: transparent;
+    border: 0;
+    cursor: pointer;
+    padding: 0;
+}
+.account-header .show-text .stake {
+    display: flex;
+    align-items: center;
+    height: 4.25rem;
+    border-radius: 20rem;
+    padding-right: 1.875rem;
+    justify-content: center;
+}
+.account-header .show-text .stake .staking-icon {
+    margin-right: -1rem;
+    margin-left: -.5rem;
+}
+
+.account-header .staking-icon { font-size: 0; }
+.account-header .staking-icon path:nth-child(1),
+.account-header .staking-icon path:nth-child(2),
+.account-header .staking-icon path:nth-child(4) { opacity: 0; }
+
+/* tooltip base (bottom-position subset of vue-components Tooltip) */
+.account-header .tooltip {
+    display: inline-block;
+    position: relative;
+    line-height: 1;
+}
+.account-header .tooltip .trigger {
+    position: relative;
+    display: inline-block;
+    vertical-align: bottom;
+    text-decoration: none;
+    outline: none;
+    cursor: default;
+    color: inherit;
+}
+.account-header .tooltip .trigger::after {
+    opacity: 0;
+    content: '';
+    display: block;
+    position: absolute;
+    width: 2.25rem;
+    height: 2rem;
+    left: calc(50% - 1.125rem);
+    mask-image: url('data:image/svg+xml,<svg viewBox="0 0 18 16" xmlns="http://www.w3.org/2000/svg"><path d="M9 7.12c-.47 0-.93.2-1.23.64L3.2 14.29A4 4 0 0 1 0 16h18a4 4 0 0 1-3.2-1.7l-4.57-6.54c-.3-.43-.76-.64-1.23-.64z" fill="white"/></svg>');
+    transition: opacity .3s var(--nimiq-ease), .3s visibility;
+    transition-delay: 16ms;
+    visibility: hidden;
+    z-index: 1000;
+}
+.account-header .tooltip[class*='position-bottom'] .trigger::after {
+    top: 100%;
+    background: var(--background, var(--nimiq-blue));
+}
+.account-header .tooltip.shown .trigger::after {
+    opacity: 1;
+    visibility: visible;
+}
+.account-header .tooltip .tooltip-box {
+    contain: layout paint style;
+    position: absolute;
+    color: white;
+    background: var(--background, var(--nimiq-blue-bg));
+    padding: 1.5rem;
+    border-radius: .5rem;
+    font-size: 1.75rem;
+    line-height: 1.5;
+    font-weight: 600;
+    box-shadow: 0 1.125rem 2.275rem rgba(0, 0, 0, 0.11);
+    z-index: 999;
+}
+.account-header .tooltip[class*='position-bottom'] .tooltip-box {
+    transform: translateY(2rem);
+}
+
+/* green staking CTA tooltip (StakingButton.vue .staking-feature-tip) */
+.account-header .tooltip.staking-feature-tip,
+.account-header .tooltip.staking-feature-tip .trigger {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    height: 100%;
+    width: 100%;
+    z-index: 3;
+}
+.account-header .tooltip.staking-feature-tip .trigger::after {
+    background-color: var(--nimiq-green);
+    transform: translateY(calc(-1rem + 1px));
+}
+.account-header .tooltip.staking-feature-tip .tooltip-box {
+    background: var(--nimiq-green-bg);
+    color: white;
+    font-size: 1.75rem;
+    font-style: normal;
+    font-weight: 700;
+    line-height: 140%;
+    padding: 0.5rem 1rem;
+    white-space: nowrap;
+    transform: translateY(1rem);
+}

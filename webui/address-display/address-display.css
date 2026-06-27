@@ -1,0 +1,53 @@
+/* AddressDisplay — hardened grid build (from @nimiq/vue-components AddressDisplay.vue).
+   The original used flex `width:33%` + space-between, which drifts when Fira Mono
+   isn't loaded or the root font-size differs. This version locks the 3×3 with CSS Grid
+   (the column count can never reflow) and self-imports Fira Mono so it can't fall back.
+   Assumes the Nimiq style root font-size of 8px (html { font-size: 8px }); on a 16px-root
+   modern page, set font-size/max-width in px or double the rem values. */
+@import url('https://fonts.googleapis.com/css2?family=Fira+Mono:wght@400;500&display=swap');
+
+.address-display {
+    display: grid;
+    justify-items: center;
+    width: 100%;
+    box-sizing: content-box;
+    color: rgba(31, 35, 72, .5); /* nimiq-blue with .5 opacity */
+    font-size: 3rem;
+    font-family: 'Fira Mono', monospace;
+}
+
+/* 3 columns at 33% + space-between exactly mirrors the upstream spacing, but grid
+   pins the column count so a wide fallback glyph can never wrap or shove a block. */
+.format-nimiq {
+    grid-template-columns: repeat(3, 33%);
+    justify-content: space-between;
+    max-width: 28.25rem;
+}
+
+.format-ethereum {
+    grid-template-columns: 1fr;
+    max-width: 27rem;
+}
+
+.address-display.copyable:hover,
+.address-display.copyable:focus,
+.address-display.copyable.copied {
+    font-weight: 500;
+}
+
+.chunk {
+    margin: 0.875rem 0;
+    line-height: 1.11;
+    text-align: center;
+    box-sizing: border-box;
+    white-space: nowrap; /* a 4-char block never breaks */
+}
+
+.format-nimiq .chunk {
+    text-transform: uppercase;
+}
+
+/* the &nbsp; renders zero-width so copy/paste keeps "NQ07 0000 …" intact */
+.space {
+    font-size: 0;
+}

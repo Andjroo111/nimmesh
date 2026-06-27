@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>bitmesh</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Mulish:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css?family=Fira+Mono&text=0123456789ABCDEFGHJKLMNPQRSTUVXY%20" rel="stylesheet">
+<link rel="stylesheet" href="nimiq/legacy/nimiq-style.min.css">
+<link rel="stylesheet" href="account-header/account-header.css">
+<link rel="stylesheet" href="transaction-list/transaction-list.css">
+<link rel="stylesheet" href="backup-banner/backup-banner.css">
+<link rel="stylesheet" href="amount/amount.css">
+<link rel="stylesheet" href="fiat-amount/fiat-amount.css">
+<link rel="stylesheet" href="identicon/identicon.css">
+<style>
+  /* legacy @nimiq/style sets html{font-size:8px}; custom CSS in px. */
+  body { font-family: 'Mulish','Muli',system-ui,sans-serif !important; background: #f8f8f8; margin: 0; color: #1f2348; }
+  .app { max-width: 480px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column;
+    /* respect the notch / home indicator when hosted full-bleed in the WKWebView (env()=0 in a browser) */
+    padding-top: env(safe-area-inset-top, 0px); }
+  /* A1: mesh status bar — populated from the JS↔Rust bridge on device; hidden in a
+     plain browser (window.bitmesh undefined) so screenshot verification is unaffected.
+     This is the minimal mesh chrome; the fuller treatment is A4. Static dot (no pulse). */
+  .meshbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; display: flex;
+    align-items: center; justify-content: center; gap: 7px; font-size: 12px; font-weight: 600;
+    color: rgba(31,35,72,.55); padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+    background-image: linear-gradient(to top, #f8f8f8 62%, rgba(248,248,248,0)); }
+  .meshbar .dot { width: 7px; height: 7px; border-radius: 50%; background: #21bca5; flex: 0 0 auto; }
+  .meshbar[hidden] { display: none; }
+  .topbar { display: flex; align-items: center; gap: 8px; padding: 16px 20px 4px; }
+  .topbar .logo { display: flex; align-items: center; gap: 8px; }
+  .topbar .wordmark { font-weight: 700; font-size: 20px; color: #1f2348; }
+  /* The mesh status is the ONE place bitmesh diverges from the wallet — keep it
+     Nimiq-correct (this is a placeholder treatment; see options for Andjroo). */
+  .mesh-pill { margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 700; color: #fff; padding: 6px 12px; border-radius: 500px;
+    background-image: radial-gradient(100% 100% at bottom right, #265DD7, #0582CA); }
+  .header-wrap { padding: 8px 12px 0; }
+  .tx-wrap { padding: 4px 20px 96px; }
+  .tx-wrap .transaction-list { width: 100%; }
+  .month-label label { color: rgba(31,35,72,.4); }
+  /* account-header is the DESKTOP component; compact it for the 390px phone
+     so it matches the real mobile wallet (small identicon, label truncates). */
+  .account-header { padding: 16px 8px 8px !important; }
+  .account-header .active-address { align-items: center; gap: 12px; }
+  .account-header .active-address .identicon-wrapper,
+  .account-header .active-address .identicon { width: 48px !important; height: 48px !important; min-width: 48px; }
+  .account-header .active-address .meta { min-width: 0; flex: 1; }
+  .account-header .active-address .meta .label {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 16rem; flex: 0 1 auto; }
+  .account-header .active-address .meta .amount { white-space: nowrap; flex: 0 0 auto; }
+  /* address row: let the chunked address take the width and truncate gracefully */
+  .account-header .active-address .copyable { min-width: 0; flex: 1; }
+  .account-header .active-address .address { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .account-header .active-address .fiat-amount { flex: 0 0 auto; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <span class="logo" aria-label="bitmesh">
+      <svg viewBox="0 0 20 18" width="22" role="img" aria-label="Nimiq"><g fill="none"><path fill="url(#hex-grad)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="hex-grad" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></g></svg>
+      <span class="wordmark">bitmesh</span>
+    </span>
+    <span class="mesh-pill" title="placeholder mesh indicator">Offline · Mesh</span>
+  </div>
+
+  <!-- Real Nimiq backup banner -->
+  <div style="padding:12px 16px 0;">
+    <div class="backup-banner">
+      <div class="ribbon"><svg viewBox="0 0 16 16" class="nq-icon"><path d="M8 1l7 4v6l-7 4-7-4V5z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></div>
+      <div class="texts">
+        <strong>There is no 'forgot password'</strong>
+      </div>
+      <a class="nq-button-pill gold" href="javascript:void(0)">Back up</a>
+    </div>
+  </div>
+
+  <!-- Real Nimiq account header (Stake tooltip removed; bitmesh doesn't stake) -->
+  <div class="header-wrap">
+    <div class="account-header">
+      <div class="active-address flex-row">
+        <div class="identicon-wrapper">
+          <div class="identicon" data-address="NQ30 AM32 NHXL 29F7 XUY0 HR3R 7XHF EF4L LYBS">
+            <img src='data:image/svg+xml,<svg width="64" height="64" viewBox="0 -4 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path opacity=".1" d="M62.3 25.4L49.2 2.6A5.3 5.3 0 0 0 44.6 0H18.4c-1.9 0-3.6 1-4.6 2.6L.7 25.4c-1 1.6-1 3.6 0 5.2l13.1 22.8c1 1.6 2.7 2.6 4.6 2.6h26.2c1.9 0 3.6-1 4.6-2.6l13-22.8c1-1.6 1-3.6.1-5.2z" fill="url(%23identicon_radial)"/><defs><radialGradient id="identicon_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(-63.0033 0 0 -56 63 56)"><stop stop-color="%23260133"/><stop offset="1" stop-color="%231F2348"/></radialGradient></defs></svg>' alt="Nimiq identicon">
+          </div>
+        </div>
+        <div class="meta">
+          <div class="flex-row">
+            <div class="label">Mesh Wallet</div>
+            <span class="amount">752 <span class="currency nim">NIM</span></span>
+          </div>
+          <div class="flex-row">
+            <div class="copyable"><div class="address">NQ30 AM32 NHXL 29F7 XUY0 HR3R 7XHF EF4L LYBS</div></div>
+            <span class="fiat-amount">$0.46</span>
+          </div>
+        </div>
+      </div>
+      <div class="actions flex-row">
+        <div class="container">
+          <div class="search-bar">
+            <svg fill="none" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="2"/><path d="M13.31 14.73a1 1 0 001.42-1.42l-1.42 1.42zM8.3 9.7l5.02 5.02 1.42-1.42L9.7 8.3 8.29 9.71z" fill="currentColor"/></svg>
+            <input type="text" placeholder="Search transactions">
+          </div>
+        </div>
+        <div class="flex-row ml-auto">
+          <button class="send nq-button-pill light-blue flex-row">
+            <svg class="nq-icon" viewBox="0 0 16 12" xmlns="http://www.w3.org/2000/svg"><path d="M10,1l5,5l-5,5" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="14" y1="6" x2="1" y2="6" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Send
+          </button>
+          <button class="receive nq-button-s flex-row">
+            <svg class="nq-icon" viewBox="0 0 16 12" xmlns="http://www.w3.org/2000/svg"><path d="M6,1L1,6l5,5" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="2" y1="6" x2="15" y2="6" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Receive
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Real Nimiq transaction list -->
+  <div class="tx-wrap">
+    <div class="transaction-list">
+      <div class="month-label"><label>This month</label></div>
+      <button class="transaction confirmed">
+        <div class="date"><span class="day">26</span><br><span class="month">Jun</span></div>
+        <div class="identicon" data-address="NQ09 DR50 RBSY CARY 6TC0 XYCY 3G3F PFB3 K8SX">
+          <img src='data:image/svg+xml,<svg width="64" height="64" viewBox="0 -4 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path opacity=".1" d="M62.3 25.4L49.2 2.6A5.3 5.3 0 0 0 44.6 0H18.4c-1.9 0-3.6 1-4.6 2.6L.7 25.4c-1 1.6-1 3.6 0 5.2l13.1 22.8c1 1.6 2.7 2.6 4.6 2.6h26.2c1.9 0 3.6-1 4.6-2.6l13-22.8c1-1.6 1-3.6.1-5.2z" fill="url(%23identicon_radial)"/><defs><radialGradient id="identicon_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(-63.0033 0 0 -56 63 56)"><stop stop-color="%23260133"/><stop offset="1" stop-color="%231F2348"/></radialGradient></defs></svg>' alt="Nimiq identicon">
+        </div>
+        <div class="data">
+          <div class="address">NQ09 DR50 RBSY CARY 6TC0 XYCY 3G3F PFB3 K8SX</div>
+          <div class="time-and-message"><span>17:54 · via mesh</span></div>
+        </div>
+        <div class="amounts"><span class="amount">2.5 <span class="currency nim">NIM</span></span><div class="fiat-amount fiat-loading">&nbsp;</div></div>
+      </button>
+      <button class="transaction confirmed">
+        <div class="date"><span class="day">26</span><br><span class="month">Jun</span></div>
+        <div class="identicon" data-address="NQ51 V605 GUHY MB5K 5CXJ MDPH M9AQ BTL0 LDUQ">
+          <img src='data:image/svg+xml,<svg width="64" height="64" viewBox="0 -4 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path opacity=".1" d="M62.3 25.4L49.2 2.6A5.3 5.3 0 0 0 44.6 0H18.4c-1.9 0-3.6 1-4.6 2.6L.7 25.4c-1 1.6-1 3.6 0 5.2l13.1 22.8c1 1.6 2.7 2.6 4.6 2.6h26.2c1.9 0 3.6-1 4.6-2.6l13-22.8c1-1.6 1-3.6.1-5.2z" fill="url(%23identicon_radial)"/><defs><radialGradient id="identicon_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(-63.0033 0 0 -56 63 56)"><stop stop-color="%23260133"/><stop offset="1" stop-color="%231F2348"/></radialGradient></defs></svg>' alt="Nimiq identicon">
+        </div>
+        <div class="data">
+          <div class="address">NQ51 V605 GUHY MB5K 5CXJ MDPH M9AQ BTL0 LDUQ</div>
+          <div class="time-and-message"><span>11:02</span></div>
+        </div>
+        <div class="amounts isIncoming"><span class="amount">110 000 <span class="currency nim">NIM</span></span><div class="fiat-amount fiat-loading">&nbsp;</div></div>
+      </button>
+    </div>
+  </div>
+
+  <!-- A1: mesh status bar, fed by the JS↔Rust bridge (hidden until it answers). -->
+  <div class="meshbar" id="meshbar" hidden>
+    <span class="dot"></span><span id="meshbar-text"></span>
+  </div>
+
+</div>
+
+<script type="module">
+  // Swap every identicon placeholder for the real deterministic iqon.
+  // CRITICAL: Iqons.svgPath (the part sprite) must be set BEFORE toDataUrl().
+  import Iqons from 'https://cdn.jsdelivr.net/npm/@nimiq/iqons@1.6.0/dist/iqons.min.js';
+  Iqons.svgPath = 'https://cdn.jsdelivr.net/npm/@nimiq/iqons@1.6.0/dist/iqons.min.svg';
+  for (const el of document.querySelectorAll('.identicon[data-address]')) {
+    try { el.querySelector('img').src = await Iqons.toDataUrl(el.dataset.address); }
+    catch (e) { console.error('iqon failed', e); }
+  }
+
+  // A1: prove the JS↔Rust bridge round-trips on device. Absent in a browser (graceful).
+  if (window.bitmesh) {
+    try {
+      const [v, n, m] = await Promise.all([bitmesh.version(), bitmesh.network(), bitmesh.meshStatus()]);
+      document.getElementById('meshbar-text').textContent =
+        `mesh ${m.state} · ${m.peers} nearby · ${n.network} · core ${v.core}`;
+      document.getElementById('meshbar').hidden = false;
+    } catch (e) { console.error('bridge probe failed', e); }
+  }
+</script>
+</body>
+</html>

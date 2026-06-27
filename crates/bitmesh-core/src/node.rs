@@ -176,8 +176,8 @@ impl MeshNode {
     /// ~139-byte wire blob and flooded as a real `nimiqTx`. Returns the 32-byte `txId` to
     /// poll with [`MeshNode::payment_status`], or an empty vec if the blob is not valid hex.
     /// **Still flows downstream as opaque bytes** — the mesh never inspects the payload.
-    pub fn submit_signed_transfer(&self, signed: crate::nimiq::SignedTransfer) -> Vec<u8> {
-        match crate::nimiq::signer::signed_transfer_wire(&signed) {
+    pub fn submit_signed_transfer(&self, signed_transfer: crate::nimiq::SignedTransfer) -> Vec<u8> {
+        match crate::nimiq::signer::signed_transfer_wire(&signed_transfer) {
             Ok(wire) => self.submit_local_tx(wire),
             Err(_) => Vec::new(),
         }

@@ -2,6 +2,33 @@
 
 All notable changes to nimiq.bitmesh. Each PR bumps the version and adds an entry.
 
+## [0.10.0] — 2026-06-27
+
+### Added — A1 (iOS app): WKWebView host + read-only JS↔Rust bridge — non-money-path
+
+The pivot to the real wallet UI, made real on device. The iOS app stops hand-building UI in
+SwiftUI (the rejected home is deleted) and instead **hosts the real `nimiq-ui` web layer
+(`webui/`) in a `WKWebView`**, bridged to the Rust core. This is also the foundation merge of
+the iOS shell + web UI onto `main`.
+
+- `apple/BitmeshApp/Sources/WebHostView.swift` (new) — a `UIViewRepresentable` `WKWebView` that
+  loads `webui/index.html` from the bundle (folder reference, so relative hrefs resolve) and a
+  `Bridge` (`WKScriptMessageHandler`) exposing a promise-based `window.bitmesh` RPC. **Read-only**
+  methods only — `version` (`coreVersion()`), `network` (`defaultNetwork()` + wireId + loopSafe),
+  `meshStatus` (honest `offline` / `0 peers` until the native radio lands in Phase D). It signs
+  nothing, broadcasts nothing, and never touches key/seed material → firmly non-money-path. The
+  signing path (Send → enclave → queue) is deferred to the gated money slice (C1).
+- `apple/BitmeshApp/Sources/BitmeshApp.swift` — mounts `WebHostView` (was `HomeView`).
+- `apple/BitmeshApp/Sources/HomeView.swift`, `Theme.swift` (deleted) — the hand-built SwiftUI
+  home Andjroo rejected; superseded by the web UI.
+- `apple/project.yml` — `webui/` added as a folder-reference bundle resource.
+- `webui/index.html` — safe-area insets for full-bleed hosting; a mesh status bar fed by the
+  bridge (hidden in a plain browser, so screenshot verification is unaffected); the mobile
+  account-header truncation fix.
+- Gate: `cargo swift package` (xcframework) + `xcodegen` + `xcodebuild build`
+  (`CODE_SIGNING_ALLOWED=NO`) — the app compiles against the freshly generated core and loads the
+  web UI. Rust core unchanged (149 tests still green).
+
 ## [0.9.0] — 2026-06-26
 
 ### Added — G9 (Rust core): head beacon (`0x32`) + validity-window guard / packet GC — non-money-path

@@ -1,0 +1,53 @@
+name: BitmeshApp
+options:
+  bundleIdPrefix: com.bitmesh
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+packages:
+  BitmeshCore:
+    # Generated from the Rust core via: cd crates/bitmesh-core && cargo swift package -n BitmeshCore -p ios -y
+    path: ../crates/bitmesh-core/BitmeshCore
+targets:
+  BitmeshApp:
+    type: application
+    platform: iOS
+    sources:
+      - BitmeshApp/Sources
+      # The UI is the real nimiq-ui WEB layer (webui/), hosted in a WKWebView (A1).
+      # A folder reference preserves webui/'s subdir structure (nimiq/legacy, the
+      # component dirs) so index.html's relative hrefs resolve from the app bundle.
+      - path: ../webui
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - package: BitmeshCore
+    info:
+      path: BitmeshApp/Info.plist
+      properties:
+        CFBundleDisplayName: bitmesh
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        # Mesh needs to advertise + scan, incl. in the background (ADR-0002)
+        NSBluetoothAlwaysUsageDescription: "bitmesh relays payments through nearby phones over Bluetooth so you can pay with no internet."
+        NSBluetoothPeripheralUsageDescription: "bitmesh relays payments through nearby phones over Bluetooth so you can pay with no internet."
+        UIBackgroundModes:
+          - bluetooth-central
+          - bluetooth-peripheral
+    settings:
+      base:
+        PRODUCT_NAME: BitmeshApp
+        PRODUCT_BUNDLE_IDENTIFIER: com.bitmesh.app
+        # UniFFI ships a hand-written C module map; Xcode 26 explicit modules
+        # can't precompile it — use the classic implicit module build.
+        SWIFT_ENABLE_EXPLICIT_MODULES: "NO"
+        ALWAYS_SEARCH_USER_PATHS: "NO"
+        MARKETING_VERSION: "0.10.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: NO
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.9"
+        # Simulator builds need no signing; keeps headless CI/build clean.
+        CODE_SIGNING_ALLOWED: "NO"
+        CODE_SIGNING_REQUIRED: "NO"

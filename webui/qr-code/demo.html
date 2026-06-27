@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nimiq QR Code</title>
+<link rel="stylesheet" href="../../../../assets/css/legacy/nimiq-style.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Mulish:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="qr-code.css">
+<style>
+    body {
+        font-family: 'Mulish', sans-serif;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        background: white;
+    }
+</style>
+</head>
+<body>
+
+<canvas class="qr-code"
+        data-qr="nimiq:NQ07000000000000000000000000000000000000"
+        data-size="240"></canvas>
+
+<script src="https://cdn.jsdelivr.net/npm/qr-creator@1.0.0/dist/qr-creator.min.js"></script>
+<script>
+    // Nimiq default fill: radial gradient centered in the bottom-right corner
+    // with a radius the size of the QR code diagonal (nimiq-light-blue-bg).
+    const NIMIQ_FILL = {
+        type: 'radial-gradient',
+        position: [1, 1, 0, 1, 1, Math.sqrt(2)],
+        colorStops: [
+            [0, '#265DD7'],
+            [1, '#0582CA'], // nimiq-light-blue
+        ],
+    };
+
+    for (const canvas of document.querySelectorAll('canvas.qr-code[data-qr]')) {
+        QrCreator.render({
+            text: canvas.dataset.qr,
+            radius: 0.5,
+            ecLevel: 'M',
+            fill: NIMIQ_FILL,
+            background: null, // transparent
+            size: Number(canvas.dataset.size || 240),
+        }, canvas);
+    }
+</script>
+</body>
+</html>

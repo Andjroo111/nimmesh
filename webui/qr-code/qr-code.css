@@ -1,0 +1,4 @@
+/* Nimiq QR code.
+ * Upstream QrCode.vue ships NO component CSS — the visual is drawn entirely
+ * onto the canvas by qr-creator. This file exists only as the extraction
+ * convention placeholder; the .qr-code canvas needs no styling. */

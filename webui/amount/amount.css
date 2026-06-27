@@ -1,0 +1,10 @@
+/* Nimiq Amount — from @nimiq/vue-components Amount.vue */
+.amount {
+    white-space: nowrap;
+}
+
+/* Prefix '~ ' when the displayed value was rounded: <span class="amount approx"> */
+.amount.approx::before {
+    content: '~ ';
+    opacity: 0.5;
+}

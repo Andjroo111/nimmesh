@@ -3,11 +3,15 @@ resolver = "2"
 members = ["crates/bitmesh-core"]
 
 [workspace.package]
-version = "0.9.0"
+version = "0.10.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Andjroo111/nimiq.bitmesh"
 rust-version = "1.74"
 
 [workspace.dependencies]
-uniffi = "0.28"
+# Pinned to EXACTLY match cargo-swift 0.11.1's bundled `uniffi_bindgen = "=0.31.1"`.
+# The Swift bindings hard-code the bindgen's contract version (30); the runtime lib
+# must report the same or the app aborts at launch with a contract mismatch. Keep this
+# in lockstep with the cargo-swift version used to generate the iOS bindings.
+uniffi = "=0.31.1"

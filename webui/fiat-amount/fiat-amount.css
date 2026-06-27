@@ -1,0 +1,4 @@
+/* FiatAmount has no styles of its own upstream (FiatAmount.vue contains no <style> block).
+   The .fiat-amount span inherits font-family, size and color from its surroundings —
+   typically the Nimiq legacy stylesheet (css/legacy/nimiq-style.min.css) on the page. */
+.fiat-amount {}

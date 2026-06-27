@@ -1,0 +1,128 @@
+/* Nimiq Tooltip
+   Requires the legacy nimiq-style CSS (for --nimiq-blue, --nimiq-blue-bg, --nimiq-ease).
+   Structure:
+     <span class="tooltip position-<primary>-<secondary|center> [shown] [inverse-theme]">
+         <a class="trigger" ...>ICON</a>
+         <div class="tooltip-box" style="top:..; left:..; width:..">TEXT</div>
+     </span>
+   Positioning (done by JS in the upstream Vue component, inline styles here):
+     top right (above):  left = triggerWidth/2 - 25px; top = -boxHeight
+     bottom right:       left = triggerWidth/2 - 25px; top = triggerHeight
+     top left:           right = triggerWidth/2 - 25px... (mirror)
+   Toggle visibility by adding/removing the "shown" class (and the .tooltip-box element).
+   Set a custom background via style="--background: <css color>" on .tooltip. */
+
+.tooltip {
+    display: inline-block;
+    position: relative;
+    line-height: 1;
+}
+
+.tooltip .trigger {
+    position: relative;
+    display: inline-block;
+    vertical-align: bottom;
+    text-decoration: none;
+    outline: none;
+    cursor: default;
+    color: inherit;
+}
+
+.tooltip .trigger svg:first-child:last-child,
+.tooltip .trigger img:first-child:last-child {
+    display: block;
+}
+
+/* The arrow, masked out of a triangle SVG */
+.tooltip .trigger::after {
+    opacity: 0;
+    content: '';
+    display: block;
+    position: absolute;
+    width: 2.25rem;
+    height: 2rem;
+    left: calc(50% - 1.125rem);
+    mask-image: url('data:image/svg+xml,<svg viewBox="0 0 18 16" xmlns="http://www.w3.org/2000/svg"><path d="M9 7.12c-.47 0-.93.2-1.23.64L3.2 14.29A4 4 0 0 1 0 16h18a4 4 0 0 1-3.2-1.7l-4.57-6.54c-.3-.43-.76-.64-1.23-.64z" fill="white"/></svg>');
+    transition: opacity .3s var(--nimiq-ease), .3s visibility;
+    transition-delay: 16ms;
+    visibility: hidden;
+    z-index: 1000;
+}
+
+.tooltip[class*='position-top'] .trigger::after {
+    top: -2rem;
+    transform: scaleY(-1);
+}
+.tooltip[class*='position-bottom'] .trigger::after {
+    top: 100%;
+}
+.tooltip[class*='position-left'] .trigger::after {
+    top: 50%;
+    left: -2.25rem;
+    transform: translateY(-50%) rotate(90deg);
+}
+.tooltip[class*='position-right'] .trigger::after {
+    top: 50%;
+    left: 100%;
+    transform: translateY(-50%) rotate(-90deg);
+}
+
+/* Arrow color = the nimiq-blue-bg gradient color where the arrow touches the box */
+.tooltip.position-top-left .trigger::after,
+.tooltip.position-left-top .trigger::after {
+    background: var(--background, #250737);
+}
+.tooltip.position-top-center .trigger::after,
+.tooltip.position-left-center .trigger::after {
+    background: var(--background, #23123e);
+}
+.tooltip.position-top-right .trigger::after,
+.tooltip.position-left-bottom .trigger::after {
+    background: var(--background, #211e45);
+}
+.tooltip[class*='position-bottom'] .trigger::after,
+.tooltip[class*='position-right'] .trigger::after {
+    background: var(--background, var(--nimiq-blue));
+}
+
+.tooltip.inverse-theme .trigger::after {
+    background: var(--background, white);
+}
+
+.tooltip.shown .trigger::after {
+    opacity: 1;
+    visibility: visible;
+}
+
+.tooltip .tooltip-box {
+    contain: layout paint style;
+    position: absolute;
+    color: white;
+    background: var(--background, var(--nimiq-blue-bg));
+    padding: 1.5rem;
+    border-radius: .5rem;
+    font-size: 1.75rem;
+    line-height: 1.5;
+    font-weight: 600;
+    transition: opacity .3s var(--nimiq-ease);
+    box-shadow: 0 1.125rem 2.275rem rgba(0, 0, 0, 0.11);
+    z-index: 999;
+}
+
+.tooltip.inverse-theme .tooltip-box {
+    color: var(--nimiq-blue);
+    background: white;
+}
+
+.tooltip[class*='position-top'] .tooltip-box {
+    transform: translateY(-2rem);
+}
+.tooltip[class*='position-bottom'] .tooltip-box {
+    transform: translateY(2rem);
+}
+.tooltip[class*='position-left'] .tooltip-box {
+    transform: translateX(-2rem);
+}
+.tooltip[class*='position-right'] .tooltip-box {
+    transform: translateX(2rem);
+}

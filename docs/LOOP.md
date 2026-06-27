@@ -101,6 +101,62 @@ verify agent); Andjroo reviews post-hoc on GitHub. Money-path goals still stop f
 
 **MVP (testnet):** G1–G10 + G12–G13. G11 is an enhancement.
 
+## Phase 2 — the finish line (the app you can hold)
+
+The protocol core above (G1–G9, G11) is **built + live-proven on testnet**. Phase 2 turns it
+into a usable wallet, then layers the life-improvement mesh features. Same autonomy rule:
+**auto-merge non-money-path on green; gate the money path / devices / vision.** One PR per goal,
+files < 800 lines, real decisions in `docs/adr/`.
+
+### Phase A — "an app you can hold" (autonomous, non-money-path)
+
+| #  | Goal                                                              | money-path | auto-merge | deps    | status |
+| -- | ---------------------------------------------------------------- | :--------: | :--------: | ------- | ------ |
+| A1 | WebView host + read-only JS↔core bridge (`WKWebView` loads `webui/`) | no | yes | G5-core | todo |
+| A2 | Home polish — mobile-header fix + data via the bridge (390px diff) | no | yes | A1 | todo |
+| A3 | Send + Receive screens (UI; Receive fully works, Send→sign stubbed→C1) | no | yes | A1, A2 | todo |
+| A4 | Mesh chrome + global language pill + connect-wallet pill (selection only) | no | yes | A1 | todo |
+
+A1's bridge is **read-only** (version/network/mesh status/peer count/cached tx list) — no keys,
+no signing, no broadcast. A1 is also the foundation merge of `feat/g5-ios-shell` → `main`.
+
+### Phase B — life improvements over the mesh (autonomous, non-money-path)
+
+Each reuses primitives already built (gateway, head-beacon, store-and-forward, receipts):
+Rust-core logic (cargo-tested) + web UI (screenshot-verified). None handle keys → auto-merge.
+
+| #   | Goal                                                          | money-path | auto-merge | deps | status |
+| --- | ----------------------------------------------------------- | :--------: | :--------: | ---- | ------ |
+| G15 | Balance over mesh — gateway balance query + fiat + "synced X ago"; last-known → accounts-proof | no | yes | A2, G9 | todo |
+| G16 | Reachability + smart send queue ("will it send?")            | no | yes | A3 | todo |
+| G17 | Settlement closure both ways (receipt → "landed" for sender + receiver) | no | yes | A3 | todo |
+| G18 | Contacts + amount requests (request packet carries no keys)  | no | yes | A3 | todo |
+| G19 | Backup nudge (self-custody protection)                       | no | yes | A2 | todo |
+| G20 | Good-citizen + battery-aware relay (stats + throttle)        | no | yes | G6 | todo |
+
+### Phase C — money path & hardening (GATED: PR-only, `needs:owner`)
+
+| #   | Goal                                                          | money-path | auto-merge | deps | status |
+| --- | ----------------------------------------------------------- | :--------: | :--------: | ---- | ------ |
+| C1  | Keygen / import + real Send→sign→queue wire (=#10 money slice; seed stays behind `EnclaveKey`) | **yes** | **no** | A3, G3 | todo |
+| G12 | Hardening — verify-before-relay, rate limits, NACK, anti-spam | **yes** | **no** | G8, C1 | todo |
+| G13 | TESTNET end-to-end demo + mainnet-gating doc                 | **yes** | **no** | G8,G9,C1,G12 | todo |
+
+### Phase D — native BLE on real devices (GATED: needs Andjroo's devices + Apple Dev account)
+
+| #  | Goal                                                              | gate | status |
+| -- | ---------------------------------------------------------------- | ---- | ------ |
+| G5-shim | Native BLE radio shim (iOS CoreBluetooth + Android `bluetooth.le`) implementing the `BleRadio` trait + on-device interop | needs:owner (≥2 phones, $99 Apple Dev, signing) | todo |
+
+### Phase E — vision (research-gated, `needs:owner`)
+
+| #   | Goal                                                          | gate | status |
+| --- | ----------------------------------------------------------- | ---- | ------ |
+| G21 | Incentivized mesh — reputation now (G20 stat) → staking-funded inclusion pool | needs sybil-resistant proof-of-useful-relay design | todo |
+
+**The loop runs Phase A then Phase B autonomously, and STOPS at Phase C/D/E** (money-path,
+on-device, vision) — those wait for Andjroo, batched under `needs:owner`.
+
 ## Per-cycle workflow (each non-trivial cycle = a dynamic Workflow)
 
 1. Pick the top open goal whose deps are merged. Re-read this file + GOAL + RISKS.
@@ -247,3 +303,10 @@ the signer — but our live example drives our core end-to-end for every money-c
   + encrypted memo) is built, tested, and **live-proven on testnet**. Loop **paused**:
   everything left — **G10 wallet/UI**, **G5 native BLE shim** (Apple ID), **G12 hardening**,
   **G13 demo** — is the native session **tonight with Andjroo**.
+- **2026-06-26** — **Phase 2 roadmap cut + loop resumed.** Andjroo: "create clear goals and a
+  loop to finish them." Re-cut all remaining work into Phase A (app-you-can-hold: A1 WebView
+  host + bridge → A2 home polish → A3 send/receive → A4 mesh chrome + language/connect pills),
+  Phase B (life features G15–G20), Phase C (money path C1/G12/G13, gated), Phase D (G5 native
+  shim, devices), Phase E (G21 vision). Found `feat/g5-ios-shell` still ships the **rejected
+  hand-built SwiftUI HomeView** — the WebView pivot was never wired; A1 fixes that and is the
+  foundation merge. Loop runs A+B autonomously, parks C/D/E for Andjroo. Starting **Cycle 1 = A1**.

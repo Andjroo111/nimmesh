@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nimiq TransactionList — demo</title>
+<link rel="stylesheet" href="../../../../assets/css/legacy/nimiq-style.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Mulish:wght@400;600;700&family=Fira+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="transaction-list.css">
+<style>
+    body {
+        font-family: 'Mulish', sans-serif;
+        margin: 0;
+        padding: 16px;
+        background: white;
+    }
+
+    /* Demo sizing: wallet main-column width */
+    .transaction-list {
+        width: 720px;
+        background: white;
+    }
+</style>
+</head>
+<body>
+
+<div class="transaction-list">
+    <div class="month-label"><label>May</label></div>
+
+    <button class="transaction confirmed">
+        <div class="date">
+            <span class="day">14</span><br>
+            <span class="month">May</span>
+        </div>
+        <div class="identicon" data-address="NQ49 Q4GS PG77 NTQT VRC9 6FF0 VXJX FKXF 829U">
+            <img src='data:image/svg+xml,<svg width="64" height="64" viewBox="0 -4 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path opacity=".1" d="M62.3 25.4L49.2 2.6A5.3 5.3 0 0 0 44.6 0H18.4c-1.9 0-3.6 1-4.6 2.6L.7 25.4c-1 1.6-1 3.6 0 5.2l13.1 22.8c1 1.6 2.7 2.6 4.6 2.6h26.2c1.9 0 3.6-1 4.6-2.6l13-22.8c1-1.6 1-3.6.1-5.2z" fill="url(%23identicon_radial)"/><defs><radialGradient id="identicon_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(-63.0033 0 0 -56 63 56)"><stop stop-color="%23260133"/><stop offset="1" stop-color="%231F2348"/></radialGradient></defs></svg>' alt="Nimiq identicon">
+        </div>
+        <div class="data">
+            <div class="address">NQ49 Q4GS PG77 NTQT VRC9 6FF0 VXJX FKXF 829U</div>
+            <div class="time-and-message">
+                <span>22:58</span>
+            </div>
+        </div>
+        <div class="amounts">
+            <span class="amount">5.0 <span class="currency nim">NIM</span></span>
+            <div class="fiat-amount fiat-loading">&nbsp;</div>
+        </div>
+    </button>
+
+    <button class="transaction confirmed">
+        <div class="date">
+            <span class="day">14</span><br>
+            <span class="month">May</span>
+        </div>
+        <div class="identicon" data-address="NQ11 Q47D E086 MDXU TEE9 2A9A ALFT LHN1 7NPG">
+            <img src='data:image/svg+xml,<svg width="64" height="64" viewBox="0 -4 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path opacity=".1" d="M62.3 25.4L49.2 2.6A5.3 5.3 0 0 0 44.6 0H18.4c-1.9 0-3.6 1-4.6 2.6L.7 25.4c-1 1.6-1 3.6 0 5.2l13.1 22.8c1 1.6 2.7 2.6 4.6 2.6h26.2c1.9 0 3.6-1 4.6-2.6l13-22.8c1-1.6 1-3.6.1-5.2z" fill="url(%23identicon_radial)"/><defs><radialGradient id="identicon_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(-63.0033 0 0 -56 63 56)"><stop stop-color="%23260133"/><stop offset="1" stop-color="%231F2348"/></radialGradient></defs></svg>' alt="Nimiq identicon">
+        </div>
+        <div class="data">
+            <div class="address">NQ11 Q47D E086 MDXU TEE9 2A9A ALFT LHN1 7NPG</div>
+            <div class="time-and-message">
+                <span>22:34</span>
+            </div>
+        </div>
+        <div class="amounts isIncoming">
+            <span class="amount">1000 <span class="currency nim">NIM</span></span>
+            <div class="fiat-amount fiat-loading">&nbsp;</div>
+        </div>
+    </button>
+</div>
+
+<script>
+(() => {
+    const root = document.currentScript.previousElementSibling;
+    import('https://cdn.jsdelivr.net/npm/@nimiq/iqons@1.6.0/dist/iqons.min.js').then(async ({ default: Iqons }) => {
+        // Identicon sprite: the REAL @nimiq/iqons@1.6.0 iqons.min.svg is vendored at ../../../../assets/img/iqons.min.svg
+        // (consumer projects: `nq add` copies it to ./nimiq/assets/img/iqons.min.svg). The iqons LIBRARY import
+        // above stays on the jsdelivr pin — it is code, not artwork. The CDN sprite (byte-identical content)
+        // is only the fallback when the local copy is unreachable (e.g. file:// contexts that block fetch).
+        const localIqonsSprite = '../../../../assets/img/iqons.min.svg';
+        const cdnIqonsSprite = 'https://cdn.jsdelivr.net/npm/@nimiq/iqons@1.6.0/dist/iqons.min.svg';
+        Iqons.svgPath = await fetch(localIqonsSprite, { method: 'HEAD' }).then((r) => (r.ok ? localIqonsSprite : cdnIqonsSprite)).catch(() => cdnIqonsSprite);
+        for (const el of root.querySelectorAll('.identicon[data-address]')) {
+            el.querySelector('img').src = await Iqons.toDataUrl(el.dataset.address);
+        }
+    });
+})();
+</script>
+</body>
+</html>
