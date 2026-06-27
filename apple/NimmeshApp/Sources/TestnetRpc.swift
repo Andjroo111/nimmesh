@@ -1,14 +1,33 @@
 import Foundation
+import NimmeshCore
 
-/// C1c: a minimal **testnet** JSON-RPC client (URLSession) for the online send path.
+/// A minimal Nimiq JSON-RPC client (URLSession) for the online send path.
 ///
 /// All cryptography stays in the Rust core (`AppSigner` over the Keychain `EnclaveKey`); this
 /// only does network IO — fetch the head for `validityStartHeight`, broadcast the signed blob,
-/// poll for inclusion, read a balance, tap the faucet. **Testnet only:** the URL is the public
-/// testnet endpoint and there is no mainnet path here. Mainnet is a separate gated toggle +
-/// the on-device phone test (see `docs/FINISH.md`).
-enum TestnetRpc {
-    static let rpcURL = URL(string: "https://rpc.testnet.nimiqwatch.com")!
+/// poll for inclusion, read a balance, tap the faucet.
+///
+/// **Network is a gated toggle, default TESTNET** (persisted in `UserDefaults`). Mainnet is
+/// opt-in for the real-funds phone test (`docs/DEVICE-TEST.md`); it is never the default and the
+/// app never auto-sends — a mainnet send is a deliberate user action. The faucet is testnet-only.
+enum NimiqRpc {
+    private static let mainnetKey = "nimmesh.network.mainnet"
+
+    /// Whether the app is pointed at **mainnet** (real funds). Default `false` (testnet).
+    static var isMainnet: Bool {
+        get { UserDefaults.standard.bool(forKey: mainnetKey) }
+        set { UserDefaults.standard.set(newValue, forKey: mainnetKey) }
+    }
+
+    /// The selected network as the Rust `NetworkId` the signer anchors the tx to.
+    static var network: NetworkId { isMainnet ? .mainnet : .testnet }
+
+    /// The JSON-RPC endpoint for the selected network (both are nimiqwatch public nodes).
+    static var rpcURL: URL {
+        URL(string: isMainnet ? "https://rpc.nimiqwatch.com" : "https://rpc.testnet.nimiqwatch.com")!
+    }
+
+    /// The testnet faucet (testnet only — mainnet has none; fund from your own wallet).
     static let faucetURL = URL(string: "https://faucet.pos.nimiq-testnet.com/tapit")!
 
     struct RpcError: Error { let message: String }

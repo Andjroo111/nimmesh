@@ -205,6 +205,15 @@
   .send-status[hidden] { display: none; }
   .send-status.ok { color: #21bca5; }
   .send-status.err { color: #fc8702; }
+  /* mainnet-capable: a deliberate, default-testnet network toggle (the real-funds gate). */
+  .net-toggle { display: flex; gap: 4px; margin: 8px 24px 0; padding: 3px; border-radius: 500px;
+    background: rgba(31,35,72,.06); }
+  .net-opt { flex: 1 1 0; height: 32px; border: 0; cursor: pointer; border-radius: 500px; background: transparent;
+    font-family: inherit; font-weight: 700; font-size: 12.5px; color: rgba(31,35,72,.55); }
+  .net-opt.active { background: #fff; color: #1f2348; box-shadow: 0 2px 6px rgba(0,0,0,.08); }
+  .net-opt[data-net="mainnet"].active { background: var(--nimiq-orange); color: #fff; box-shadow: 0 2px 8px rgba(252,135,2,.3); }
+  .net-warn { text-align: center; margin: 8px 24px 0; font-size: 12.5px; font-weight: 700; color: var(--nimiq-orange); }
+  .net-warn[hidden] { display: none; }
 </style>
 </head>
 <body>
@@ -378,6 +387,12 @@
     <span class="dot"></span>
     <span id="send-reach-text">Relays over the mesh and reaches the network when a connected device is online</span>
   </div>
+  <!-- mainnet-capable: deliberate, default-testnet network toggle (the real-funds gate). -->
+  <div class="net-toggle" id="net-toggle">
+    <button class="net-opt active" data-net="testnet">Testnet</button>
+    <button class="net-opt" data-net="mainnet">Mainnet</button>
+  </div>
+  <div class="net-warn" id="net-warn" hidden>⚠ Mainnet sends REAL funds</div>
   <div class="contacts-row">
     <div class="contacts-btn">
       <svg viewBox="0 0 24 28" fill="none"><rect x="2" y="2" width="20" height="24" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="11" r="3.2" fill="currentColor"/><path d="M6.5 20.5c0-3 2.5-5 5.5-5s5.5 2 5.5 5" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>
@@ -501,6 +516,20 @@
     }
   });
 
+  // mainnet-capable: the network toggle. Default testnet; switching to mainnet is deliberate
+  // (confirm) and persisted by the bridge — the real-funds gate for the on-device phone test.
+  const netOpts = [...document.querySelectorAll('.net-opt')];
+  function applyNetwork(mainnet) {
+    netOpts.forEach((o) => o.classList.toggle('active', (o.dataset.net === 'mainnet') === mainnet));
+    document.getElementById('net-warn').hidden = !mainnet;
+  }
+  netOpts.forEach((o) => o.addEventListener('click', async () => {
+    const mainnet = o.dataset.net === 'mainnet';
+    if (mainnet && !confirm('Switch to MAINNET? Sends will use REAL funds.')) return;
+    if (window.nimmesh && nimmesh.setNetwork) { try { await nimmesh.setNetwork(mainnet); } catch (e) {} }
+    applyNetwork(mainnet);
+  }));
+
   // G19: drive the backup banner's insistence from the Rust backup-nudge policy. Maps a
   // BackupUrgency (none|gentle|important|critical) to the vendored component's escalating
   // treatment: hidden → orange words-on-white → solid-orange "file" insistence + stronger copy.
@@ -541,10 +570,13 @@
   // A1/A4: the mesh status line is always visible (the obvious "this is the offline mesh"
   // differentiator). On device the bridge enriches it with live peers/network/core.
   if (window.nimmesh) {
+    // Reflect the selected network (default testnet) in the toggle + the mesh bar.
+    let netName = 'testnet';
+    try { const net = await nimmesh.currentNetwork(); netName = net.name; applyNetwork(net.mainnet); } catch (e) {}
     try {
-      const [v, n, m] = await Promise.all([nimmesh.version(), nimmesh.network(), nimmesh.meshStatus()]);
-      let line = `mesh ${m.state} · ${m.peers} nearby · ${n.network} · core ${v.core}`;
-      // C1c: also show the live testnet head we anchor sends to (proves app → chain RPC works).
+      const [v, m] = await Promise.all([nimmesh.version(), nimmesh.meshStatus()]);
+      let line = `mesh ${m.state} · ${m.peers} nearby · ${netName} · core ${v.core}`;
+      // C1c: also show the live head we anchor sends to (proves app → chain RPC works).
       try { const h = await nimmesh.headHeight(); if (h && h.height) line += ` · head ${h.height}`; } catch (e) {}
       document.getElementById('meshbar-text').textContent = line;
     } catch (e) { console.error('bridge probe failed', e); }

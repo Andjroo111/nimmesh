@@ -2,6 +2,28 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.26.0] — 2026-06-27
+
+### Added — mainnet-capable network toggle (gated; default testnet)
+
+The wallet can now point at **mainnet**, behind a deliberate in-app switch. This is the last build
+step before the hardware phone test: everything up to a real-funds send is now wired, and the only
+thing the app will not do autonomously is broadcast real mainnet funds (that is the phone test).
+
+- `apple/.../TestnetRpc.swift`: `TestnetRpc` → **`NimiqRpc`** with an `isMainnet` toggle
+  (`UserDefaults`, default `false`). `rpcURL` switches testnet ↔ mainnet (both nimiqwatch public
+  nodes); `network` returns the matching Rust `NetworkId` the signer anchors to; the faucet stays
+  testnet-only.
+- `apple/.../WebHostView.swift`: bridge gains read-only `currentNetwork` + a deliberate `setNetwork`;
+  `sendTransaction` anchors to `NimiqRpc.network`; `fundFromFaucet` is guarded `!isMainnet`.
+- `webui/index.html`: a Testnet/Mainnet segmented control on the Send sheet with a confirm-on-switch
+  and a "⚠ Mainnet sends REAL funds" warning; the mesh bar + toggle reflect the selected network
+  (default testnet). Resting state verified testnet-active/no-warning; mainnet-active shows the warning.
+- ATS exception (added with the live send path) lets the app reach the testnet/mainnet RPC over HTTPS.
+
+**Gating (unchanged):** mainnet is never the default and the app never auto-sends. A mainnet send is
+always a user action on a real device with real funds. `docs/DEVICE-TEST.md` is the runbook.
+
 ## [0.25.0] — 2026-06-27
 
 ### Added — G5: the native CoreBluetooth BLE shim (the offline mesh radio)

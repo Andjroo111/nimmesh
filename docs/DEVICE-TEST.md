@@ -47,11 +47,12 @@ doesn't work in the simulator, so this needs hardware.
 
 ## 3. The real-funds test — MAINNET (small amount, your call)
 
-> Mainnet is the gated switch — only enable it deliberately. *(The in-app mainnet toggle is the
-> last build step; until it lands, do the mainnet send via the same flow once it's wired.)*
+> Mainnet is the gated switch, only enable it deliberately. The in-app **network toggle** is on the
+> Send sheet (Testnet / Mainnet); switching to mainnet asks you to confirm and shows a real-funds
+> warning. The app never auto-sends, a mainnet send is always your tap.
 
-1. Flip the network toggle to **mainnet**. Fund the app's address with a **small** amount of real
-   NIM from your wallet.
+1. On the **Send** sheet, flip the network toggle to **Mainnet** (confirm the prompt). Fund the app's
+   address with a **small** amount of real NIM from your wallet.
 2. Repeat the mesh send with a tiny amount first. Confirm inclusion on the mainnet explorer.
 3. Only scale up once a small send works end to end.
 
