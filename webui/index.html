@@ -42,20 +42,33 @@
   .tx-wrap { padding: 4px 20px 96px; }
   .tx-wrap .transaction-list { width: 100%; }
   .month-label label { color: rgba(31,35,72,.4); }
-  /* account-header is the DESKTOP component; compact it for the 390px phone
-     so it matches the real mobile wallet (small identicon, label truncates). */
-  .account-header { padding: 16px 8px 8px !important; }
-  .account-header .active-address { align-items: center; gap: 12px; }
-  .account-header .active-address .identicon-wrapper,
-  .account-header .active-address .identicon { width: 48px !important; height: 48px !important; min-width: 48px; }
-  .account-header .active-address .meta { min-width: 0; flex: 1; }
-  .account-header .active-address .meta .label {
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 16rem; flex: 0 1 auto; }
-  .account-header .active-address .meta .amount { white-space: nowrap; flex: 0 0 auto; }
-  /* address row: let the chunked address take the width and truncate gracefully */
-  .account-header .active-address .copyable { min-width: 0; flex: 1; }
-  .account-header .active-address .address { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .account-header .active-address .fiat-amount { flex: 0 0 auto; }
+  /* The account-header is the wallet's DESKTOP component (designed at 1440px:
+     48px side padding, a 90px identicon, 24px type). Rather than fight individual
+     elements, re-scale its OWN layout vars for the 390px phone — tighter paddings,
+     a 48px identicon, mobile type sizes — so "Mesh Wallet" shows in full and the
+     chunked address fades gracefully (the component's own mask idiom) instead of a
+     hard ellipsis cut. (A2; legacy @nimiq/style root is 8px so 1rem = 8px.) */
+  .account-header {
+    --padding: 1.5rem;          /* 12px (was 4rem/32px) */
+    --padding-bottom: 1.5rem;
+    --h1-size: 2.75rem;         /* 22px — account name + balance */
+    --body-size: 1.75rem;       /* 14px — address + fiat value */
+    padding-bottom: 1.5rem;     /* drop the 9rem reserved for the (removed) stake CTA */
+  }
+  .account-header .active-address { padding: 2rem 2.5rem 1.5rem 2rem; align-items: center; }
+  .account-header .active-address .identicon-wrapper { margin-right: 1.5rem; }
+  .account-header .active-address .identicon { height: 6rem; width: 6rem; margin: 0; }  /* 48px */
+  /* address fades like the label (its own idiom), never a hard ellipsis */
+  .account-header .active-address .address {
+    mask: linear-gradient(90deg, #000 0, #000 calc(100% - 3rem), transparent); }
+  /* actions row on mobile: the desktop row (search | Send Receive) crams the search
+     to "Se" at 390px. Stack it — full-width search on top, Send/Receive 50/50 below —
+     a standard, faithful mobile pattern that keeps every control legible + tappable. */
+  .account-header .actions { flex-wrap: wrap; gap: 1.5rem; margin: 0 2rem 0; padding: 0; }
+  .account-header .actions .container { flex: 1 1 100%; min-width: 0; }
+  .account-header .search-bar { --default-sb-width: 100%; min-width: 0; max-width: none; padding: 1rem 0; }
+  .account-header .actions .ml-auto { margin-left: 0; flex: 1 1 100%; display: flex; gap: 1.5rem; }
+  .account-header .send, .account-header .receive { flex: 1 1 0; margin: 0; justify-content: center; }
 </style>
 </head>
 <body>
@@ -95,7 +108,7 @@
             <span class="amount">752 <span class="currency nim">NIM</span></span>
           </div>
           <div class="flex-row">
-            <div class="copyable"><div class="address">NQ30 AM32 NHXL 29F7 XUY0 HR3R 7XHF EF4L LYBS</div></div>
+            <div class="copyable"><div class="address" title="NQ30 AM32 NHXL 29F7 XUY0 HR3R 7XHF EF4L LYBS">NQ30 AM32 NHXL 29F7 XUY0 HR3R 7XHF EF4L LYBS</div></div>
             <span class="fiat-amount">$0.46</span>
           </div>
         </div>

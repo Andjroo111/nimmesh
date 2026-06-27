@@ -112,8 +112,8 @@ files < 800 lines, real decisions in `docs/adr/`.
 
 | #  | Goal                                                              | money-path | auto-merge | deps    | status |
 | -- | ---------------------------------------------------------------- | :--------: | :--------: | ------- | ------ |
-| A1 | WebView host + read-only JS↔core bridge (`WKWebView` loads `webui/`) | no | yes | G5-core | todo |
-| A2 | Home polish — mobile-header fix + data via the bridge (390px diff) | no | yes | A1 | todo |
+| A1 | WebView host + read-only JS↔core bridge (`WKWebView` loads `webui/`) | no | yes | G5-core | ✅ done |
+| A2 | Home polish — mobile-header fix + data via the bridge (390px diff) | no | yes | A1 | ✅ done |
 | A3 | Send + Receive screens (UI; Receive fully works, Send→sign stubbed→C1) | no | yes | A1, A2 | todo |
 | A4 | Mesh chrome + global language pill + connect-wallet pill (selection only) | no | yes | A1 | todo |
 
@@ -310,3 +310,20 @@ the signer — but our live example drives our core end-to-end for every money-c
   shim, devices), Phase E (G21 vision). Found `feat/g5-ios-shell` still ships the **rejected
   hand-built SwiftUI HomeView** — the WebView pivot was never wired; A1 fixes that and is the
   foundation merge. Loop runs A+B autonomously, parks C/D/E for Andjroo. Starting **Cycle 1 = A1**.
+- **2026-06-27** — **A1 merged** (PR #37, v0.10.0, #33 closed): the iOS app now hosts the real
+  `nimiq-ui` web layer in a `WKWebView` (`WebHostView.swift`) bridged to the Rust core; the
+  rejected SwiftUI `HomeView`/`Theme` are deleted. Read-only `bitmesh` JS bridge
+  (version/network/meshStatus) — no keys/sign/broadcast, non-money-path. **Proven on the iOS 26.5
+  simulator:** WebView renders the wallet UI + the mesh bar shows `core 0.10.0` sourced from
+  `coreVersion()` through the bridge (JS↔Swift↔Rust round-trip on device). `nq lint` 0 errors;
+  CI `core (rust)` green; iOS gated locally (`xcodebuild` BUILD SUCCEEDED). Next: **Cycle 2 = A2**
+  (mobile header layout + data via the bridge; the `nq lint` "Mesh Wallet cut off" warning is A2's).
+- **2026-06-27** — **A2 done** (#34): mobile-header polish. Root cause: the account-header is the
+  wallet's **1440px desktop** component (48px side padding, 90px identicon, 24px type) crammed into
+  390px → "Mesh Wallet" truncated to "M.". Fix re-scales the component's **own layout vars** for
+  mobile (12px padding, 48px identicon, 22/14px type), fades the chunked address with the
+  component's mask idiom (no hard ellipsis), and stacks the actions row (full-width search + 50/50
+  Send/Receive). **Verified on the iOS 26.5 simulator at device width:** full "Mesh Wallet" label,
+  legible balance/fiat, faithful Nimiq mobile home. `nq lint` 0 errors ("Mesh Wallet cut off" gone).
+  Honest scope: real balance/address/tx data binds when there's a wallet (C1 keys) + mesh (Phase D);
+  the displayed values are still demo. Next: **A3** (Send + Receive screens).

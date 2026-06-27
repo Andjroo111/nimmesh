@@ -29,6 +29,21 @@ the iOS shell + web UI onto `main`.
   (`CODE_SIGNING_ALLOWED=NO`) — the app compiles against the freshly generated core and loads the
   web UI. Rust core unchanged (149 tests still green).
 
+### Changed — A2 (web UI): mobile account-header polish — non-money-path (same 0.10.0 app milestone)
+
+The account-header is the wallet's **1440px desktop** component (48px side padding, a 90px
+identicon, 24px type); crammed into 390px it truncated the account name to "M.". A2 makes the
+mobile home faithful without hand-inventing a layout:
+
+- `webui/index.html` — re-scale the component's **own** layout vars for mobile (`--padding` 12px,
+  48px identicon, `--h1-size`/`--body-size` 22/14px), fade the chunked address with the
+  component's mask idiom (no hard ellipsis; `title` added for a11y/copy), and **stack the actions
+  row** (full-width search + 50/50 Send/Receive) so every control stays legible and tappable.
+- Verified on the iOS 26.5 simulator at device width: full "Mesh Wallet" label, legible
+  balance/fiat, a faithful Nimiq mobile home. `nq lint` 0 errors. Core untouched (no version bump).
+- Honest scope: real balance/address/tx data binds when there's a wallet (C1 keys) + mesh
+  (Phase D); the displayed values are still demo until then.
+
 ## [0.9.0] — 2026-06-26
 
 ### Added — G9 (Rust core): head beacon (`0x32`) + validity-window guard / packet GC — non-money-path
