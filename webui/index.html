@@ -124,16 +124,19 @@
   .sheet-sub { text-align: center; color: rgba(31,35,72,.6); font-size: 15px; margin: 0 0 8px; padding: 0 28px; }
 
   /* Receive sheet */
-  .receive-id { display: flex; justify-content: center; margin: 22px 0 8px; }
-  .receive-id .identicon { width: 116px; height: 116px; }
+  .receive-id { display: flex; justify-content: center; margin: 20px 0 6px; }
+  .receive-id .identicon { width: 136px; height: 136px; }   /* match the real wallet's prominent identicon */
   .receive-id .identicon img { width: 100%; height: 100%; }
   .addr-box { margin: 12px 24px 8px; padding: 22px 12px; background: #f6f6f8; border-radius: 12px; }
   .addr-box .address-display { font-size: 3rem; max-width: 100%; }
   .receive-cta { display: flex; align-items: center; justify-content: center; gap: 16px; padding: 14px 24px 4px; }
-  .receive-cta .req-link { height: 42px; padding: 0 22px; border-radius: 500px; background: #ececed; color: #1f2348;
-    font-weight: 700; font-size: 14px; display: inline-flex; align-items: center; }
-  .receive-cta .qr-toggle { width: 44px; height: 44px; border-radius: 50%; background: #ececed; color: rgba(31,35,72,.6);
-    display: inline-flex; align-items: center; justify-content: center; }
+  /* border:0 — without it the UA default `2px outset` button border shows (the dark ring). */
+  .receive-cta .req-link { height: 42px; padding: 0 22px; border: 0; border-radius: 500px; background: #ececed;
+    color: #1f2348; font-weight: 700; font-size: 14px; display: inline-flex; align-items: center; cursor: pointer; }
+  .receive-cta .qr-toggle { width: 44px; height: 44px; border: 0; border-radius: 50%; background: #ececed;
+    color: rgba(31,35,72,.6); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+  .receive-cta button:active { transform: translateY(1px); }
+  .receive-cta button:focus:not(:focus-visible) { outline: none; }   /* no ring on tap; keep it for keyboard */
   .receive-cta .qr-toggle svg { width: 22px; height: 22px; }
   .qr-reveal { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 18px 0 4px; }
   .qr-reveal[hidden] { display: none; }
@@ -142,7 +145,8 @@
   .req-amount-label { text-align: center; color: rgba(31,35,72,.45); font-size: 13px; font-weight: 600; margin: 14px 0 0; }
   .req-amount { display: flex; align-items: baseline; justify-content: center; gap: 8px; margin: 2px 24px 0; }
   .req-amount input { width: 140px; border: 0; background: transparent; font-family: inherit; font-size: 30px;
-    font-weight: 700; color: #1f2348; text-align: right; outline: none; padding: 0; }
+    font-weight: 700; color: #1f2348; text-align: right; outline: none; padding: 0; caret-color: #0582ca; }
+  .req-amount input::placeholder { color: rgba(31,35,72,.25); font-weight: 700; }
   .req-amount .unit { font-size: 16px; font-weight: 700; color: rgba(31,35,72,.5); }
   .qr-amount { color: rgba(31,35,72,.6); font-weight: 700; font-size: 14px; margin-top: 10px; }
   .qr-amount[hidden] { display: none; }
@@ -329,11 +333,11 @@
   <div class="receive-cta">
     <button class="req-link" id="req-link">Create request link</button>
     <button class="qr-toggle" id="qr-toggle" aria-label="Show QR code">
-      <svg viewBox="0 0 22 22" fill="none"><path d="M3 3h5v5H3zM14 3h5v5h-5zM3 14h5v5H3z" stroke="currentColor" stroke-width="1.7"/><path d="M14 14h2v2h-2zM17 17h2v2h-2zM14 17h2v2h-2zM17 14h2v2h-2z" fill="currentColor"/></svg>
+      <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1.6" stroke="currentColor" stroke-width="1.8"/><rect x="14" y="3" width="7" height="7" rx="1.6" stroke="currentColor" stroke-width="1.8"/><rect x="3" y="14" width="7" height="7" rx="1.6" stroke="currentColor" stroke-width="1.8"/><rect x="14.4" y="14.4" width="2.4" height="2.4" rx="0.6" fill="currentColor"/><rect x="18.6" y="14.4" width="2.4" height="2.4" rx="0.6" fill="currentColor"/><rect x="14.4" y="18.6" width="2.4" height="2.4" rx="0.6" fill="currentColor"/><rect x="18.6" y="18.6" width="2.4" height="2.4" rx="0.6" fill="currentColor"/></svg>
     </button>
   </div>
   <div class="qr-reveal" id="qr-reveal" hidden>
-    <canvas class="qr-code" data-qr="nimiq:NQ30AM32NHXL29F7XUY0HR3R7XHFEF4LLYBS" data-size="220"></canvas>
+    <canvas class="qr-code" data-qr="nimiq:NQ30AM32NHXL29F7XUY0HR3R7XHFEF4LLYBS" data-size="240"></canvas>
     <div class="qr-amount" id="qr-amount" hidden></div>
   </div>
 </section>

@@ -2,6 +2,24 @@
 
 All notable changes to nimiq.bitmesh. Each PR bumps the version and adds an entry.
 
+## [0.16.1] — 2026-06-27
+
+### Fixed — G18 Receive sheet polish (web UI, compared against the real wallet)
+
+Refined the "pay me X NIM" Receive screen after a device screenshot, diffing against the real wallet's
+Receive NIM modal:
+
+- **Removed the default button border** on "Create request link" + the QR toggle — they were rendering
+  the UA `2px outset` border (the dark ring visible on device). Now clean borderless grey pills like the
+  real wallet, with a tap press-state and a keyboard-only focus ring (`:focus-visible`).
+- **Enlarged the identicon** 116 → 136 px to match the real modal's prominent identicon-in-hex.
+- **Cleaner QR-toggle glyph** (three rounded finder squares + a module block) and the QR bumped to the
+  component's default 240 px; fill already matches the Nimiq `#265DD7 → #0582CA` radial exactly.
+- **Polished the amount input** — muted placeholder + a Nimiq-blue caret.
+
+`nq lint` 0 errors; base + request states screenshot-verified at 390px against
+`references/screenshots/wallet-app/logged-in/receive-nim-address-mobile.png`.
+
 ## [0.16.0] — 2026-06-27
 
 ### Added — G18: contacts + "pay me X NIM" request links — non-money-path
