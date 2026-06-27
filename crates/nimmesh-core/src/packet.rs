@@ -91,6 +91,20 @@ pub enum MessageType {
     /// (G15). The balance as the gateway read it at `headHeight`; **unverified** (a relay is
     /// untrusted) until a future accounts-proof. Read-only, non-money-path.
     NimiqBalanceResponse = 0x34,
+    /// `0x40` — a **swap proposal** (mesh swap F2): terms of an offline cross-chain HTLC atomic
+    /// swap (amounts, hashlock, addresses, timelocks). Private 1:1 (rides Noise). Carries no keys.
+    SwapPropose = 0x40,
+    /// `0x41` — a **swap accept / counter** (F2): the responder's addresses + agreed terms. 1:1.
+    SwapAccept = 0x41,
+    /// `0x42` — a **swap funding proof** (F2): the signed HTLC funding tx blob (broadcast-safe,
+    /// **opaque** here) + its txId + leg. Flooded so any gateway can broadcast it.
+    SwapFundingProof = 0x42,
+    /// `0x43` — a **swap preimage reveal** (F2): the signed claim tx blob (broadcast-safe,
+    /// **opaque**) that reveals the secret on-chain. Flooded so the counterparty learns it.
+    SwapPreimageReveal = 0x43,
+    /// `0x44` — a **swap abort** (F2): a pre-funding courtesy cancel. 1:1. The timelock refund is
+    /// the real guarantee; this just lets a peer release state early.
+    SwapAbort = 0x44,
 }
 
 impl MessageType {
@@ -113,6 +127,11 @@ impl MessageType {
             0x32 => Some(MessageType::NimiqHeadBeacon),
             0x33 => Some(MessageType::NimiqBalanceQuery),
             0x34 => Some(MessageType::NimiqBalanceResponse),
+            0x40 => Some(MessageType::SwapPropose),
+            0x41 => Some(MessageType::SwapAccept),
+            0x42 => Some(MessageType::SwapFundingProof),
+            0x43 => Some(MessageType::SwapPreimageReveal),
+            0x44 => Some(MessageType::SwapAbort),
             _ => None,
         }
     }

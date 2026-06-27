@@ -37,7 +37,7 @@ and `main` is at a clean point — proposed to Andjroo, not taken by the loop.
 | --- | --- | --- | --- | --- |
 | **F0** | Spec + design spike — SWAP.md / SWAP-LOOP.md + confirm the exact Albatross HTLC byte layout from `@nimiq/core` 2.7.0 (timeout units, hash-algo enum, contract-data + creation-tx + resolve-proof layouts) | no | — | 🟡 docs done · byte-layout spike next |
 | **F1** | Nimiq **HTLC tx serialization** — extend the signer from `Basic` to: HTLC **creation** (Extended format), `regular-transfer` (claim-with-preimage) and `timeout-resolve` (refund) proofs; **byte-exact vs `@nimiq/core` 2.7.0** with committed fixtures (`nimiq/htlc.rs` + `scripts/fixtures` HTLC cases) | no (testnet) | F0 | 🟡 funding tx + redeem content byte-exact (6 tests green); resolve **proof** = next sub-cycle (core-rs-albatross gate) |
-| **F2** | Swap **wire messages + codec** — MessageType `0x40–0x44` + the swap TLV envelope; encode/decode + proptests (`swap_wire.rs`, extend `packet.rs`/`envelope.rs`) | no | — | todo |
+| **F2** | Swap **wire messages + codec** — MessageType `0x40–0x44` + the swap TLV envelope; encode/decode + proptests (`swap_wire.rs`, extend `packet.rs`/`envelope.rs`) | no | — | ✅ done (11 tests; `SwapEnvelope` TLV codec + per-kind required-field enforcement) |
 | **F3** | Swap **state machine** — `swap.rs`: roles (initiator/responder), lifecycle (`Proposed→Accepted→Funded→Revealed→Settled` / `Aborted`/`Refunded`), **height-anchored clock-free timelock ladder** + the `Δ_safe` safety gate (refuse unsafe-offline) | no | F2 | todo |
 | **F4** | **Mesh integration + mock-counterparty e2e** — engine glue to flood/relay/store-forward swap msgs over the existing mesh; the `SwapLeg` trait + `NimiqLeg` + a mock `BitcoinLeg`; `swap_e2e_tests.rs` proving the happy path **+ all 4 adversarial paths** (no one-sided settlement) | no | F1, F3 | todo |
 | **F5** | **Real Bitcoin leg seam + stub** — the `BitcoinLeg` P2WSH-HTLC trait surface + a documented stub + a "what Andjroo must provide" note (BTC node, funds). Real signer/watcher = **gated** | stub: no · real: **yes** | F4 | todo |
@@ -104,3 +104,11 @@ and `main` is at a clean point — proposed to Andjroo, not taken by the loop.
   **byte-exact against the `@nimiq/core` fixtures** (`swap_htlc_fixtures.json`). 6 new tests,
   **207 lib tests green**, fmt/clippy/size-guard clean. Next sub-cycle: the resolve **proof**
   (RegularTransfer preimage + TimeoutResolve), gated against core-rs-albatross / a testnet redeem.
+- **2026-06-27** — **F2 done: swap wire messages + codec.** Added MessageType `0x40`–`0x44`
+  (`SwapPropose`/`Accept`/`FundingProof`/`PreimageReveal`/`Abort`) to `packet.rs` + the new
+  `swap_wire.rs` — a `SwapEnvelope` TLV codec (mirrors `envelope.rs`) carrying swap_id, hashlock,
+  amounts, block-height timeouts, NIM + chain-agnostic counterparty addresses, leg, **opaque** signed
+  tx blob + txId, networkId, abort reason. `decode_swap(kind, ..)` enforces the per-kind required
+  fields + strict bounds/length/enum checks; unknown TLVs skipped (forward-compat). **11 tests,
+  218 lib tests green**, fmt/clippy/size-guard clean. Public broadcast-safe data only — no keys,
+  no preimage-before-reveal. Next: **F3** (swap state machine + the `Δ_safe` timelock-safety gate).

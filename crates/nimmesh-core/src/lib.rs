@@ -34,6 +34,14 @@ pub mod codec;
 pub mod envelope;
 pub mod packet;
 
+// Mesh swap (F2, feat/mesh-swap): the swap wire messages (`0x40`–`0x44`) + their TLV envelope,
+// layered on the same codec/relay/store-forward/gateway stack as `nimiqTx`. `swap_wire` is the
+// type-length-value codec for propose / accept / funding-proof / preimage-reveal / abort —
+// public broadcast-safe data + opaque signed tx blobs only (no keys, no preimage-before-reveal).
+// The Nimiq HTLC tx serialization the swap funds/claims with lives in `nimiq::htlc`. See
+// docs/swap/SWAP.md; the build contract is docs/swap/SWAP-LOOP.md.
+pub mod swap_wire;
+
 // G5: the BLE mesh node + its byte-stream radio seam (ADR-0002). The native radio stays
 // behind the `BleRadio` foreign trait (`radio`); Rust drives it from `MeshNode` (`node`)
 // off a worker thread, speaking the real G4 codec via the relay/gateway/origin `engine`
