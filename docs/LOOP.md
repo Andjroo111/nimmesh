@@ -140,7 +140,7 @@ Rust-core logic (cargo-tested) + web UI (screenshot-verified). None handle keys 
 | --- | ----------------------------------------------------------- | :--------: | :--------: | ---- | ------ |
 | C1  | Keygen / import + real Send→sign→queue wire (=#10 money slice; seed stays behind `EnclaveKey`) | **yes** | **no** | A3, G3 | todo |
 | G12 | Hardening — verify-before-relay, rate limits, NACK, anti-spam | no¹ | yes¹ | G8, G3 | ✅ done (verify + rate-limit + stop-after-ACK; NACK = G8 reject-receipt) |
-| G13 | TESTNET end-to-end demo + mainnet-gating doc                 | **yes** | **no** | G8,G9,C1,G12 | todo |
+| G13 | TESTNET end-to-end demo + mainnet-gating doc                 | no² | yes² | G8,G9,G12 | ✅ done (²gating doc + headless mock demo; live testnet broadcast = the G8 tool) |
 
 ### Phase D — native BLE on real devices (GATED: needs Andjroo's devices + Apple Dev account)
 
@@ -453,3 +453,13 @@ the signer — but our live example drives our core end-to-end for every money-c
   (both under the 800-line guard). 209 tests, clippy/fmt/size-guard clean. Non-money-path throughout.
   Next: **G13 mainnet-gating DOC** (the last autonomous-safe item). Then the loop is at the hard wall —
   only C1 (key-origin decision), real broadcast, the native shim (devices), and the Phase-D live UI remain.
+- **2026-06-27 (overnight)** — **G13 done** (v0.19.0, auto-merged): `docs/MAINNET-GATING.md` (the
+  testnet-stays-testnet safety contract — 6 in-code invariants, what a mainnet switch requires + that
+  it's Andjroo-only, the pre-mainnet checklist, the irreversible-action list) + `examples/mesh_demo.rs`
+  (the full `submit→flood→relay→dedup→gateway→receipt→settled` loop headless with a mock gateway, no
+  network). The real-testnet broadcast demo is already the G8 `live_testnet_broadcast` tool. ²Autonomous
+  half only — no sign/keys/broadcast; the mainnet switch is Andjroo's. ⏸️ **OVERNIGHT LOOP COMPLETE — the
+  autonomous backlog is fully exhausted.** Everything that remains genuinely needs Andjroo: **C1**
+  keygen/sign (key-origin decision + it's the seed/sign line), **real testnet/mainnet broadcast** (his
+  authorization), the **native BLE shim G5** (≥2 phones + Apple Dev acct + signing), and the **Phase-D
+  live-UI batch** (needs a running in-app MeshNode = the native shim). The loop stopped here correctly.

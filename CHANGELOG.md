@@ -2,6 +2,26 @@
 
 All notable changes to nimiq.bitmesh. Each PR bumps the version and adds an entry.
 
+## [0.19.0] — 2026-06-27
+
+### Added — G13: mainnet-gating doc + headless mesh demo — non-money-path
+
+- `docs/MAINNET-GATING.md` (new): the safety contract for staying on testnet. Documents the six
+  in-code invariants that keep every build/test/loop on testnet (default network, testnet-guarded RPC,
+  feature-gated broadcast, seed-never-crosses-FFI, unconfirmed-until-inclusion, money-path-never-auto-merge),
+  exactly what a future mainnet switch would require (and that only Andjroo does it), the pre-mainnet
+  checklist (most boxes still open), and the irreversible/gated action list.
+- `crates/bitmesh-core/examples/mesh_demo.rs` (new): the whole pay loop —
+  `submit → flood → relay → dedup → gateway → receipt → settled` — runs **headless, no network** against
+  a mock gateway (`cargo run -p bitmesh-core --example mesh_demo`). The no-network companion to the G8
+  `live_testnet_broadcast` tool (which proves the same path on the real testnet, block 4428402).
+
+This is the autonomous-safe half of G13: the real-testnet broadcast demo is already the G8 live tool
+(money-path, Andjroo-authorized); the mainnet switch itself stays Andjroo-only. No sign/keys/broadcast here.
+
+209 tests green, `cargo clippy -D warnings` (incl. the example) + `cargo fmt --check` + size-guard clean,
+the demo runs end-to-end (SETTLED, 1 submission, bytes match).
+
 ## [0.18.0] — 2026-06-27
 
 ### Added — G12 (part 2): per-peer rate limits + stop-after-ACK — completes G12 — non-money-path
