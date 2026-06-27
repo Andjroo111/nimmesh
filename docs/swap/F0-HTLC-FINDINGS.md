@@ -70,11 +70,25 @@ tx + all `serializeContent` payloads stay byte-exact-gated against `@nimiq/core`
 From the `@nimiq/core` `PlainHtlc*Proof` field sets; exact variant discriminants + order to be
 confirmed in F1 via `.verify()` (the Albatross `htlc_contract.rs` proof encoding):
 
-- **RegularTransfer** (claim with preimage):
-  `proofType(1) ‖ hashAlgorithm(1) ‖ hashDepth(1) ‖ hashRoot(32) ‖ preImage(32) ‖ signatureProof`
-  — the claimant signs; `preImage = S`; revealing this on-chain reveals S.
-- **TimeoutResolve** (refund after timeout): `proofType(1) ‖ signatureProof` — the creator signs.
-- **EarlyResolve** (both sign): `proofType(1) ‖ signatureProof(recipient) ‖ signatureProof(creator)`.
+Authoritative structure (from `core-rs-albatross`
+`primitives/transaction/src/account/htlc_contract.rs`, `OutgoingHTLCTransactionProof`,
+**PoS variant ids start at 0**; `AnyHash`/`PreImage` are tagged enums = `discriminant ‖ bytes`,
+where the sha256 discriminant is **3** — same as in the creation data, i.e. `03 ‖ 32`):
+
+- **RegularTransfer** (claim with preimage, variant `0`):
+  `0x00 ‖ hashDepth(1) ‖ hashRoot:AnyHash(1+32) ‖ preImage:PreImage(1+32) ‖ signatureProof(98)`
+  — the claimant signs; revealing this on-chain reveals S. (~166 B, LEB128 length-prefixed.)
+- **TimeoutResolve** (refund after timeout, variant `2`): `0x02 ‖ signatureProof(98)` — creator signs.
+- **EarlyResolve** (both sign, variant `1`): `0x01 ‖ signatureProof(recipient) ‖ signatureProof(creator)`.
+
+**⚠️ Gate, confirmed empirically:** `@nimiq/core` JS/WASM (2.7.0) **cannot deserialize or verify
+an HTLC redeem proof at all** — `Transaction.fromAny(redeemWire).verify()` throws a serde error
+for *every* byte arrangement (the WASM build omits the outgoing-HTLC proof path, matching its
+refusal to `sign()`). So the redeem proof's byte-exactness is **not** gateable against the JS lib.
+Its authoritative gate is a **live Nimiq testnet broadcast** (build → `sendRawTransaction` →
+on-chain accept) or porting `core-rs-albatross`'s own test vectors. This is folded into a future
+end-to-end testnet swap; the swap *protocol* (F2–F4) treats the signed redeem as an opaque blob,
+exactly as the mesh already treats every tx, so it does not block.
 
 `signatureProof` = the existing 98-byte single-sig blob already built by
 `tx::signature_proof_single_sig` (`type(1)=0 ‖ pubkey(32) ‖ merklePathLen(1)=0 ‖ sig(64)`).
