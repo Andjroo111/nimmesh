@@ -114,7 +114,7 @@ files < 800 lines, real decisions in `docs/adr/`.
 | -- | ---------------------------------------------------------------- | :--------: | :--------: | ------- | ------ |
 | A1 | WebView host + read-only JS↔core bridge (`WKWebView` loads `webui/`) | no | yes | G5-core | ✅ done |
 | A2 | Home polish — mobile-header fix + data via the bridge (390px diff) | no | yes | A1 | ✅ done |
-| A3 | Send + Receive screens (UI; Receive fully works, Send→sign stubbed→C1) | no | yes | A1, A2 | todo |
+| A3 | Send + Receive screens (UI; Receive fully works, Send→sign stubbed→C1) | no | yes | A1, A2 | ✅ done |
 | A4 | Mesh chrome + global language pill + connect-wallet pill (selection only) | no | yes | A1 | todo |
 
 A1's bridge is **read-only** (version/network/mesh status/peer count/cached tx list) — no keys,
@@ -327,3 +327,14 @@ the signer — but our live example drives our core end-to-end for every money-c
   legible balance/fiat, faithful Nimiq mobile home. `nq lint` 0 errors ("Mesh Wallet cut off" gone).
   Honest scope: real balance/address/tx data binds when there's a wallet (C1 keys) + mesh (Phase D);
   the displayed values are still demo. Next: **A3** (Send + Receive screens).
+- **2026-06-27** — **A3 done** (#35): Send + Receive screens, built against **authentic live
+  testnet-wallet captures** (a reusable Playwright capture pipeline now lives in nimiq-branding-cli
+  + logged-in references). Per the verification finding, **Send/Receive moved to a bottom action
+  bar** (Receive | Send | scan) matching the real mobile wallet, with bitmesh's **mesh status line
+  right above it**. **Receive NIM** sheet = identicon + 3×3 Fira-Mono address grid (`address-display`)
+  + "Create request link" + a real Nimiq-blue **QR** (`qr-creator`, on demand). **Send Transaction**
+  sheet = Contacts + recent-identicon row + "ENTER ADDRESS" 3×3 input grid (auto-advancing) +
+  "Create a Cashlink" — **compose-only; the sign+queue is a STUB** ("Signed offline, then relayed
+  over the mesh. Signing arrives next.") → the actual signing is the gated money-path **C1**.
+  Verified at 390px (playwright) + on the iOS 26.5 simulator; `nq lint` 0 errors. Non-money-path →
+  auto-merge. Next: **A4** (mesh chrome + language pill + connect-wallet), then Phase B.

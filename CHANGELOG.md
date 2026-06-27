@@ -44,6 +44,25 @@ mobile home faithful without hand-inventing a layout:
 - Honest scope: real balance/address/tx data binds when there's a wallet (C1 keys) + mesh
   (Phase D); the displayed values are still demo until then.
 
+### Added — A3 (web UI): Send + Receive screens — non-money-path (same 0.10.0 app milestone)
+
+Built against authentic live testnet-wallet captures (a reusable Playwright capture pipeline +
+logged-in references now live in the nimiq-branding-cli skill). Verifying our home against the
+real wallet showed the account-header is faithful; the one divergence — Send/Receive placement —
+is fixed here.
+
+- `webui/index.html` — Send/Receive **moved to a bottom action bar** (Receive | Send | scan),
+  matching the real mobile wallet, with bitmesh's **mesh status line directly above it** (the one
+  honest divergence from the wallet). The header actions row is now just the full-width search.
+- **Receive NIM** bottom sheet — identicon + the 3×3 Fira-Mono chunked address (`address-display`
+  component) + "Create request link" + a real Nimiq-blue **QR** rendered on demand (`qr-creator`).
+- **Send Transaction** bottom sheet — Contacts + recent-identicon row + "ENTER ADDRESS" 3×3
+  auto-advancing input grid + "Create a Cashlink". **Compose-only**: the sign + queue action is a
+  STUB with an honest note ("Signed offline, then relayed over the mesh. Signing arrives next.") —
+  the real signing/broadcast is the gated money-path (C1), behind Andjroo. No keys here.
+- Navy-overlay bottom sheets (rule 11), Nimiq easing, gold/blue per palette. Verified at 390px
+  (playwright) + on the iOS 26.5 simulator; `nq lint` 0 errors. Core untouched (no version bump).
+
 ## [0.9.0] — 2026-06-26
 
 ### Added — G9 (Rust core): head beacon (`0x32`) + validity-window guard / packet GC — non-money-path
