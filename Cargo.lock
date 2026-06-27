@@ -747,7 +747,7 @@ dependencies = [
 
 [[package]]
 name = "nimmesh-core"
-version = "0.22.0"
+version = "0.23.0"
 dependencies = [
  "blake2",
  "ed25519-dalek",

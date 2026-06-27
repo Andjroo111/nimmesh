@@ -2,6 +2,25 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.23.0] — 2026-06-27
+
+### Changed — C1c-1: the app shows YOUR real wallet address (testnet)
+
+The wallet is no longer a demo placeholder. On device, the webui pulls the device's real testnet
+address (from the C1b Keychain key, over the read-only `walletAddress` bridge — seed never crosses) and
+renders it everywhere it belongs: the **home header** address + identicon, the **Receive** sheet's
+3×3 address grid + identicon, and the **request QR**. In a plain browser (no bridge) it degrades to the
+demo address. Marked the wallet's own elements (`data-wallet` / `data-wallet-address`) so tx-row
+counterparties are left untouched; `RECEIVE_ADDR` is now a shared global the address update replaces.
+
+**Also fixed the false-alarm "sim launch" issue (#56, closed):** the app launches fine — the earlier
+failure was a wrong bundle id in my launch command (`com.nimmesh.NimmeshApp` vs the real
+`com.nimmesh.app`). Confirmed in the running simulator: the C1b wallet self-test prints
+`signedOk=true` and a real address, and the home now renders it.
+
+`nq lint` 0 errors; iOS `xcodebuild` BUILD SUCCEEDED; real address verified in the running simulator.
+Next (C1c-2): wire the Send screen to sign + broadcast a live testnet transaction from the app.
+
 ## [0.22.0] — 2026-06-27
 
 ### Added — C1b: native Keychain wallet key + the CryptoKit ↔ dalek interop proof (testnet)

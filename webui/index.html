@@ -213,7 +213,7 @@
     <div class="account-header">
       <div class="active-address flex-row">
         <div class="identicon-wrapper">
-          <div class="identicon" data-address="NQ30 AM32 NHXL 29F7 XUY0 HR3R 7XHF EF4L LYBS">
+          <div class="identicon" data-wallet data-address="NQ30 AM32 NHXL 29F7 XUY0 HR3R 7XHF EF4L LYBS">
             <img src='data:image/svg+xml,<svg width="64" height="64" viewBox="0 -4 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path opacity=".1" d="M62.3 25.4L49.2 2.6A5.3 5.3 0 0 0 44.6 0H18.4c-1.9 0-3.6 1-4.6 2.6L.7 25.4c-1 1.6-1 3.6 0 5.2l13.1 22.8c1 1.6 2.7 2.6 4.6 2.6h26.2c1.9 0 3.6-1 4.6-2.6l13-22.8c1-1.6 1-3.6.1-5.2z" fill="url(%23identicon_radial)"/><defs><radialGradient id="identicon_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(-63.0033 0 0 -56 63 56)"><stop stop-color="%23260133"/><stop offset="1" stop-color="%231F2348"/></radialGradient></defs></svg>' alt="Nimiq identicon">
           </div>
         </div>
@@ -223,7 +223,7 @@
             <span class="amount">752 <span class="currency nim">NIM</span></span>
           </div>
           <div class="flex-row">
-            <div class="copyable"><div class="address" title="NQ30 AM32 NHXL 29F7 XUY0 HR3R 7XHF EF4L LYBS">NQ30 AM32 NHXL 29F7 XUY0 HR3R 7XHF EF4L LYBS</div></div>
+            <div class="copyable"><div class="address" data-wallet-address title="NQ30 AM32 NHXL 29F7 XUY0 HR3R 7XHF EF4L LYBS">NQ30 AM32 NHXL 29F7 XUY0 HR3R 7XHF EF4L LYBS</div></div>
             <span class="fiat-amount">$0.46</span>
           </div>
         </div>
@@ -316,7 +316,7 @@
   </div>
   <p class="sheet-sub">Share your address, or request an exact amount</p>
   <div class="receive-id">
-    <div class="identicon" data-address="NQ30 AM32 NHXL 29F7 XUY0 HR3R 7XHF EF4L LYBS">
+    <div class="identicon" data-wallet data-address="NQ30 AM32 NHXL 29F7 XUY0 HR3R 7XHF EF4L LYBS">
       <img src='data:image/svg+xml,<svg width="64" height="64" viewBox="0 -4 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path opacity=".1" d="M62.3 25.4L49.2 2.6A5.3 5.3 0 0 0 44.6 0H18.4c-1.9 0-3.6 1-4.6 2.6L.7 25.4c-1 1.6-1 3.6 0 5.2l13.1 22.8c1 1.6 2.7 2.6 4.6 2.6h26.2c1.9 0 3.6-1 4.6-2.6l13-22.8c1-1.6 1-3.6.1-5.2z" fill="url(%23identicon_radial)"/><defs><radialGradient id="identicon_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(-63.0033 0 0 -56 63 56)"><stop stop-color="%23260133"/><stop offset="1" stop-color="%231F2348"/></radialGradient></defs></svg>' alt="Your account identicon">
     </div>
   </div>
@@ -409,14 +409,17 @@
   // it as a QR so the payer's amount is pre-filled (no fat-fingering). The Rust `request_uri`
   // codec is the cross-platform-exact authority used natively; this builds the same simple URI
   // for the web QR + offline. Recent recipients + named contacts are local app state.
-  const RECEIVE_ADDR = 'NQ30AM32NHXL29F7XUY0HR3R7XHFEF4LLYBS';
+  // C1c: the receive address — the demo until the bridge sets the device's real wallet
+  // address (window global so the Iqons module's on-device update can replace it).
+  window.RECEIVE_ADDR = window.RECEIVE_ADDR || 'NQ30AM32NHXL29F7XUY0HR3R7XHFEF4LLYBS';
   function requestedNim() {
     const v = parseFloat(document.getElementById('req-amount').value);
     return Number.isFinite(v) && v > 0 ? v : 0;
   }
   function buildReceiveUri() {
     const nim = requestedNim();
-    return nim > 0 ? `nimiq:${RECEIVE_ADDR}?amount=${nim}` : `nimiq:${RECEIVE_ADDR}`;
+    const addr = window.RECEIVE_ADDR;
+    return nim > 0 ? `nimiq:${addr}?amount=${nim}` : `nimiq:${addr}`;
   }
   function refreshReceiveQR() {
     if (window.renderReceiveQR) window.renderReceiveQR(buildReceiveUri());
@@ -503,6 +506,31 @@
       const u = await nimmesh.backupUrgency({ backedUp: false, balanceLuna: 752 * 100000, daysSinceFirstFunds: 0 });
       applyBackupNudge(u.urgency);
     } catch (e) { /* leave the default words banner if the policy call fails */ }
+    // C1c: show THIS device's real wallet address (from the Keychain key) everywhere it
+    // belongs — the home header, the Receive sheet grid + QR, and the wallet identicons.
+    // The seed never crosses; only the public address comes over the bridge.
+    try {
+      const { address } = await nimmesh.walletAddress();
+      if (address && address.startsWith('NQ')) {
+        const spaced = address.trim();
+        const compact = spaced.replace(/\s+/g, '');
+        window.RECEIVE_ADDR = compact;
+        document.querySelectorAll('[data-wallet-address]').forEach((el) => {
+          el.textContent = spaced;
+          if (el.hasAttribute('title')) el.setAttribute('title', spaced);
+        });
+        const grid = document.querySelector('#receive-sheet .address-display');
+        if (grid) {
+          grid.innerHTML = (compact.match(/.{1,4}/g) || [])
+            .map((c) => `<span class="chunk">${c}<span class="space">&nbsp;</span></span>`)
+            .join('');
+        }
+        for (const el of document.querySelectorAll('.identicon[data-wallet]')) {
+          el.dataset.address = spaced;
+          try { el.querySelector('img').src = await Iqons.toDataUrl(spaced); } catch (e) {}
+        }
+      }
+    } catch (e) { /* no wallet bridge (plain browser) — keep the demo address */ }
   }
 
   // A4: fleet chrome — the global language pill + connect-wallet pill (shared nimiq-app-shell).
