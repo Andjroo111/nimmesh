@@ -40,7 +40,7 @@ and `main` is at a clean point — proposed to Andjroo, not taken by the loop.
 | **F2** | Swap **wire messages + codec** — MessageType `0x40–0x44` + the swap TLV envelope; encode/decode + proptests (`swap_wire.rs`, extend `packet.rs`/`envelope.rs`) | no | — | ✅ done (11 tests; `SwapEnvelope` TLV codec + per-kind required-field enforcement) |
 | **F3** | Swap **state machine** — `swap.rs`: roles (initiator/responder), lifecycle (`Proposed→Accepted→Funded→Revealed→Settled` / `Aborted`/`Refunded`), **height-anchored clock-free timelock ladder** + the `Δ_safe` safety gate (refuse unsafe-offline) | no | F2 | ✅ done (9 tests; `assess_ladder` gate + refund exit in every funded phase) |
 | **F4** | **Mesh integration + mock-counterparty e2e** — engine glue to flood/relay/store-forward swap msgs over the existing mesh; the `SwapLeg` trait + `NimiqLeg` + a mock `BitcoinLeg`; `swap_e2e_tests.rs` proving the happy path **+ all 4 adversarial paths** (no one-sided settlement) | no | F1, F3 | ✅ done — atomicity proof (`SwapLeg`+`MockLeg`+6 e2e, no one-sided settlement) **+ F4b** explicit engine dispatch (`0x40–0x44` blind-relayed) + multi-hop mesh e2e |
-| **F5** | **Real Bitcoin leg seam + stub** — the `BitcoinLeg` P2WSH-HTLC trait surface + a documented stub + a "what Andjroo must provide" note (BTC node, funds). Real signer/watcher = **gated** | stub: no · real: **yes** | F4 | todo |
+| **F5** | **Real Bitcoin leg seam + stub** — the `BitcoinLeg` P2WSH-HTLC trait surface + a documented stub + a "what Andjroo must provide" note (BTC node, funds). Real signer/watcher = **gated** | stub: no · real: **yes** | F4 | ✅ stub done — `LegBuilder` seam + `NimiqLeg` (real signed funding tx) + `BitcoinLeg` gated stub; real BTC = `needs:owner` |
 | **F6** | **Swap UI** (nimiq-ui, screenshot-verified) — propose/scan/fund/reveal/status sheets, "this swap is safe offline / not safe now" honesty line. Built against real nimiq-ui refs | no | F4 | todo |
 
 **MVP of the feature (autonomous):** F0–F4 + the F5 stub. F5-real + F6-on-device are gated.
@@ -143,3 +143,13 @@ and `main` is at a clean point — proposed to Andjroo, not taken by the loop.
   **238 lib tests green**, fmt/clippy/size-guard clean (engine.rs 789/800). Participant-side delivery
   (a node decoding its own `swapId` off this stream) is Phase-D (needs a running in-app node). Next:
   **F5** (NimiqLeg funding via `nimiq::htlc` + a BitcoinLeg gated stub).
+- **2026-06-27** — **F5 done: the leg-builder seam + NimiqLeg + BitcoinLeg gated stub** →
+  **AUTONOMOUS BACKLOG EXHAUSTED.** New `swap_builder.rs` (332 lines): the `LegBuilder` trait (the
+  tx-PRODUCING seam, distinct from `swap_leg`'s escrow model) + `NimiqLeg` — which builds a
+  **byte-exact, signed HTLC funding tx** via `nimiq::htlc` (the 248 B wire `@nimiq/core` accepts;
+  the seed stays behind the `EnclaveKey` seam) — its claim/refund return `RedeemProofPending` (the
+  gated NIM resolve proof) + `BitcoinLeg`, a documented **gated stub** (every method →
+  `Gated{needs: BTC node + funds + P2WSH-HTLC signer}`, `needs:owner`). **4 tests, 242 lib tests
+  green**, fmt/clippy/size-guard clean. ⏸️ **Loop stopped — everything left is Andjroo-gated:** the
+  real Bitcoin leg (node + funds), the NIM resolve proof's byte-exactness (a live testnet redeem),
+  mainnet, and on-device. The autonomous mesh-swap foundation (F0–F5) is complete + green.

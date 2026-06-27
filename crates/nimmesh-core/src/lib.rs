@@ -55,6 +55,13 @@ pub mod swap;
 // atomicity invariant: no one-sided settlement is ever possible.
 pub mod swap_leg;
 
+// Mesh swap (F5): the per-chain swap-tx BUILDER seam (distinct from `swap_leg`'s escrow model).
+// `swap_builder` is the `LegBuilder` trait each chain implements to PRODUCE the signed bytes a
+// swap floods: `NimiqLeg` builds a byte-exact, signed HTLC funding tx via `nimiq::htlc` (the seed
+// stays behind the `EnclaveKey` seam); its claim/refund await the gated NIM resolve proof, and
+// `BitcoinLeg` is a documented gated stub (real BTC node + funds = needs:owner).
+pub mod swap_builder;
+
 // G5: the BLE mesh node + its byte-stream radio seam (ADR-0002). The native radio stays
 // behind the `BleRadio` foreign trait (`radio`); Rust drives it from `MeshNode` (`node`)
 // off a worker thread, speaking the real G4 codec via the relay/gateway/origin `engine`
