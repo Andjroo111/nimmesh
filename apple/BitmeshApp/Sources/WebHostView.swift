@@ -5,8 +5,8 @@ import BitmeshCore
 /// Hosts the real `nimiq-ui` web wallet (`webui/index.html`, bundled as a folder
 /// reference) in a `WKWebView` and bridges it to the Rust core (A1).
 ///
-/// The bridge is **read-only** for now: `version`, `network`, `meshStatus`. It signs
-/// nothing, broadcasts nothing, and never sees key/seed material — so A1 stays firmly
+/// The bridge is **read-only**: `version`, `network`, `meshStatus`, `backupUrgency` (G19).
+/// It signs nothing, broadcasts nothing, and never sees key/seed material — so it stays firmly
 /// non-money-path. The signing path (Send → enclave → queue) is wired separately, behind
 /// Andjroo, in the money-path slice (C1). The radio is not native yet (Phase D), so
 /// `meshStatus` honestly reports `offline` / `0 peers` until CoreBluetooth lands.
@@ -75,7 +75,10 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         call: call,
         version: function () { return call('version'); },
         network: function () { return call('network'); },
-        meshStatus: function () { return call('meshStatus'); }
+        meshStatus: function () { return call('meshStatus'); },
+        // G19: how hard to nudge a backup, from the account's public state. Read-only —
+        // no key/seed crosses; the Rust policy decides (none|gentle|important|critical).
+        backupUrgency: function (s) { return call('backupUrgency', s || {}); }
       };
     })();
     """
@@ -104,6 +107,23 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         case "meshStatus":
             // No native BLE radio yet (Phase D). Report the honest state, not a fake one.
             return (true, ["state": "offline", "peers": 0])
+        case "backupUrgency":
+            // G19: read-only — the Rust policy decides how hard to nudge a backup from the
+            // account's public state. No key/seed is read here; only public facts cross.
+            let a = args as? [String: Any] ?? [:]
+            let state = BackupState(
+                backedUp: a["backedUp"] as? Bool ?? false,
+                balanceLuna: (a["balanceLuna"] as? NSNumber)?.uint64Value ?? 0,
+                daysSinceFirstFunds: (a["daysSinceFirstFunds"] as? NSNumber)?.uint32Value ?? 0
+            )
+            let level: String
+            switch backupUrgency(state: state) {
+            case .none: level = "none"
+            case .gentle: level = "gentle"
+            case .important: level = "important"
+            case .critical: level = "critical"
+            }
+            return (true, ["urgency": level])
         default:
             return (false, "unknown method: \(method)")
         }

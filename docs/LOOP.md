@@ -131,7 +131,7 @@ Rust-core logic (cargo-tested) + web UI (screenshot-verified). None handle keys 
 | G16 | Reachability + smart send queue ("will it send?")            | no | yes | A3 | todo |
 | G17 | Settlement closure both ways (receipt → "landed" for sender + receiver) | no | yes | A3 | todo |
 | G18 | Contacts + amount requests (request packet carries no keys)  | no | yes | A3 | todo |
-| G19 | Backup nudge (self-custody protection)                       | no | yes | A2 | todo |
+| G19 | Backup nudge (self-custody protection)                       | no | yes | A2 | ✅ done |
 | G20 | Good-citizen + battery-aware relay (stats + throttle)        | no | yes | G6 | todo |
 
 ### Phase C — money path & hardening (GATED: PR-only, `needs:owner`)
@@ -363,3 +363,16 @@ the signer — but our live example drives our core end-to-end for every money-c
   "synced X ago"** stamp lands when a `MeshNode` runs in-app (native shim, **Phase D**) — the FFI is
   ready. Two banner UI fixes also merged this session (#41 component swap, #42 grey container).
   Next autonomous: **G19** (backup nudge) / **G20** (good-citizen relay) — pure logic/UI, no node needed.
+- **2026-06-27** — **G19 done** (#30, v0.12.0, non-money-path → auto-merge): the backup nudge. A
+  self-custody offline wallet has no "forgot password", so the prompt must be persistent +
+  proportionate. New `backup.rs` = `backup_urgency(BackupState) -> BackupUrgency` — a pure, **clock-free,
+  key-free** policy over public facts only (`backed_up`, `balance_luna`, `days_since_first_funds`):
+  escalates `None → Gentle → Important → Critical`, the higher of a balance-driven + an age-driven
+  sub-score; `None` when backed up or no funds at stake. FFI-exported; iOS bridge gains read-only
+  `backupUrgency(state)`. The webui backup banner now escalates from the policy: hidden → orange
+  words-on-white (escalating copy) → the component's **solid-orange "file" variant** at Critical (real
+  `--nimiq-orange-bg` gradient + white inverse pill, no invented colors). **165 tests** (8 new, incl.
+  monotonicity), clippy/fmt/size-guard clean, `nq lint` 0 errors, iOS BUILD SUCCEEDED, all four banner
+  tiers screenshot-verified at 390px. **Honest scope:** no keys/balance in-app yet (C1 + Phase D), so
+  the in-app nudge reads the displayed balance for now; the same call drives it for real once data lands.
+  Next: **G20** (good-citizen + battery-aware relay).

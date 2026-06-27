@@ -97,6 +97,13 @@ pub mod beacon;
 // head-beacon hash (follow-up). Read-only public state — no keys, no signing (non-money-path).
 pub mod balance;
 
+// G19: the backup-nudge policy (self-custody protection, non-money-path). `backup` owns a
+// pure, clock-free, key-free decision — given the account's public state (backed-up?,
+// balance, days unprotected) it returns a `BackupUrgency` (None → Gentle → Important →
+// Critical) the native UI maps to the vendored `backup-banner`'s escalating treatment.
+// Reads only public account facts; touches no seed, no signing, no network.
+pub mod backup;
+
 // G3: offline Nimiq Albatross signing (TESTNET, money-path / Andjroo-gated). `nimiq` is the
 // byte-exact transaction signer — `serializeContent` (67 B), the full `Basic`-format wire
 // blob (139 B), the `Blake2b-256` tx hash, and the user-friendly `NQ`-IBAN address codec —

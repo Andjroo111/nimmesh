@@ -2,6 +2,36 @@
 
 All notable changes to nimiq.bitmesh. Each PR bumps the version and adds an entry.
 
+## [0.12.0] — 2026-06-27
+
+### Added — G19: backup nudge (self-custody protection) — non-money-path
+
+A self-custody offline wallet has no "forgot password": lose the device without a backup and the
+funds are gone forever. G19 makes the backup prompt **persistent and proportionate** — driven by a
+pure, tested Rust policy, surfaced through the vendored `backup-banner` component's escalating
+treatment.
+
+- `crates/bitmesh-core/src/backup.rs` (new): `backup_urgency(BackupState) -> BackupUrgency`, a pure,
+  **clock-free, key-free** policy. Inputs are public account facts only — `backed_up`, `balance_luna`,
+  `days_since_first_funds`. Output escalates `None → Gentle → Important → Critical`, taking the higher
+  of a balance-driven and an age-driven sub-score; returns `None` when backed up or there are no funds
+  at stake. 8 unit tests (incl. monotonicity in both balance and age). FFI-exported (`#[uniffi::export]`).
+- `apple/.../WebHostView.swift`: the read-only JS bridge gains `backupUrgency(state)` — the Rust policy
+  decides; no key/seed crosses, only the public balance + backed-up flag.
+- `webui/index.html`: the backup banner now escalates from the policy — hidden (`none`) → orange
+  words-on-white card (`gentle`/`important`, escalating copy) → the component's solid-orange "file"
+  treatment (`critical`, real `--nimiq-orange-bg` gradient + white inverse "Backup" pill). On device the
+  bridge drives it; in a plain browser it degrades to the canonical "There is no 'forgot password'"
+  words banner. No invented colors — both orange tokens come from `nimiq-style.min.css`.
+
+**Honest scope:** the wallet has no keys/balance in-app yet (C1 keys + Phase D node), so the in-app
+nudge reads the *displayed* balance for now; once real keys + a real balance land, the same call drives
+it for real. The Rust policy is the audited deliverable; the UI is wired and verified at all four tiers.
+
+165 tests green (cargo), `cargo clippy -D warnings` + `cargo fmt --check` + size-guard clean, `nq lint`
+0 errors, iOS `xcodebuild` BUILD SUCCEEDED against the regenerated xcframework, banner tiers
+screenshot-verified at 390px.
+
 ## [0.11.0] — 2026-06-27
 
 ### Added — G15 (Rust core): account balance over the mesh — non-money-path

@@ -39,11 +39,25 @@
      too faint/tight on our page, so make the container explicit. */
   .backup-banner.words {
     --body-size: 1.75rem;           /* 14px text so text + pill keep one row at 390px */
-    background: #fff;
-    box-shadow: inset 0 0 0 1.5px rgba(31,35,72,.13);
     border-radius: 1.5rem;          /* 12px (legacy 8px root) */
     padding: 0.5rem 1rem;           /* breathing room without wrapping the Backup pill */
   }
+  /* gentle / important: the subtle orange-words-on-white card (Andjroo's reference). */
+  .backup-banner.words:not(.critical) {
+    background: #fff;
+    box-shadow: inset 0 0 0 1.5px rgba(31,35,72,.13);
+  }
+  /* G19 critical: escalate to the component's solid-orange "file" treatment — the real
+     --nimiq-orange-bg gradient + white text + an inverse white Backup pill (no invented
+     colors; both vars come from nimiq-style.min.css). */
+  .backup-banner.words.critical {
+    background: var(--nimiq-orange);
+    background-image: var(--nimiq-orange-bg);
+    box-shadow: 0 8px 24px rgba(252,135,2,.25);
+    color: #fff;
+  }
+  .backup-banner.words.critical .alert-text { color: #fff; }
+  .backup-banner.words.critical .nq-button-pill.orange { background: #fff; color: var(--nimiq-orange); }
   .backup-banner.words .alert-text { margin-left: 1rem; }
 
   /* account-header re-scaled for the 390px phone (A2). */
@@ -160,11 +174,12 @@
     </div>
   </div>
 
-  <!-- Real Nimiq backup banner — the component's "words" variant verbatim
-       (orange warning text + inset border + orange "Backup →" pill). -->
-  <div style="padding:12px 10px 0;">
-    <div class="backup-banner words nq-orange">
-      <span class="alert-text"><svg class="alert-icon" width="17" height="16" viewBox="0 0 17 16" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M15.913 13.333L9.68 1.433a1.333 1.333 0 0 0-2.362 0l-6.232 11.9a1.333 1.333 0 0 0 1.182 1.952H14.73a1.333 1.333 0 0 0 1.182-1.952zm-8.08-7.718a.667.667 0 0 1 1.334 0v4a.667.667 0 1 1-1.334 0v-4zm.682 7.674h.018a.983.983 0 0 0 .967-1.022 1.018 1.018 0 0 0-1.016-.978h-.019a.984.984 0 0 0-.965 1.02c.02.546.468.978 1.015.98z" fill="currentColor"/></svg> There is no &lsquo;forgot password&rsquo;</span>
+  <!-- Real Nimiq backup banner — the component's "words" variant verbatim (orange warning
+       text + inset border + orange "Backup →" pill). G19: on device its insistence + copy
+       are driven by the Rust backup-nudge policy (hidden → words → solid-orange critical). -->
+  <div id="backup-wrap" style="padding:12px 10px 0;">
+    <div class="backup-banner words nq-orange" id="backup-banner">
+      <span class="alert-text"><svg class="alert-icon" width="17" height="16" viewBox="0 0 17 16" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M15.913 13.333L9.68 1.433a1.333 1.333 0 0 0-2.362 0l-6.232 11.9a1.333 1.333 0 0 0 1.182 1.952H14.73a1.333 1.333 0 0 0 1.182-1.952zm-8.08-7.718a.667.667 0 0 1 1.334 0v4a.667.667 0 1 1-1.334 0v-4zm.682 7.674h.018a.983.983 0 0 0 .967-1.022 1.018 1.018 0 0 0-1.016-.978h-.019a.984.984 0 0 0-.965 1.02c.02.546.468.978 1.015.98z" fill="currentColor"/></svg> <span id="backup-msg">There is no &lsquo;forgot password&rsquo;</span></span>
       <button class="nq-button-pill orange">Backup<svg class="nq-icon" width="16" height="12" viewBox="0 0 16 12" xmlns="http://www.w3.org/2000/svg"><path d="M10,1l5,5l-5,5" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="14" y1="6" x2="1" y2="6" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     </div>
   </div>
@@ -352,6 +367,28 @@
     if (c.value.length >= 4 && i < cells.length - 1) cells[i + 1].focus();
   }));
 
+  // G19: drive the backup banner's insistence from the Rust backup-nudge policy. Maps a
+  // BackupUrgency (none|gentle|important|critical) to the vendored component's escalating
+  // treatment: hidden → orange words-on-white → solid-orange "file" insistence + stronger copy.
+  function applyBackupNudge(urgency) {
+    const wrap = document.getElementById('backup-wrap');
+    const banner = document.getElementById('backup-banner');
+    const msg = document.getElementById('backup-msg');
+    if (!wrap || !banner || !msg) return;
+    if (urgency === 'none') { wrap.hidden = true; return; }   // backed up / nothing at stake
+    wrap.hidden = false;
+    const COPY = {
+      gentle: 'There is no ‘forgot password’',
+      important: 'Back up your wallet to keep your funds safe',
+      critical: 'Back up now or you could lose your funds',
+    };
+    msg.textContent = COPY[urgency] || COPY.gentle;
+    const isCritical = urgency === 'critical';
+    banner.classList.toggle('critical', isCritical);
+    banner.classList.toggle('nq-orange-bg', isCritical);   // solid-orange file variant
+    banner.classList.toggle('nq-orange', !isCritical);     // orange words variant
+  }
+
   // A1/A4: the mesh status line is always visible (the obvious "this is the offline mesh"
   // differentiator). On device the bridge enriches it with live peers/network/core.
   if (window.bitmesh) {
@@ -360,6 +397,14 @@
       document.getElementById('meshbar-text').textContent =
         `mesh ${m.state} · ${m.peers} nearby · ${n.network} · core ${v.core}`;
     } catch (e) { console.error('bridge probe failed', e); }
+    // G19: ask the policy about the balance the home is showing (752 NIM). No keys/balance
+    // live in-app yet (C1 keys + Phase D node), so this is the displayed demo balance; once
+    // real keys + a real balance land, the same call drives the nudge for real. No key/seed
+    // crosses the bridge — only the public balance + the backed-up flag.
+    try {
+      const u = await bitmesh.backupUrgency({ backedUp: false, balanceLuna: 752 * 100000, daysSinceFirstFunds: 0 });
+      applyBackupNudge(u.urgency);
+    } catch (e) { /* leave the default words banner if the policy call fails */ }
   }
 
   // A4: fleet chrome — the global language pill + connect-wallet pill (shared nimiq-app-shell).
