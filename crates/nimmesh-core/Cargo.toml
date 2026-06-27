@@ -37,6 +37,11 @@ required-features = ["gateway-rpc"]
 # (offline tests) need no feature. TESTNET-only either way (every constructor is guarded).
 gateway-rpc = ["dep:ureq", "dep:serde_json", "dep:getrandom"]
 
+# Mesh swap (B1): the Bitcoin counterparty leg — `rust-bitcoin` builds the HTLC P2WSH script +
+# the claim/refund segwit txs (BIP143 sighash, secp256k1). OFF by default so the pure-protocol
+# core stays lean; ON for the BTC leg (on-device + the signet tools). TESTNET/signet-guarded.
+bitcoin-leg = ["dep:bitcoin"]
+
 # Pure proc-macro mode (uniffi::setup_scaffolding!) — no UDL file, no build.rs.
 [dependencies]
 uniffi = { workspace = true, features = ["cli"] }
@@ -49,6 +54,11 @@ uniffi = { workspace = true, features = ["cli"] }
 ureq = { version = "2", optional = true, features = ["json"] }
 serde_json = { version = "1", optional = true }
 getrandom = { version = "0.2", optional = true }
+
+# B1: the Bitcoin leg (mesh swap). `bitcoin` (rust-bitcoin) owns the HTLC redeem script, the P2WSH
+# address, BIP143 segwit sighash, and secp256k1 signing — it bundles `secp256k1`. OPTIONAL, pulled
+# in only by the `bitcoin-leg` feature so the core stays dependency-light + WASM-friendly when off.
+bitcoin = { version = "0.32", optional = true }
 
 # G11: optional encrypted memo / 1:1 chat. `snow` is the Noise Protocol implementation
 # driving the `Noise_XX_25519_ChaChaPoly_SHA256` mutual-auth, identity-hiding handshake;

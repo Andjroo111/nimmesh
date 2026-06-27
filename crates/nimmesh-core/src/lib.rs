@@ -62,6 +62,14 @@ pub mod swap_leg;
 // `BitcoinLeg` is a documented gated stub (real BTC node + funds = needs:owner).
 pub mod swap_builder;
 
+// Mesh swap (B1): the Bitcoin counterparty leg, built with `rust-bitcoin` behind the
+// `bitcoin-leg` feature (off by default → the core stays lean/WASM-friendly). `btc` owns the HTLC
+// redeem script (`OP_SHA256` hashlock — the SAME 32-byte H as `nimiq::htlc`), the P2WSH address,
+// and (next) the BIP143 claim/refund signing. Byte-validated vs `bitcoinjs-lib`. Signet; gated
+// for mainnet. See docs/swap/BTC-LEG.md.
+#[cfg(feature = "bitcoin-leg")]
+pub mod btc;
+
 // G5: the BLE mesh node + its byte-stream radio seam (ADR-0002). The native radio stays
 // behind the `BleRadio` foreign trait (`radio`); Rust drives it from `MeshNode` (`node`)
 // off a worker thread, speaking the real G4 codec via the relay/gateway/origin `engine`
