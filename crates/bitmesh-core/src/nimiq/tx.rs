@@ -16,6 +16,7 @@
 
 use blake2::digest::consts::U32;
 use blake2::{Blake2b, Digest};
+use ed25519_dalek::{Signature, VerifyingKey};
 
 use super::address::Address;
 
@@ -116,6 +117,76 @@ impl Transfer {
     }
 }
 
+/// A basic transfer recovered from its wire blob, with the embedded public key + signature.
+/// The product of [`decode_basic_wire`]; the sender is derived from the public key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DecodedTransfer {
+    /// The reconstructed transfer (sender derived from `public_key`).
+    pub transfer: Transfer,
+    /// The signer's Ed25519 public key (32 bytes), embedded in the basic wire.
+    pub public_key: [u8; PUBLIC_KEY_LEN],
+    /// The Ed25519 signature (64 bytes) over `serializeContent`.
+    pub signature: [u8; SIGNATURE_LEN],
+}
+
+/// Decode a 139-byte `Basic`-format wire blob back into its fields (the inverse of
+/// [`Transfer::serialize_basic`]). Returns `None` for any wrong length, non-`Basic` format,
+/// or non-single-Ed25519 proof type. Pure, panic-free, no key material. The sender address
+/// is derived from the embedded public key (`Blake2b-256(pubkey)[..20]`).
+pub fn decode_basic_wire(wire: &[u8]) -> Option<DecodedTransfer> {
+    if wire.len() != BASIC_WIRE_LEN
+        || wire[0] != FORMAT_BASIC
+        || wire[1] != PROOF_TYPE_ED25519_SINGLE
+    {
+        return None;
+    }
+    let mut public_key = [0u8; PUBLIC_KEY_LEN];
+    public_key.copy_from_slice(&wire[2..34]);
+    let mut recipient = [0u8; 20];
+    recipient.copy_from_slice(&wire[34..54]);
+    let value = u64::from_be_bytes(wire[54..62].try_into().ok()?);
+    let fee = u64::from_be_bytes(wire[62..70].try_into().ok()?);
+    let validity_start_height = u32::from_be_bytes(wire[70..74].try_into().ok()?);
+    let network_id = wire[74];
+    let mut signature = [0u8; SIGNATURE_LEN];
+    signature.copy_from_slice(&wire[75..139]);
+
+    let transfer = Transfer {
+        sender: Address::from_public_key(&public_key),
+        recipient: Address::from_bytes(recipient),
+        value,
+        fee,
+        validity_start_height,
+        network_id,
+    };
+    Some(DecodedTransfer {
+        transfer,
+        public_key,
+        signature,
+    })
+}
+
+/// Verify a 139-byte basic-transfer wire blob is a **well-formed, correctly-signed** Nimiq
+/// transaction (the G12 "free spam filter", RISKS.md #4): decode it, derive the sender from
+/// the embedded public key, rebuild `serializeContent`, and check the Ed25519 signature with
+/// `verify_strict` (rejects non-canonical / small-order points).
+///
+/// This is the relay's pre-flood guard. It is deliberately **content-blind** — it proves the
+/// blob is a genuine signed transfer (so the mesh can't be flooded with junk), but never
+/// inspects *who* it pays or *whether it can pay* (core value #3: trustless relay; balance
+/// is the gateway's / chain's job). Pure, panic-free, no key material crosses.
+pub fn verify_basic_wire(wire: &[u8]) -> bool {
+    let Some(decoded) = decode_basic_wire(wire) else {
+        return false;
+    };
+    let Ok(vk) = VerifyingKey::from_bytes(&decoded.public_key) else {
+        return false;
+    };
+    let sig = Signature::from_bytes(&decoded.signature);
+    vk.verify_strict(&decoded.transfer.serialize_content(), &sig)
+        .is_ok()
+}
+
 /// Build the 98-byte single-sig `SignatureProof` blob: `type:u8=0 || pubkey:32 ||
 /// merkle_path_len:u8=0 || signature:64`. (The basic-format wire blob embeds the pubkey +
 /// signature directly instead; this standalone proof is what an *extended* tx or an
@@ -163,5 +234,65 @@ mod tests {
             bytes_to_hex(&t.tx_hash()),
             "4df874dac3672974f31bc64d022d89ee8d744ac72ebc6be263663561fb479274"
         );
+    }
+
+    /// Sign a real transfer with a fixed test key and return `(wire, sender)`.
+    fn signed_wire() -> (Vec<u8>, Address) {
+        use ed25519_dalek::{Signer, SigningKey};
+        let sk = SigningKey::from_bytes(&[7u8; 32]);
+        let pubkey = sk.verifying_key().to_bytes();
+        let sender = Address::from_public_key(&pubkey);
+        let t = Transfer {
+            sender,
+            recipient: addr("567866611c1a2c85a1a676bb8c845d0655fea1a6"),
+            value: 250_000,
+            fee: 0,
+            validity_start_height: 4_428_402,
+            network_id: 5,
+        };
+        let sig = sk.sign(&t.serialize_content()).to_bytes();
+        (t.serialize_basic(&pubkey, &sig), sender)
+    }
+
+    #[test]
+    fn decode_round_trips_a_signed_wire() {
+        let (wire, sender) = signed_wire();
+        let d = decode_basic_wire(&wire).expect("decodes");
+        assert_eq!(d.transfer.sender, sender); // derived from the embedded pubkey
+        assert_eq!(d.transfer.value, 250_000);
+        assert_eq!(d.transfer.validity_start_height, 4_428_402);
+        assert_eq!(d.transfer.network_id, 5);
+        // Re-encoding the decoded fields reproduces the exact wire.
+        assert_eq!(
+            d.transfer.serialize_basic(&d.public_key, &d.signature),
+            wire
+        );
+    }
+
+    #[test]
+    fn verify_accepts_a_real_signature() {
+        let (wire, _) = signed_wire();
+        assert!(verify_basic_wire(&wire));
+    }
+
+    #[test]
+    fn verify_rejects_tampering_and_junk() {
+        let (mut wire, _) = signed_wire();
+        // Flip a byte in the value field → signature no longer matches.
+        wire[55] ^= 0x01;
+        assert!(!verify_basic_wire(&wire));
+
+        // A flipped signature byte fails too.
+        let (mut wire2, _) = signed_wire();
+        let last = wire2.len() - 1;
+        wire2[last] ^= 0x01;
+        assert!(!verify_basic_wire(&wire2));
+
+        // Wrong length, wrong format byte, and arbitrary junk all fail (decode → None).
+        assert!(!verify_basic_wire(b"not-a-real-signed-tx"));
+        assert!(decode_basic_wire(b"").is_none());
+        let (mut bad_format, _) = signed_wire();
+        bad_format[0] = 0x01; // not FORMAT_BASIC
+        assert!(decode_basic_wire(&bad_format).is_none());
     }
 }

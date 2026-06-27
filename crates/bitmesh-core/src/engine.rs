@@ -130,6 +130,9 @@ pub struct WorkerCtx {
     /// G9: count of `nimiqTx` packets dropped (GC'd) because their validity window had
     /// already closed against the cached head — neither relayed nor stored.
     expired_dropped: AtomicUsize,
+    /// G12: count of `nimiqTx` packets dropped by the verify-before-relay spam filter
+    /// (not a well-formed, correctly-signed Nimiq transfer) — neither relayed nor stored.
+    verify_dropped: AtomicUsize,
     /// G15: count of `nimiqBalanceResponse` frames this gateway has answered + flooded.
     pub(crate) balance_answered: AtomicUsize,
 }
@@ -159,6 +162,7 @@ impl WorkerCtx {
             rsr_received: AtomicUsize::new(0),
             beacon_emitted: AtomicUsize::new(0),
             expired_dropped: AtomicUsize::new(0),
+            verify_dropped: AtomicUsize::new(0),
             balance_answered: AtomicUsize::new(0),
         }
     }
@@ -227,6 +231,10 @@ impl WorkerCtx {
     #[cfg(test)]
     pub(crate) fn expired_dropped(&self) -> usize {
         self.expired_dropped.load(Ordering::Relaxed)
+    }
+    #[cfg(test)]
+    pub(crate) fn verify_dropped(&self) -> usize {
+        self.verify_dropped.load(Ordering::Relaxed)
     }
     #[cfg(test)]
     pub(crate) fn balance_answered(&self) -> usize {
@@ -344,11 +352,15 @@ pub(crate) struct WorkerState {
     sync: SyncScheduler,
     /// G9: rate-limiter for the periodic gateway head-beacon emit (one per tick).
     beacon: BeaconScheduler,
+    /// G12: when set, drop a `nimiqTx` whose opaque blob is not a well-formed, correctly
+    /// signed Nimiq transfer before relaying/storing it (the free spam filter, RISKS.md #4).
+    /// Off in the headless test harness (which floods opaque stand-in bytes); on in production.
+    verify_before_relay: bool,
     start: Instant,
 }
 
 impl WorkerState {
-    pub(crate) fn new(policy: RelayPolicy) -> Self {
+    pub(crate) fn new(policy: RelayPolicy, verify_before_relay: bool) -> Self {
         WorkerState {
             relay_seen: DedupCache::new(RELAY_CACHE_CAP),
             gateway_seen: DedupCache::new(GATEWAY_CACHE_CAP),
@@ -357,6 +369,7 @@ impl WorkerState {
             recent: RecentCache::new(),
             sync: SyncScheduler::new(),
             beacon: BeaconScheduler::new(),
+            verify_before_relay,
             start: Instant::now(),
         }
     }
@@ -558,6 +571,21 @@ fn handle_tx(ctx: &WorkerCtx, packet: Packet, src: Option<&str>, st: &mut Worker
     if is_expired(ctx.cached_head(), tx_valid_until(&packet)) {
         ctx.expired_dropped.fetch_add(1, Ordering::Relaxed);
         return;
+    }
+    // G12 verify-before-relay (RISKS.md #4): a verifying node refuses to store or relay a
+    // `nimiqTx` whose opaque blob is not a well-formed, correctly-signed Nimiq transfer — a
+    // free spam filter that costs a forger a real signature. **Content-blind**: it checks the
+    // signature only, never who it pays or whether it can (core value #3, trustless relay).
+    // The headless harness floods opaque stand-in bytes, so it runs with this off.
+    if st.verify_before_relay {
+        let well_formed = decode_envelope(&packet.payload)
+            .ok()
+            .map(|env| crate::nimiq::verify_basic_wire(&env.tx_wire))
+            .unwrap_or(false);
+        if !well_formed {
+            ctx.verify_dropped.fetch_add(1, Ordering::Relaxed);
+            return;
+        }
     }
     // G7: cache it for store-and-forward (so we can serve a rejoining peer this tx later).
     remember(ctx, st, &packet);

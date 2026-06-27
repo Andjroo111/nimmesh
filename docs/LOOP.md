@@ -139,7 +139,7 @@ Rust-core logic (cargo-tested) + web UI (screenshot-verified). None handle keys 
 | #   | Goal                                                          | money-path | auto-merge | deps | status |
 | --- | ----------------------------------------------------------- | :--------: | :--------: | ---- | ------ |
 | C1  | Keygen / import + real Send→sign→queue wire (=#10 money slice; seed stays behind `EnclaveKey`) | **yes** | **no** | A3, G3 | todo |
-| G12 | Hardening — verify-before-relay, rate limits, NACK, anti-spam | **yes** | **no** | G8, C1 | todo |
+| G12 | Hardening — verify-before-relay, rate limits, NACK, anti-spam | no¹ | yes¹ | G8, G3 | 🟡 part 1 (verify-before-relay) done |
 | G13 | TESTNET end-to-end demo + mainnet-gating doc                 | **yes** | **no** | G8,G9,C1,G12 | todo |
 
 ### Phase D — native BLE on real devices (GATED: needs Andjroo's devices + Apple Dev account)
@@ -432,3 +432,15 @@ the signer — but our live example drives our core end-to-end for every money-c
   (G15 balance stamp · G19 real-data nudge · G20 live "helped N" + battery · G16 live reach/countdown ·
   G17 live settlement — all need a running in-app `MeshNode` + device APIs = the native BLE shim) and
   **Phase C** money path (C1/G12/G13) — both Andjroo-gated. The autonomous loop has nothing left to build.
+- **2026-06-27 (overnight)** — Andjroo: "create a loop, do any remaining tasks that don't absolutely need
+  me, don't stop." Re-scoped the "money-path" Phase C work into what's *genuinely* autonomous-safe vs
+  what needs his key-origin decision / devices / mainnet switch. **¹Reclassified G12 hardening as
+  non-money-path** by the strict definition (it neither signs, handles keys, nor broadcasts — it reads
+  public bytes). **G12 part 1 done** (#12, v0.17.0, auto-merged): verify-before-relay — `nimiq/tx.rs`
+  `decode_basic_wire` + `verify_basic_wire` (derive sender from pubkey, rebuild serializeContent,
+  Ed25519 `verify_strict`; content-blind → core value #3 preserved); `engine.rs handle_tx` drops
+  unverified txs (counts `verify_dropped`) behind a `verify_before_relay` flag (on in prod, off in the
+  opaque-bytes harness). 202 tests (e2e: a verifying relay drops junk, carries a real signed tx). Next:
+  G12 part 2 (per-peer rate limits + stop-after-ACK), then the G13 mainnet-gating DOC. **Still hard-gated
+  for Andjroo (untouched): C1 keygen/sign (key-origin decision), real testnet/mainnet broadcast, the
+  native BLE shim G5 (devices + Apple acct), and the Phase-D live-UI batch.**

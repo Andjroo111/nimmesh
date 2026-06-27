@@ -28,4 +28,4 @@ pub use signer::{
     AppSigner, DelegatedSigner, EnclaveKey, KeyOrigin, SignError, SignedTransfer, TransferIntent,
     VALIDITY_WINDOW,
 };
-pub use tx::Transfer;
+pub use tx::{verify_basic_wire, Transfer};

@@ -2,6 +2,31 @@
 
 All notable changes to nimiq.bitmesh. Each PR bumps the version and adds an entry.
 
+## [0.17.0] — 2026-06-27
+
+### Added — G12 (part 1): verify-before-relay — the free spam filter — non-money-path
+
+RISKS.md #4's anti-spam defence: a node refuses to store or relay a `nimiqTx` whose opaque blob is not
+a **well-formed, correctly-signed** Nimiq transfer. Forging mesh spam now costs a real signature.
+
+- `crates/bitmesh-core/src/nimiq/tx.rs`: `decode_basic_wire` (inverse of `serialize_basic`) +
+  `verify_basic_wire(wire) -> bool` — derives the sender from the embedded pubkey, rebuilds
+  `serializeContent`, and checks the Ed25519 signature with `verify_strict`. **Content-blind**: it
+  proves the blob is genuinely signed, but never inspects *who* it pays or *whether it can* (core
+  value #3 — the relay stays trustless; balance is the gateway's/chain's job). Pure, panic-free, no keys.
+- `engine.rs`: `handle_tx` drops an unverified tx (no store, no relay) when verify-before-relay is on,
+  counting `verify_dropped`. Threaded a `verify_before_relay` flag: **on in production**
+  (`MeshNode::new`), off in the headless harness (which floods opaque stand-in bytes).
+- 4 new tests incl. an e2e: a verifying relay **drops a junk tx** (gateway never sees it) but **carries
+  a real signed transfer** to settlement.
+
+**Non-money-path:** verification reads a public signature; it signs nothing, handles no keys, broadcasts
+nothing. (Reclassified from the issue's original `money-path` grouping — this slice is pure defensive
+hardening. The keygen/sign path C1 remains money-path + Andjroo-gated.) Part 2 (per-peer rate limits +
+stop-after-ACK) follows.
+
+202 tests green (cargo), `cargo clippy -D warnings` + `cargo fmt --check` + size-guard clean.
+
 ## [0.16.1] — 2026-06-27
 
 ### Fixed — G18 Receive sheet polish (web UI, compared against the real wallet)

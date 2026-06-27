@@ -332,6 +332,18 @@ impl MeshHarness {
         self.attach(peer_id, node, radio)
     }
 
+    /// G12: add a plain node with **verify-before-relay ON** (the production spam filter) —
+    /// for tests that flood real signed transfers + a junk one and assert the junk is dropped.
+    pub fn add_verifying_node(&mut self, peer_id: &str, sender_id: &[u8]) -> Arc<MeshNode> {
+        let radio = MockRadio::new(peer_id, self.ether.clone());
+        let node = MeshNode::new_with_policy_verifying(
+            sender_id.to_vec(),
+            radio.clone(),
+            RelayPolicy::deterministic(),
+        );
+        self.attach(peer_id, node, radio)
+    }
+
     /// Add a node that also acts as a gateway (records submissions + emits receipts).
     pub fn add_gateway(
         &mut self,

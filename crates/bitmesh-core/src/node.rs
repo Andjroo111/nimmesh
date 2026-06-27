@@ -93,8 +93,13 @@ pub struct MeshNode {
 /// The worker thread: drain jobs and run the (heavy) protocol logic off the radio's
 /// callback thread. Each job is wrapped in `catch_unwind` so a panic on one frame can't
 /// kill the worker or the process (ADR-0002 gotcha c).
-fn run_worker(ctx: Arc<WorkerCtx>, rx: Receiver<Job>, policy: RelayPolicy) {
-    let mut st = WorkerState::new(policy);
+fn run_worker(
+    ctx: Arc<WorkerCtx>,
+    rx: Receiver<Job>,
+    policy: RelayPolicy,
+    verify_before_relay: bool,
+) {
+    let mut st = WorkerState::new(policy, verify_before_relay);
     while let Ok(job) = rx.recv() {
         match job {
             Job::Shutdown => break,
@@ -142,7 +147,8 @@ impl MeshNode {
     /// `Arc<MeshNode>` is the handle the shim holds **weakly**.
     #[uniffi::constructor]
     pub fn new(sender_id: Vec<u8>, radio: Arc<dyn BleRadio>) -> Arc<Self> {
-        Self::build(sender_id, radio, None, RelayPolicy::production())
+        // Production verifies every `nimiqTx` before relaying (G12 spam filter, RISKS.md #4).
+        Self::build(sender_id, radio, None, RelayPolicy::production(), true)
     }
 
     /// A peer connected (`CBPeripheral` / GATT link up). Cheap: record it as a flood
@@ -384,6 +390,7 @@ impl MeshNode {
         radio: Arc<dyn BleRadio>,
         gateway: Option<Arc<dyn MeshGateway>>,
         policy: RelayPolicy,
+        verify_before_relay: bool,
     ) -> Arc<Self> {
         let ctx = Arc::new(WorkerCtx::new(
             to_sender_id(&sender_id),
@@ -392,7 +399,8 @@ impl MeshNode {
         ));
         let (tx, rx) = channel();
         let worker_ctx = ctx.clone();
-        let worker = std::thread::spawn(move || run_worker(worker_ctx, rx, policy));
+        let worker =
+            std::thread::spawn(move || run_worker(worker_ctx, rx, policy, verify_before_relay));
         // Bring the radio up. Real BLE starts advertising + scanning concurrently.
         radio.start_advertising();
         radio.start_scanning();
@@ -411,7 +419,8 @@ impl MeshNode {
         radio: Arc<dyn BleRadio>,
         policy: RelayPolicy,
     ) -> Arc<Self> {
-        Self::build(sender_id, radio, None, policy)
+        // Verify off: the harness floods opaque stand-in bytes (not real signed txs).
+        Self::build(sender_id, radio, None, policy, false)
     }
 
     /// Build a gateway node with a caller-chosen relay policy (deterministic in tests).
@@ -421,7 +430,17 @@ impl MeshNode {
         gateway: Arc<dyn MeshGateway>,
         policy: RelayPolicy,
     ) -> Arc<Self> {
-        Self::build(sender_id, radio, Some(gateway), policy)
+        Self::build(sender_id, radio, Some(gateway), policy, false)
+    }
+
+    /// G12 harness helper: a verifying plain node (verify-before-relay ON) — used by the
+    /// spam-filter e2e test, which floods real signed transfers + a junk one.
+    pub(crate) fn new_with_policy_verifying(
+        sender_id: Vec<u8>,
+        radio: Arc<dyn BleRadio>,
+        policy: RelayPolicy,
+    ) -> Arc<Self> {
+        Self::build(sender_id, radio, None, policy, true)
     }
 
     fn do_shutdown(&self) {
@@ -493,6 +512,11 @@ impl MeshNode {
     #[cfg(test)]
     pub(crate) fn expired_dropped(&self) -> usize {
         self.ctx.expired_dropped()
+    }
+    /// G12: `nimiqTx` packets dropped by the verify-before-relay spam filter.
+    #[cfg(test)]
+    pub(crate) fn verify_dropped(&self) -> usize {
+        self.ctx.verify_dropped()
     }
     /// G15: `nimiqBalanceResponse` frames this gateway has answered + flooded.
     #[cfg(test)]
