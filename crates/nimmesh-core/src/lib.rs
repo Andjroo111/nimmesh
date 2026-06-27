@@ -70,6 +70,12 @@ pub mod swap_builder;
 #[cfg(feature = "bitcoin-leg")]
 pub mod btc;
 
+// Mesh swap (B2): the BTC gateway — broadcast + confirmation over a public signet indexer
+// (mempool.space), behind the `bitcoin-gateway` feature (adds `ureq`/`serde_json`). The one online
+// hop for the BTC leg; signet-only (mainnet base refused). See docs/swap/BTC-LEG.md.
+#[cfg(feature = "bitcoin-gateway")]
+pub mod btc_gateway;
+
 // G5: the BLE mesh node + its byte-stream radio seam (ADR-0002). The native radio stays
 // behind the `BleRadio` foreign trait (`radio`); Rust drives it from `MeshNode` (`node`)
 // off a worker thread, speaking the real G4 codec via the relay/gateway/origin `engine`
