@@ -48,6 +48,13 @@ pub mod swap_wire;
 // timelocks can't be made safe over a high-latency mesh. Rules only: no keys, no bytes, no radio.
 pub mod swap;
 
+// Mesh swap (F4): the chain-agnostic `SwapLeg` seam + a faithful in-memory mock HTLC chain.
+// `swap_leg` is the trait each chain implements (NimiqLeg via `nimiq::htlc`; BitcoinLeg gated →
+// F5); `MockLeg` enforces the real claim/refund rules (SHA-256 hashlock, claim-before-timeout,
+// refund-after-timeout) and reveals the preimage on claim, so the `swap_e2e_tests` can prove the
+// atomicity invariant: no one-sided settlement is ever possible.
+pub mod swap_leg;
+
 // G5: the BLE mesh node + its byte-stream radio seam (ADR-0002). The native radio stays
 // behind the `BleRadio` foreign trait (`radio`); Rust drives it from `MeshNode` (`node`)
 // off a worker thread, speaking the real G4 codec via the relay/gateway/origin `engine`
@@ -189,6 +196,8 @@ mod e2e_tests;
 mod hardening_e2e_tests;
 #[cfg(test)]
 mod send_e2e_tests;
+#[cfg(test)]
+mod swap_e2e_tests;
 #[cfg(test)]
 mod test_support;
 
