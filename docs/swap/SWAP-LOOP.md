@@ -163,3 +163,12 @@ and `main` is at a clean point — proposed to Andjroo, not taken by the loop.
   redeem proof — the blocker was the `PreImage32` tag = **`0x20`** (the length), not an index.
   **246 lib tests green**, fmt/clippy/size-guard clean. The redeem proof that was "gated/uncertain"
   is now byte-exact and **accepted by both the reference lib and the live network**.
+- **2026-06-27** — **Bitcoin leg loop kicked off (Andjroo: signet + run B0→B4).** **B0 spike done**
+  (`docs/swap/BTC-LEG.md`): found that hashmark already ships a **production NIM⇄BTC HTLC swap
+  engine** (`app/src/chains/bitcoin/`) — its redeem script uses the **same `OP_SHA256` hashlock as
+  our NIM leg**, so one `H`/preimage opens both legs. Confirmed the full BTC spec (P2WSH HTLC, claim
+  witness `[sig, preimage, 0x01, redeemScript]`, refund `[sig, 0x00, redeemScript]` + `nLockTime`,
+  BIP143 sighash) + the cross-chain timelock ladder (BTC CLTV = Unix-**seconds**, NIM = Unix-**ms**).
+  No BTC node needed (public `mempool.space/signet/api` + faucet, `bitcoinjs-lib` 6.1.7 to cross-check).
+  Plan = port to a Rust `BitcoinLeg` behind a `bitcoin-leg` feature. **Goals B0–B4 in
+  `docs/swap/BTC-LEG.md`.** Next: **B1** (Rust HTLC script + P2WSH, byte-validated vs bitcoinjs).
