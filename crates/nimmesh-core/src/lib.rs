@@ -42,6 +42,12 @@ pub mod packet;
 // docs/swap/SWAP.md; the build contract is docs/swap/SWAP-LOOP.md.
 pub mod swap_wire;
 
+// Mesh swap (F3): the swap state machine + the `Δ_safe` timelock-safety gate. `swap` owns the
+// clock-free, height-anchored lifecycle (propose → accept → fund → reveal → settle, with a refund
+// exit in every funded phase) and `assess_ladder` — the gate that REFUSES to fund a swap whose
+// timelocks can't be made safe over a high-latency mesh. Rules only: no keys, no bytes, no radio.
+pub mod swap;
+
 // G5: the BLE mesh node + its byte-stream radio seam (ADR-0002). The native radio stays
 // behind the `BleRadio` foreign trait (`radio`); Rust drives it from `MeshNode` (`node`)
 // off a worker thread, speaking the real G4 codec via the relay/gateway/origin `engine`
