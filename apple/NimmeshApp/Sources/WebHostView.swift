@@ -28,6 +28,12 @@ struct WebHostView: UIViewRepresentable {
         // C1: prove the native Keychain Ed25519 signer interoperates with the Rust verifier
         // (CryptoKit ↔ ed25519-dalek). Logged once at launch for sim/device verification.
         print("nimmesh wallet self-test: address=\(Wallet.address() ?? "?") signedOk=\(Wallet.selfTest())")
+        // C1c: prove live testnet RPC connectivity (the send path's head anchor) at launch.
+        // NSLog (not print) so the async result lands in the unified log we can query post-launch.
+        Task {
+            let head = (try? await TestnetRpc.headHeight()).map(String.init) ?? "unreachable"
+            NSLog("nimmesh testnet head=%@", head)
+        }
 
         let webView = WKWebView(frame: .zero, configuration: config)
         // Match the wallet's light page background (#f8f8f8) behind the safe areas /
@@ -87,7 +93,12 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         // no key/seed crosses; the Rust policy decides (none|gentle|important|critical).
         backupUrgency: function (s) { return call('backupUrgency', s || {}); },
         // C1: this device's wallet address (derived from the Keychain key — no seed crosses).
-        walletAddress: function () { return call('walletAddress'); }
+        walletAddress: function () { return call('walletAddress'); },
+        // C1c: live testnet — head height, balance, faucet, and the real send (sign+broadcast).
+        headHeight: function () { return call('headHeight'); },
+        walletBalance: function () { return call('walletBalance'); },
+        fundFromFaucet: function () { return call('fundFromFaucet'); },
+        sendTransaction: function (a) { return call('sendTransaction', a || {}); }
       };
     })();
     """
@@ -96,8 +107,54 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         guard let body = message.body as? [String: Any],
               let id = body["id"] as? Int,
               let method = body["method"] as? String else { return }
-        let (ok, payload) = handle(method: method, args: body["args"])
-        resolve(id: id, ok: ok, payload: payload)
+        let args = body["args"]
+        // C1c: the live-chain methods do network IO → run them off the main actor and resolve
+        // when they complete. Everything else is synchronous (pure-core reads).
+        switch method {
+        case "headHeight", "walletBalance", "fundFromFaucet", "sendTransaction":
+            Task { let (ok, payload) = await self.handleAsync(method: method, args: args)
+                self.resolve(id: id, ok: ok, payload: payload) }
+        default:
+            let (ok, payload) = handle(method: method, args: args)
+            resolve(id: id, ok: ok, payload: payload)
+        }
+    }
+
+    /// C1c: the testnet network methods — fetch head, balance, faucet, and the real send
+    /// (sign with the Keychain key → broadcast). Testnet only; the seed never crosses (only the
+    /// signed blob is sent). The recipient/amount are public.
+    private func handleAsync(method: String, args: Any?) async -> (Bool, Any) {
+        switch method {
+        case "headHeight":
+            guard let h = try? await TestnetRpc.headHeight() else { return (false, "head fetch failed") }
+            return (true, ["height": Int(h)])
+        case "walletBalance":
+            guard let addr = Wallet.address() else { return (false, "no wallet") }
+            return (true, ["luna": Int(await TestnetRpc.balance(addr))])
+        case "fundFromFaucet":
+            guard let addr = Wallet.address() else { return (false, "no wallet") }
+            await TestnetRpc.tapFaucet(addr)
+            return (true, ["funded": true])
+        case "sendTransaction":
+            let a = args as? [String: Any] ?? [:]
+            guard let recipient = a["recipient"] as? String, !recipient.isEmpty else {
+                return (false, "missing recipient")
+            }
+            let amount = (a["amountLuna"] as? NSNumber)?.uint64Value ?? 0
+            do {
+                let head = try await TestnetRpc.headHeight()
+                let intent = TransferIntent(
+                    recipient: recipient, value: amount, validityStartHeight: head, network: .testnet
+                )
+                let signed = try Wallet.signer.signTransfer(intent: intent) // Keychain key signs
+                let hash = try await TestnetRpc.sendRawTransaction(signed.rawHex)
+                return (true, ["txHash": hash])
+            } catch {
+                return (false, "\(error)")
+            }
+        default:
+            return (false, "unknown async method: \(method)")
+        }
     }
 
     /// All read-only. Anything that would sign/broadcast/keys is intentionally absent

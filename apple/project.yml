@@ -35,6 +35,18 @@ targets:
         UIBackgroundModes:
           - bluetooth-central
           - bluetooth-peripheral
+        # C1c: allow the TESTNET JSON-RPC + faucet endpoints (ATS would otherwise silently
+        # block them even over HTTPS if they lack forward secrecy). Testnet domains only.
+        NSAppTransportSecurity:
+          NSExceptionDomains:
+            nimiqwatch.com:
+              NSIncludesSubdomains: true
+              NSExceptionAllowsInsecureHTTPLoads: true
+              NSExceptionRequiresForwardSecrecy: false
+            nimiq-testnet.com:
+              NSIncludesSubdomains: true
+              NSExceptionAllowsInsecureHTTPLoads: true
+              NSExceptionRequiresForwardSecrecy: false
     settings:
       base:
         PRODUCT_NAME: NimmeshApp

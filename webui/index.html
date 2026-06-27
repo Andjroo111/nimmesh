@@ -46,6 +46,7 @@
     --body-size: 1.75rem;           /* 14px text so text + pill keep one row at 390px */
     border-radius: 1.5rem;          /* 12px (legacy 8px root) */
     padding: 0.5rem 1rem;           /* breathing room without wrapping the Backup pill */
+    flex-wrap: nowrap;              /* text + Backup pill stay on ONE row (real-wallet layout) */
   }
   /* gentle / important: the subtle orange-words-on-white card (Andjroo's reference). */
   .backup-banner.words:not(.critical) {
@@ -63,7 +64,11 @@
   }
   .backup-banner.words.critical .alert-text { color: #fff; }
   .backup-banner.words.critical .nq-button-pill.orange { background: #fff; color: var(--nimiq-orange); }
-  .backup-banner.words .alert-text { margin-left: 1rem; }
+  /* one row: the text takes the space + the Backup pill is pushed right (space-between);
+     if copy ever overflows it ellipsizes rather than wrapping the pill to a new line. */
+  .backup-banner.words .alert-text { margin-left: 1rem; flex: 1 1 auto; min-width: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .backup-banner.words .nq-button-pill { flex: 0 0 auto; }
 
   /* account-header re-scaled for the 390px phone (A2). */
   .account-header {
@@ -182,6 +187,24 @@
   .send-reach .dot { width: 9px; height: 9px; border-radius: 50%; background: #21bca5; flex: 0 0 auto; }
   .send-reach.meshed .dot { background: #fc8702; }
   .send-reach.offline .dot { background: rgba(31,35,72,.3); }
+  /* C1c: the real Send — borderless amount input + a Send button + a status line. */
+  .send-amount { display: flex; align-items: baseline; justify-content: center; gap: 8px; margin: 16px 24px 0; }
+  .send-amount input { width: 150px; border: 0; background: transparent; font-family: inherit; font-size: 30px;
+    font-weight: 700; color: #1f2348; text-align: right; outline: none; padding: 0; caret-color: #0582ca; }
+  .send-amount input::placeholder { color: rgba(31,35,72,.25); font-weight: 700; }
+  .send-amount .unit { font-size: 16px; font-weight: 700; color: rgba(31,35,72,.5); }
+  .send-btn { display: block; width: calc(100% - 48px); margin: 14px 24px 0; height: 52px; border: 0; cursor: pointer;
+    border-radius: 500px; font-family: inherit; font-weight: 700; font-size: 16px; color: #fff;
+    background-image: radial-gradient(100% 100% at bottom right, #265DD7, #0582CA); box-shadow: 0 8px 24px rgba(5,130,202,.25);
+    transition: transform .2s cubic-bezier(.25,0,0,1), box-shadow .2s cubic-bezier(.25,0,0,1); }
+  .send-btn:hover { transform: translateY(-2px); box-shadow: 0 14px 34px rgba(5,130,202,.32); }
+  .send-btn:active { transform: translateY(1px); }
+  .send-btn[disabled] { opacity: .5; cursor: default; }
+  .send-status { text-align: center; margin: 12px 24px 0; font-size: 13px; font-weight: 600;
+    color: rgba(31,35,72,.7); word-break: break-all; }
+  .send-status[hidden] { display: none; }
+  .send-status.ok { color: #21bca5; }
+  .send-status.err { color: #fc8702; }
 </style>
 </head>
 <body>
@@ -379,11 +402,14 @@
     <input maxlength="4" inputmode="text" aria-label="address block 8">
     <input maxlength="4" inputmode="text" aria-label="address block 9">
   </div>
-  <p class="send-foot">Address unavailable? <a href="javascript:void(0)">Create a Cashlink</a></p>
-  <div class="send-stub">
-    <svg viewBox="0 0 16 16" width="14" height="14" fill="none"><path d="M8 1l7 4v6l-7 4-7-4V5z" stroke="currentColor" stroke-width="1.4"/></svg>
-    Signed offline, then relayed over the mesh. Signing arrives next.
+  <!-- C1c: the real send — amount, then sign (Keychain key) + broadcast on testnet. -->
+  <div class="send-amount">
+    <input id="send-amount" inputmode="decimal" placeholder="0" aria-label="Amount in NIM">
+    <span class="unit">NIM</span>
   </div>
+  <button class="send-btn" id="send-btn">Send</button>
+  <div class="send-status" id="send-status" hidden></div>
+  <p class="send-foot">Address unavailable? <a href="javascript:void(0)">Create a Cashlink</a></p>
 </section>
 
 <script type="module">
@@ -446,6 +472,35 @@
     if (c.value.length >= 4 && i < cells.length - 1) cells[i + 1].focus();
   }));
 
+  // C1c: the real Send — read the address grid + amount, sign with the Keychain key, and
+  // broadcast on testnet via the bridge. In a plain browser (no bridge) it explains it needs
+  // the app. The seed never crosses — only the recipient + amount go down, a tx hash comes back.
+  const sendBtn = document.getElementById('send-btn');
+  const sendStatus = document.getElementById('send-status');
+  function setSendStatus(msg, cls) {
+    sendStatus.hidden = !msg;
+    sendStatus.textContent = msg || '';
+    sendStatus.className = 'send-status' + (cls ? ' ' + cls : '');
+  }
+  sendBtn.addEventListener('click', async () => {
+    if (!(window.nimmesh && nimmesh.sendTransaction)) { setSendStatus('Open in the app to send', 'err'); return; }
+    const recipient = cells.map((c) => c.value.trim().toUpperCase()).join('');
+    const nim = parseFloat(document.getElementById('send-amount').value);
+    if (recipient.replace(/\s/g, '').length < 36) { setSendStatus('Enter the full 36-character address', 'err'); return; }
+    if (!(nim > 0)) { setSendStatus('Enter an amount', 'err'); return; }
+    const amountLuna = Math.round(nim * 100000);
+    sendBtn.disabled = true;
+    setSendStatus('Signing + broadcasting…');
+    try {
+      const r = await nimmesh.sendTransaction({ recipient, amountLuna });
+      setSendStatus('Sent · tx ' + r.txHash, 'ok');
+    } catch (e) {
+      setSendStatus('Failed: ' + (e && e.message ? e.message : e), 'err');
+    } finally {
+      sendBtn.disabled = false;
+    }
+  });
+
   // G19: drive the backup banner's insistence from the Rust backup-nudge policy. Maps a
   // BackupUrgency (none|gentle|important|critical) to the vendored component's escalating
   // treatment: hidden → orange words-on-white → solid-orange "file" insistence + stronger copy.
@@ -458,8 +513,8 @@
     wrap.hidden = false;
     const COPY = {
       gentle: 'There is no ‘forgot password’',
-      important: 'Back up your wallet to keep your funds safe',
-      critical: 'Back up now or you could lose your funds',
+      important: 'Back up your wallet',
+      critical: 'Back up now or lose your funds',
     };
     msg.textContent = COPY[urgency] || COPY.gentle;
     const isCritical = urgency === 'critical';
@@ -488,8 +543,10 @@
   if (window.nimmesh) {
     try {
       const [v, n, m] = await Promise.all([nimmesh.version(), nimmesh.network(), nimmesh.meshStatus()]);
-      document.getElementById('meshbar-text').textContent =
-        `mesh ${m.state} · ${m.peers} nearby · ${n.network} · core ${v.core}`;
+      let line = `mesh ${m.state} · ${m.peers} nearby · ${n.network} · core ${v.core}`;
+      // C1c: also show the live testnet head we anchor sends to (proves app → chain RPC works).
+      try { const h = await nimmesh.headHeight(); if (h && h.height) line += ` · head ${h.height}`; } catch (e) {}
+      document.getElementById('meshbar-text').textContent = line;
     } catch (e) { console.error('bridge probe failed', e); }
     // G16: light up the Send sheet's "will it send?" line from the node's reach. With no
     // native radio yet (Phase D) the bridge honestly reports offline; once the shim runs a

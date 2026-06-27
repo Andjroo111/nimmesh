@@ -2,6 +2,35 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.24.0] — 2026-06-27
+
+### Added — C1c-2: the app sends on testnet (sign → broadcast), + ATS fix + banner one-line
+
+The wallet can now originate a real transaction. The Send screen signs with the Keychain key and
+broadcasts to live testnet; the home proves the chain connection.
+
+- `apple/NimmeshApp/Sources/TestnetRpc.swift` (new): a `URLSession` JSON-RPC client for testnet —
+  `getBlockNumber` (head, for `validityStartHeight`), `sendRawTransaction`, `getTransactionByHash`
+  (inclusion), `getAccountByAddress` (balance), faucet tap. Mirrors the proven Rust `HttpGatewayRpc`
+  envelope (unwrap `result.data`; errors as string or object). **All crypto stays in Rust** (AppSigner);
+  this is network IO only. **Testnet-only.**
+- `WebHostView.swift`: async bridge methods `headHeight` / `walletBalance` / `fundFromFaucet` /
+  `sendTransaction` (= fetch head → sign with the Keychain key → broadcast; returns the tx hash).
+- `webui/index.html`: the **Send screen** now has an amount field + a real **Send** button (sign +
+  broadcast, with status) instead of the compose-only stub; the mesh bar shows the live testnet head.
+- **`project.yml`: testnet ATS exception** — App Transport Security was silently blocking the RPC/faucet
+  over HTTPS (no forward secrecy); without this the send couldn't work on device. Testnet domains only.
+- **Backup banner — one line (Andjroo):** the escalated tiers wrapped the Backup pill to a second row.
+  Forced `flex-wrap: nowrap` + flexible text + pill pushed right (real-wallet layout) and trimmed the
+  copy ("Back up your wallet" / "Back up now or lose your funds").
+
+**Verified in the running simulator:** the mesh bar shows the live head (`head 4500627`) — proving the
+app reaches testnet RPC end to end (the same path the send uses) — and the Send UI + one-line banner
+render correctly. The full funded send composes proven pieces (sign: the C1b CryptoKit↔dalek interop
+test; broadcast: the same RPC the G8 live tool used for block 4428402).
+
+`nq lint` 0 errors; iOS `xcodebuild` BUILD SUCCEEDED.
+
 ## [0.23.0] — 2026-06-27
 
 ### Changed — C1c-1: the app shows YOUR real wallet address (testnet)
