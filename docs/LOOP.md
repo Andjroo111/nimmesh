@@ -115,7 +115,7 @@ files < 800 lines, real decisions in `docs/adr/`.
 | A1 | WebView host + read-only JS↔core bridge (`WKWebView` loads `webui/`) | no | yes | G5-core | ✅ done |
 | A2 | Home polish — mobile-header fix + data via the bridge (390px diff) | no | yes | A1 | ✅ done |
 | A3 | Send + Receive screens (UI; Receive fully works, Send→sign stubbed→C1) | no | yes | A1, A2 | ✅ done |
-| A4 | Mesh chrome + global language pill + connect-wallet pill (selection only) | no | yes | A1 | todo |
+| A4 | Mesh chrome + global language pill + connect-wallet pill (selection only) | no | yes | A1 | ✅ done |
 
 A1's bridge is **read-only** (version/network/mesh status/peer count/cached tx list) — no keys,
 no signing, no broadcast. A1 is also the foundation merge of `feat/g5-ios-shell` → `main`.
@@ -338,3 +338,15 @@ the signer — but our live example drives our core end-to-end for every money-c
   over the mesh. Signing arrives next.") → the actual signing is the gated money-path **C1**.
   Verified at 390px (playwright) + on the iOS 26.5 simulator; `nq lint` 0 errors. Non-money-path →
   auto-merge. Next: **A4** (mesh chrome + language pill + connect-wallet), then Phase B.
+- **2026-06-27** — **A4 done** (#36) → **PHASE A COMPLETE** (A1–A4). Added the fleet chrome from
+  the shared **nimiq-app-shell**: a global **language pill** (`mountLanguagePill`) + a
+  **connect-wallet pill** (`mountWalletPill` over `createWallet` → Hub delegate; **selection only,
+  no keys cross to us** → non-money-path; real signing via the delegate is C1). Loaded via a
+  **graceful dynamic `import()` from jsDelivr** (fleet-standard) so an offline failure just hides
+  the pills — the core mesh UX keeps working. **Mesh chrome:** the mesh status line is now
+  **always visible** with a mesh-nodes glyph ("Bluetooth mesh · offline-ready" by default; the
+  bridge enriches it to "mesh <state> · N nearby · <net> · core X" on device) — the unmistakable
+  "this is the offline mesh" cue. **Verified the CDN import works in the real WKWebView** (device
+  screenshot: both pills loaded + live mesh line). `nq lint` 0 errors, no overflow. Auto-merged.
+  ⏸️ **Phase A done — the app you can hold is built.** Next: **Phase B** (G15 balance-over-mesh
+  first), all autonomous; Phase C/D/E remain gated for Andjroo.

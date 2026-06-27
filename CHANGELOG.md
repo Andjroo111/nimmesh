@@ -63,6 +63,22 @@ is fixed here.
 - Navy-overlay bottom sheets (rule 11), Nimiq easing, gold/blue per palette. Verified at 390px
   (playwright) + on the iOS 26.5 simulator; `nq lint` 0 errors. Core untouched (no version bump).
 
+### Added — A4 (web UI): fleet chrome (language + connect-wallet) + mesh identity — non-money-path
+
+Completes Phase A ("the app you can hold").
+
+- `webui/index.html` — top-right **language pill** (`mountLanguagePill`) and **connect-wallet pill**
+  (`mountWalletPill` over `createWallet` → Nimiq Hub delegate) from the shared **nimiq-app-shell**,
+  loaded via a graceful dynamic `import()` from jsDelivr (the fleet-standard pattern). An offline
+  import failure just hides the pills; the core mesh UX (home / send-compose / receive) keeps
+  working. The connect-wallet pill is **selection only** (choose the delegate account) — no key/seed
+  ever crosses to us; the real signing via that delegate is the gated money-path (C1). Non-money-path.
+- **Mesh identity:** the mesh status line is now **always visible** with a mesh-nodes glyph —
+  "Bluetooth mesh · offline-ready" by default, enriched by the bridge to "mesh <state> · N nearby ·
+  <net> · core X" on device — the unmistakable "this is the offline mesh, not the regular network" cue.
+- Verified the CDN import works in the real **WKWebView** (device screenshot: both pills loaded +
+  the live mesh line). `nq lint` 0 errors, no horizontal overflow. Core untouched.
+
 ## [0.9.0] — 2026-06-26
 
 ### Added — G9 (Rust core): head beacon (`0x32`) + validity-window guard / packet GC — non-money-path

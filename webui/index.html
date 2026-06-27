@@ -21,13 +21,15 @@
   body { font-family: 'Mulish','Muli',system-ui,sans-serif !important; background: #f8f8f8; margin: 0; color: #1f2348; }
   .app { max-width: 480px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column;
     padding-top: env(safe-area-inset-top, 0px); }
-  .topbar { display: flex; align-items: center; gap: 8px; padding: 16px 20px 4px; }
-  .topbar .logo { display: flex; align-items: center; gap: 8px; }
-  .topbar .wordmark { font-weight: 700; font-size: 20px; color: #1f2348; }
-  /* The mesh status is the ONE place bitmesh diverges from the wallet — keep it Nimiq-correct. */
-  .mesh-pill { margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
-    font-size: 12px; font-weight: 700; color: #fff; padding: 6px 12px; border-radius: 500px;
-    background-image: radial-gradient(100% 100% at bottom right, #265DD7, #0582CA); }
+  .topbar { display: flex; align-items: center; gap: 8px; padding: 16px 12px 4px; }
+  .topbar .logo { display: flex; align-items: center; gap: 7px; flex: 0 0 auto; }
+  .topbar .wordmark { font-weight: 700; font-size: 19px; color: #1f2348; }
+  /* A4: fleet chrome pills (global language pill + connect-wallet) at the top-right,
+     from the shared nimiq-app-shell (loaded online; the offline mesh UX degrades
+     gracefully without them). They self-inject their own Nimiq-correct styles. */
+  .topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: 0 1 auto; min-width: 0; }
+  /* keep the connect-wallet pill on one line + compact for the 390px topbar */
+  #connect-pill .nq-connect { white-space: nowrap; height: 38px; padding: 0 14px; }
   .header-wrap { padding: 8px 12px 0; }
   .tx-wrap { padding: 4px 20px 150px; }  /* clear the fixed bottom dock */
   .tx-wrap .transaction-list { width: 100%; }
@@ -55,7 +57,7 @@
     background: #f8f8f8; box-shadow: 0 -10px 24px rgba(0,0,0,.05); }
   .meshbar { display: flex; align-items: center; justify-content: center; gap: 7px;
     font-size: 12px; font-weight: 600; color: rgba(31,35,72,.55); padding: 9px 16px 3px; }
-  .meshbar .dot { width: 7px; height: 7px; border-radius: 50%; background: #21bca5; flex: 0 0 auto; }
+  .meshbar .mesh-glyph { width: 15px; height: 15px; color: #21bca5; flex: 0 0 auto; }
   .meshbar[hidden] { display: none; }
   .actionbar { display: flex; align-items: center; gap: 12px;
     padding: 8px 16px calc(14px + env(safe-area-inset-bottom, 0px)); }
@@ -141,7 +143,10 @@
       <svg viewBox="0 0 20 18" width="22" role="img" aria-label="Nimiq"><g fill="none"><path fill="url(#hex-grad)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="hex-grad" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></g></svg>
       <span class="wordmark">bitmesh</span>
     </span>
-    <span class="mesh-pill" title="placeholder mesh indicator">Offline · Mesh</span>
+    <div class="topbar-actions">
+      <div id="lang-pill" aria-label="Language"></div>
+      <div id="connect-pill" aria-label="Connect wallet"></div>
+    </div>
   </div>
 
   <!-- Real Nimiq backup banner -->
@@ -219,7 +224,10 @@
 
 <!-- A3: fixed bottom dock — mesh status line (device-only) + the action bar -->
 <div class="bottom-dock">
-  <div class="meshbar" id="meshbar" hidden><span class="dot"></span><span id="meshbar-text"></span></div>
+  <div class="meshbar" id="meshbar">
+    <svg class="mesh-glyph" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="5" cy="18" r="2.4" fill="currentColor"/><circle cx="19" cy="18" r="2.4" fill="currentColor"/><circle cx="12" cy="5" r="2.4" fill="currentColor"/><path d="M6.4 16.3 10.7 6.9M13.3 6.9l4.3 9.4M7.2 18h9.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+    <span id="meshbar-text">Bluetooth mesh · offline-ready</span>
+  </div>
   <div class="actionbar">
     <button class="ab-receive" id="open-receive">
       <svg viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3.5 8.5L8 13l4.5-4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -335,15 +343,32 @@
     if (c.value.length >= 4 && i < cells.length - 1) cells[i + 1].focus();
   }));
 
-  // A1: prove the JS↔Rust bridge round-trips on device. Absent in a browser (graceful).
+  // A1/A4: the mesh status line is always visible (the obvious "this is the offline mesh"
+  // differentiator). On device the bridge enriches it with live peers/network/core.
   if (window.bitmesh) {
     try {
       const [v, n, m] = await Promise.all([bitmesh.version(), bitmesh.network(), bitmesh.meshStatus()]);
       document.getElementById('meshbar-text').textContent =
         `mesh ${m.state} · ${m.peers} nearby · ${n.network} · core ${v.core}`;
-      document.getElementById('meshbar').hidden = false;
     } catch (e) { console.error('bridge probe failed', e); }
   }
+
+  // A4: fleet chrome — the global language pill + connect-wallet pill (shared nimiq-app-shell).
+  // Loaded online from jsDelivr (the fleet-standard pattern); offline the core mesh UX
+  // (home / send-compose / receive) keeps working and the pills simply don't appear.
+  (async () => {
+    try {
+      const shell = await import('https://cdn.jsdelivr.net/gh/Andjroo111/nimiq-app-shell@v0.2.1/dist/app-shell.js');
+      const i18n = shell.createI18n({ locales: shell.mergeLocales(shell.shellLocales), fallback: 'en' });
+      const lang = document.getElementById('lang-pill');
+      if (lang) shell.mountLanguagePill(lang, { i18n });
+      const connect = document.getElementById('connect-pill');
+      if (connect) {
+        const wallet = shell.createWallet({ appName: 'bitmesh', hubEndpoint: 'https://hub.nimiq-testnet.com' });
+        shell.mountWalletPill(connect, { wallet, i18n });
+      }
+    } catch (e) { console.warn('fleet chrome pills unavailable (offline?) — mesh UX continues', e); }
+  })();
 </script>
 <!-- qr-creator for the Receive QR canvas (renders even while the sheet is hidden) -->
 <script src="https://cdn.jsdelivr.net/npm/qr-creator@1.0.0/dist/qr-creator.min.js"></script>
