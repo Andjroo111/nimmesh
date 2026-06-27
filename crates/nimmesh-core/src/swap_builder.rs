@@ -8,9 +8,10 @@
 //!   the basic-transfer signer (the seed never crosses FFI; only a pubkey + signature do). The
 //!   resulting ~248 B wire is the one `@nimiq/core`'s validator already accepts
 //!   (`scripts/fixtures/feasibility-test.mjs`). **Testnet by default.**
-//! - The NIM **claim / refund** txs need the HTLC resolve **proof**, which is gated against
-//!   `core-rs-albatross` / a live testnet redeem (`@nimiq/core` JS can't build it — see
-//!   `docs/swap/F0-HTLC-FINDINGS.md`), so they return [`LegBuildError::RedeemProofPending`].
+//! - The NIM **claim** (RegularTransfer, reveal preimage) and **refund** (TimeoutResolve) are
+//!   **built + proven LIVE on Nimiq testnet** (claim in block 4515177; refund drained a real
+//!   contract past its timeout) — see `docs/swap/F0-HTLC-FINDINGS.md`. `decode_creation_wire`
+//!   rebuilds the contract context from the funding tx the leg observed on the mesh.
 //! - [`BitcoinLeg`] — a documented **gated stub**: every method returns
 //!   [`LegBuildError::Gated`]. The real P2WSH-HTLC signer + a BTC node/funds are **`needs:owner`**.
 //!
@@ -20,7 +21,10 @@
 use std::sync::Arc;
 
 use crate::nimiq::address::{Address, ADDRESS_LEN};
-use crate::nimiq::htlc::{HashAlgorithm, HtlcCreation, HtlcCreationData};
+use crate::nimiq::htlc::{
+    decode_creation_wire, regular_transfer_proof, timeout_resolve_proof, HashAlgorithm,
+    HtlcCreation, HtlcCreationData, HtlcRedeem,
+};
 use crate::nimiq::signer::EnclaveKey;
 use crate::nimiq::tx::{signature_proof_single_sig, PUBLIC_KEY_LEN, SIGNATURE_LEN};
 use crate::swap_wire::SwapLegId;
@@ -35,7 +39,8 @@ pub struct FundingTerms {
     pub hashlock: [u8; 32],
     /// Amount to lock, in the chain's base unit.
     pub amount: u64,
-    /// The HTLC timeout block height for this leg.
+    /// The HTLC timeout for this leg. **For NIM this is a Unix timestamp in MILLISECONDS** (the
+    /// validator compares it to the block time, not the height — see `nimiq::htlc`).
     pub timeout: u64,
     /// The claimant's address on this chain (NIM: 20 raw address bytes).
     pub recipient: Vec<u8>,
@@ -53,9 +58,6 @@ pub enum LegBuildError {
         /// What Andjroo must provide.
         needs: &'static str,
     },
-    /// The NIM resolve (claim/refund) proof is not wired yet — gated against `core-rs-albatross`
-    /// / a live testnet redeem (`@nimiq/core` JS cannot build or verify it).
-    RedeemProofPending,
     /// A provided address / field had the wrong shape.
     BadField {
         /// What was wrong.
@@ -71,12 +73,10 @@ impl std::fmt::Display for LegBuildError {
             LegBuildError::Gated { chain, needs } => {
                 write!(f, "{chain} leg is gated (needs:owner): {needs}")
             }
-            LegBuildError::RedeemProofPending => write!(
-                f,
-                "NIM resolve proof pending (gated against core-rs-albatross / a live testnet redeem)"
-            ),
             LegBuildError::BadField { reason } => write!(f, "bad field: {reason}"),
-            LegBuildError::BadKeyMaterial => write!(f, "enclave returned wrong-length key material"),
+            LegBuildError::BadKeyMaterial => {
+                write!(f, "enclave returned wrong-length key material")
+            }
         }
     }
 }
@@ -90,10 +90,16 @@ pub trait LegBuilder {
     fn leg_id(&self) -> SwapLegId;
     /// Build + sign the funding tx that locks `terms.amount` into a fresh HTLC.
     fn build_funding(&self, terms: &FundingTerms) -> Result<Vec<u8>, LegBuildError>;
-    /// Build the claim tx that spends the funded HTLC by revealing `preimage`.
-    fn build_claim(&self, funded_tx: &[u8], preimage: [u8; 32]) -> Result<Vec<u8>, LegBuildError>;
-    /// Build the refund tx that reclaims the funded HTLC after its timeout.
-    fn build_refund(&self, funded_tx: &[u8]) -> Result<Vec<u8>, LegBuildError>;
+    /// Build the claim tx that spends the funded HTLC (given its funding wire) by revealing
+    /// `preimage`, anchored at `vsh`.
+    fn build_claim(
+        &self,
+        funded_tx: &[u8],
+        preimage: [u8; 32],
+        vsh: u32,
+    ) -> Result<Vec<u8>, LegBuildError>;
+    /// Build the refund tx that reclaims the funded HTLC after its timeout, anchored at `vsh`.
+    fn build_refund(&self, funded_tx: &[u8], vsh: u32) -> Result<Vec<u8>, LegBuildError>;
 }
 
 /// The Nimiq leg: builds a byte-exact, signed HTLC **funding** tx. Holds only the opaque
@@ -121,6 +127,14 @@ impl NimiqLeg {
     fn public_key(&self) -> Result<[u8; PUBLIC_KEY_LEN], LegBuildError> {
         self.key
             .public_key()
+            .try_into()
+            .map_err(|_| LegBuildError::BadKeyMaterial)
+    }
+
+    /// Sign `content` with the enclave key (the seed never leaves it).
+    fn sign(&self, content: &[u8]) -> Result<[u8; SIGNATURE_LEN], LegBuildError> {
+        self.key
+            .sign_content(content.to_vec())
             .try_into()
             .map_err(|_| LegBuildError::BadKeyMaterial)
     }
@@ -170,16 +184,63 @@ impl LegBuilder for NimiqLeg {
 
     fn build_claim(
         &self,
-        _funded_tx: &[u8],
-        _preimage: [u8; 32],
+        funded_tx: &[u8],
+        preimage: [u8; 32],
+        vsh: u32,
     ) -> Result<Vec<u8>, LegBuildError> {
-        // The claim is an HTLC redeem (RegularTransfer) tx — its serializeContent is byte-exact
-        // (F1) but the resolve PROOF is gated against core-rs-albatross / a live testnet redeem.
-        Err(LegBuildError::RedeemProofPending)
+        // Claim-with-preimage (RegularTransfer). **Proven live on testnet** (block 4515177): the
+        // network accepts this exact proof. The signer must be the HTLC recipient (the claimant).
+        let creation = decode_creation_wire(funded_tx).ok_or(LegBuildError::BadField {
+            reason: "funded_tx is not a valid NIM HTLC funding tx",
+        })?;
+        let public_key = self.public_key()?;
+        if Address::from_public_key(&public_key) != creation.data.htlc_recipient {
+            return Err(LegBuildError::BadField {
+                reason: "this key is not the HTLC recipient (claimant)",
+            });
+        }
+        let redeem = HtlcRedeem {
+            contract: creation.contract_address(),
+            recipient: creation.data.htlc_recipient,
+            value: creation.value,
+            fee: 0,
+            validity_start_height: vsh,
+            network_id: creation.network_id,
+        };
+        let sig = self.sign(&redeem.serialize_content())?;
+        let proof = regular_transfer_proof(
+            creation.data.hash_algorithm,
+            &creation.data.hash_root,
+            &preimage,
+            &public_key,
+            &sig,
+        );
+        Ok(redeem.serialize_wire(&proof))
     }
 
-    fn build_refund(&self, _funded_tx: &[u8]) -> Result<Vec<u8>, LegBuildError> {
-        Err(LegBuildError::RedeemProofPending)
+    fn build_refund(&self, funded_tx: &[u8], vsh: u32) -> Result<Vec<u8>, LegBuildError> {
+        // Timeout refund (TimeoutResolve). **Proven live on testnet** (the contract drained back to
+        // the funder past its timeout). The signer must be the HTLC sender; funds return to it.
+        let creation = decode_creation_wire(funded_tx).ok_or(LegBuildError::BadField {
+            reason: "funded_tx is not a valid NIM HTLC funding tx",
+        })?;
+        let public_key = self.public_key()?;
+        if Address::from_public_key(&public_key) != creation.data.htlc_sender {
+            return Err(LegBuildError::BadField {
+                reason: "this key is not the HTLC sender (refunder)",
+            });
+        }
+        let redeem = HtlcRedeem {
+            contract: creation.contract_address(),
+            recipient: creation.data.htlc_sender, // refund back to the funder
+            value: creation.value,
+            fee: 0,
+            validity_start_height: vsh,
+            network_id: creation.network_id,
+        };
+        let sig = self.sign(&redeem.serialize_content())?;
+        let proof = timeout_resolve_proof(&public_key, &sig);
+        Ok(redeem.serialize_wire(&proof))
     }
 }
 
@@ -213,13 +274,14 @@ impl LegBuilder for BitcoinLeg {
         &self,
         _funded_tx: &[u8],
         _preimage: [u8; 32],
+        _vsh: u32,
     ) -> Result<Vec<u8>, LegBuildError> {
         Err(LegBuildError::Gated {
             chain: "bitcoin",
             needs: Self::NEEDS,
         })
     }
-    fn build_refund(&self, _funded_tx: &[u8]) -> Result<Vec<u8>, LegBuildError> {
+    fn build_refund(&self, _funded_tx: &[u8], _vsh: u32) -> Result<Vec<u8>, LegBuildError> {
         Err(LegBuildError::Gated {
             chain: "bitcoin",
             needs: Self::NEEDS,
@@ -278,16 +340,52 @@ mod tests {
     }
 
     #[test]
-    fn nimiq_claim_and_refund_are_gated_on_the_redeem_proof() {
+    fn nimiq_leg_round_trips_fund_then_claim() {
+        // The claimant's leg holds the recipient key; it funds (as the funder would) then claims
+        // the resulting wire by revealing the preimage. Proves the decode→redeem→proof path
+        // (the exact bytes the live testnet accepted in block 4515177).
+        let secret = [0x42u8; 32];
+        let hash_root = crate::swap_leg::sha256(&secret);
         let leg = nim_leg();
-        assert_eq!(
-            leg.build_claim(&[0u8; 248], [0u8; 32]),
-            Err(LegBuildError::RedeemProofPending)
-        );
-        assert_eq!(
-            leg.build_refund(&[0u8; 248]),
-            Err(LegBuildError::RedeemProofPending)
-        );
+        let me = leg.address().unwrap();
+        // A self-HTLC: funder = recipient = this leg (mirrors the live test).
+        let funding = leg
+            .build_funding(&FundingTerms {
+                hashlock: hash_root,
+                amount: 200_000,
+                timeout: 1_900_000_000_000, // Unix-ms timestamp in the future
+                recipient: me.as_bytes().to_vec(),
+                validity_start_height: 100,
+            })
+            .unwrap();
+        let claim = leg.build_claim(&funding, secret, 101).unwrap();
+        assert_eq!(claim[0], 0x01); // Extended format
+                                    // tail = the RegularTransfer proof (variant 0x00) framed at LEB128 166 (a6 01).
+        assert!(claim.windows(3).any(|w| w == [0xA6, 0x01, 0x00]));
+        // Refund builds too (TimeoutResolve), since this leg is also the HTLC sender.
+        let refund = leg.build_refund(&funding, 101).unwrap();
+        assert_eq!(refund[refund.len() - 99], 0x02); // TimeoutResolve variant before the 98-B sig proof
+    }
+
+    #[test]
+    fn nimiq_claim_rejects_a_key_that_is_not_the_recipient() {
+        // A different key (not the HTLC recipient) cannot build a claim.
+        let funder = nim_leg();
+        let me = funder.address().unwrap();
+        let funding = funder
+            .build_funding(&FundingTerms {
+                hashlock: [0xDD; 32],
+                amount: 100,
+                timeout: 1_900_000_000_000,
+                recipient: me.as_bytes().to_vec(),
+                validity_start_height: 1,
+            })
+            .unwrap();
+        let stranger = NimiqLeg::new(Arc::new(InMemoryEnclaveKey::from_secret(&[9u8; 32])));
+        assert!(matches!(
+            stranger.build_claim(&funding, [0u8; 32], 2),
+            Err(LegBuildError::BadField { .. })
+        ));
     }
 
     #[test]
@@ -309,7 +407,7 @@ mod tests {
             })
         ));
         assert!(matches!(
-            leg.build_claim(&[], [0; 32]),
+            leg.build_claim(&[], [0; 32], 0),
             Err(LegBuildError::Gated { .. })
         ));
     }

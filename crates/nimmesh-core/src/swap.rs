@@ -44,9 +44,13 @@ pub enum SwapRole {
     Responder,
 }
 
-/// The agreed, public terms of a swap. All amounts are in each chain's base unit (NIM = luna);
-/// timeouts are **block heights** (the NIM leg's height for `nim_timeout`; the counterparty
-/// chain's own height/locktime for `counterparty_timeout`).
+/// The agreed, public terms of a swap. Amounts are in each chain's base unit (NIM = luna).
+///
+/// **Timeouts are a TIME quantity, not a block height** (corrected after the live testnet proof:
+/// the NIM HTLC timeout is a Unix-MILLISECOND timestamp compared to the block time — see
+/// `nimiq::htlc`). Both legs' timeouts + `Δ_safe` must be expressed in the **same comparable unit**
+/// (Unix time) for the ladder check to be meaningful; the head-beacon's block *time* is the clock.
+/// `assess_ladder` is unit-agnostic — feed it consistent units.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SwapTerms {
     /// `T_A` — the NIM-leg HTLC timeout (the **longer** one).

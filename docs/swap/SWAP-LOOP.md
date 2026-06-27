@@ -150,6 +150,16 @@ and `main` is at a clean point — proposed to Andjroo, not taken by the loop.
   the seed stays behind the `EnclaveKey` seam) — its claim/refund return `RedeemProofPending` (the
   gated NIM resolve proof) + `BitcoinLeg`, a documented **gated stub** (every method →
   `Gated{needs: BTC node + funds + P2WSH-HTLC signer}`, `needs:owner`). **4 tests, 242 lib tests
-  green**, fmt/clippy/size-guard clean. ⏸️ **Loop stopped — everything left is Andjroo-gated:** the
-  real Bitcoin leg (node + funds), the NIM resolve proof's byte-exactness (a live testnet redeem),
-  mainnet, and on-device. The autonomous mesh-swap foundation (F0–F5) is complete + green.
+  green**, fmt/clippy/size-guard clean. The autonomous mesh-swap foundation (F0–F5) is complete + green.
+- **2026-06-27** — **✅ FULL NIM HTLC LIFECYCLE LIVE-PROVEN ON TESTNET** (Andjroo authorized the
+  testnet test). New `examples/live_testnet_htlc_swap.rs` (faucet → fund → claim-with-preimage):
+  **funding confirmed block 4515174**, **claim (RegularTransfer) confirmed block 4515177** (contract
+  drained to 0), and **refund (TimeoutResolve)** drained a separate contract past its timeout.
+  Implemented the resolve proofs in `nimiq::htlc` (`regular_transfer_proof` / `timeout_resolve_proof`
+  + `decode_creation_wire`) and wired the real claim/refund into `NimiqLeg` (no longer pending).
+  **Two corrections the live test surfaced:** (1) the HTLC **timeout is a Unix-MS timestamp**, not a
+  block height — a height value reads as expired-at-birth (refund works, claim always rejected);
+  fixed in `htlc.rs`/`swap_builder`/`swap.rs` + docs. (2) `@nimiq/core` 2.7.0 **does** validate the
+  redeem proof — the blocker was the `PreImage32` tag = **`0x20`** (the length), not an index.
+  **246 lib tests green**, fmt/clippy/size-guard clean. The redeem proof that was "gated/uncertain"
+  is now byte-exact and **accepted by both the reference lib and the live network**.

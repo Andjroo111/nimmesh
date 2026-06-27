@@ -24,6 +24,12 @@ path = "src/bin/uniffi-bindgen.rs"
 name = "live_testnet_broadcast"
 required-features = ["gateway-rpc"]
 
+# Mesh swap: the live TESTNET HTLC fund -> claim-with-preimage proof (validates the redeem proof
+# the @nimiq/core JS lib cannot). Built only with `--features gateway-rpc`; never in `cargo test`.
+[[example]]
+name = "live_testnet_htlc_swap"
+required-features = ["gateway-rpc"]
+
 [features]
 # G8: the real blocking HTTP JSON-RPC gateway client (`ureq` + `serde_json`) + the
 # keypair-entropy source for the live example. OFF by default so the pure-protocol core

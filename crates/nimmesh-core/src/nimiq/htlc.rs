@@ -23,7 +23,7 @@ use blake2::digest::consts::U32;
 use blake2::{Blake2b, Digest};
 
 use super::address::{Address, ADDRESS_LEN};
-use super::tx::PUBLIC_KEY_LEN;
+use super::tx::{signature_proof_single_sig, PUBLIC_KEY_LEN, SIGNATURE_LEN};
 
 /// `TransactionFormat::Extended` discriminant (leading byte of the full wire blob). Unlike the
 /// 139-byte `Basic` format, an HTLC tx carries contract data and/or a non-basic account type,
@@ -71,9 +71,12 @@ pub struct HtlcCreationData {
     pub hash_root: [u8; HASH_LEN],
     /// How many times the preimage is hashed to reach `hash_root` (1 for a simple swap).
     pub hash_count: u8,
-    /// The contract timeout as a **block height** (u64). After this height the sender may
-    /// refund; before it, the recipient may claim with the preimage. (The mesh head-beacon
-    /// is the clock — see `docs/swap/SWAP.md` on the timelock ladder.)
+    /// The contract timeout as a **Unix timestamp in MILLISECONDS** (u64) — compared by the
+    /// validator against the block's `block_state.time`, **NOT** the block height
+    /// (`core-rs-albatross` htlc_contract.rs; **proven live on testnet**: a height-valued timeout
+    /// reads as expired-at-birth, so the claim path is rejected and only refund works). After this
+    /// time the sender may refund (`TimeoutResolve`); before it, the recipient may claim with the
+    /// preimage (`RegularTransfer`).
     pub timeout: u64,
 }
 
@@ -287,6 +290,133 @@ impl HtlcRedeem {
     pub fn tx_hash(&self) -> [u8; 32] {
         blake2b256(&self.serialize_content())
     }
+
+    /// The full extended-format redeem wire: an outgoing transfer **from** the HTLC contract,
+    /// carrying `proof` (a [`regular_transfer_proof`] to claim, or a [`timeout_resolve_proof`] to
+    /// refund). Layout: `format(1)=1 || sender(20)=contract || sender_type(1)=HTLC ||
+    /// varint(sender_data)=0 || recipient(20) || recipient_type(1)=basic ||
+    /// varint(recipient_data)=0 || value(8) || fee(8) || vsh(4) || network(1) || flags(1)=0 ||
+    /// varint(proof) || proof`.
+    pub fn serialize_wire(&self, proof: &[u8]) -> Vec<u8> {
+        let mut out = Vec::with_capacity(1 + 44 + 22 + proof.len());
+        out.push(FORMAT_EXTENDED);
+        out.extend_from_slice(self.contract.as_bytes());
+        out.push(ACCOUNT_TYPE_HTLC);
+        push_var_bytes(&mut out, &[]); // empty sender_data
+        out.extend_from_slice(self.recipient.as_bytes());
+        out.push(ACCOUNT_TYPE_BASIC);
+        push_var_bytes(&mut out, &[]); // empty recipient_data (basic recipient)
+        out.extend_from_slice(&self.value.to_be_bytes());
+        out.extend_from_slice(&self.fee.to_be_bytes());
+        out.extend_from_slice(&self.validity_start_height.to_be_bytes());
+        out.push(self.network_id);
+        out.push(FLAG_NONE);
+        push_var_bytes(&mut out, proof);
+        out
+    }
+}
+
+/// Decode an [`HtlcCreation`] back from its funding wire (the inverse of
+/// [`HtlcCreation::serialize_wire`], ignoring the trailing proof). Returns `None` for any wire
+/// that is not a well-formed empty-sender-data, 82-byte-HTLC-data creation tx. Lets a claimant /
+/// refunder rebuild the contract context (address, recipient, hashlock, value) from the funding
+/// tx it observed on the mesh.
+pub fn decode_creation_wire(wire: &[u8]) -> Option<HtlcCreation> {
+    // Fixed layout (sender_data len 0, recipient_data len 82 → both single-byte varints):
+    // format(1) sender(20) sender_type(1) sd_len(1)=0 recipient(20) recipient_type(1)=2
+    //   rd_len(1)=0x52 htlc_data(82) value(8) fee(8) vsh(4) network(1) flags(1)=1 ...
+    const HEAD: usize = 1 + ADDRESS_LEN + 1 + 1 + ADDRESS_LEN + 1 + 1; // 45
+    if wire.len() < HEAD + HTLC_DATA_LEN + 8 + 8 + 4 + 1 + 1
+        || wire[0] != FORMAT_EXTENDED
+        || wire[ADDRESS_LEN + 1] != ACCOUNT_TYPE_BASIC
+        || wire[ADDRESS_LEN + 2] != 0 // empty sender_data
+        || wire[2 + 2 * ADDRESS_LEN + 1] != ACCOUNT_TYPE_HTLC
+        || wire[2 + 2 * ADDRESS_LEN + 2] != HTLC_DATA_LEN as u8
+    {
+        return None;
+    }
+    let mut funder = [0u8; ADDRESS_LEN];
+    funder.copy_from_slice(&wire[1..1 + ADDRESS_LEN]);
+    let data = &wire[HEAD..HEAD + HTLC_DATA_LEN];
+    let hash_algorithm = match data[2 * ADDRESS_LEN] {
+        1 => HashAlgorithm::Blake2b,
+        3 => HashAlgorithm::Sha256,
+        _ => return None,
+    };
+    let mut htlc_sender = [0u8; ADDRESS_LEN];
+    htlc_sender.copy_from_slice(&data[..ADDRESS_LEN]);
+    let mut htlc_recipient = [0u8; ADDRESS_LEN];
+    htlc_recipient.copy_from_slice(&data[ADDRESS_LEN..2 * ADDRESS_LEN]);
+    let mut hash_root = [0u8; HASH_LEN];
+    hash_root.copy_from_slice(&data[2 * ADDRESS_LEN + 1..2 * ADDRESS_LEN + 1 + HASH_LEN]);
+    let hash_count = data[2 * ADDRESS_LEN + 1 + HASH_LEN];
+    let timeout = u64::from_be_bytes(data[HTLC_DATA_LEN - 8..].try_into().ok()?);
+    let mut o = HEAD + HTLC_DATA_LEN;
+    let value = u64::from_be_bytes(wire[o..o + 8].try_into().ok()?);
+    o += 8;
+    let fee = u64::from_be_bytes(wire[o..o + 8].try_into().ok()?);
+    o += 8;
+    let validity_start_height = u32::from_be_bytes(wire[o..o + 4].try_into().ok()?);
+    o += 4;
+    let network_id = wire[o];
+    Some(HtlcCreation {
+        funder: Address::from_bytes(funder),
+        data: HtlcCreationData {
+            htlc_sender: Address::from_bytes(htlc_sender),
+            htlc_recipient: Address::from_bytes(htlc_recipient),
+            hash_algorithm,
+            hash_root,
+            hash_count,
+            timeout,
+        },
+        value,
+        fee,
+        validity_start_height,
+        network_id,
+    })
+}
+
+/// `OutgoingHTLCTransactionProof` variant byte: **RegularTransfer** (claim with preimage). PoS
+/// variant ids start at 0 (`core-rs-albatross`).
+pub const PROOF_REGULAR_TRANSFER: u8 = 0x00;
+/// `OutgoingHTLCTransactionProof` variant byte: **TimeoutResolve** (refund after timeout).
+pub const PROOF_TIMEOUT_RESOLVE: u8 = 0x02;
+/// `PreImage::PreImage32` discriminant — the custom serializer writes the **length** (32), not an
+/// index (`core-rs-albatross` `impl Serialize for PreImage`).
+const PRE_IMAGE_32_TAG: u8 = 32;
+
+/// The **claim-with-preimage** (`RegularTransfer`) resolve proof. Revealing this on-chain reveals
+/// the preimage. Layout: `0x00 (variant) || hash_depth(1) || hash_root:AnyHash(algo||32) ||
+/// pre_image:PreImage(0x20||32) || signature_proof(98)` — built byte-for-byte to the
+/// `core-rs-albatross` encoding (the gate is a live testnet redeem, since `@nimiq/core` JS can't).
+pub fn regular_transfer_proof(
+    hash_algorithm: HashAlgorithm,
+    hash_root: &[u8; HASH_LEN],
+    pre_image: &[u8; HASH_LEN],
+    public_key: &[u8; PUBLIC_KEY_LEN],
+    signature: &[u8; SIGNATURE_LEN],
+) -> Vec<u8> {
+    let mut out = Vec::with_capacity(1 + 1 + 1 + HASH_LEN + 1 + HASH_LEN + SIGNATURE_PROOF_LEN);
+    out.push(PROOF_REGULAR_TRANSFER);
+    out.push(1); // hash_depth: present the preimage once (hash_count = 1)
+    out.push(hash_algorithm as u8); // AnyHash tag (sha256 = 3)
+    out.extend_from_slice(hash_root);
+    out.push(PRE_IMAGE_32_TAG); // PreImage32 tag (= 32)
+    out.extend_from_slice(pre_image);
+    out.extend_from_slice(&signature_proof_single_sig(public_key, signature));
+    out
+}
+
+/// The **timeout-refund** (`TimeoutResolve`) resolve proof, signed by the HTLC creator/sender.
+/// Layout: `0x02 (variant) || signature_proof(98)`.
+pub fn timeout_resolve_proof(
+    public_key: &[u8; PUBLIC_KEY_LEN],
+    signature: &[u8; SIGNATURE_LEN],
+) -> Vec<u8> {
+    let mut out = Vec::with_capacity(1 + SIGNATURE_PROOF_LEN);
+    out.push(PROOF_TIMEOUT_RESOLVE);
+    out.extend_from_slice(&signature_proof_single_sig(public_key, signature));
+    out
 }
 
 /// Length of the standard single-sig `SignatureProof` blob a signed creation tx carries.
@@ -393,5 +523,60 @@ mod tests {
             bytes_to_hex(&redeem.serialize_content()),
             "000041c0fb47c6af37950dcbbbe56b7a7a489d3001cf02567866611c1a2c85a1a676bb8c845d0655fea1a60000000000000186a0000000000000000000000065050000"
         );
+    }
+
+    #[test]
+    fn regular_transfer_proof_has_the_core_rs_albatross_shape() {
+        // 0x00 || hash_depth(1) || AnyHash(0x03||32) || PreImage(0x20||32) || sigProof(98) = 166 B.
+        let proof = regular_transfer_proof(
+            HashAlgorithm::Sha256,
+            &[0xAA; 32],
+            &[0xBB; 32],
+            &[0xCC; 32],
+            &[0xDD; 64],
+        );
+        assert_eq!(proof.len(), 1 + 1 + 1 + 32 + 1 + 32 + SIGNATURE_PROOF_LEN);
+        assert_eq!(proof.len(), 166);
+        assert_eq!(proof[0], PROOF_REGULAR_TRANSFER); // 0x00
+        assert_eq!(proof[1], 1); // hash_depth
+        assert_eq!(proof[2], 0x03); // AnyHash::Sha256 tag
+        assert_eq!(&proof[3..35], &[0xAA; 32]); // hash_root
+        assert_eq!(proof[35], PRE_IMAGE_32_TAG); // 0x20 (= 32)
+        assert_eq!(&proof[36..68], &[0xBB; 32]); // pre_image
+        assert_eq!(proof[68], 0x00); // SignatureProof type byte (Ed25519)
+    }
+
+    #[test]
+    fn timeout_resolve_proof_is_variant_then_sigproof() {
+        let proof = timeout_resolve_proof(&[1; 32], &[2; 64]);
+        assert_eq!(proof.len(), 1 + SIGNATURE_PROOF_LEN); // 99
+        assert_eq!(proof[0], PROOF_TIMEOUT_RESOLVE); // 0x02
+    }
+
+    #[test]
+    fn redeem_wire_is_leb128_length_prefixed() {
+        // The 166-byte RegularTransfer proof rides the wire as `a6 01 || <166 bytes>` (LEB128).
+        let redeem = HtlcRedeem {
+            contract: addr("41c0fb47c6af37950dcbbbe56b7a7a489d3001cf"),
+            recipient: addr("567866611c1a2c85a1a676bb8c845d0655fea1a6"),
+            value: 100000,
+            fee: 0,
+            validity_start_height: 101,
+            network_id: 5,
+        };
+        let proof = regular_transfer_proof(
+            HashAlgorithm::Sha256,
+            &[0xAA; 32],
+            &[0xBB; 32],
+            &[0xCC; 32],
+            &[0xDD; 64],
+        );
+        let wire = redeem.serialize_wire(&proof);
+        // The trailing bytes are the LEB128 length (166 = a6 01) then the 166-byte proof.
+        let tail = &wire[wire.len() - 2 - 166..];
+        assert_eq!(tail[0], 0xA6);
+        assert_eq!(tail[1], 0x01);
+        assert_eq!(&tail[2..], &proof[..]);
+        assert_eq!(wire[0], FORMAT_EXTENDED);
     }
 }
