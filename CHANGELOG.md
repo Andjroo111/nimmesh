@@ -2,6 +2,28 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.21.0] — 2026-06-27
+
+### Added — C1a: the real-signed money path, proven end to end (testnet)
+
+**Operating-model change (Andjroo):** testnet is now full-speed + auto-merge — keygen/signing/testnet
+broadcast included. The only gates are **mainnet** and **real devices**. `docs/LOOP.md` operating model
+updated; `MAINNET-GATING.md` stands.
+
+- `crates/nimmesh-core/src/send_e2e_tests.rs` (new): the headless proof that the C1 send path is real.
+  A genuine **Ed25519-signed** transfer (`AppSigner` over an `EnclaveKey` — the seed never leaves it)
+  floods `origin → verifying relay → gateway`: the relay accepts it *because* the signature is valid
+  (G12 verify-before-relay), the gateway broadcasts the **exact signed 139-byte bytes**, and the origin
+  settles. Plus the negative: a **tampered** signed tx (one flipped value nibble) is dropped by the
+  verifying relay — no broadcast, never settles. Ties G3+G4+G6+G8+G12+G17 together with real crypto
+  (the prior e2e suites used opaque stand-in bytes).
+
+The signing FFI itself (`AppSigner`, `submit_signed_transfer`, `anchored_intent`, `payment_status`)
+already existed from G3/G8/G9/G17; C1a proves they compose into a working, spam-filtered, settling send.
+Next (C1b/c): the native Keychain `EnclaveKey` + the webui Send screen wired to sign for real.
+
+211 tests green, `cargo clippy --all-features -D warnings` + `cargo fmt --check` + size-guard clean.
+
 ## [0.20.0] — 2026-06-27
 
 ### Changed — project renamed bitmesh → **nimmesh** (it's Nimiq, not Bitcoin)

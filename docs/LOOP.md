@@ -36,15 +36,21 @@ mesh until one device with a connection broadcasts it. Testnet-first, money-path
 
 ## Operating model — autonomy & gating
 
-**Auto-merge non-money-path PRs when CI is fully green. Gate the money path.**
+**Auto-merge everything on TESTNET when CI is fully green. The only gates are MAINNET and
+real devices.** (Updated 2026-06-27 by Andjroo: "all testnet, I'm okay with auto-merging — I
+don't consider that money-gated. Get it thoroughly tested; leave only mainnet + real-device
+testing for us.")
 
-- **Money-path goals are PR-only behind Andjroo** (`auto-merge: no`, label
-  `money-path` + `needs:owner`): anything that signs, handles keys/seed, or
-  **broadcasts** a transaction. They default to **Nimiq testnet** (networkId=5).
-- **Mainnet is flipped only by Andjroo** — never by the loop. No real-fund, mainnet
-  RPC, or store-distribution action without explicit approval.
-- **Non-money-path goals auto-merge** when green (scaffold, codec, relay, store-and-
-  forward, transport plumbing, mock harness, head-beacon, encrypted-memo transport).
+- **Testnet is full speed, auto-merge on green** — including keygen, signing, and
+  testnet broadcast. Everything defaults to **Nimiq testnet** (networkId=5); testnet NIM is
+  play money. This supersedes the old "money-path = PR-only behind Andjroo" rule.
+- **Mainnet is the hard gate — Andjroo only, never the loop.** Never flip `networkId` to
+  mainnet, point at a mainnet RPC, touch real funds, or take a store-distribution action. No
+  mainnet code path is even authored by the loop (see `docs/MAINNET-GATING.md`).
+- **Real devices are Andjroo's** — the loop *writes* the native BLE shim (G5) but on-device +
+  mainnet testing is the remaining human step.
+- **One invariant regardless:** the seed never crosses the FFI boundary, the mesh, or a log —
+  only a public key + a signature do. That is correctness, not a gate.
 
 ### Toolchain — build locally, Rust-first
 

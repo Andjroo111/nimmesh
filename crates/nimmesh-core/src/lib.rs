@@ -174,6 +174,8 @@ mod e2e_tests;
 #[cfg(test)]
 mod hardening_e2e_tests;
 #[cfg(test)]
+mod send_e2e_tests;
+#[cfg(test)]
 mod test_support;
 
 /// The Nimiq network this build is talking to.
