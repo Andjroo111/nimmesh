@@ -36,7 +36,7 @@ and `main` is at a clean point — proposed to Andjroo, not taken by the loop.
 | # | Goal | gated? | deps | status |
 | --- | --- | --- | --- | --- |
 | **F0** | Spec + design spike — SWAP.md / SWAP-LOOP.md + confirm the exact Albatross HTLC byte layout from `@nimiq/core` 2.7.0 (timeout units, hash-algo enum, contract-data + creation-tx + resolve-proof layouts) | no | — | 🟡 docs done · byte-layout spike next |
-| **F1** | Nimiq **HTLC tx serialization** — extend the signer from `Basic` to: HTLC **creation** (Extended format), `regular-transfer` (claim-with-preimage) and `timeout-resolve` (refund) proofs; **byte-exact vs `@nimiq/core` 2.7.0** with committed fixtures (`nimiq/htlc.rs` + `scripts/fixtures` HTLC cases) | no (testnet) | F0 | todo |
+| **F1** | Nimiq **HTLC tx serialization** — extend the signer from `Basic` to: HTLC **creation** (Extended format), `regular-transfer` (claim-with-preimage) and `timeout-resolve` (refund) proofs; **byte-exact vs `@nimiq/core` 2.7.0** with committed fixtures (`nimiq/htlc.rs` + `scripts/fixtures` HTLC cases) | no (testnet) | F0 | 🟡 funding tx + redeem content byte-exact (6 tests green); resolve **proof** = next sub-cycle (core-rs-albatross gate) |
 | **F2** | Swap **wire messages + codec** — MessageType `0x40–0x44` + the swap TLV envelope; encode/decode + proptests (`swap_wire.rs`, extend `packet.rs`/`envelope.rs`) | no | — | todo |
 | **F3** | Swap **state machine** — `swap.rs`: roles (initiator/responder), lifecycle (`Proposed→Accepted→Funded→Revealed→Settled` / `Aborted`/`Refunded`), **height-anchored clock-free timelock ladder** + the `Δ_safe` safety gate (refuse unsafe-offline) | no | F2 | todo |
 | **F4** | **Mesh integration + mock-counterparty e2e** — engine glue to flood/relay/store-forward swap msgs over the existing mesh; the `SwapLeg` trait + `NimiqLeg` + a mock `BitcoinLeg`; `swap_e2e_tests.rs` proving the happy path **+ all 4 adversarial paths** (no one-sided settlement) | no | F1, F3 | todo |
@@ -91,3 +91,16 @@ and `main` is at a clean point — proposed to Andjroo, not taken by the loop.
   account type** supports atomic swaps (timeout-resolve / regular-transfer / early-resolve).
   Wrote SWAP.md (feature spec) + this loop. First real pair = **NIM ⇄ BTC** (Andjroo's pick).
   **F0 docs done.** Next: the F0 byte-layout spike → F1 Nimiq HTLC serialization.
+- **2026-06-27** — **F0 spike done + feasibility documented.** Nailed the Albatross HTLC byte
+  layout vs `@nimiq/core` 2.7.0 (creation data 82 B; sha256 algo = 3; timeout = u64 block
+  height; contract address = `Blake2b256(content w/ recipient zeroed)[..20]`). Proved a real
+  HTLC **funding tx is ACCEPTED** by `@nimiq/core`'s own validator (`feasibility-test.mjs`);
+  found `@nimiq/core` JS can't sign/verify HTLC **redeems** → that path is gated against
+  `core-rs-albatross`/live-testnet, not JS. Documented the verdict in `FEASIBILITY.md`
+  (settlement-vs-transport: you create+relay an *offline transaction*, it settles at the gateway).
+- **2026-06-27** — **F1 (1/2): funding leg byte-exact.** `nimiq/htlc.rs` (397 lines):
+  `HtlcCreationData` (82 B), `HtlcCreation` (contract-address derivation + content + hash +
+  extended wire, signed shape = the 248 B verified tx) and `HtlcRedeem` content — all asserted
+  **byte-exact against the `@nimiq/core` fixtures** (`swap_htlc_fixtures.json`). 6 new tests,
+  **207 lib tests green**, fmt/clippy/size-guard clean. Next sub-cycle: the resolve **proof**
+  (RegularTransfer preimage + TimeoutResolve), gated against core-rs-albatross / a testnet redeem.
