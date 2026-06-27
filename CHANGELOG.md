@@ -2,6 +2,31 @@
 
 All notable changes to nimiq.bitmesh. Each PR bumps the version and adds an entry.
 
+## [0.18.0] — 2026-06-27
+
+### Added — G12 (part 2): per-peer rate limits + stop-after-ACK — completes G12 — non-money-path
+
+The rest of RISKS.md #4's anti-DoS hardening, on top of part 1's verify-before-relay.
+
+- `crates/bitmesh-core/src/ratelimit.rs` (new): `PeerRateLimiter`, a per-peer **token bucket**
+  (256 burst / 64 frames-per-sec steady). `process_inbound` drops frames from a peer exceeding its
+  budget before any decode/relay airtime is spent (`rate_limited` counter). Clock-free (worker
+  monotonic clock → deterministic), tracked-peer map bounded against peer-id churn. 5 unit tests.
+- `engine.rs`: **stop-after-ACK** — once a gateway receipt for a txId has been seen, the node stops
+  re-carrying copies of that (already-landed) tx (`stop_after_ack` counter). `handle_tx` now decodes the
+  envelope once and reuses it for verify + ACK-check + the gateway submit.
+- **NACK** is the existing G8 reject path: a gateway floods a `Failed`/`Expired` `nimiqTxReceipt`, which
+  settles the sender (and, via G17, the receiver) to `Failed` — no new code needed.
+- 2 new e2e tests (a flooding peer is throttled; a node drops an already-ACKed tx), split into
+  `hardening_e2e_tests.rs` to keep test files under the 800-line guard.
+
+**Refactor:** extracted the G9 head-beacon engine glue (`emit_head_beacon` / `handle_head_beacon` /
+`tx_valid_until`) from `engine.rs` into `beacon.rs` (where its codec lives), restoring engine headroom
+(`engine.rs` 825 → 772). Mirrors the `balance.rs` / `settlement.rs` glue pattern.
+
+**Completes #12.** Non-money-path throughout (no sign/keys/broadcast). 209 tests green, `cargo clippy
+-D warnings` + `cargo fmt --check` + size-guard clean.
+
 ## [0.17.0] — 2026-06-27
 
 ### Added — G12 (part 1): verify-before-relay — the free spam filter — non-money-path

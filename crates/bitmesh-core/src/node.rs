@@ -25,10 +25,10 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use crate::balance::{flood_local_balance_query, CachedBalance};
+use crate::beacon::emit_head_beacon;
 use crate::citizen::{relay_stats, RelayStats};
 use crate::engine::{
-    emit_head_beacon, emit_request_sync, flood_local_tx, maintenance_tick, process_inbound,
-    WorkerCtx, WorkerState,
+    emit_request_sync, flood_local_tx, maintenance_tick, process_inbound, WorkerCtx, WorkerState,
 };
 use crate::gateway::MeshGateway;
 use crate::nimiq::address::Address;
@@ -517,6 +517,16 @@ impl MeshNode {
     #[cfg(test)]
     pub(crate) fn verify_dropped(&self) -> usize {
         self.ctx.verify_dropped()
+    }
+    /// G12: inbound frames dropped because the source peer exceeded its rate limit.
+    #[cfg(test)]
+    pub(crate) fn rate_limited(&self) -> usize {
+        self.ctx.rate_limited()
+    }
+    /// G12: `nimiqTx` packets not re-carried because their txId was already ACKed.
+    #[cfg(test)]
+    pub(crate) fn stop_after_ack(&self) -> usize {
+        self.ctx.stop_after_ack()
     }
     /// G15: `nimiqBalanceResponse` frames this gateway has answered + flooded.
     #[cfg(test)]

@@ -217,55 +217,8 @@ fn a_reject_receipt_fails_the_receiver_too() {
     h.shutdown();
 }
 
-// --- G12: verify-before-relay (free spam filter) -------------------------------
-
-#[test]
-fn a_verifying_relay_drops_junk_but_carries_a_real_signed_tx() {
-    use crate::nimiq::Transfer;
-    use ed25519_dalek::{Signer, SigningKey};
-
-    // origin -> verifying relay -> gateway. The relay runs the G12 spam filter.
-    let mut h = MeshHarness::new();
-    let gw = Arc::new(MockGateway::new(default_network()));
-    let origin = h.add_node("origin", &[1]);
-    let relay = h.add_verifying_node("relay", &[2]); // verify-before-relay ON
-    let _gateway = h.add_gateway("gw", &[3], gw.clone());
-    h.connect("origin", "relay");
-    h.connect("relay", "gw");
-
-    // Junk that claims to be a tx → the verifying relay drops it; the gateway never sees it.
-    let junk_id = origin.submit_local_tx(b"junk-not-a-signed-tx".to_vec());
-    assert_eq!(
-        origin.wait_payment(&junk_id, SETTLE),
-        PaymentStatus::Pending
-    );
-    assert_eq!(gw.submission_count(), 0);
-    assert!(
-        relay.verify_dropped() >= 1,
-        "the relay should have dropped the junk"
-    );
-
-    // A real signed transfer → verifies, relays, settles, and is the only thing carried.
-    let sk = SigningKey::from_bytes(&[9u8; 32]);
-    let pubkey = sk.verifying_key().to_bytes();
-    let t = Transfer {
-        sender: Address::from_public_key(&pubkey),
-        recipient: Address::from_bytes([0x22; 20]),
-        value: 250_000,
-        fee: 0,
-        validity_start_height: 100,
-        network_id: default_network().wire_id(),
-    };
-    let sig = sk.sign(&t.serialize_content()).to_bytes();
-    let wire = t.serialize_basic(&pubkey, &sig);
-    let tx_id = origin.submit_local_tx(wire.clone());
-
-    assert_eq!(origin.wait_payment(&tx_id, SETTLE), PaymentStatus::Settled);
-    assert_eq!(gw.submission_count(), 1); // only the real tx made it across
-    assert_eq!(gw.submissions()[0], wire);
-
-    h.shutdown();
-}
+// G12 hardening (verify-before-relay / rate-limit / stop-after-ACK) e2e tests live in
+// `hardening_e2e_tests.rs` (kept separate to stay under the 800-line file guard).
 
 // --- G20: good-citizen + battery-aware relay -----------------------------------
 

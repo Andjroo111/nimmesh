@@ -29,8 +29,13 @@
 //! (height), so a gateway emits a zeroed hash until a `getBlock` slice exists — the
 //! **height is the validity anchor**, the hash is informational.
 
-use crate::envelope::DEFAULT_NETWORK_ID;
+use std::sync::atomic::Ordering;
+
+use crate::codec::encode;
+use crate::engine::{relay_key, relay_onward, remember, WorkerCtx, WorkerState};
+use crate::envelope::{decode_envelope, DEFAULT_NETWORK_ID};
 use crate::nimiq::VALIDITY_WINDOW;
+use crate::packet::{MessageType, Packet};
 
 /// Length of a Nimiq block hash carried in a beacon (Blake2b-256), in bytes.
 pub const BLOCK_HASH_LEN: usize = 32;
@@ -197,6 +202,67 @@ impl BeaconScheduler {
             }
         }
     }
+}
+
+// --- engine glue (G9 head-beacon over the mesh) --------------------------------
+//
+// The emit / relay / validity-read functions that wire this beacon codec into the worker
+// (`crate::engine`). Kept here for cohesion + to keep `engine.rs` under the 800-line guard
+// (mirrors how `balance.rs` / `settlement.rs` own their own engine glue).
+
+/// G9: a **gateway** floods a `nimiqHeadBeacon` (`0x32`) carrying its freshest head height so
+/// deep-offline signers anchor `validityStartHeight` to a current head (RISKS.md #1). Sources
+/// the height from the gateway's RPC (`block_number`, via [`crate::gateway::MeshGateway::head_beacon`]);
+/// rate-limited to one emit per [`BEACON_TICK_MS`] (caller-driven, clock-free). A non-gateway
+/// node, or a head-fetch failure, emits nothing. The gateway also caches its own head so its
+/// local signer anchors fresh.
+pub(crate) fn emit_head_beacon(ctx: &WorkerCtx, st: &mut WorkerState) {
+    let Some(gateway) = ctx.gateway.as_ref() else {
+        return; // only a gateway (internet + RPC) beacons heads.
+    };
+    let now = st.now_ms();
+    if !st.beacon.due(now) {
+        return; // rate-limited: at most one beacon per tick.
+    }
+    let Some(beacon) = gateway.head_beacon() else {
+        return; // no live head (transient RPC failure / chain-less mock): emit nothing.
+    };
+    ctx.cache_head(&beacon);
+    let packet = ctx.build_packet(MessageType::NimiqHeadBeacon, encode_beacon(&beacon));
+    // Remember our own beacon so its echo back through the mesh is not re-flooded.
+    st.relay_seen.insert(relay_key(&packet));
+    remember(ctx, st, &packet);
+    ctx.beacon_emitted.fetch_add(1, Ordering::Relaxed);
+    if let Ok(bytes) = encode(&packet) {
+        ctx.flood(bytes);
+    }
+}
+
+/// G9: handle an inbound `nimiqHeadBeacon` (`0x32`). Blind-dedup, cache the freshest head
+/// (monotonic; `networkId`-validated), remember it for store-and-forward, then flood it onward
+/// so deep-offline nodes downstream also anchor a current head.
+pub(crate) fn handle_head_beacon(
+    ctx: &WorkerCtx,
+    packet: Packet,
+    src: Option<&str>,
+    st: &mut WorkerState,
+) {
+    if !st.relay_seen.insert(relay_key(&packet)) {
+        return;
+    }
+    if let Some(beacon) = decode_beacon(&packet.payload) {
+        ctx.cache_head(&beacon);
+    }
+    remember(ctx, st, &packet);
+    relay_onward(ctx, packet, src, st);
+}
+
+/// G9: the optional `validUntil` height a `nimiqTx` packet carries in its envelope — the input
+/// to the [`is_expired`] guard. Returns `None` for any non-decodable payload or a tx without a
+/// window (the relay stays blind to the opaque `txWire`; it reads only the public envelope
+/// field that bounds the relay budget).
+pub(crate) fn tx_valid_until(packet: &Packet) -> Option<u32> {
+    decode_envelope(&packet.payload).ok()?.valid_until
 }
 
 #[cfg(test)]

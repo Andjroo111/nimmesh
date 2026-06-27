@@ -139,7 +139,7 @@ Rust-core logic (cargo-tested) + web UI (screenshot-verified). None handle keys 
 | #   | Goal                                                          | money-path | auto-merge | deps | status |
 | --- | ----------------------------------------------------------- | :--------: | :--------: | ---- | ------ |
 | C1  | Keygen / import + real Send→sign→queue wire (=#10 money slice; seed stays behind `EnclaveKey`) | **yes** | **no** | A3, G3 | todo |
-| G12 | Hardening — verify-before-relay, rate limits, NACK, anti-spam | no¹ | yes¹ | G8, G3 | 🟡 part 1 (verify-before-relay) done |
+| G12 | Hardening — verify-before-relay, rate limits, NACK, anti-spam | no¹ | yes¹ | G8, G3 | ✅ done (verify + rate-limit + stop-after-ACK; NACK = G8 reject-receipt) |
 | G13 | TESTNET end-to-end demo + mainnet-gating doc                 | **yes** | **no** | G8,G9,C1,G12 | todo |
 
 ### Phase D — native BLE on real devices (GATED: needs Andjroo's devices + Apple Dev account)
@@ -444,3 +444,12 @@ the signer — but our live example drives our core end-to-end for every money-c
   G12 part 2 (per-peer rate limits + stop-after-ACK), then the G13 mainnet-gating DOC. **Still hard-gated
   for Andjroo (untouched): C1 keygen/sign (key-origin decision), real testnet/mainnet broadcast, the
   native BLE shim G5 (devices + Apple acct), and the Phase-D live-UI batch.**
+- **2026-06-27 (overnight)** — **G12 COMPLETE** (#12 closed, v0.18.0, auto-merged): part 2 = per-peer
+  rate limits (`ratelimit.rs` token bucket, `process_inbound` throttles a flooding peer) + stop-after-ACK
+  (`engine.rs` won't re-carry a tx once its receipt is seen) + NACK (= the existing G8 reject-receipt,
+  no new code). `handle_tx` decodes the envelope once (verify + ACK + gateway submit). **Refactor:**
+  moved the G9 head-beacon glue (`emit_head_beacon`/`handle_head_beacon`/`tx_valid_until`) out of
+  `engine.rs` into `beacon.rs` (engine 825→772), and split the G12 e2e tests into `hardening_e2e_tests.rs`
+  (both under the 800-line guard). 209 tests, clippy/fmt/size-guard clean. Non-money-path throughout.
+  Next: **G13 mainnet-gating DOC** (the last autonomous-safe item). Then the loop is at the hard wall —
+  only C1 (key-origin decision), real broadcast, the native shim (devices), and the Phase-D live UI remain.

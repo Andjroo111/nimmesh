@@ -31,9 +31,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 use crate::balance::{BalanceCache, BalanceResponse, CachedBalance};
-use crate::beacon::{
-    decode_beacon, encode_beacon, is_expired, BeaconScheduler, HeadBeacon, HeadCache,
-};
+use crate::beacon::{is_expired, BeaconScheduler, HeadBeacon, HeadCache};
 use crate::citizen::CitizenState;
 use crate::codec::{decode, encode};
 use crate::dedup::DedupCache;
@@ -45,6 +43,7 @@ use crate::nimiq::address::Address;
 use crate::nimiq::VALIDITY_WINDOW;
 use crate::packet::{MessageType, Packet, BROADCAST_RECIPIENT, DEFAULT_TTL, PEER_ID_LEN};
 use crate::radio::BleRadio;
+use crate::ratelimit::PeerRateLimiter;
 use crate::relay::{relayed_ttl, RelayPolicy};
 use crate::settlement::{PaymentStatus, SettlementDirection, SettlementLedger};
 use crate::store_forward::{packet_id, RecentCache, SyncScheduler};
@@ -126,13 +125,18 @@ pub struct WorkerCtx {
     /// G7: count of inbound `isRSR` catch-up packets this node has received.
     rsr_received: AtomicUsize,
     /// G9: count of `nimiqHeadBeacon` (`0x32`) frames this gateway has flooded.
-    beacon_emitted: AtomicUsize,
+    pub(crate) beacon_emitted: AtomicUsize,
     /// G9: count of `nimiqTx` packets dropped (GC'd) because their validity window had
     /// already closed against the cached head — neither relayed nor stored.
     expired_dropped: AtomicUsize,
     /// G12: count of `nimiqTx` packets dropped by the verify-before-relay spam filter
     /// (not a well-formed, correctly-signed Nimiq transfer) — neither relayed nor stored.
     verify_dropped: AtomicUsize,
+    /// G12: count of inbound frames dropped because the source peer exceeded its rate limit.
+    rate_limited: AtomicUsize,
+    /// G12: count of `nimiqTx` packets not re-carried because a gateway receipt (ACK) for
+    /// their txId had already been seen — saved airtime once a payment has landed.
+    stop_after_ack: AtomicUsize,
     /// G15: count of `nimiqBalanceResponse` frames this gateway has answered + flooded.
     pub(crate) balance_answered: AtomicUsize,
 }
@@ -163,6 +167,8 @@ impl WorkerCtx {
             beacon_emitted: AtomicUsize::new(0),
             expired_dropped: AtomicUsize::new(0),
             verify_dropped: AtomicUsize::new(0),
+            rate_limited: AtomicUsize::new(0),
+            stop_after_ack: AtomicUsize::new(0),
             balance_answered: AtomicUsize::new(0),
         }
     }
@@ -235,6 +241,14 @@ impl WorkerCtx {
     #[cfg(test)]
     pub(crate) fn verify_dropped(&self) -> usize {
         self.verify_dropped.load(Ordering::Relaxed)
+    }
+    #[cfg(test)]
+    pub(crate) fn rate_limited(&self) -> usize {
+        self.rate_limited.load(Ordering::Relaxed)
+    }
+    #[cfg(test)]
+    pub(crate) fn stop_after_ack(&self) -> usize {
+        self.stop_after_ack.load(Ordering::Relaxed)
     }
     #[cfg(test)]
     pub(crate) fn balance_answered(&self) -> usize {
@@ -351,11 +365,15 @@ pub(crate) struct WorkerState {
     /// G7: rate-limiter for the 30 s periodic `requestSync` maintenance tick.
     sync: SyncScheduler,
     /// G9: rate-limiter for the periodic gateway head-beacon emit (one per tick).
-    beacon: BeaconScheduler,
+    pub(crate) beacon: BeaconScheduler,
     /// G12: when set, drop a `nimiqTx` whose opaque blob is not a well-formed, correctly
     /// signed Nimiq transfer before relaying/storing it (the free spam filter, RISKS.md #4).
     /// Off in the headless test harness (which floods opaque stand-in bytes); on in production.
     verify_before_relay: bool,
+    /// G12: per-peer inbound rate limiter (anti-DoS — throttle a flooding peer).
+    limiter: PeerRateLimiter,
+    /// G12: txIds we have seen a gateway receipt (ACK) for — stop re-carrying a landed tx.
+    acked: DedupCache<TxId>,
     start: Instant,
 }
 
@@ -370,12 +388,14 @@ impl WorkerState {
             sync: SyncScheduler::new(),
             beacon: BeaconScheduler::new(),
             verify_before_relay,
+            limiter: PeerRateLimiter::new(),
+            acked: DedupCache::new(GATEWAY_CACHE_CAP),
             start: Instant::now(),
         }
     }
 
     /// Monotonic milliseconds since this worker started — the reassembler's logical clock.
-    fn now_ms(&self) -> u64 {
+    pub(crate) fn now_ms(&self) -> u64 {
         self.start.elapsed().as_millis() as u64
     }
 }
@@ -447,35 +467,6 @@ pub(crate) fn maintenance_tick(ctx: &WorkerCtx, st: &mut WorkerState) {
     }
 }
 
-/// G9: a **gateway** floods a `nimiqHeadBeacon` (`0x32`) carrying its freshest head height
-/// so deep-offline signers anchor `validityStartHeight` to a current head (RISKS.md #1).
-/// Sources the height from the gateway's RPC (`block_number`, via
-/// [`MeshGateway::head_beacon`]); rate-limited to one emit per
-/// [`crate::beacon::BEACON_TICK_MS`] like the G7 sync tick (caller-driven, clock-free). A
-/// non-gateway node, or a head-fetch failure, emits nothing. The gateway also caches its
-/// own head so its local signer anchors fresh.
-pub(crate) fn emit_head_beacon(ctx: &WorkerCtx, st: &mut WorkerState) {
-    let Some(gateway) = &ctx.gateway else {
-        return; // only a gateway (internet + RPC) beacons heads.
-    };
-    let now = st.now_ms();
-    if !st.beacon.due(now) {
-        return; // rate-limited: at most one beacon per tick.
-    }
-    let Some(beacon) = gateway.head_beacon() else {
-        return; // no live head (transient RPC failure / chain-less mock): emit nothing.
-    };
-    ctx.cache_head(&beacon);
-    let packet = ctx.build_packet(MessageType::NimiqHeadBeacon, encode_beacon(&beacon));
-    // Remember our own beacon so its echo back through the mesh is not re-flooded.
-    st.relay_seen.insert(relay_key(&packet));
-    remember(ctx, st, &packet);
-    ctx.beacon_emitted.fetch_add(1, Ordering::Relaxed);
-    if let Ok(bytes) = encode(&packet) {
-        ctx.flood(bytes);
-    }
-}
-
 /// The hot path: one inbound frame from the radio, with the peer it arrived on (`src`,
 /// `None` if the shim couldn't attribute it). Decodes with the real codec and dispatches
 /// by message type. Panic-free and infallible — a malformed/hostile frame is silently
@@ -486,6 +477,15 @@ pub(crate) fn process_inbound(
     bytes: &[u8],
     st: &mut WorkerState,
 ) {
+    // G12 per-peer rate limit (RISKS.md #4): drop frames from a peer that is flooding us
+    // before spending any decode/relay airtime. A source-unattributed frame can't be charged
+    // to a peer, so it skips this (still bounded downstream by dedup + TTL hop-cap).
+    if let Some(peer) = src {
+        if !st.limiter.allow(peer, st.now_ms()) {
+            ctx.rate_limited.fetch_add(1, Ordering::Relaxed);
+            return;
+        }
+    }
     let Ok(mut packet) = decode(bytes) else {
         return; // not a well-formed bitmesh packet — drop.
     };
@@ -515,7 +515,7 @@ fn dispatch_packet(ctx: &WorkerCtx, packet: Packet, src: Option<&str>, st: &mut 
         MessageType::NimiqTx => handle_tx(ctx, packet, src, st),
         MessageType::NimiqTxReceipt => handle_receipt(ctx, packet, src, st),
         // G9: a gateway's head beacon — cache the freshest head, then flood it onward.
-        MessageType::NimiqHeadBeacon => handle_head_beacon(ctx, packet, src, st),
+        MessageType::NimiqHeadBeacon => crate::beacon::handle_head_beacon(ctx, packet, src, st),
         // G15: a balance query — a gateway answers it; everyone relays it onward.
         MessageType::NimiqBalanceQuery => {
             crate::balance::handle_balance_query(ctx, packet, src, st)
@@ -568,53 +568,65 @@ fn handle_tx(ctx: &WorkerCtx, packet: Packet, src: Option<&str>, st: &mut Worker
     // closed against the freshest head we have heard, DROP it — a node must neither relay
     // nor store a dead tx. We can judge only once a beacon has set our head AND the tx
     // carries a `validUntil`; otherwise it falls through unchanged (G7 behaviour).
-    if is_expired(ctx.cached_head(), tx_valid_until(&packet)) {
+    if is_expired(ctx.cached_head(), crate::beacon::tx_valid_until(&packet)) {
         ctx.expired_dropped.fetch_add(1, Ordering::Relaxed);
         return;
     }
+    // Decode the public envelope once (txId + the opaque wire) — reused by the verify filter,
+    // the stop-after-ACK check, and the gateway submit below. The opaque `txWire` is never
+    // inspected for relay decisions (core value #3); only the public envelope fields are read.
+    let env = decode_envelope(&packet.payload).ok();
+    let tx_id = env
+        .as_ref()
+        .map(|e| e.tx_id.map(TxId).unwrap_or_else(|| mock_tx_id(&e.tx_wire)));
+
     // G12 verify-before-relay (RISKS.md #4): a verifying node refuses to store or relay a
     // `nimiqTx` whose opaque blob is not a well-formed, correctly-signed Nimiq transfer — a
     // free spam filter that costs a forger a real signature. **Content-blind**: it checks the
     // signature only, never who it pays or whether it can (core value #3, trustless relay).
     // The headless harness floods opaque stand-in bytes, so it runs with this off.
     if st.verify_before_relay {
-        let well_formed = decode_envelope(&packet.payload)
-            .ok()
-            .map(|env| crate::nimiq::verify_basic_wire(&env.tx_wire))
+        let well_formed = env
+            .as_ref()
+            .map(|e| crate::nimiq::verify_basic_wire(&e.tx_wire))
             .unwrap_or(false);
         if !well_formed {
             ctx.verify_dropped.fetch_add(1, Ordering::Relaxed);
             return;
         }
     }
+
+    // G12 stop-after-ACK (RISKS.md #4): if we have already seen a gateway receipt for this
+    // txId, the payment has landed — don't spend mesh airtime re-carrying it.
+    if let Some(id) = tx_id {
+        if st.acked.contains(&id) {
+            ctx.stop_after_ack.fetch_add(1, Ordering::Relaxed);
+            return;
+        }
+    }
+
     // G7: cache it for store-and-forward (so we can serve a rejoining peer this tx later).
     remember(ctx, st, &packet);
-    // Gateway role: the one endpoint allowed to read the envelope + submit.
-    if let Some(gw) = &ctx.gateway {
-        if let Ok(env) = decode_envelope(&packet.payload) {
-            let tx_id = env
-                .tx_id
-                .map(TxId)
-                .unwrap_or_else(|| mock_tx_id(&env.tx_wire));
-            if st.gateway_seen.insert(tx_id) {
-                // G8: the real `RpcGateway` validates `networkId` + the validity window
-                //     (querying the live head) here, then calls `sendRawTransaction(rawHex)`
-                //     against a public Albatross TESTNET RPC (money-path). The mock only
-                //     RECORDS the bytes. A transient gateway error yields NO receipt (Err),
-                //     so another gateway / a later retry can still carry the tx.
-                let submit_ctx = SubmitContext {
-                    tx_id,
-                    tx_wire: env.tx_wire.clone(),
-                    network_id: env.network_id,
-                    valid_until: env.valid_until,
-                };
-                if let Ok(receipt) = gw.submit_validated(submit_ctx) {
-                    let payload = encode_receipt(&receipt.tx_id, receipt.status);
-                    let reply = ctx.build_packet(MessageType::NimiqTxReceipt, payload);
-                    st.relay_seen.insert(relay_key(&reply));
-                    if let Ok(reply_bytes) = encode(&reply) {
-                        ctx.flood(reply_bytes);
-                    }
+    // Gateway role: the one endpoint allowed to read the envelope + submit (reusing `env`).
+    if let (Some(gw), Some(env), Some(tx_id)) = (&ctx.gateway, env.as_ref(), tx_id) {
+        if st.gateway_seen.insert(tx_id) {
+            // G8: the real `RpcGateway` validates `networkId` + the validity window (querying
+            //     the live head), then calls `sendRawTransaction(rawHex)` against a public
+            //     Albatross TESTNET RPC (money-path). The mock only RECORDS the bytes. A
+            //     transient gateway error yields NO receipt (Err), so another gateway / a
+            //     later retry can still carry the tx.
+            let submit_ctx = SubmitContext {
+                tx_id,
+                tx_wire: env.tx_wire.clone(),
+                network_id: env.network_id,
+                valid_until: env.valid_until,
+            };
+            if let Ok(receipt) = gw.submit_validated(submit_ctx) {
+                let payload = encode_receipt(&receipt.tx_id, receipt.status);
+                let reply = ctx.build_packet(MessageType::NimiqTxReceipt, payload);
+                st.relay_seen.insert(relay_key(&reply));
+                if let Ok(reply_bytes) = encode(&reply) {
+                    ctx.flood(reply_bytes);
                 }
             }
         }
@@ -638,29 +650,9 @@ fn handle_receipt(ctx: &WorkerCtx, packet: Packet, src: Option<&str>, st: &mut W
             _ => PaymentStatus::Failed,
         };
         ctx.settle(tx_id, payment_status);
+        // G12 stop-after-ACK: remember this txId has landed so we stop re-carrying its tx.
+        st.acked.insert(tx_id);
     }
-    relay_onward(ctx, packet, src, st);
-}
-
-/// G9: the optional `validUntil` height a `nimiqTx` packet carries in its envelope — the
-/// input to the [`is_expired`] guard. Returns `None` for any non-decodable payload or a tx
-/// without a window (the relay stays blind to the opaque `txWire`; it reads only the public
-/// envelope field that bounds the relay budget).
-fn tx_valid_until(packet: &Packet) -> Option<u32> {
-    decode_envelope(&packet.payload).ok()?.valid_until
-}
-
-/// G9: handle an inbound `nimiqHeadBeacon` (`0x32`). Blind-dedup, cache the freshest head
-/// (monotonic; `networkId`-validated), remember it for store-and-forward, then flood it
-/// onward so deep-offline nodes downstream also anchor a current head.
-fn handle_head_beacon(ctx: &WorkerCtx, packet: Packet, src: Option<&str>, st: &mut WorkerState) {
-    if !st.relay_seen.insert(relay_key(&packet)) {
-        return;
-    }
-    if let Some(beacon) = decode_beacon(&packet.payload) {
-        ctx.cache_head(&beacon);
-    }
-    remember(ctx, st, &packet);
     relay_onward(ctx, packet, src, st);
 }
 

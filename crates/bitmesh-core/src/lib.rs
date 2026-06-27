@@ -69,6 +69,12 @@ pub mod rpc;
 pub mod fragment;
 pub mod relay;
 
+// G12: hardening — anti-spam / anti-DoS over the existing relay. `ratelimit` is the per-peer
+// token-bucket inbound limiter (throttle a flooding peer). It pairs with verify-before-relay
+// (`nimiq::verify_basic_wire`, drop junk txs) + stop-after-ACK (don't re-carry a landed tx) in
+// the `engine`. Pure, clock-free (worker monotonic clock), no keys/sign/broadcast.
+pub mod ratelimit;
+
 // G7: store-and-forward via GCS gossip-sync (PROTOCOL.md "Store-and-forward = GCS
 // gossip-sync"). `gcs` is the compact Golomb-Coded-Set membership filter (fpr 0.01,
 // ≤ 400 B) a node uses to advertise what it has; `store_forward` is the bounded,
@@ -165,6 +171,8 @@ pub mod noise;
 mod beacon_e2e_tests;
 #[cfg(test)]
 mod e2e_tests;
+#[cfg(test)]
+mod hardening_e2e_tests;
 #[cfg(test)]
 mod test_support;
 
