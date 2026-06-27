@@ -64,12 +64,25 @@ Both legs use a **time-based** timeout (the NIM-leg fix carries over):
 | # | Goal | gate | status |
 | --- | --- | --- | --- |
 | **B0** | Spike — read hashmark's BTC HTLC, confirm the spec + signet plan (this doc) | no | ✅ done |
-| **B1** | `BitcoinLeg` (Rust, `bitcoin-leg` feature): HTLC redeem script + P2WSH address + claim/refund txs (secp256k1), **byte-validated vs `bitcoinjs-lib`** | no (signet) | next |
-| **B2** | BTC **gateway** — broadcast + confirmation via `mempool.space/signet/api` (no node) | no | todo |
-| **B3** | **LIVE signet HTLC proof** — faucet → fund P2WSH → claim-with-preimage → refund (mirrors the NIM live test) | no | todo |
-| **B4** | **Full cross-chain swap, LIVE** — one `H`: NIM HTLC + BTC HTLC, claim-reveals-`S`-on-one, `S`-claims-the-other, on-chain both sides | no | todo |
+| **B1** | `BitcoinLeg` (Rust, `bitcoin-leg`): HTLC redeem script + P2WSH + claim/refund txs (secp256k1) | no | ✅ done — **byte-exact vs `bitcoinjs-lib`** (script, address, AND the full signed claim+refund txs) |
+| **B2** | BTC **gateway** — broadcast + confirmation via `mempool.space/signet/api` (no node) | no | ✅ done (`btc_gateway`, `bitcoin-gateway` feature; mainnet base refused) |
+| **B3** | **LIVE signet HTLC proof** — fund P2WSH → claim-with-preimage | **needs:owner** (faucet) | 🟡 example built + ready (`examples/live_signet_btc_htlc`); live run needs a faucet tap |
+| **B4** | **Full cross-chain swap, LIVE** — one `H`: NIM HTLC + BTC HTLC, claim-reveals-`S`, `S`-claims-the-other | **needs:owner** (faucet) | todo (orchestration; live run needs the BTC faucet tap) |
 
-**Gated (`needs:owner`):** mainnet (BTC or NIM), real funds, on-device.
+## ⚠️ The one gate: signet funding (`needs:owner`)
+
+Everything buildable is **built + byte-validated against the reference (`bitcoinjs-lib`)**. The only
+thing the loop can't do autonomously is **fund a signet address** — every signet faucet is
+human-gated (`signetfaucet.com` = captcha; Mutinynet = token). So the **live** signet proof (B3)
+and the live cross-chain swap (B4) need a one-time faucet tap from Andjroo. **The hand-off:**
+
+```
+cargo run --example live_signet_btc_htlc --features bitcoin-gateway   # in ~/projects/nimiq.nimmesh-htlc
+# it prints a tb1q… HTLC address → paste it into https://signetfaucet.com → it auto-completes
+# fund → claim-with-preimage and prints the confirming block.
+```
+
+**Other gates:** mainnet (BTC or NIM), real funds, on-device.
 
 ## Per-cycle gate (same as the NIM loop)
 `cargo test` + `cargo clippy -D warnings` + `cargo fmt --check` + `scripts/size-guard.sh` green

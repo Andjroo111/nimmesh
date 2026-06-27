@@ -172,3 +172,14 @@ and `main` is at a clean point — proposed to Andjroo, not taken by the loop.
   No BTC node needed (public `mempool.space/signet/api` + faucet, `bitcoinjs-lib` 6.1.7 to cross-check).
   Plan = port to a Rust `BitcoinLeg` behind a `bitcoin-leg` feature. **Goals B0–B4 in
   `docs/swap/BTC-LEG.md`.** Next: **B1** (Rust HTLC script + P2WSH, byte-validated vs bitcoinjs).
+- **2026-06-27** — **B1+B2+B3 shipped — the BTC leg is built + byte-validated.** **B1**: `btc.rs`
+  (rust-bitcoin 0.32, `bitcoin-leg` feature) — the HTLC redeem script, P2WSH signet address, AND the
+  BIP143-signed **claim** (`[sig, preimage, 0x01, redeem]`) + **refund** (`[sig, <empty>, redeem]` +
+  nLockTime) txs. The **full signed tx bytes match `bitcoinjs-lib` exactly** (both deterministic
+  RFC6979 + low-S), validated for script/address/claim/refund. **B2**: `btc_gateway.rs`
+  (`bitcoin-gateway` feature) — broadcast + confirmation over `mempool.space/signet/api` (mainnet
+  base refused). **B3**: `examples/live_signet_btc_htlc.rs` — ready-to-run live signet proof
+  (fund → claim-with-preimage). **253 tests w/ features green, clippy/fmt/size-guard clean.** ⏸️
+  **The one gate left = signet funding** (`needs:owner`): every signet faucet is human-gated
+  (captcha/token), so the live B3 + B4 cross-chain runs need a one-time faucet tap. The autonomous
+  BTC build is complete; the bytes are validated against the reference impl. Hand-off in BTC-LEG.md.
