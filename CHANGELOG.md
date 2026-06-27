@@ -12,6 +12,11 @@ component. Replaced with the `backup-banner` component's **`words nq-orange`** v
 amber warning-triangle + amber text + inset-bordered card + orange "Backup →" pill — now matching
 the real wallet. Reinforces the rule: copy the real component, never hand-guess. `nq lint` 0 errors.
 
+**Follow-up (Andjroo):** the grey container around the banner was rendering too faint/tight vs the
+reference. Made the `.words` card explicit — white fill, a clearly visible light-grey border
+(`rgba(31,35,72,.13)`), 12px radius, and 14px text so the "Backup →" pill stays on one row at
+390px — now matching the reference container with breathing room.
+
 ## [0.10.0] — 2026-06-27
 
 ### Added — A1 (iOS app): WKWebView host + read-only JS↔Rust bridge — non-money-path
