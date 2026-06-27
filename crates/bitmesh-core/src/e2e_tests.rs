@@ -18,7 +18,6 @@ use std::time::Duration;
 
 use crate::citizen::RelayPosture;
 use crate::default_network;
-use crate::engine::PaymentStatus;
 use crate::fragment::fragment_message;
 use crate::gateway::{MeshGateway, MockGateway, Receipt, ReceiptStatus, RpcGateway};
 use crate::mock_radio::{MeshHarness, MockEther, MockRadio};
@@ -28,6 +27,7 @@ use crate::packet::MessageType;
 use crate::radio::BleRadio;
 use crate::relay::RelayPolicy;
 use crate::rpc::MockRpc;
+use crate::settlement::{PaymentStatus, SettlementDirection};
 use crate::test_support::{
     make_fragment_packet, make_receipt_packet, make_tx_packet, make_tx_packet_valid_until,
     wait_until, SpyRadio, SETTLE,
@@ -156,6 +156,64 @@ fn gateway_with_no_balance_answers_nothing() {
     std::thread::sleep(Duration::from_millis(80));
     assert_eq!(gateway.balance_answered(), 0);
     assert!(origin.test_cached_balance(&addr).is_none());
+    h.shutdown();
+}
+
+// --- G17: settlement closure for both parties ----------------------------------
+
+#[test]
+fn the_same_receipt_settles_both_sender_and_receiver() {
+    // origin <-> gw <-> receiver. The origin sends; the gateway accepts and floods ONE
+    // `nimiqTxReceipt`. It closes the sender's "did it land?" (Outgoing) AND the receiver's
+    // "did I get paid?" (Incoming) — the receiver registered the txId via `watch_incoming`.
+    let mut h = MeshHarness::new();
+    let gw = Arc::new(MockGateway::new(default_network()));
+    let origin = h.add_node("origin", &[1]);
+    let _gateway = h.add_gateway("gw", &[2], gw.clone());
+    let receiver = h.add_node("receiver", &[3]);
+    h.connect("origin", "gw");
+    h.connect("gw", "receiver");
+
+    let opaque = b"opaque-signed-tx".to_vec();
+    // The payee learns the txId out of band (the request / confirmation flow) and watches it.
+    let tx_id = mock_tx_id(&opaque).0.to_vec();
+    receiver.watch_incoming(tx_id.clone());
+
+    let sent_id = origin.submit_local_tx(opaque);
+    assert_eq!(sent_id, tx_id);
+
+    // Sender side closes.
+    assert_eq!(origin.wait_payment(&tx_id, SETTLE), PaymentStatus::Settled);
+    // Receiver side closes from the very same flooded receipt.
+    assert_eq!(
+        receiver.wait_payment(&tx_id, SETTLE),
+        PaymentStatus::Settled
+    );
+    let s = receiver.settlement(tx_id).expect("receiver tracks it");
+    assert_eq!(s.status, PaymentStatus::Settled);
+    assert_eq!(s.direction, SettlementDirection::Incoming);
+
+    h.shutdown();
+}
+
+#[test]
+fn a_reject_receipt_fails_the_receiver_too() {
+    // A NACK (expired/failed) closes the receiver's view as Failed, not a false "received".
+    let mut h = MeshHarness::new();
+    let gw = Arc::new(MockGateway::new(default_network()));
+    gw.force_status(ReceiptStatus::Expired);
+    let origin = h.add_node("origin", &[1]);
+    let _gateway = h.add_gateway("gw", &[2], gw.clone());
+    let receiver = h.add_node("receiver", &[3]);
+    h.connect("origin", "gw");
+    h.connect("gw", "receiver");
+
+    let opaque = b"stale".to_vec();
+    let tx_id = mock_tx_id(&opaque).0.to_vec();
+    receiver.watch_incoming(tx_id.clone());
+    origin.submit_local_tx(opaque);
+
+    assert_eq!(receiver.wait_payment(&tx_id, SETTLE), PaymentStatus::Failed);
     h.shutdown();
 }
 

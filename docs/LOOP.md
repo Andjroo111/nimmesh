@@ -129,7 +129,7 @@ Rust-core logic (cargo-tested) + web UI (screenshot-verified). None handle keys 
 | --- | ----------------------------------------------------------- | :--------: | :--------: | ---- | ------ |
 | G15 | Balance over mesh — gateway balance query + fiat + "synced X ago"; last-known → accounts-proof | no | yes | A2, G9 | 🟡 core+FFI done · UI stamp + accounts-proof = follow-ups |
 | G16 | Reachability + smart send queue ("will it send?")            | no | yes | A3 | ✅ done |
-| G17 | Settlement closure both ways (receipt → "landed" for sender + receiver) | no | yes | A3 | todo |
+| G17 | Settlement closure both ways (receipt → "landed" for sender + receiver) | no | yes | A3 | ✅ done |
 | G18 | Contacts + amount requests (request packet carries no keys)  | no | yes | A3 | todo |
 | G19 | Backup nudge (self-custody protection)                       | no | yes | A2 | ✅ done |
 | G20 | Good-citizen + battery-aware relay (stats + throttle)        | no | yes | G6 | ✅ done |
@@ -406,3 +406,15 @@ the signer — but our live example drives our core end-to-end for every money-c
   iOS BUILD SUCCEEDED, reachability line screenshot-verified at 390px. **Honest scope:** live reach +
   countdown + the signed-tx auto-send queue need a running in-app `MeshNode` (Phase D) + the signing
   seam (C1); G16 ships the signal layer + FFI those read. Next: **G17** (settlement closure both ways).
+- **2026-06-27** — **G17 done** (#28, v0.15.0, non-money-path → auto-merge): settlement closure for
+  BOTH parties. New `settlement.rs` = the per-node payment ledger lifted out of `engine.rs` (the
+  flagged extraction; engine **796 → 752 lines**) + generalised to two directions — `Outgoing` (on
+  submit) and `Incoming` (a payee's `watch_incoming`). The SAME flooded `nimiqTxReceipt` (G8) settles
+  whichever side is watching that txId → `Pending → ✓ Settled / ✗ Failed` for sender + receiver alike,
+  even offline (G7 store-and-forward carries the receipt). `PaymentStatus` moved here;
+  `SettlementDirection` + `Settlement` are new FFI types; node FFI `watch_incoming` + `settlement`. UI:
+  a pending tx treatment ("🕐 Pending · via mesh" → settled). **Blind relay preserved** — a node only
+  matches receipts to txIds it registered, never parses a tx to guess the payee (core value #3). **190
+  tests** (7 new incl. 2 e2e), clippy/fmt/size-guard clean, `nq lint` 0 errors, iOS BUILD SUCCEEDED,
+  pending row screenshot-verified. **Honest scope:** the payer→payee txId hand-off rides the request
+  flow (G18); live in-app settlement needs a running node (Phase D). Next: **G18** (contacts + requests).

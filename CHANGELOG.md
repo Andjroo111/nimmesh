@@ -2,6 +2,36 @@
 
 All notable changes to nimiq.bitmesh. Each PR bumps the version and adds an entry.
 
+## [0.15.0] — 2026-06-27
+
+### Added — G17: settlement closure for both parties — non-money-path
+
+"Did it land?" is the offline-pay question for **both** sides. G8 already floods a `nimiqTxReceipt`
+when a gateway accepts/rejects a tx (and G7 store-and-forward catches a rejoining node up on it);
+G17 closes that loop for the **receiver** too, not just the sender.
+
+- `crates/bitmesh-core/src/settlement.rs` (new): the per-node payment ledger, lifted out of
+  `engine.rs` (size-guard) and generalised to two directions — `Outgoing` (recorded on submit) and
+  `Incoming` (recorded by a payee via `watch_incoming`). The **same** flooded receipt settles whichever
+  side is watching that txId: `Pending → ✓ Settled` / `✗ Failed`. `PaymentStatus` now lives here;
+  `SettlementDirection` + `Settlement` are new FFI types. 5 unit tests.
+- `engine.rs`: now delegates to the ledger (`record_pending`/`record_incoming`/`settle`/`status`/
+  `settlement`); `handle_receipt` already settles any tracked txId, so the receiver path needed no new
+  wire handling. The extraction shrank `engine.rs` **796 → 752 lines** (headroom restored).
+- `node.rs` (FFI): `watch_incoming(tx_id)` (the payee registers an expected payment, learned via the
+  request/confirmation flow) + `settlement(tx_id) -> Settlement?` (status + Outgoing/Incoming).
+- `webui/index.html`: the tx-list now has a **pending** treatment — a static amber "🕐 Pending · via
+  mesh" row that resolves to a settled row, the visible "did it land?" → ✓ closure.
+
+**Trustless-relay note:** a node only matches receipts to txIds it itself registered — it never parses
+a tx to guess who it's for, so the blind relay (core value #3) is preserved. The txId hand-off between
+payer and payee rides the request/confirmation flow (G18); live in-app settlement needs a running node
+(Phase D). The Rust ledger is the audited deliverable.
+
+190 tests green (cargo, 7 new incl. 2 e2e: one receipt settles both sender + receiver; a NACK fails the
+receiver too), clippy/fmt/size-guard clean, `nq lint` 0 errors, iOS `xcodebuild` BUILD SUCCEEDED,
+tx-list pending row screenshot-verified at 390px.
+
 ## [0.14.0] — 2026-06-27
 
 ### Added — G16: "will it send?" reachability + validity-window countdown — non-money-path

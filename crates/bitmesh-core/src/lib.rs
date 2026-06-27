@@ -97,6 +97,15 @@ pub mod beacon;
 // head-beacon hash (follow-up). Read-only public state — no keys, no signing (non-money-path).
 pub mod balance;
 
+// G17: two-way settlement closure (non-money-path). `settlement` is the per-node payment
+// ledger lifted out of `engine` (size-guard) + generalised to BOTH directions: a sender's
+// `Outgoing` (on submit) and a payee's `Incoming` (via `MeshNode::watch_incoming`). The same
+// flooded `nimiqTxReceipt` (G8) settles whichever side is watching that txId, so `Pending → ✓
+// Settled` / `✗ Failed` closes the "did it land?" loop for sender and receiver alike, even if
+// neither was online at submit (G7 store-and-forward carries the receipt). Tracks public
+// txId + receipt status only — no keys, relay stays blind. Owns the FFI `PaymentStatus`.
+pub mod settlement;
+
 // G16: "will it send?" reachability + the validity-window countdown (non-money-path).
 // `reachability` turns the node's public mesh state (peer count + a heard gateway head
 // beacon, G9 + whether this node is itself a gateway) into an honest `Reachability`

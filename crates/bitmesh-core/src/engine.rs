@@ -23,9 +23,9 @@
 //! `txWire` is **opaque** end to end — no signing, no broadcast, no key material (that is
 //! G3/G8, money-path and Andjroo-gated).
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Mutex};
 #[cfg(test)]
 use std::time::Duration;
 use std::time::Instant;
@@ -46,22 +46,9 @@ use crate::nimiq::VALIDITY_WINDOW;
 use crate::packet::{MessageType, Packet, BROADCAST_RECIPIENT, DEFAULT_TTL, PEER_ID_LEN};
 use crate::radio::BleRadio;
 use crate::relay::{relayed_ttl, RelayPolicy};
+use crate::settlement::{PaymentStatus, SettlementDirection, SettlementLedger};
 use crate::store_forward::{packet_id, RecentCache, SyncScheduler};
 use crate::transport::{mock_tx_id, TxId};
-
-/// Where a payment stands from the origin's point of view (FFI-visible).
-///
-/// `Pending` until a gateway receipt arrives; honours unconfirmed-until-inclusion
-/// (core value #5) — only an `Accepted` receipt yields `Settled`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
-pub enum PaymentStatus {
-    /// Sent (or relaying); no gateway receipt seen yet.
-    Pending,
-    /// A gateway accepted the tx into the mempool.
-    Settled,
-    /// A gateway rejected the tx (expired / failed).
-    Failed,
-}
 
 /// LRU bound for the blind packet-relay dedup (hostile-flood ceiling, RISKS.md #4).
 const RELAY_CACHE_CAP: usize = 2048;
@@ -98,12 +85,6 @@ fn decode_receipt(payload: &[u8]) -> Option<(TxId, ReceiptStatus)> {
     Some((TxId(id), ReceiptStatus::from_code(payload[32])))
 }
 
-/// State the origin tracks for its in-flight payments.
-#[derive(Default)]
-struct OriginShared {
-    payments: HashMap<TxId, PaymentStatus>,
-}
-
 /// The shared context the worker thread operates on. Crucially it holds **no**
 /// `Arc<MeshNode>` — only the radio (strong) plus plain state — so the node↔radio↔node
 /// graph stays a tree and a torn-down node is reclaimed (ADR-0002 gotcha d).
@@ -116,9 +97,9 @@ pub struct WorkerCtx {
     pub(crate) gateway: Option<Arc<dyn MeshGateway>>,
     /// Currently-connected BLE peers; a flood writes to each.
     peers: Mutex<HashSet<String>>,
-    /// The origin's payment ledger + its settle signal.
-    origin: Mutex<OriginShared>,
-    settled: Condvar,
+    /// G17: the two-way settlement ledger — a sender's `Outgoing` payments + a payee's watched
+    /// `Incoming` ones, both closed by the same flooded gateway receipt ([`crate::settlement`]).
+    ledger: SettlementLedger,
     /// G9: the freshest head height this node has heard via a `nimiqHeadBeacon` (`0x32`).
     /// Written by the worker on a beacon receipt, read by the FFI signer/intent path to
     /// anchor `validityStartHeight` — so it is shared (behind a `Mutex`), unlike the
@@ -164,8 +145,7 @@ impl WorkerCtx {
             radio,
             gateway,
             peers: Mutex::new(HashSet::new()),
-            origin: Mutex::new(OriginShared::default()),
-            settled: Condvar::new(),
+            ledger: SettlementLedger::new(),
             head: Mutex::new(HeadCache::default()),
             balances: Mutex::new(BalanceCache::new()),
             seq: AtomicU64::new(1),
@@ -279,57 +259,33 @@ impl WorkerCtx {
     }
 
     pub(crate) fn status(&self, tx_id: &TxId) -> PaymentStatus {
-        self.origin
-            .lock()
-            .unwrap()
-            .payments
-            .get(tx_id)
-            .copied()
-            .unwrap_or(PaymentStatus::Pending)
+        self.ledger.status(tx_id)
     }
 
-    /// Block (up to `timeout`) until `tx_id` leaves `Pending`, returning the final status
-    /// (or the last-known status on timeout).
+    /// G17: the full closure state (status + Outgoing/Incoming direction) of a tracked tx.
+    pub(crate) fn settlement(&self, tx_id: &TxId) -> Option<crate::settlement::Settlement> {
+        self.ledger.settlement(tx_id)
+    }
+
+    /// Block (up to `timeout`) until `tx_id` leaves `Pending` (test helper).
     #[cfg(test)]
     pub(crate) fn wait(&self, tx_id: TxId, timeout: Duration) -> PaymentStatus {
-        let deadline = Instant::now() + timeout;
-        let mut guard = self.origin.lock().unwrap();
-        loop {
-            let status = guard
-                .payments
-                .get(&tx_id)
-                .copied()
-                .unwrap_or(PaymentStatus::Pending);
-            if status != PaymentStatus::Pending {
-                return status;
-            }
-            let now = Instant::now();
-            if now >= deadline {
-                return status;
-            }
-            let (g, _) = self.settled.wait_timeout(guard, deadline - now).unwrap();
-            guard = g;
-        }
+        self.ledger.wait(tx_id, timeout)
     }
 
+    /// Track an outgoing payment this node originated (the sender side of closure).
     fn record_pending(&self, tx_id: TxId) {
-        self.origin
-            .lock()
-            .unwrap()
-            .payments
-            .entry(tx_id)
-            .or_insert(PaymentStatus::Pending);
+        self.ledger.record(tx_id, SettlementDirection::Outgoing);
+    }
+
+    /// G17: track an incoming payment this node expects (the payee side of closure). The same
+    /// flooded receipt that settles the sender settles this too.
+    pub(crate) fn record_incoming(&self, tx_id: TxId) {
+        self.ledger.record(tx_id, SettlementDirection::Incoming);
     }
 
     fn settle(&self, tx_id: TxId, status: PaymentStatus) {
-        let mut g = self.origin.lock().unwrap();
-        if let Some(slot) = g.payments.get_mut(&tx_id) {
-            if *slot == PaymentStatus::Pending {
-                *slot = status;
-                drop(g);
-                self.settled.notify_all();
-            }
-        }
+        self.ledger.settle(tx_id, status);
     }
 
     fn next_seq(&self) -> u64 {

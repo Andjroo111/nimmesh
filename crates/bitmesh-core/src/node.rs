@@ -28,13 +28,14 @@ use crate::balance::{flood_local_balance_query, CachedBalance};
 use crate::citizen::{relay_stats, RelayStats};
 use crate::engine::{
     emit_head_beacon, emit_request_sync, flood_local_tx, maintenance_tick, process_inbound,
-    PaymentStatus, WorkerCtx, WorkerState,
+    WorkerCtx, WorkerState,
 };
 use crate::gateway::MeshGateway;
 use crate::nimiq::address::Address;
 use crate::packet::PEER_ID_LEN;
 use crate::radio::BleRadio;
 use crate::relay::RelayPolicy;
+use crate::settlement::{PaymentStatus, Settlement};
 use crate::transport::{mock_tx_id, TxId};
 
 /// A unit of work handed from a BLE callback to the worker thread.
@@ -210,9 +211,26 @@ impl MeshNode {
         tx_id.0.to_vec()
     }
 
-    /// The current status of a payment by its `txId` bytes (non-blocking).
+    /// The current status of a payment by its `txId` bytes (non-blocking). Works for both a
+    /// sent (`Outgoing`) and a watched incoming (`Incoming`) payment.
     pub fn payment_status(&self, tx_id: Vec<u8>) -> PaymentStatus {
         self.ctx.status(&to_tx_id(&tx_id))
+    }
+
+    /// G17: the full closure state (status + Outgoing/Incoming direction) of a tracked tx, or
+    /// `None` if this node isn't tracking it. Lets the UI say "your payment landed" vs "you got
+    /// paid" from the one shared receipt. Non-blocking, read-only.
+    pub fn settlement(&self, tx_id: Vec<u8>) -> Option<Settlement> {
+        self.ctx.settlement(&to_tx_id(&tx_id))
+    }
+
+    /// G17: watch for an **incoming** payment as the payee — register the `txId` of a payment
+    /// this node expects (learned via the request / confirmation flow). The same gateway
+    /// `nimiqTxReceipt` (G8) that settles the sender then closes this node's "did I get paid?"
+    /// too (delivered live, or caught up via G7 store-and-forward if it was offline). Tracks a
+    /// public txId only — no keys, and the relay stays blind. Non-blocking.
+    pub fn watch_incoming(&self, tx_id: Vec<u8>) {
+        self.ctx.record_incoming(to_tx_id(&tx_id));
     }
 
     /// G7: force-issue a gossip-sync round now — advertise what this node has as a GCS

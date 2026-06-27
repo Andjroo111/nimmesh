@@ -17,11 +17,11 @@ use std::time::{Duration, Instant};
 
 use bitmesh_core::dedup::DedupCache;
 use bitmesh_core::default_network;
-use bitmesh_core::engine::PaymentStatus;
 use bitmesh_core::fragment::{fragment_message, parse_fragment, Reassembler};
 use bitmesh_core::gateway::MockGateway;
 use bitmesh_core::mock_radio::MeshHarness;
 use bitmesh_core::relay::relayed_ttl;
+use bitmesh_core::settlement::PaymentStatus;
 use proptest::prelude::*;
 
 /// Poll `f` until true or `timeout` elapses (the mesh is async / threaded).

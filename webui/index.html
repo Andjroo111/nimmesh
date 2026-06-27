@@ -34,6 +34,11 @@
   .tx-wrap { padding: 4px 20px 150px; }  /* clear the fixed bottom dock */
   .tx-wrap .transaction-list { width: 100%; }
   .month-label label { color: rgba(31,35,72,.4); }
+  /* G17: a pending tx (awaiting the gateway receipt) — the "did it land?" state before it
+     resolves to settled for BOTH sender and receiver. Static treatment (no pulse). */
+  .transaction.pending .amount, .transaction.pending .address { color: rgba(31,35,72,.55); }
+  .tx-pending { display: inline-flex; align-items: center; gap: 5px; color: #fc8702; font-weight: 700; }
+  .tx-pending svg { width: 12px; height: 12px; flex: 0 0 auto; }
   /* The real wallet shows the backup banner as a light CARD with a clearly visible
      grey border + breathing room (Andjroo's reference). The bare component inset reads
      too faint/tight on our page, so make the container explicit. */
@@ -225,6 +230,19 @@
   <div class="tx-wrap">
     <div class="transaction-list">
       <div class="month-label"><label>This month</label></div>
+      <!-- G17: an incoming payment awaiting its gateway receipt — "did it land?". The same
+           flooded receipt that settles the sender flips this to ✓ settled for the receiver. -->
+      <button class="transaction pending">
+        <div class="date"><span class="day">26</span><br><span class="month">Jun</span></div>
+        <div class="identicon" data-address="NQ77 BMESH PEND 1NG0 RECE 1V3R DEMO 0000 0000">
+          <img src='data:image/svg+xml,<svg width="64" height="64" viewBox="0 -4 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path opacity=".1" d="M62.3 25.4L49.2 2.6A5.3 5.3 0 0 0 44.6 0H18.4c-1.9 0-3.6 1-4.6 2.6L.7 25.4c-1 1.6-1 3.6 0 5.2l13.1 22.8c1 1.6 2.7 2.6 4.6 2.6h26.2c1.9 0 3.6-1 4.6-2.6l13-22.8c1-1.6 1-3.6.1-5.2z" fill="url(%23identicon_radial)"/><defs><radialGradient id="identicon_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(-63.0033 0 0 -56 63 56)"><stop stop-color="%23260133"/><stop offset="1" stop-color="%231F2348"/></radialGradient></defs></svg>' alt="Nimiq identicon">
+        </div>
+        <div class="data">
+          <div class="address">NQ77 BMESH PEND 1NG0 RECE 1V3R DEMO 0000 0000</div>
+          <div class="time-and-message"><span class="tx-pending"><svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="M8 4.5V8l2.5 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Pending · via mesh</span></div>
+        </div>
+        <div class="amounts isIncoming"><span class="amount">25 <span class="currency nim">NIM</span></span><div class="fiat-amount fiat-loading">&nbsp;</div></div>
+      </button>
       <button class="transaction confirmed">
         <div class="date"><span class="day">26</span><br><span class="month">Jun</span></div>
         <div class="identicon" data-address="NQ09 DR50 RBSY CARY 6TC0 XYCY 3G3F PFB3 K8SX">
