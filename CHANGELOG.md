@@ -2,6 +2,16 @@
 
 All notable changes to nimiq.bitmesh. Each PR bumps the version and adds an entry.
 
+## [Unreleased]
+
+### Fixed — backup banner used a hand-written markup instead of the real component (web UI)
+
+Andjroo caught it: the home's backup banner had the wrong color, container, and icon (navy text +
+a hexagon icon + a gold "Back up" pill) because it was hand-written rather than the vendored
+component. Replaced with the `backup-banner` component's **`words nq-orange`** variant verbatim —
+amber warning-triangle + amber text + inset-bordered card + orange "Backup →" pill — now matching
+the real wallet. Reinforces the rule: copy the real component, never hand-guess. `nq lint` 0 errors.
+
 ## [0.10.0] — 2026-06-27
 
 ### Added — A1 (iOS app): WKWebView host + read-only JS↔Rust bridge — non-money-path
