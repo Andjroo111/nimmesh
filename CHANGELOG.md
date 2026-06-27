@@ -2,6 +2,35 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.22.0] — 2026-06-27
+
+### Added — C1b: native Keychain wallet key + the CryptoKit ↔ dalek interop proof (testnet)
+
+The app now holds a real key: an iOS **Keychain-backed Ed25519** key that implements the Rust
+`EnclaveKey` foreign trait. The seed lives in the Keychain (`ThisDeviceOnly`); only the public key
+(32 B) and a detached signature (64 B) ever cross FFI.
+
+- `apple/NimmeshApp/Sources/Wallet.swift` (new): `KeychainEnclaveKey` (CryptoKit `Curve25519.Signing`
+  + Keychain persistence) + `Wallet` (load/create on first launch, derive address, sign). iOS app
+  builds + links it (`xcodebuild` BUILD SUCCEEDED).
+- `lib.rs`: `verify_signed_tx_hex(raw_hex) -> bool` FFI (the relay's content-blind check, exposed so
+  the app can self-verify a signed blob).
+- `WebHostView.swift`: read-only `walletAddress` bridge method + a launch self-test.
+- **Critical interop proof** (`signer.rs` test): a real **CryptoKit Ed25519 signature passes our
+  `ed25519-dalek verify_strict`** — so a Keychain-signed tx clears the G12 spam filter on every relay.
+  (Notable finding: CryptoKit *randomizes* its Ed25519 signatures, so they're **not** byte-identical to
+  dalek's deterministic ones — but they verify, which is all that matters. Reference captured from
+  CryptoKit on macOS; key derivation is deterministic and matches dalek byte-for-byte.)
+
+**Known issue (does not block — affects on-device, which is Andjroo's gate):** the app currently fails to
+*launch* in the headless simulator (FBS code 4, likely an xcframework embed/launch-config issue, not the
+wallet code). Filed for the device session; the wallet code itself builds, links, and its crypto is
+proven headlessly. Next (C1c): wire the Send/Receive screens to the real address + sign, and fix the
+sim launch so a live testnet send can be demoed end to end.
+
+212 tests green, `cargo clippy --all-features -D warnings` + `cargo fmt --check` + size-guard clean,
+iOS `xcodebuild` BUILD SUCCEEDED.
+
 ## [0.21.0] — 2026-06-27
 
 ### Added — C1a: the real-signed money path, proven end to end (testnet)

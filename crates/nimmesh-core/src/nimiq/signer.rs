@@ -274,6 +274,43 @@ mod tests {
     }
 
     #[test]
+    fn a_cryptokit_signature_verifies_under_our_dalek_verifier() {
+        use ed25519_dalek::{Signature, VerifyingKey};
+        // C1b interop proof: the iOS Keychain `EnclaveKey` signs with CryptoKit's
+        // `Curve25519.Signing`; the on-mesh spam filter (`verify_basic_wire`) verifies with
+        // ed25519-dalek `verify_strict`. CryptoKit *randomizes* its Ed25519 signatures (hedged
+        // against fault attacks), so they are NOT byte-identical to dalek's deterministic ones —
+        // but they are valid RFC-8032 signatures, and the only thing that matters is that our
+        // verifier ACCEPTS them (else a Keychain-signed tx would be dropped by every relay).
+        // Reference captured from CryptoKit on macOS (scripts/ck-interop.swift, seed 1..=32,
+        // message "nimmesh-interop").
+        let pubkey: [u8; 32] =
+            hex_to_bytes("79b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664")
+                .unwrap()
+                .try_into()
+                .unwrap();
+        let sig: [u8; 64] = hex_to_bytes(
+            "82b3a44affed11765871aabf42740a9394eb50e50f80776a61f442a7066b65ec\
+             7ae0b36b187f8f63f8008a2eace280758d92070c00007bb5f249d1c1a8a84e0c",
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+        let vk = VerifyingKey::from_bytes(&pubkey).unwrap();
+        assert!(
+            vk.verify_strict(b"nimmesh-interop", &Signature::from_bytes(&sig))
+                .is_ok(),
+            "a CryptoKit Ed25519 signature MUST pass our dalek verify_strict (or app txs get spam-filtered)"
+        );
+        // Key derivation IS deterministic and matches dalek (same pubkey from the same seed).
+        let seed: [u8; 32] = std::array::from_fn(|i| (i + 1) as u8);
+        assert_eq!(
+            bytes_to_hex(&InMemoryEnclaveKey::from_secret(&seed).public_key()),
+            "79b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664"
+        );
+    }
+
+    #[test]
     fn app_signer_round_trips_address_and_signs() {
         let key = Arc::new(InMemoryEnclaveKey::from_secret(&secret(|i| (i + 1) as u8)));
         let signer = AppSigner::new(key);

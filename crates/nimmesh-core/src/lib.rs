@@ -214,6 +214,20 @@ impl NetworkId {
     }
 }
 
+/// C1: verify a hex-encoded signed transfer is a well-formed, correctly-signed Nimiq basic
+/// transfer (the same content-blind check the relay's spam filter uses, [`nimiq::verify_basic_wire`]).
+///
+/// Exposed so the native app can **self-test the signing path** — sign a transfer with its
+/// Keychain/enclave key, then confirm the Rust core accepts the signature (proving the native
+/// Ed25519 signer interoperates byte-for-byte with the on-mesh verifier). Pure, no keys.
+#[uniffi::export]
+pub fn verify_signed_tx_hex(raw_hex: String) -> bool {
+    match crate::nimiq::hex::hex_to_bytes(&raw_hex) {
+        Ok(wire) => crate::nimiq::verify_basic_wire(&wire),
+        Err(_) => false,
+    }
+}
+
 /// The semantic version of the core crate, as a string, across the FFI boundary.
 ///
 /// Native apps surface this in their about/debug screens so a tester can confirm

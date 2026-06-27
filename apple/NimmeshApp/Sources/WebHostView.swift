@@ -25,6 +25,10 @@ struct WebHostView: UIViewRepresentable {
         let config = WKWebViewConfiguration()
         config.userContentController = controller
 
+        // C1: prove the native Keychain Ed25519 signer interoperates with the Rust verifier
+        // (CryptoKit ↔ ed25519-dalek). Logged once at launch for sim/device verification.
+        print("nimmesh wallet self-test: address=\(Wallet.address() ?? "?") signedOk=\(Wallet.selfTest())")
+
         let webView = WKWebView(frame: .zero, configuration: config)
         // Match the wallet's light page background (#f8f8f8) behind the safe areas /
         // during load, instead of a white/black flash.
@@ -81,7 +85,9 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         reachability: function () { return call('reachability'); },
         // G19: how hard to nudge a backup, from the account's public state. Read-only —
         // no key/seed crosses; the Rust policy decides (none|gentle|important|critical).
-        backupUrgency: function (s) { return call('backupUrgency', s || {}); }
+        backupUrgency: function (s) { return call('backupUrgency', s || {}); },
+        // C1: this device's wallet address (derived from the Keychain key — no seed crosses).
+        walletAddress: function () { return call('walletAddress'); }
       };
     })();
     """
@@ -114,6 +120,10 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             // G16: with no native radio yet (Phase D) there is no mesh to reach — the honest
             // answer is `offline`. Once the shim runs a `MeshNode`, return `node.reachability()`.
             return (true, ["reachability": "offline"])
+        case "walletAddress":
+            // C1: the wallet's testnet NQ address, derived from the Keychain Ed25519 public
+            // key. The seed stays in the Keychain — only the public address leaves.
+            return (true, ["address": Wallet.address() ?? ""])
         case "backupUrgency":
             // G19: read-only — the Rust policy decides how hard to nudge a backup from the
             // account's public state. No key/seed is read here; only public facts cross.
