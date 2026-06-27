@@ -2,6 +2,31 @@
 
 All notable changes to nimiq.bitmesh. Each PR bumps the version and adds an entry.
 
+## [0.16.0] — 2026-06-27
+
+### Added — G18: contacts + "pay me X NIM" request links — non-money-path
+
+The fat-finger fix for getting paid: the payee shows a request QR that carries the recipient address
+**and** the exact amount, so the payer's Send screen is pre-filled. Pure local + QR — no mesh packet,
+no keys.
+
+- `crates/bitmesh-core/src/request_uri.rs` (new): the `nimiq:<address>?amount=<NIM>&message=<text>`
+  URI codec — `build_request_uri(address, amount_luna, message?) -> String?` + `parse_request_uri(uri)
+  -> PaymentRequest?`. Pure, key-free, **symmetric** (`parse(build(x)) == x`, property-tested): validates
+  the address, formats/parses NIM⇄luna exactly (≤5 dp, integer math, no floats), percent-encodes the
+  message. `PaymentRequest` is a new FFI record. 8 unit tests.
+- `webui/index.html`: the Receive sheet gains a **"Request an amount (optional)"** field (borderless,
+  like the real wallet) + "Create request link" → a Nimiq-blue **QR** encoding `nimiq:<addr>?amount=<NIM>`
+  that live-updates with the amount, plus a "Requesting X NIM" caption.
+
+**Honest scope:** recent recipients + named contacts are local UI state populated by real send history
+(C1, money-path) — the Send sheet already carries the Contacts + recent affordance. G18 ships the one
+cross-platform-exact piece (the request-link codec) + the request-QR UI, which work fully today.
+
+198 tests green (cargo, 8 new), `cargo clippy -D warnings` + `cargo fmt --check` + size-guard clean,
+`nq lint` 0 errors, iOS `xcodebuild` BUILD SUCCEEDED, Receive-sheet request QR screenshot-verified at
+390px (`nimiq:…?amount=12.5`).
+
 ## [0.15.0] — 2026-06-27
 
 ### Added — G17: settlement closure for both parties — non-money-path

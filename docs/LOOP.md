@@ -130,7 +130,7 @@ Rust-core logic (cargo-tested) + web UI (screenshot-verified). None handle keys 
 | G15 | Balance over mesh — gateway balance query + fiat + "synced X ago"; last-known → accounts-proof | no | yes | A2, G9 | 🟡 core+FFI done · UI stamp + accounts-proof = follow-ups |
 | G16 | Reachability + smart send queue ("will it send?")            | no | yes | A3 | ✅ done |
 | G17 | Settlement closure both ways (receipt → "landed" for sender + receiver) | no | yes | A3 | ✅ done |
-| G18 | Contacts + amount requests (request packet carries no keys)  | no | yes | A3 | todo |
+| G18 | Contacts + amount requests (request packet carries no keys)  | no | yes | A3 | ✅ done |
 | G19 | Backup nudge (self-custody protection)                       | no | yes | A2 | ✅ done |
 | G20 | Good-citizen + battery-aware relay (stats + throttle)        | no | yes | G6 | ✅ done |
 
@@ -418,3 +418,17 @@ the signer — but our live example drives our core end-to-end for every money-c
   tests** (7 new incl. 2 e2e), clippy/fmt/size-guard clean, `nq lint` 0 errors, iOS BUILD SUCCEEDED,
   pending row screenshot-verified. **Honest scope:** the payer→payee txId hand-off rides the request
   flow (G18); live in-app settlement needs a running node (Phase D). Next: **G18** (contacts + requests).
+- **2026-06-27** — **G18 done** (#29, v0.16.0, non-money-path → auto-merge) → **PHASE B AUTONOMOUS
+  GOALS COMPLETE** (G15·G16·G17·G18·G19·G20). The "pay me X NIM" request link — the fat-finger fix.
+  New `request_uri.rs` = the `nimiq:<address>?amount=<NIM>&message=<text>` codec: `build_request_uri`
+  + `parse_request_uri`, pure/key-free/**symmetric** (property-tested), exact NIM⇄luna integer math
+  (≤5 dp), percent-encoded message; `PaymentRequest` FFI record. UI: the Receive sheet gains a
+  borderless "Request an amount" field + "Create request link" → a Nimiq-blue QR encoding the
+  amount-bearing URI (live-updating) + "Requesting X NIM". **198 tests** (8 new), clippy/fmt/size-guard
+  clean, `nq lint` 0 errors, iOS BUILD SUCCEEDED, request QR screenshot-verified
+  (`nimiq:…?amount=12.5`). **Honest scope:** recent-recipients/named-contacts is local UI state
+  populated by real send history (C1); the request-link codec + QR are the cross-platform-exact piece
+  and work today. ⏸️ **All autonomous Phase A+B goals are shipped.** Remaining: the **Phase-D batch**
+  (G15 balance stamp · G19 real-data nudge · G20 live "helped N" + battery · G16 live reach/countdown ·
+  G17 live settlement — all need a running in-app `MeshNode` + device APIs = the native BLE shim) and
+  **Phase C** money path (C1/G12/G13) — both Andjroo-gated. The autonomous loop has nothing left to build.

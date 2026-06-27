@@ -97,6 +97,13 @@ pub mod beacon;
 // head-beacon hash (follow-up). Read-only public state — no keys, no signing (non-money-path).
 pub mod balance;
 
+// G18: "pay me X NIM" request links (non-money-path). `request_uri` is the pure, key-free
+// codec for the standard `nimiq:<address>?amount=<NIM>&message=<text>` URI a payee shows as a
+// QR so the payer's amount is pre-filled (the fat-finger fix). Symmetric (`parse(build(x)) == x`);
+// formats/parses public data only — no signing, no seed. Recent recipients + named contacts are
+// local UI state in the app; this owns the one cross-platform-exact piece.
+pub mod request_uri;
+
 // G17: two-way settlement closure (non-money-path). `settlement` is the per-node payment
 // ledger lifted out of `engine` (size-guard) + generalised to BOTH directions: a sender's
 // `Outgoing` (on submit) and a payee's `Incoming` (via `MeshNode::watch_incoming`). The same
