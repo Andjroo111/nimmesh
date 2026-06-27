@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>bitmesh</title>
+<title>nimmesh</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Mulish:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -188,9 +188,9 @@
 <div class="app">
 
   <div class="topbar">
-    <span class="logo" aria-label="bitmesh">
+    <span class="logo" aria-label="nimmesh">
       <svg viewBox="0 0 20 18" width="22" role="img" aria-label="Nimiq"><g fill="none"><path fill="url(#hex-grad)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="hex-grad" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></g></svg>
-      <span class="wordmark">bitmesh</span>
+      <span class="wordmark">nimmesh</span>
     </span>
     <div class="topbar-actions">
       <div id="lang-pill" aria-label="Language"></div>
@@ -208,7 +208,7 @@
     </div>
   </div>
 
-  <!-- Real Nimiq account header (Stake tooltip removed; bitmesh doesn't stake) -->
+  <!-- Real Nimiq account header (Stake tooltip removed; nimmesh doesn't stake) -->
   <div class="header-wrap">
     <div class="account-header">
       <div class="active-address flex-row">
@@ -482,9 +482,9 @@
 
   // A1/A4: the mesh status line is always visible (the obvious "this is the offline mesh"
   // differentiator). On device the bridge enriches it with live peers/network/core.
-  if (window.bitmesh) {
+  if (window.nimmesh) {
     try {
-      const [v, n, m] = await Promise.all([bitmesh.version(), bitmesh.network(), bitmesh.meshStatus()]);
+      const [v, n, m] = await Promise.all([nimmesh.version(), nimmesh.network(), nimmesh.meshStatus()]);
       document.getElementById('meshbar-text').textContent =
         `mesh ${m.state} · ${m.peers} nearby · ${n.network} · core ${v.core}`;
     } catch (e) { console.error('bridge probe failed', e); }
@@ -492,7 +492,7 @@
     // native radio yet (Phase D) the bridge honestly reports offline; once the shim runs a
     // MeshNode, the same call returns live Online / Meshed / Offline.
     try {
-      const r = await bitmesh.reachability();
+      const r = await nimmesh.reachability();
       applyReachability(r.reachability);
     } catch (e) { /* keep the static reassurance line if reachability is unavailable */ }
     // G19: ask the policy about the balance the home is showing (752 NIM). No keys/balance
@@ -500,7 +500,7 @@
     // real keys + a real balance land, the same call drives the nudge for real. No key/seed
     // crosses the bridge — only the public balance + the backed-up flag.
     try {
-      const u = await bitmesh.backupUrgency({ backedUp: false, balanceLuna: 752 * 100000, daysSinceFirstFunds: 0 });
+      const u = await nimmesh.backupUrgency({ backedUp: false, balanceLuna: 752 * 100000, daysSinceFirstFunds: 0 });
       applyBackupNudge(u.urgency);
     } catch (e) { /* leave the default words banner if the policy call fails */ }
   }
@@ -516,7 +516,7 @@
       if (lang) shell.mountLanguagePill(lang, { i18n });
       const connect = document.getElementById('connect-pill');
       if (connect) {
-        const wallet = shell.createWallet({ appName: 'bitmesh', hubEndpoint: 'https://hub.nimiq-testnet.com' });
+        const wallet = shell.createWallet({ appName: 'nimmesh', hubEndpoint: 'https://hub.nimiq-testnet.com' });
         shell.mountWalletPill(connect, { wallet, i18n });
       }
     } catch (e) { console.warn('fleet chrome pills unavailable (offline?) — mesh UX continues', e); }

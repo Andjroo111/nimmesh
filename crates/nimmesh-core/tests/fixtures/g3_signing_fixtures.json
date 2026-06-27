@@ -5,7 +5,7 @@
     "network": "testnet",
     "networkId": 5,
     "fee": "0",
-    "note": "Byte-exact reference for bitmesh-core src/nimiq G3. serializeContent=67B, proof=98B, rawHex=139B basic-format transfer. txHash=Blake2b256(serializeContent)."
+    "note": "Byte-exact reference for nimmesh-core src/nimiq G3. serializeContent=67B, proof=98B, rawHex=139B basic-format transfer. txHash=Blake2b256(serializeContent)."
   },
   "fixtures": [
     {

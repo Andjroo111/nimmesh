@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "bitmesh-fixtures",
+      "name": "nimmesh-fixtures",
       "dependencies": {
         "@nimiq/core": "^2.5.0",
       },

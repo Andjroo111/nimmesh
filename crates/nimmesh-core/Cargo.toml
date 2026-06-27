@@ -1,14 +1,14 @@
 [package]
-name = "bitmesh-core"
+name = "nimmesh-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Shared, headless Rust core for nimiq.bitmesh: Nimiq signing, bitmesh packet codec, TTL/hop relay, and store-and-forward — exposed to Swift/Kotlin via UniFFI."
+description = "Shared, headless Rust core for nimiq.nimmesh: Nimiq signing, nimmesh packet codec, TTL/hop relay, and store-and-forward — exposed to Swift/Kotlin via UniFFI."
 
 [lib]
-name = "bitmesh_core"
+name = "nimmesh_core"
 # cdylib  -> Android .so / iOS dynamic lib
 # staticlib -> iOS .a for the .xcframework
 # lib     -> the uniffi-bindgen binary + Rust unit tests link against this

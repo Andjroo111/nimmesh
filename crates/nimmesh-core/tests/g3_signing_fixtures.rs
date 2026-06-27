@@ -10,13 +10,13 @@ use std::sync::Arc;
 
 use serde::Deserialize;
 
-use bitmesh_core::nimiq::address::Address;
-use bitmesh_core::nimiq::hex::{bytes_to_hex, hex_to_bytes};
-use bitmesh_core::nimiq::signer::{
+use nimmesh_core::nimiq::address::Address;
+use nimmesh_core::nimiq::hex::{bytes_to_hex, hex_to_bytes};
+use nimmesh_core::nimiq::signer::{
     AppSigner, EnclaveKey, InMemoryEnclaveKey, KeyOrigin, TransferIntent,
 };
-use bitmesh_core::nimiq::tx::{signature_proof_single_sig, Transfer};
-use bitmesh_core::NetworkId;
+use nimmesh_core::nimiq::tx::{signature_proof_single_sig, Transfer};
+use nimmesh_core::NetworkId;
 
 #[derive(Deserialize)]
 struct Fixtures {

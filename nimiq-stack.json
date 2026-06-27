@@ -1,7 +1,7 @@
 {
   "$schema": "https://nimiq.tech/schemas/nimiq-stack.v1.json",
   "schemaVersion": 1,
-  "name": "nimiq.bitmesh",
+  "name": "nimiq.nimmesh",
   "chainApp": true,
   "exempt": true,
   "exemptReason": "Native true-BLE-mesh app (iOS Swift + Android Kotlin sharing a Rust core via UniFFI). A web PWA cannot act as a BLE peripheral, so the fleet vanilla-PWA + Bun/Hono web stack does not apply. Approved divergence — see docs/adr/0001.",

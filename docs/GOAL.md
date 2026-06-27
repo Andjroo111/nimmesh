@@ -1,4 +1,4 @@
-# nimiq.bitmesh — Goal
+# nimiq.nimmesh — Goal
 
 > **Pay with NIM when there is no internet.** A native, true multi-hop Bluetooth-LE
 > mesh wallet: sign a Nimiq transaction on your phone with zero connectivity, and

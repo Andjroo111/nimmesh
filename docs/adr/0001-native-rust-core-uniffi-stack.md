@@ -1,6 +1,6 @@
 # ADR-0001 — Native Swift + Kotlin sharing a Rust core via UniFFI
 
-**Status:** accepted (2026-06-26) · **Context:** the founding stack decision for nimiq.bitmesh.
+**Status:** accepted (2026-06-26) · **Context:** the founding stack decision for nimiq.nimmesh.
 
 ## Decision
 

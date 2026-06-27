@@ -1,11 +1,11 @@
-# nimiq.bitmesh — Offline-Payment Risks & Mitigations
+# nimiq.nimmesh — Offline-Payment Risks & Mitigations
 
 Untrusted mesh input is **hostile by default**. These constraints shape the
 architecture; the loop must honour them. Severity = high / med / low.
 
 ## Reusable fleet seam (Part A)
 
-The fleet has already factored the exact split bitmesh needs — **sign offline (pure
+The fleet has already factored the exact split nimmesh needs — **sign offline (pure
 crypto) / broadcast online (plain JSON-RPC)** — across `sendhome`, `nimiq.sale`,
 `nimiq-app-shell`, and `nimiq.win`:
 
@@ -15,7 +15,7 @@ crypto) / broadcast online (plain JSON-RPC)** — across `sendhome`, `nimiq.sale
   broadcast + `detected → paid` confirmation staging.
 - `nimiq-app-shell/src/wallet/*` — Hub / mini-app signing backends (returns a serialized blob).
 
-The bitmesh **`MeshPayment` / `MeshGateway` / `MeshTransport`** interfaces mirror the
+The nimmesh **`MeshPayment` / `MeshGateway` / `MeshTransport`** interfaces mirror the
 fleet `ChainProvider` `kind: mock | real` pattern, so the whole loop runs against a
 `MockMeshTransport` + mock RPC in CI before any radio exists.
 
@@ -34,7 +34,7 @@ refuse to sign when the remaining window is already too short to plausibly relay
 ### 2. Double-spend offline / deferred broadcast failure — **high**
 The offline signer has no live balance or nonce check. But Nimiq is **account-based with
 explicit nonce + validity window**, so two offline txs from one account in overlapping
-windows **cannot both be included** — bitmesh **cannot create an on-chain double-spend.**
+windows **cannot both be included** — nimmesh **cannot create an on-chain double-spend.**
 The real hazard is a *deferred failure* shown to a RECEIVER who already accepted payment.
 **Mitigation:** every offline-accepted payment is **unconfirmed-until-inclusion** —
 show "pending — not yet settled", flip to "paid" only at confirmation depth (reuse

@@ -15,13 +15,13 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use bitmesh_core::dedup::DedupCache;
-use bitmesh_core::default_network;
-use bitmesh_core::fragment::{fragment_message, parse_fragment, Reassembler};
-use bitmesh_core::gateway::MockGateway;
-use bitmesh_core::mock_radio::MeshHarness;
-use bitmesh_core::relay::relayed_ttl;
-use bitmesh_core::settlement::PaymentStatus;
+use nimmesh_core::dedup::DedupCache;
+use nimmesh_core::default_network;
+use nimmesh_core::fragment::{fragment_message, parse_fragment, Reassembler};
+use nimmesh_core::gateway::MockGateway;
+use nimmesh_core::mock_radio::MeshHarness;
+use nimmesh_core::relay::relayed_ttl;
+use nimmesh_core::settlement::PaymentStatus;
 use proptest::prelude::*;
 
 /// Poll `f` until true or `timeout` elapses (the mesh is async / threaded).

@@ -1,6 +1,24 @@
 # Changelog
 
-All notable changes to nimiq.bitmesh. Each PR bumps the version and adds an entry.
+All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
+
+## [0.20.0] — 2026-06-27
+
+### Changed — project renamed bitmesh → **nimmesh** (it's Nimiq, not Bitcoin)
+
+"bit" wrongly implied Bitcoin (a leftover from the Bitchat port). Renamed the whole project to
+**nimmesh** before any public site / TestFlight exists. Pure mechanical token-swap, no logic change:
+
+- `bitmesh` → `nimmesh`, `Bitmesh` → `Nimmesh`, `BITMESH` → `NIMMESH` across all code, docs, configs.
+- Crate `bitmesh-core` → `nimmesh-core` (dir + package + lib); xcframework `BitmeshCore` → `NimmeshCore`;
+  iOS app `BitmeshApp` → `NimmeshApp` (dir + `NimmeshApp.swift`); bundle prefix `com.nimmesh`.
+- JS bridge `window.bitmesh` / channel `"bitmesh"` → `window.nimmesh` / `"nimmesh"`; webui title + wordmark.
+- Repo `nimiq.bitmesh` → `nimiq.nimmesh`; public site target `nimmesh.nimiq.tech`.
+- **Unchanged:** generic mesh terms (`MeshNode`, `BleRadio`, `MeshGateway`), the `nimiq:` payment-URI
+  scheme, and the upstream Bitchat (`permissionlesstech/bitchat`) port attribution.
+
+209 tests green, `cargo clippy --all-features -D warnings` + `cargo fmt --check` + size-guard + `nq lint`
+clean, iOS `xcodebuild` BUILD SUCCEEDED as NimmeshApp, webui wordmark renders "nimmesh".
 
 ## [0.19.0] — 2026-06-27
 
@@ -11,9 +29,9 @@ All notable changes to nimiq.bitmesh. Each PR bumps the version and adds an entr
   feature-gated broadcast, seed-never-crosses-FFI, unconfirmed-until-inclusion, money-path-never-auto-merge),
   exactly what a future mainnet switch would require (and that only Andjroo does it), the pre-mainnet
   checklist (most boxes still open), and the irreversible/gated action list.
-- `crates/bitmesh-core/examples/mesh_demo.rs` (new): the whole pay loop —
+- `crates/nimmesh-core/examples/mesh_demo.rs` (new): the whole pay loop —
   `submit → flood → relay → dedup → gateway → receipt → settled` — runs **headless, no network** against
-  a mock gateway (`cargo run -p bitmesh-core --example mesh_demo`). The no-network companion to the G8
+  a mock gateway (`cargo run -p nimmesh-core --example mesh_demo`). The no-network companion to the G8
   `live_testnet_broadcast` tool (which proves the same path on the real testnet, block 4428402).
 
 This is the autonomous-safe half of G13: the real-testnet broadcast demo is already the G8 live tool
@@ -28,7 +46,7 @@ the demo runs end-to-end (SETTLED, 1 submission, bytes match).
 
 The rest of RISKS.md #4's anti-DoS hardening, on top of part 1's verify-before-relay.
 
-- `crates/bitmesh-core/src/ratelimit.rs` (new): `PeerRateLimiter`, a per-peer **token bucket**
+- `crates/nimmesh-core/src/ratelimit.rs` (new): `PeerRateLimiter`, a per-peer **token bucket**
   (256 burst / 64 frames-per-sec steady). `process_inbound` drops frames from a peer exceeding its
   budget before any decode/relay airtime is spent (`rate_limited` counter). Clock-free (worker
   monotonic clock → deterministic), tracked-peer map bounded against peer-id churn. 5 unit tests.
@@ -54,7 +72,7 @@ The rest of RISKS.md #4's anti-DoS hardening, on top of part 1's verify-before-r
 RISKS.md #4's anti-spam defence: a node refuses to store or relay a `nimiqTx` whose opaque blob is not
 a **well-formed, correctly-signed** Nimiq transfer. Forging mesh spam now costs a real signature.
 
-- `crates/bitmesh-core/src/nimiq/tx.rs`: `decode_basic_wire` (inverse of `serialize_basic`) +
+- `crates/nimmesh-core/src/nimiq/tx.rs`: `decode_basic_wire` (inverse of `serialize_basic`) +
   `verify_basic_wire(wire) -> bool` — derives the sender from the embedded pubkey, rebuilds
   `serializeContent`, and checks the Ed25519 signature with `verify_strict`. **Content-blind**: it
   proves the blob is genuinely signed, but never inspects *who* it pays or *whether it can* (core
@@ -98,7 +116,7 @@ The fat-finger fix for getting paid: the payee shows a request QR that carries t
 **and** the exact amount, so the payer's Send screen is pre-filled. Pure local + QR — no mesh packet,
 no keys.
 
-- `crates/bitmesh-core/src/request_uri.rs` (new): the `nimiq:<address>?amount=<NIM>&message=<text>`
+- `crates/nimmesh-core/src/request_uri.rs` (new): the `nimiq:<address>?amount=<NIM>&message=<text>`
   URI codec — `build_request_uri(address, amount_luna, message?) -> String?` + `parse_request_uri(uri)
   -> PaymentRequest?`. Pure, key-free, **symmetric** (`parse(build(x)) == x`, property-tested): validates
   the address, formats/parses NIM⇄luna exactly (≤5 dp, integer math, no floats), percent-encodes the
@@ -123,7 +141,7 @@ cross-platform-exact piece (the request-link codec) + the request-QR UI, which w
 when a gateway accepts/rejects a tx (and G7 store-and-forward catches a rejoining node up on it);
 G17 closes that loop for the **receiver** too, not just the sender.
 
-- `crates/bitmesh-core/src/settlement.rs` (new): the per-node payment ledger, lifted out of
+- `crates/nimmesh-core/src/settlement.rs` (new): the per-node payment ledger, lifted out of
   `engine.rs` (size-guard) and generalised to two directions — `Outgoing` (recorded on submit) and
   `Incoming` (recorded by a payee via `watch_incoming`). The **same** flooded receipt settles whichever
   side is watching that txId: `Pending → ✓ Settled` / `✗ Failed`. `PaymentStatus` now lives here;
@@ -153,7 +171,7 @@ The biggest anxiety of paying offline is not knowing whether the payment can get
 turns the node's existing mesh state into an honest answer, and tells the user how long a signed tx
 stays spendable.
 
-- `crates/bitmesh-core/src/reachability.rs` (new): pure, clock-free, key-free signals over public
+- `crates/nimmesh-core/src/reachability.rs` (new): pure, clock-free, key-free signals over public
   state. `assess_reachability(self_is_gateway, peer_count, heard_gateway) -> Reachability`
   (`Online` = a gateway is reachable; `Meshed` = peers but no gateway yet, relays + waits via G7
   store-and-forward; `Offline` = no peers). `blocks_until_expiry` / `secs_until_expiry` (~1 block/s)
@@ -180,7 +198,7 @@ the honest signal layer + FFI both of those read; the Rust assessment is the aud
 The mesh *is* its users: a payment reaches the internet only because someone nearby relayed it.
 G20 makes that participation visible and respectful of the user's battery.
 
-- `crates/bitmesh-core/src/citizen.rs` (new): the battery-derived `RelayPosture`
+- `crates/nimmesh-core/src/citizen.rs` (new): the battery-derived `RelayPosture`
   (`Full → Reduced → Frugal → Off`) and the good-citizen counter. `relay_posture(level, charging)`:
   **charging always means `Full`** (be the best citizen while plugged in); on battery it steps down —
   `Full` ≥ 50 %, `Reduced` ≥ 20 % (half fanout), `Frugal` ≥ 10 % (payment-critical traffic only),
@@ -212,7 +230,7 @@ funds are gone forever. G19 makes the backup prompt **persistent and proportiona
 pure, tested Rust policy, surfaced through the vendored `backup-banner` component's escalating
 treatment.
 
-- `crates/bitmesh-core/src/backup.rs` (new): `backup_urgency(BackupState) -> BackupUrgency`, a pure,
+- `crates/nimmesh-core/src/backup.rs` (new): `backup_urgency(BackupState) -> BackupUrgency`, a pure,
   **clock-free, key-free** policy. Inputs are public account facts only — `backed_up`, `balance_luna`,
   `days_since_first_funds`. Output escalates `None → Gentle → Important → Critical`, taking the higher
   of a balance-driven and an age-driven sub-score; returns `None` when backed up or there are no funds
@@ -242,7 +260,7 @@ Andjroo's feature: get an account's balance with no internet, by asking the mesh
 height; every node caches it (unverified / last-known) and relays it onward. Read-only public
 state — no keys, no signing. Mirrors the G9 head-beacon pattern end to end.
 
-- `crates/bitmesh-core/src/balance.rs` (new): `nimiqBalanceQuery` (`0x33`, 20-byte address) +
+- `crates/nimmesh-core/src/balance.rs` (new): `nimiqBalanceQuery` (`0x33`, 20-byte address) +
   `nimiqBalanceResponse` (`0x34`, addr+balance+headHeight+networkId) payload codecs (length-exact,
   panic-free) + `BalanceCache` — clock-free, per-address, **monotonic by head height** (no stale
   rollback), `networkId`-guarded. `CachedBalance` is FFI-visible (`uniffi::Record`).
@@ -286,15 +304,15 @@ SwiftUI (the rejected home is deleted) and instead **hosts the real `nimiq-ui` w
 (`webui/`) in a `WKWebView`**, bridged to the Rust core. This is also the foundation merge of
 the iOS shell + web UI onto `main`.
 
-- `apple/BitmeshApp/Sources/WebHostView.swift` (new) — a `UIViewRepresentable` `WKWebView` that
+- `apple/NimmeshApp/Sources/WebHostView.swift` (new) — a `UIViewRepresentable` `WKWebView` that
   loads `webui/index.html` from the bundle (folder reference, so relative hrefs resolve) and a
-  `Bridge` (`WKScriptMessageHandler`) exposing a promise-based `window.bitmesh` RPC. **Read-only**
+  `Bridge` (`WKScriptMessageHandler`) exposing a promise-based `window.nimmesh` RPC. **Read-only**
   methods only — `version` (`coreVersion()`), `network` (`defaultNetwork()` + wireId + loopSafe),
   `meshStatus` (honest `offline` / `0 peers` until the native radio lands in Phase D). It signs
   nothing, broadcasts nothing, and never touches key/seed material → firmly non-money-path. The
   signing path (Send → enclave → queue) is deferred to the gated money slice (C1).
-- `apple/BitmeshApp/Sources/BitmeshApp.swift` — mounts `WebHostView` (was `HomeView`).
-- `apple/BitmeshApp/Sources/HomeView.swift`, `Theme.swift` (deleted) — the hand-built SwiftUI
+- `apple/NimmeshApp/Sources/NimmeshApp.swift` — mounts `WebHostView` (was `HomeView`).
+- `apple/NimmeshApp/Sources/HomeView.swift`, `Theme.swift` (deleted) — the hand-built SwiftUI
   home Andjroo rejected; superseded by the web UI.
 - `apple/project.yml` — `webui/` added as a folder-reference bundle resource.
 - `webui/index.html` — safe-area insets for full-bleed hosting; a mesh status bar fed by the
@@ -327,7 +345,7 @@ real wallet showed the account-header is faithful; the one divergence — Send/R
 is fixed here.
 
 - `webui/index.html` — Send/Receive **moved to a bottom action bar** (Receive | Send | scan),
-  matching the real mobile wallet, with bitmesh's **mesh status line directly above it** (the one
+  matching the real mobile wallet, with nimmesh's **mesh status line directly above it** (the one
   honest divergence from the wallet). The header actions row is now just the full-width search.
 - **Receive NIM** bottom sheet — identicon + the 3×3 Fira-Mono chunked address (`address-display`
   component) + "Create request link" + a real Nimiq-blue **QR** rendered on demand (`qr-creator`).
@@ -366,7 +384,7 @@ mesh never carries them. New logic lives in dedicated modules to keep every file
 Still opaque-bytes only — reads a public head height, no signing/broadcast/keys (`// G3:` /
 `// G8:` anchors preserved).
 
-- `crates/bitmesh-core/src/beacon.rs` — the **clock-free building blocks** (new module):
+- `crates/nimmesh-core/src/beacon.rs` — the **clock-free building blocks** (new module):
   - **`HeadBeacon`** `{height u32 | blockHash 32 | networkId 1}` + `encode_beacon` /
     `decode_beacon` (panic-free, exact-length) — the `nimiqHeadBeacon` (`0x32`) payload.
   - **`HeadCache`** — every node caches the **latest** head it has heard (monotonic — an
@@ -376,16 +394,16 @@ Still opaque-bytes only — reads a public head height, no signing/broadcast/key
     the G7 `SyncScheduler`.
   - **`is_expired(head, validUntil)`** — the guard: a tx is dead only when **both** a head and
     a window are known and `head >= validUntil` (no head ⇒ never GC blindly).
-- `crates/bitmesh-core/src/gateway.rs` — `MeshGateway::head_beacon()` (new default seam,
+- `crates/nimmesh-core/src/gateway.rs` — `MeshGateway::head_beacon()` (new default seam,
   `None` for the chain-less `MockGateway`); `RpcGateway` sources the height from its existing
   read-only RPC `block_number` (**no new networking**) on its testnet `networkId`.
-- `crates/bitmesh-core/src/engine.rs` — wires it into the worker: a **gateway** floods a
+- `crates/nimmesh-core/src/engine.rs` — wires it into the worker: a **gateway** floods a
   beacon via `emit_head_beacon` (rate-limited, gateway-only); every node caches an inbound
   `0x32` (`handle_head_beacon`) then floods it onward; the **validity-window guard** drops an
   expired `nimiqTx` in `handle_tx` (neither relayed nor stored — packet GC); `flood_local_tx`
   stamps `validUntil = cachedHead + VALIDITY_WINDOW` when a head is known. `now`/`head` are
   injectable (worker clock + cached beacon) so tests are deterministic.
-- `crates/bitmesh-core/src/node.rs` — FFI: **`poll_beacon()`** (gateway emits if the tick is
+- `crates/nimmesh-core/src/node.rs` — FFI: **`poll_beacon()`** (gateway emits if the tick is
   due; non-blocking, ADR-0002), **`cached_head_height() -> Option<u32>`**, and
   **`anchored_intent(recipient, value)`** which builds a `TransferIntent` anchored to the
   freshest cached head — returning `None` (refusing to pre-date) when no beacon has been heard.
@@ -406,7 +424,7 @@ The one online hop: a gateway node takes a signed-tx blob off the mesh and puts 
 `nimiqTxReceipt (0x31)` back. **TESTNET-only (`networkId = 5`)** — every constructor is
 testnet-guarded and there is no path to a mainnet RPC. `cargo test` stays fully offline.
 
-- `crates/bitmesh-core/src/rpc.rs` — the blocking Albatross **JSON-RPC client seam**
+- `crates/nimmesh-core/src/rpc.rs` — the blocking Albatross **JSON-RPC client seam**
   (`GatewayRpc`: `block_number`, `get_account`, `send_raw_transaction`, `get_transaction`),
   modelled on the fleet's `sendhome`/`nimiq.sale` clients (JSON-RPC 2.0 over HTTP POST,
   `{ result: { data } }` unwrap, transient-vs-terminal error split — **never** the
@@ -415,17 +433,17 @@ testnet-guarded and there is no path to a mainnet RPC. `cargo test` stays fully 
   new **`gateway-rpc`** cargo feature so the pure-protocol core stays dependency-light +
   WASM-friendly. `guard_testnet` refuses any non-testnet network or known mainnet host
   (`rpc.nimiqwatch.com`).
-- `crates/bitmesh-core/src/gateway.rs` — the real **`RpcGateway`** (a `MeshGateway` over any
+- `crates/nimmesh-core/src/gateway.rs` — the real **`RpcGateway`** (a `MeshGateway` over any
   `GatewayRpc`) + the `SubmitContext` the engine hands it. On a `nimiqTx` it **guards
   `networkId`** (testnet 5), **checks the validity window** against the live head (drops +
   `Expired` receipt if `head >= validUntil`, never broadcasting), then
   **`sendRawTransaction(rawHex)`** (terminal rejection → `Failed`; accept → `Accepted`); a
   transient RPC error yields no receipt so another gateway / a retry can still carry the tx.
   `MeshGateway::submit_validated` is a new default-method seam (`MockGateway` unchanged).
-- `crates/bitmesh-core/src/engine.rs` — the gateway role now calls `submit_validated` with
+- `crates/nimmesh-core/src/engine.rs` — the gateway role now calls `submit_validated` with
   the decoded envelope (`networkId` + `validUntil` + `txId`); receipt keyed by the origin's
   `txId`, relay-anyway preserved, `on_packet_received` stays non-blocking (worker thread).
-- `crates/bitmesh-core/examples/live_testnet_broadcast.rs` — the **live broadcast tool**
+- `crates/nimmesh-core/examples/live_testnet_broadcast.rs` — the **live broadcast tool**
   (built with `--features gateway-rpc`): generates/loads a testnet keypair via the core,
   prints the `NQ…` address, optional faucet tap (`faucet.pos.nimiq-testnet.com/tapit`),
   fetches the head, **signs with the core's G3 signer**, broadcasts, and polls inclusion —
@@ -443,7 +461,7 @@ The money-critical layer: turn a payment *intent* into a self-contained, self-au
 `@nimiq/core`** (v2.7.0). Pure offline crypto — **no network, no RPC, no broadcast** (that is
 G8); the **seed never crosses the FFI boundary**. Testnet-only (`networkId = 5`) by default.
 
-- `crates/bitmesh-core/src/nimiq/` — new module tree (each file < 800 lines):
+- `crates/nimmesh-core/src/nimiq/` — new module tree (each file < 800 lines):
   - **`tx.rs`** — byte-exact `serializeContent` (the **67-byte** signing payload), the full
     **139-byte** `Basic`-format wire blob (`format || proof_type || pubkey || recipient ||
     value || fee || vsh || network || signature`), the **Blake2b-256** tx hash, and the
@@ -461,14 +479,14 @@ G8); the **seed never crosses the FFI boundary**. Testnet-only (`networkId = 5`)
     Both emit a `SignedTransfer { raw_hex, tx_hash, validity_start_height, valid_until_height }`
     (`valid_until = vsh + VALIDITY_WINDOW(7200)`, RISKS.md #1). `// NATIVE:` notes mark the
     on-device sign-but-DON'T-broadcast paths verified later.
-- `crates/bitmesh-core/src/node.rs` — **`MeshNode::submit_signed_transfer(SignedTransfer)`**
+- `crates/nimmesh-core/src/node.rs` — **`MeshNode::submit_signed_transfer(SignedTransfer)`**
   decodes `raw_hex` and floods it through the existing mesh path as **opaque bytes**
   (replacing the G3 opaque stub); `submit_local_tx(Vec<u8>)` stays for raw-bytes callers.
-- `crates/bitmesh-core/src/lib.rs` — `pub mod nimiq`; the `G3:` anchor marked DONE.
+- `crates/nimmesh-core/src/lib.rs` — `pub mod nimiq`; the `G3:` anchor marked DONE.
 - **Byte-exactness proof** — `scripts/fixtures/gen-fixtures.mjs` generates reference
   `{rawHex, txHash, serializeContent, proof, signature, addresses}` from `@nimiq/core` for
   4 known `(privKey, recipient, value, vsh, testnet)` inputs; committed at
-  `crates/bitmesh-core/tests/fixtures/g3_signing_fixtures.json`. `tests/g3_signing_fixtures.rs`
+  `crates/nimmesh-core/tests/fixtures/g3_signing_fixtures.json`. `tests/g3_signing_fixtures.rs`
   reproduces each from the same inputs and asserts equality **byte-for-byte** (the acceptance
   bar; a subtly-wrong serializer fails here). Confirms `ed25519-dalek` == `@nimiq/core`
   (deterministic RFC-8032).
@@ -487,7 +505,7 @@ two peers can exchange an *optional* 1:1 encrypted chat. **No money-path**: no w
 no Nimiq tx signing, no broadcast; `txWire` stays opaque and the `G3:` / `G8:` anchors are
 untouched. The Noise static key is a **transport** key, never a wallet key.
 
-- `crates/bitmesh-core/src/noise.rs` — the Noise layer (new module, < 800 lines):
+- `crates/nimmesh-core/src/noise.rs` — the Noise layer (new module, < 800 lines):
   - **`Noise_XX_25519_ChaChaPoly_SHA256`** mutual-auth, identity-hiding handshake via the
     `snow` crate (`Handshake` initiator/responder + the three XX messages; `handshake_xx`
     drives both ends). Identities are exchanged only *after* the ephemeral DH (identity
@@ -505,11 +523,11 @@ untouched. The Noise static key is a **transport** key, never a wallet key.
   - Memo + chat helpers: `seal_memo`/`open_memo` (the `encMemo` blob) and
     `seal_payload`/`open_payload` (inner `NoisePayloadType`: `chat = 0x01`,
     `nimiqTx = 0x04`, `nimiqTxReceipt = 0x05` — inner bytes stay **opaque**).
-- `crates/bitmesh-core/src/packet.rs` + `codec.rs` — new **`noiseEncrypted = 0x11`**
+- `crates/nimmesh-core/src/packet.rs` + `codec.rs` — new **`noiseEncrypted = 0x11`**
   `MessageType` for optional 1:1 encrypted chat; round-trips through the wire codec.
-- `crates/bitmesh-core/src/envelope.rs` — the `encMemo` TLV (`0x05`) carries a Noise-sealed
+- `crates/nimmesh-core/src/envelope.rs` — the `encMemo` TLV (`0x05`) carries a Noise-sealed
   blob (the field already existed; now wired end-to-end with a round-trip test).
-- `crates/bitmesh-core/src/engine.rs` — a `noiseEncrypted` packet is relayed **opaque**
+- `crates/nimmesh-core/src/engine.rs` — a `noiseEncrypted` packet is relayed **opaque**
   (blind dedup + store-and-forward + adaptive TTL relay); only its two endpoints decrypt it.
   `on_packet_received` stays **non-blocking** (enqueue-only, ADR-0002).
 - Tests (in `noise.rs`): XX handshake completes between two parties (+ mutual fingerprint
@@ -527,7 +545,7 @@ The key offline-origination piece: a node that was **out of range** when packets
 the mesh catches up on what it missed when it rejoins — within Nimiq's ~2 h validity
 window. New logic lives in dedicated modules to keep every file under the 800-line ceiling.
 
-- `crates/bitmesh-core/src/gcs.rs` — a **Golomb-Coded-Set membership filter**:
+- `crates/nimmesh-core/src/gcs.rs` — a **Golomb-Coded-Set membership filter**:
   - Hashes each member id uniformly into `[0, N·M)` (`M = 100`), sorts, delta-encodes, and
     **Golomb-Rice codes** the deltas (parameter `P = 6`, the near-optimal Rice modulus for
     the gap distribution). **No false negatives**; false-positive rate **1/M = 0.01**.
@@ -536,14 +554,14 @@ window. New logic lives in dedicated modules to keep every file under the 800-li
     hostile peer bytes (a corrupt filter degrades to "absent", never a crash).
   - Tests: membership (no false negatives across 1–500 ids), an **empirical fp-rate check
     near 0.01** (100k disjoint queries), wire round-trip, byte-budget, hostile-input.
-- `crates/bitmesh-core/src/store_forward.rs` — the **recent-packet cache + sync cadence**:
+- `crates/nimmesh-core/src/store_forward.rs` — the **recent-packet cache + sync cadence**:
   - `RecentCache` — a bounded, **clock-free** store (≤ **1000** entries, **900 s** (15 min)
     retention, **15 s** active window; oldest evicted) keyed by a header-derived
     `packet_id` (type + sender + timestamp; TTL/payload excluded so a relayed copy keeps a
     stable id). Like the G6 reassembler, the caller passes a monotonic `now_ms`, so tests
     are deterministic. `build_filter` / `missing` drive the sync exchange.
   - `SyncScheduler` — a clock-free rate-limiter firing at most once per **30 s** tick.
-- `crates/bitmesh-core/src/engine.rs` — wires it into the worker:
+- `crates/nimmesh-core/src/engine.rs` — wires it into the worker:
   - every accepted packet (origin/relay/gateway/fragment) is **remembered** in the cache;
   - **`requestSync` (`type 0x21`, ttl 0, local-only)** — `emit_request_sync` floods this
     node's GCS "have" filter to direct peers (never relayed); a peer that receives one
@@ -551,7 +569,7 @@ window. New logic lives in dedicated modules to keep every file under the 800-li
   - an inbound `isRSR` reply is delivered **locally only** (TTL zeroed → never re-flooded)
     through the normal handlers, so it settles / submits / caches like any other packet;
   - `maintenance_tick` issues a `requestSync` only when the 30 s tick is due.
-- `crates/bitmesh-core/src/node.rs` — FFI: **`request_sync()`** (force a catch-up on
+- `crates/nimmesh-core/src/node.rs` — FFI: **`request_sync()`** (force a catch-up on
   rejoin) and **`poll_sync()`** (the periodic maintenance poll). Both **non-blocking**
   (enqueue only, ADR-0002 gotcha a); the worker does the GCS work off the callback thread.
 - Tests (`e2e_tests.rs`): a **simulated rejoin** — A floods 12 packets while B is
@@ -570,7 +588,7 @@ Builds the PROTOCOL.md relay sophistication on top of the G5 basic relay (which 
 did blind LRU dedup → TTL-decrement → flood). New logic is split into dedicated modules
 to keep every file well under the 800-line ceiling.
 
-- `crates/bitmesh-core/src/relay.rs` — the **G6 relay policy**:
+- `crates/nimmesh-core/src/relay.rs` — the **G6 relay policy**:
   - **Degree-adaptive probabilistic relay.** In a sparse mesh (peer-degree below the
     high-degree threshold **6**) every flooded packet is always relayed; in a dense mesh
     each is relayed only with probability **0.5**, damping broadcast storms. The decision
@@ -583,14 +601,14 @@ to keep every file well under the 800-line ceiling.
     loop-free.
   - A `RelayPolicy` bundles the RNG + delay + tunables; `production()` (real jitter, time
     seed) vs `deterministic()` (zero sleep, fixed seed) — the harness/tests use the latter.
-- `crates/bitmesh-core/src/fragment.rs` — the **`fragment = 0x20`** split/reassemble path
+- `crates/nimmesh-core/src/fragment.rs` — the **`fragment = 0x20`** split/reassemble path
   (defined-but-unused for today's ~205-B `nimiqTx`, implemented for larger/future
   payloads). Fragment header **8 B fragmentID + 2 B index + 2 B total + 1 B originalType**;
   `fragment_message` splits a payload at the BLE chunk (~469 B), and a bounded
   **`Reassembler`** (≤ **128** in-flight, oldest evicted; **30 s** lifetime via a
   caller-supplied logical clock) rebuilds it. Reassembled messages are dispatched with
   **TTL zeroed** (delivered locally, never re-flooded).
-- `crates/bitmesh-core/src/engine.rs` — wires the above into the worker:
+- `crates/nimmesh-core/src/engine.rs` — wires the above into the worker:
   - relays now run the **degree-adaptive decision → jitter → TTL hop cap → flood**;
   - **source-link exclusion** — a relay never echoes a packet back out the peer it
     arrived on (new `flood_excluding`; the inbound source peer is threaded from the radio
@@ -599,13 +617,13 @@ to keep every file well under the 800-line ceiling.
   - `WorkerState` now carries the `RelayPolicy` + `Reassembler` (worker-thread-local, no
     locks on the hot path). `txWire` stays **opaque** — no signing/broadcast (`// G3:` /
     `// G8:` anchors kept).
-- `crates/bitmesh-core/src/node.rs` — new **`on_packet_received_from(peer, bytes)`** FFI
+- `crates/nimmesh-core/src/node.rs` — new **`on_packet_received_from(peer, bytes)`** FFI
   method so the shim can attribute the source link (the source-unaware
   `on_packet_received` still works); the relay policy is injected at construction
   (production default; harness injects deterministic).
-- `crates/bitmesh-core/src/mock_radio.rs` — the harness delivers with the source peer
+- `crates/nimmesh-core/src/mock_radio.rs` — the harness delivers with the source peer
   attributed and builds nodes with the **deterministic** (zero-sleep) policy.
-- `crates/bitmesh-core/tests/relay_proptests.rs` — **property tests** (proptest):
+- `crates/nimmesh-core/tests/relay_proptests.rs` — **property tests** (proptest):
   **loop-freedom** (TTL relay strictly terminates within the hop cap from any start),
   **dedup correctness** (a key is reported "fresh" at most once), **fragment round-trip**
   (any payload reassembles byte-for-byte, in any order), and **adaptive relay reaches the
@@ -624,30 +642,30 @@ owns everything above the byte-stream seam, wired with UniFFI foreign traits as 
 objects pointing at each other. Native iOS/Android shim is deferred (needs Xcode +
 Andjroo's Apple ID); this is the **Rust-core part of #5**.
 
-- `crates/bitmesh-core/src/radio.rs` — the **`BleRadio` foreign trait**
+- `crates/nimmesh-core/src/radio.rs` — the **`BleRadio` foreign trait**
   (`#[uniffi::export(with_foreign)]`) the native shim implements: `start_advertising`,
   `start_scanning`, `send(peer_id, bytes)` (**fire-and-forget**), `disconnect(peer_id)`,
   `stop`. Rust holds `Arc<dyn BleRadio>` and only ever calls **out** to it. A "peer" is an
   opaque BLE connection identity — the radio never sees a TTL or a packet.
-- `crates/bitmesh-core/src/node.rs` — **`MeshNode`** (`#[derive(uniffi::Object)]`), the
+- `crates/nimmesh-core/src/node.rs` — **`MeshNode`** (`#[derive(uniffi::Object)]`), the
   object the shim calls **in** to on every BLE event: `on_peer_connected`,
   `on_peer_disconnected`, `on_packet_received(bytes)`, `on_send_result(peer, ok)`,
   `submit_local_tx(tx_wire)`. `on_packet_received` is **NON-BLOCKING** — it only enqueues
   to an internal channel and returns; a dedicated worker thread drains the queue and runs
   decode → dedup → TTL-relay, calling `radio.send` **off** the callback thread.
-- `crates/bitmesh-core/src/engine.rs` — the real-packet **relay / gateway / origin**
+- `crates/nimmesh-core/src/engine.rs` — the real-packet **relay / gateway / origin**
   logic. Wires the **G4 codec** into the mesh: the temporary `MeshFrame` framing is gone,
-  replaced by real bitmesh packets (`codec::encode`/`decode`, `MessageType::NimiqTx 0x30`
+  replaced by real nimmesh packets (`codec::encode`/`decode`, `MessageType::NimiqTx 0x30`
   + the TLV envelope, `nimiqTxReceipt 0x31`). Relays operate on **real packet headers**
   (TTL-decrement, blind LRU dedup on the `(type, senderID, timestamp)` header identity);
   `txWire` stays **opaque** (no signing/broadcast — `// G3:` / `// G8:` anchors kept).
-- `crates/bitmesh-core/src/dedup.rs` — a bounded O(1) **LRU** "have I seen this?" set
+- `crates/nimmesh-core/src/dedup.rs` — a bounded O(1) **LRU** "have I seen this?" set
   (not a bloom filter; capped against hostile-flood DoS, RISKS.md #4).
-- `crates/bitmesh-core/src/mock_radio.rs` — **`MockRadio`** (a pure-Rust `BleRadio`) + a
+- `crates/nimmesh-core/src/mock_radio.rs` — **`MockRadio`** (a pure-Rust `BleRadio`) + a
   **`MockEther`** virtual topology with controllable **latency / loss / partition**, and a
   **`MeshHarness`** that wires N `MeshNode`s into a mesh. The headless `kind: mock` test
   substrate (RISKS.md Part A) — the whole demo loop runs under `cargo test`, no phone.
-- `crates/bitmesh-core/src/e2e_tests.rs` — the **full headless end-to-end test**:
+- `crates/nimmesh-core/src/e2e_tests.rs` — the **full headless end-to-end test**:
   `submit_local_tx(opaque_bytes)` on an offline origin → real-packet flood at TTL=7 → a
   blind relay (TTL-decrement + LRU dedup) → a mock gateway records the bytes + emits a
   `nimiqTxReceipt 0x31` → receipt propagates back → origin observes **Settled**. Plus the
@@ -674,27 +692,27 @@ Andjroo's Apple ID); this is the **Rust-core part of #5**.
 
 ## [0.2.0] — 2026-06-26
 
-### Added — G4: bitmesh wire protocol + packet codec (pure Rust)
+### Added — G4: nimmesh wire protocol + packet codec (pure Rust)
 
-- `crates/bitmesh-core/src/packet.rs` — the in-memory **packet model** and on-wire
+- `crates/nimmesh-core/src/packet.rs` — the in-memory **packet model** and on-wire
   constants: the 14-byte big-endian header (`version=1`, `MessageType`, `ttl=7`,
   `timestamp`, `flags`, `payloadLength`), the five flag bits (`0x01` hasRecipient ·
   `0x02` hasSignature · `0x04` isCompressed · `0x08` hasRoute · `0x10` isRSR), and the
   `MessageType` enum (`fragment=0x20`, `requestSync=0x21`, `nimiqTx=0x30`,
   `nimiqTxReceipt=0x31`, `nimiqHeadBeacon=0x32`). `hasRecipient`/`hasSignature` are
   derived from field presence so the model can never disagree with the bytes.
-- `crates/bitmesh-core/src/codec.rs` — byte-level `encode()` / `decode()` with strict,
+- `crates/nimmesh-core/src/codec.rs` — byte-level `encode()` / `decode()` with strict,
   panic-free bounds checking, plus **PKCS#7-style block padding** up to the smallest of
   `[256, 512, 1024, 2048]`. Decode recomputes the exact packet length from the header
   and ignores trailing padding (no PKCS#7 unpad oracle); a real ~205-B `nimiqTx` pads
   cleanly into the 256 block. A typed `CodecError` rejects unknown version / type /
   flag bits and truncated frames.
-- `crates/bitmesh-core/src/envelope.rs` — the **Nimiq TLV envelope** (`1B type | 1B len
+- `crates/nimmesh-core/src/envelope.rs` — the **Nimiq TLV envelope** (`1B type | 1B len
   | value`): `0x01` txWire (required, **opaque** bytes), `0x02` networkId (required, 1B,
   default **testnet = 5**), `0x03` validUntil (u32 BE), `0x04` txId (32B), `0x05`
   encMemo, `0x06` wantReceipt. Unknown TLV types are skipped for forward-compat; fixed-
   width fields must carry their exact length; the two required fields must be present.
-- `crates/bitmesh-core/tests/wire_proptests.rs` — `proptest` property/fuzz tests: `decode`
+- `crates/nimmesh-core/tests/wire_proptests.rs` — `proptest` property/fuzz tests: `decode`
   and `decode_envelope` **never panic** on arbitrary/malformed input, and any valid
   packet / envelope (incl. an envelope nested inside a `nimiqTx` packet) round-trips
   byte-for-byte. Plus per-message-type round-trip, padding-block, and rejection unit
@@ -711,7 +729,7 @@ Andjroo's Apple ID); this is the **Rust-core part of #5**.
   nodes into a relay topology — **no Bluetooth, no `tokio`, no external deps**. Carries
   **opaque `Vec<u8>`** payloads end to end. Includes a temporary `MeshFrame` mock
   framing (TTL + a `(type, txId)` dedup key around an opaque payload) with `// G4:`
-  anchors marking where the real bitmesh packet codec replaces it.
+  anchors marking where the real nimmesh packet codec replaces it.
 - **`gateway.rs`** — the `MeshGateway` seam (`submit(txWire) -> Receipt`) + a
   record-only `MockGateway`/mock-RPC that stores submissions and emits a `Receipt`
   (`Accepted`/`Expired`/`Failed`), **no real network**. `// G8:` anchor marks where the
@@ -736,7 +754,7 @@ Andjroo's Apple ID); this is the **Rust-core part of #5**.
 
 ### Added — G1: Rust core scaffold + UniFFI + CI
 
-- Cargo **workspace** (`Cargo.toml`) + `crates/bitmesh-core/` — the shared, headless
+- Cargo **workspace** (`Cargo.toml`) + `crates/nimmesh-core/` — the shared, headless
   Rust core crate, built with `crate-type = ["cdylib", "staticlib", "lib"]` so it can
   back an Android `.so`, an iOS `.xcframework`, and the local Rust unit tests.
 - UniFFI proc-macro surface (`uniffi::setup_scaffolding!()`) exposing a small but
@@ -761,9 +779,9 @@ Andjroo's Apple ID); this is the **Rust-core part of #5**.
 - Project bootstrap: `docs/GOAL.md` (north star, demo loop, core values),
   `docs/LOOP.md` (autonomous build contract, goals G1–G13, money-path gating),
   `docs/adr/0001` (native Swift + Kotlin + shared Rust core via UniFFI),
-  `docs/PROTOCOL.md` (bitmesh wire format), `docs/RISKS.md` (offline-payment hazards),
+  `docs/PROTOCOL.md` (nimmesh wire format), `docs/RISKS.md` (offline-payment hazards),
   `nimiq-stack.json` (fleet manifest, marked exempt — native, not a web PWA), and the
   CI plan in `docs/ci/`.
-- Outcome of the `bitmesh-design-spike` dynamic workflow (4 research agents + synthesis):
+- Outcome of the `nimmesh-design-spike` dynamic workflow (4 research agents + synthesis):
   empirically confirmed 139-byte signed transfer, RFC-8032 Ed25519 signing, Bitchat =
   Unlicense (portable), ~2 h validity window.

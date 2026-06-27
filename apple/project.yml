@@ -1,19 +1,19 @@
-name: BitmeshApp
+name: NimmeshApp
 options:
-  bundleIdPrefix: com.bitmesh
+  bundleIdPrefix: com.nimmesh
   deploymentTarget:
     iOS: "16.0"
   createIntermediateGroups: true
 packages:
-  BitmeshCore:
-    # Generated from the Rust core via: cd crates/bitmesh-core && cargo swift package -n BitmeshCore -p ios -y
-    path: ../crates/bitmesh-core/BitmeshCore
+  NimmeshCore:
+    # Generated from the Rust core via: cd crates/nimmesh-core && cargo swift package -n NimmeshCore -p ios -y
+    path: ../crates/nimmesh-core/NimmeshCore
 targets:
-  BitmeshApp:
+  NimmeshApp:
     type: application
     platform: iOS
     sources:
-      - BitmeshApp/Sources
+      - NimmeshApp/Sources
       # The UI is the real nimiq-ui WEB layer (webui/), hosted in a WKWebView (A1).
       # A folder reference preserves webui/'s subdir structure (nimiq/legacy, the
       # component dirs) so index.html's relative hrefs resolve from the app bundle.
@@ -21,24 +21,24 @@ targets:
         type: folder
         buildPhase: resources
     dependencies:
-      - package: BitmeshCore
+      - package: NimmeshCore
     info:
-      path: BitmeshApp/Info.plist
+      path: NimmeshApp/Info.plist
       properties:
-        CFBundleDisplayName: bitmesh
+        CFBundleDisplayName: nimmesh
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         # Mesh needs to advertise + scan, incl. in the background (ADR-0002)
-        NSBluetoothAlwaysUsageDescription: "bitmesh relays payments through nearby phones over Bluetooth so you can pay with no internet."
-        NSBluetoothPeripheralUsageDescription: "bitmesh relays payments through nearby phones over Bluetooth so you can pay with no internet."
+        NSBluetoothAlwaysUsageDescription: "nimmesh relays payments through nearby phones over Bluetooth so you can pay with no internet."
+        NSBluetoothPeripheralUsageDescription: "nimmesh relays payments through nearby phones over Bluetooth so you can pay with no internet."
         UIBackgroundModes:
           - bluetooth-central
           - bluetooth-peripheral
     settings:
       base:
-        PRODUCT_NAME: BitmeshApp
-        PRODUCT_BUNDLE_IDENTIFIER: com.bitmesh.app
+        PRODUCT_NAME: NimmeshApp
+        PRODUCT_BUNDLE_IDENTIFIER: com.nimmesh.app
         # UniFFI ships a hand-written C module map; Xcode 26 explicit modules
         # can't precompile it — use the classic implicit module build.
         SWIFT_ENABLE_EXPLICIT_MODULES: "NO"

@@ -1,4 +1,4 @@
-# nimiq.bitmesh
+# nimiq.nimmesh
 
 **Pay with NIM when there is no internet.** A native, true multi-hop **Bluetooth-LE
 mesh** wallet for Nimiq: sign a transaction on your phone with zero connectivity and let
@@ -43,7 +43,7 @@ Only Carol's one egress hop was ever online.
 | --- | ---- |
 | [docs/GOAL.md](docs/GOAL.md) | North star, the magic moment, the demo loop, core values |
 | [docs/LOOP.md](docs/LOOP.md) | The autonomous build contract — goals G1–G13, gating, guardrails |
-| [docs/PROTOCOL.md](docs/PROTOCOL.md) | The bitmesh wire format |
+| [docs/PROTOCOL.md](docs/PROTOCOL.md) | The nimmesh wire format |
 | [docs/RISKS.md](docs/RISKS.md) | Offline-payment hazard analysis + mitigations |
 | [docs/adr/](docs/adr/) | Architecture decisions |
 

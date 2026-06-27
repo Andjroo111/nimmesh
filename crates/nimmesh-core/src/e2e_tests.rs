@@ -39,7 +39,7 @@ use crate::transport::{mock_tx_id, MeshError};
 #[test]
 fn full_offline_pay_loop_settles_with_real_packets() {
     // origin <-> relay <-> gateway: the origin is NOT directly linked to the gateway, so
-    // the payment MUST traverse the relay at TTL=7 (real bitmesh packets the whole way).
+    // the payment MUST traverse the relay at TTL=7 (real nimmesh packets the whole way).
     let mut h = MeshHarness::new();
     let gw = Arc::new(MockGateway::new(default_network()));
     let origin = h.add_node("origin", &[1]);

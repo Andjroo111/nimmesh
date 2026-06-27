@@ -1,12 +1,12 @@
 [workspace]
 resolver = "2"
-members = ["crates/bitmesh-core"]
+members = ["crates/nimmesh-core"]
 
 [workspace.package]
-version = "0.19.0"
+version = "0.20.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/Andjroo111/nimiq.bitmesh"
+repository = "https://github.com/Andjroo111/nimiq.nimmesh"
 rust-version = "1.74"
 
 [workspace.dependencies]

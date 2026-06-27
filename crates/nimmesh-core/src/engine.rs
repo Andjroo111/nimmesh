@@ -487,7 +487,7 @@ pub(crate) fn process_inbound(
         }
     }
     let Ok(mut packet) = decode(bytes) else {
-        return; // not a well-formed bitmesh packet — drop.
+        return; // not a well-formed nimmesh packet — drop.
     };
     // G7: an `isRSR` gossip-sync reply is a targeted catch-up for a packet we missed.
     // Deliver it locally only (never re-flood — the unicast already reached us), then it

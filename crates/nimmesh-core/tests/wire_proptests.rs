@@ -1,4 +1,4 @@
-//! Property / fuzz tests for the G4 bitmesh wire codec.
+//! Property / fuzz tests for the G4 nimmesh wire codec.
 //!
 //! Two invariants the protocol layer must never violate (PROTOCOL.md, GOAL.md core
 //! value #6 — treat mesh input as hostile):
@@ -8,9 +8,9 @@
 //! 2. **Round-trip** — any structurally valid [`Packet`] / [`NimiqEnvelope`] survives
 //!    `encode` → `decode` byte-for-byte (padding is transparent).
 
-use bitmesh_core::codec::{decode, encode};
-use bitmesh_core::envelope::{decode_envelope, encode_envelope, NimiqEnvelope};
-use bitmesh_core::packet::{MessageType, Packet, PacketFlags};
+use nimmesh_core::codec::{decode, encode};
+use nimmesh_core::envelope::{decode_envelope, encode_envelope, NimiqEnvelope};
+use nimmesh_core::packet::{MessageType, Packet, PacketFlags};
 use proptest::prelude::*;
 
 /// Strategy for an arbitrary, well-formed [`Packet`].
@@ -109,7 +109,7 @@ proptest! {
     fn envelope_inside_packet_round_trips(env in arb_envelope(), sender in any::<[u8; 8]>()) {
         let payload = encode_envelope(&env).unwrap();
         let mut packet = Packet::new(MessageType::NimiqTx, sender, payload);
-        packet.recipient_id = Some(bitmesh_core::packet::BROADCAST_RECIPIENT);
+        packet.recipient_id = Some(nimmesh_core::packet::BROADCAST_RECIPIENT);
         let wire = encode(&packet).unwrap();
         let decoded_packet = decode(&wire).unwrap();
         let decoded_env = decode_envelope(&decoded_packet.payload).unwrap();

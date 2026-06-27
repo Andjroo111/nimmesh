@@ -1,6 +1,6 @@
-//! # bitmesh-core
+//! # nimmesh-core
 //!
-//! The shared, headless Rust core for **nimiq.bitmesh** — the single source of
+//! The shared, headless Rust core for **nimiq.nimmesh** — the single source of
 //! truth for everything safety- and protocol-critical in the offline Bluetooth-mesh
 //! Nimiq wallet. It is consumed by the native iOS (Swift) and Android (Kotlin) apps
 //! through **UniFFI**, so the exact same audited logic runs byte-identically on both
@@ -16,7 +16,7 @@
 //!
 //! - **G3** — offline Nimiq signing (Ed25519 over `serializeContent()`), TESTNET-only,
 //!   money-path / gated.
-//! - **G4** — the bitmesh wire packet codec (`nimiqTx` 0x30 / `nimiqTxReceipt` 0x31,
+//! - **G4** — the nimmesh wire packet codec (`nimiqTx` 0x30 / `nimiqTxReceipt` 0x31,
 //!   256-byte padding, TTL header).
 //! - **G6/G7** — TTL/hop relay, LRU dedup, GCS store-and-forward.
 //! - **G8** — gateway broadcast (`sendRawTransaction`), TESTNET-only, money-path / gated.
@@ -26,7 +26,7 @@
 
 uniffi::setup_scaffolding!();
 
-// G4: the bitmesh wire protocol — packet model, byte codec (encode/decode + PKCS#7
+// G4: the nimmesh wire protocol — packet model, byte codec (encode/decode + PKCS#7
 // padding), and the Nimiq TLV envelope. Pure Rust, non-money-path (opaque bytes only;
 // no signing, no broadcast). Lives in dedicated modules to keep this file the thin
 // FFI surface; the codec is the canonical wire implementation (LOOP.md).
@@ -257,7 +257,7 @@ pub fn network_is_loop_safe(network: NetworkId) -> bool {
 /// the binary boundary itself is sound.
 #[uniffi::export]
 pub fn echo_bytes(payload: Vec<u8>) -> Vec<u8> {
-    // G4: the bitmesh packet codec (encode/decode of nimiqTx 0x30 + nimiqTxReceipt
+    // G4: the nimmesh packet codec (encode/decode of nimiqTx 0x30 + nimiqTxReceipt
     // 0x31 frames, 256-byte padding, TTL header) replaces this trivial echo.
     payload
 }

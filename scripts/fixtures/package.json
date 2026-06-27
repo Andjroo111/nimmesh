@@ -1,5 +1,5 @@
 {
-  "name": "bitmesh-fixtures",
+  "name": "nimmesh-fixtures",
   "private": true,
   "type": "module",
   "description": "Generates @nimiq/core reference fixtures the Rust G3 signer is asserted byte-exact against. Run: bun install && bun run gen",

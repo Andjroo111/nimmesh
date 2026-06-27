@@ -1,6 +1,6 @@
-//! # bitmesh wire packet (G4)
+//! # nimmesh wire packet (G4)
 //!
-//! The in-memory model of a bitmesh wire packet plus its on-wire constants. This
+//! The in-memory model of a nimmesh wire packet plus its on-wire constants. This
 //! module owns the *shape* of a packet (header fields, flag bits, message types);
 //! the byte-level [`encode`](crate::codec::encode) / [`decode`](crate::codec::decode)
 //! live next door in [`crate::codec`], and the Nimiq TLV payload that rides inside a
@@ -62,7 +62,7 @@ pub const FLAG_IS_RSR: u8 = 0x10;
 /// signature presence) rather than stored independently in [`PacketFlags`].
 const DERIVED_FLAG_MASK: u8 = FLAG_HAS_RECIPIENT | FLAG_HAS_SIGNATURE;
 
-/// A bitmesh message type (header byte 1).
+/// A nimmesh message type (header byte 1).
 ///
 /// The standard relay/sync types (`fragment`, `requestSync`) are placeholders for
 /// later goals; the `nimiq*` types are this fork's reservations from the free
@@ -175,7 +175,7 @@ impl PacketFlags {
     }
 }
 
-/// A decoded bitmesh wire packet.
+/// A decoded nimmesh wire packet.
 ///
 /// Construct one directly (all fields are public) or via [`Packet::new`] for a sane
 /// `version = 1`, `ttl = 7` default. The `payload` is opaque to this layer; for a

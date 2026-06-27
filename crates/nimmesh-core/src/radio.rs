@@ -46,11 +46,11 @@ pub type PeerId = String;
 /// reported back asynchronously through [`crate::node::MeshNode::on_send_result`].
 #[uniffi::export(with_foreign)]
 pub trait BleRadio: Send + Sync {
-    /// Begin advertising this node as a bitmesh peripheral so neighbors can discover and
+    /// Begin advertising this node as a nimmesh peripheral so neighbors can discover and
     /// connect to it. Idempotent; non-blocking.
     fn start_advertising(&self);
 
-    /// Begin scanning for and connecting to neighboring bitmesh peripherals. Each
+    /// Begin scanning for and connecting to neighboring nimmesh peripherals. Each
     /// resulting connection is reported via `MeshNode::on_peer_connected`. Non-blocking.
     fn start_scanning(&self);
 

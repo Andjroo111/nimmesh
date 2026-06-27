@@ -1,4 +1,4 @@
-# nimiq.bitmesh — Autonomous Build Loop
+# nimiq.nimmesh — Autonomous Build Loop
 
 > The standing contract the self-paced build loop reads at the start of every cycle.
 > **GitHub issues + PRs are the single source of truth for progress; this file is the
@@ -14,7 +14,7 @@ mesh until one device with a connection broadcasts it. Testnet-first, money-path
 ## Stack (see [ADR-0001](./adr/0001-native-rust-core-uniffi-stack.md) + [ADR-0002](./adr/0002-ble-layer.md))
 
 - **Shared Rust core** (one crate) owns everything safety- and protocol-critical:
-  Nimiq signing (Ed25519 + deterministic serializer), the bitmesh packet codec,
+  Nimiq signing (Ed25519 + deterministic serializer), the nimmesh packet codec,
   TTL/hop relay, LRU dedup, GCS gossip-sync store-and-forward, Noise_XX session crypto,
   gateway broadcast queue, and the `MeshNode` orchestrator. **No WASM, no consensus
   client.** Headless unit/property/fuzz tested. ~95% of the code is pure Rust.
@@ -83,7 +83,7 @@ Scaffold + mock harness + codec first (all CI-testable headless), then the money
 | G1  | Scaffold + shared Rust core skeleton + dev-build + CI       |     no     |    yes*    | —             | ✅ done |
 | G2  | Provider seam + `MockMeshTransport` (full pay loop in CI)   |     no     |    yes     | G1            | ✅ done |
 | G3  | Offline Nimiq signing core (TESTNET) — `signOffline()`      |   **yes**  |   **no**   | G1            | 🟡 Rust core done (byte-exact) · native enclave/Pay-delegate pending (on-device) |
-| G4  | bitmesh wire protocol + packet codec (pure Rust)           |     no     |    yes     | G1            | ✅ done |
+| G4  | nimmesh wire protocol + packet codec (pure Rust)           |     no     |    yes     | G1            | ✅ done |
 | G5  | BLE mesh transport — concurrent central+peripheral (iOS+Android) | no   |    yes     | G2, G4        | 🟡 Rust core done · native shim pending (Xcode/Apple ID) |
 | G6  | Relay engine — TTL/hop-cap + dedup + degree-adaptive + frag |     no     |    yes     | G4, G5        | ✅ done |
 | G7  | Store-and-forward — GCS gossip-sync catch-up               |     no     |    yes     | G6            | ✅ done |
@@ -206,7 +206,7 @@ architecture = thin native shim (ADR-0002); native build host = Mac Mini primary
 
 ## Milestone — LIVE testnet proof (2026-06-26)
 
-**A transfer signed by `bitmesh-core` settled on the real Nimiq Albatross testnet.**
+**A transfer signed by `nimmesh-core` settled on the real Nimiq Albatross testnet.**
 G3 signer → G8 `HttpGatewayRpc::send_raw_transaction` → confirmed in block **4428402**
 (networkId 5, 139-byte basic transfer, fee 0, `executionResult=true`, 248 confirmations).
 tx `9be04b74c02c277de2c77ae11e8f0069fb8387cb24c8d609cc6b1da9d0e5c570` —
@@ -217,17 +217,17 @@ the signer — but our live example drives our core end-to-end for every money-c
 
 ## Cycle log
 
-- **2026-06-26** — Loop initialized. Ran the `bitmesh-design-spike` dynamic workflow
+- **2026-06-26** — Loop initialized. Ran the `nimmesh-design-spike` dynamic workflow
   (4 research agents + synthesis). Confirmed empirically: signed basic transfer = 139 B;
   Nimiq single-sig = RFC-8032 Ed25519 (verifies under WebCrypto); Bitchat = Unlicense
   (portable); validity window = 120 batches × 60 blocks ≈ **2 h** (the mesh relay budget).
   Picked the stack (ADR-0001), wrote GOAL/LOOP/PROTOCOL/RISKS, filed G1–G13 + the
   `needs:owner` decisions issue. Next: G1 scaffold.
 - **2026-06-26** — Installed Rust (rustup stable) on the Mini → build + gate locally.
-  **G1 merged** (PR #15): `bitmesh-core` Cargo workspace + UniFFI proc-macro surface
+  **G1 merged** (PR #15): `nimmesh-core` Cargo workspace + UniFFI proc-macro surface
   (`core_version`/`NetworkId`/`echo_bytes`, 5 tests) + `uniffi-bindgen` (Swift+Kotlin
   bindings generate, no Xcode/Android) + size-guard + CI `core` job — all green, verify
-  passed. Ran the `bitmesh-ble-layer-decision` workflow → **ADR-0002** (thin native radio
+  passed. Ran the `nimmesh-ble-layer-decision` workflow → **ADR-0002** (thin native radio
   shim, Mac Mini primary build host; both decided on merit). Building G2 (mock pay-loop
   harness) + G4 (wire codec) in parallel isolated worktrees. Next wall: G3 (money-path).
 - **2026-06-26** — **G4 merged** (PR #16, v0.2.0): wire packet codec + Nimiq TLV envelope,
@@ -312,7 +312,7 @@ the signer — but our live example drives our core end-to-end for every money-c
   foundation merge. Loop runs A+B autonomously, parks C/D/E for Andjroo. Starting **Cycle 1 = A1**.
 - **2026-06-27** — **A1 merged** (PR #37, v0.10.0, #33 closed): the iOS app now hosts the real
   `nimiq-ui` web layer in a `WKWebView` (`WebHostView.swift`) bridged to the Rust core; the
-  rejected SwiftUI `HomeView`/`Theme` are deleted. Read-only `bitmesh` JS bridge
+  rejected SwiftUI `HomeView`/`Theme` are deleted. Read-only `nimmesh` JS bridge
   (version/network/meshStatus) — no keys/sign/broadcast, non-money-path. **Proven on the iOS 26.5
   simulator:** WebView renders the wallet UI + the mesh bar shows `core 0.10.0` sourced from
   `coreVersion()` through the bridge (JS↔Swift↔Rust round-trip on device). `nq lint` 0 errors;
@@ -330,7 +330,7 @@ the signer — but our live example drives our core end-to-end for every money-c
 - **2026-06-27** — **A3 done** (#35): Send + Receive screens, built against **authentic live
   testnet-wallet captures** (a reusable Playwright capture pipeline now lives in nimiq-branding-cli
   + logged-in references). Per the verification finding, **Send/Receive moved to a bottom action
-  bar** (Receive | Send | scan) matching the real mobile wallet, with bitmesh's **mesh status line
+  bar** (Receive | Send | scan) matching the real mobile wallet, with nimmesh's **mesh status line
   right above it**. **Receive NIM** sheet = identicon + 3×3 Fira-Mono address grid (`address-display`)
   + "Create request link" + a real Nimiq-blue **QR** (`qr-creator`, on demand). **Send Transaction**
   sheet = Contacts + recent-identicon row + "ENTER ADDRESS" 3×3 input grid (auto-advancing) +

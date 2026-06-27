@@ -6,10 +6,10 @@
 //! `live_testnet_broadcast.rs` (which proves the same path against the real testnet).
 //!
 //! The origin is **not** directly linked to the gateway, so the payment must traverse the
-//! relay over real bitmesh packets — exactly the offline hop the project exists for.
+//! relay over real nimmesh packets — exactly the offline hop the project exists for.
 //!
 //! ```text
-//! cargo run -p bitmesh-core --example mesh_demo
+//! cargo run -p nimmesh-core --example mesh_demo
 //! ```
 //!
 //! Non-money-path: the `txWire` here is an opaque stand-in (no real signing), the gateway is a
@@ -19,13 +19,13 @@ use std::sync::Arc;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
-use bitmesh_core::default_network;
-use bitmesh_core::gateway::MockGateway;
-use bitmesh_core::mock_radio::MeshHarness;
-use bitmesh_core::settlement::PaymentStatus;
+use nimmesh_core::default_network;
+use nimmesh_core::gateway::MockGateway;
+use nimmesh_core::mock_radio::MeshHarness;
+use nimmesh_core::settlement::PaymentStatus;
 
 fn main() {
-    println!("nimiq.bitmesh — headless mesh pay-loop demo (mock gateway, no network)\n");
+    println!("nimiq.nimmesh — headless mesh pay-loop demo (mock gateway, no network)\n");
 
     let mut h = MeshHarness::new();
     let gw = Arc::new(MockGateway::new(default_network()));

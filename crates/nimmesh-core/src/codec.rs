@@ -1,4 +1,4 @@
-//! # bitmesh packet codec (G4)
+//! # nimmesh packet codec (G4)
 //!
 //! Byte-level [`encode`] / [`decode`] for a [`Packet`], plus the PKCS#7-style block
 //! padding that gives every frame one of a handful of fixed sizes for traffic-analysis

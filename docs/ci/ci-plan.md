@@ -1,4 +1,4 @@
-# CI plan — nimiq.bitmesh
+# CI plan — nimiq.nimmesh
 
 **Rust is installed on the Mini**, so the **Rust core is gated LOCALLY** (`cargo test`
 + `cargo clippy` + `cargo fmt`). **GitHub Actions is a backstop + the cross-platform

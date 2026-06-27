@@ -1,8 +1,8 @@
 // gen-fixtures.mjs — produce REFERENCE FIXTURES from @nimiq/core (v2.7.0) for the
-// bitmesh-core G3 byte-exact signer. The Rust signer's output MUST equal these
+// nimmesh-core G3 byte-exact signer. The Rust signer's output MUST equal these
 // byte-for-byte (rawHex, txHash, serializeContent, proof, address round-trip).
 // Run: bun install && bun run gen
-//   -> writes crates/bitmesh-core/tests/fixtures/g3_signing_fixtures.json (the committed,
+//   -> writes crates/nimmesh-core/tests/fixtures/g3_signing_fixtures.json (the committed,
 //      canonical copy the Rust acceptance test asserts against).
 import * as Nimiq from "@nimiq/core";
 const NETWORK_TESTNET = 5;
@@ -19,7 +19,7 @@ const cases = [
 const out = { meta: {
   generator: "@nimiq/core", version: Nimiq.version ?? "2.7.0",
   network: "testnet", networkId: NETWORK_TESTNET, fee: "0",
-  note: "Byte-exact reference for bitmesh-core src/nimiq G3. serializeContent=67B, proof=98B, rawHex=139B basic-format transfer. txHash=Blake2b256(serializeContent)."
+  note: "Byte-exact reference for nimmesh-core src/nimiq G3. serializeContent=67B, proof=98B, rawHex=139B basic-format transfer. txHash=Blake2b256(serializeContent)."
 }, fixtures: [] };
 for (const c of cases) {
   const skBytes = seed(c.priv);
@@ -50,7 +50,7 @@ for (const c of cases) {
   });
 }
 const path = new URL(
-  "../../crates/bitmesh-core/tests/fixtures/g3_signing_fixtures.json",
+  "../../crates/nimmesh-core/tests/fixtures/g3_signing_fixtures.json",
   import.meta.url,
 ).pathname;
 await Bun.write(path, JSON.stringify(out, null, 2) + "\n");

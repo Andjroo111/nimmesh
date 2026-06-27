@@ -1,4 +1,4 @@
-# nimiq.bitmesh — Wire Protocol
+# nimiq.nimmesh — Wire Protocol
 
 > Adapted from **Bitchat** (`permissionlesstech/bitchat`), whose `LICENSE` is **The
 > Unlicense** (public-domain dedication) — free to copy, modify, fork, and embed with
@@ -89,7 +89,7 @@ bridge (kind 14 → 13 → 1059) is an alternative internet escape hatch for tar
 
 ## Gateway broadcast (the one online hop)
 
-A **gateway** = a bitmesh node that also has internet + a Nimiq RPC client. On
+A **gateway** = a nimmesh node that also has internet + a Nimiq RPC client. On
 `type == 0x30` it:
 
 1. **relays anyway** (TTL decrement) so other gateways can also try — mempool dedups on

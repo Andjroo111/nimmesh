@@ -1,4 +1,4 @@
-# Mainnet gating — how nimiq.bitmesh stays on testnet until Andjroo says otherwise
+# Mainnet gating — how nimiq.nimmesh stays on testnet until Andjroo says otherwise
 
 > **One sentence:** every build, test, tool, and autonomous loop in this repo targets the
 > Nimiq **testnet** (`networkId = 5`); flipping any of it to **mainnet** (`networkId = 24`)
@@ -12,7 +12,7 @@ the `docs/adr/` decisions.
 
 ## 1. Why this document exists
 
-The whole point of bitmesh is to move **real value** with no internet. That makes the
+The whole point of nimmesh is to move **real value** with no internet. That makes the
 money-path the highest-stakes surface in the codebase: a signing bug, a replayed tx, or a
 premature "paid" can cost a user funds that cannot be clawed back. Testnet gives us a network
 that behaves byte-identically to mainnet (same Albatross consensus, same tx format, proven by
@@ -93,6 +93,6 @@ pay loop — `submit → flood → TTL relay → dedup → gateway → receipt �
 headless with **no network** (mock gateway) via `examples/mesh_demo.rs`:
 
 ```text
-cargo run -p bitmesh-core --example mesh_demo            # headless mock loop, no network
-cargo run -p bitmesh-core --example live_testnet_broadcast --features gateway-rpc   # real testnet
+cargo run -p nimmesh-core --example mesh_demo            # headless mock loop, no network
+cargo run -p nimmesh-core --example live_testnet_broadcast --features gateway-rpc   # real testnet
 ```

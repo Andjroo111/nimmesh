@@ -1,12 +1,12 @@
-//! Standalone `uniffi-bindgen` entry point for bitmesh-core.
+//! Standalone `uniffi-bindgen` entry point for nimmesh-core.
 //!
 //! Lets us generate the Swift and Kotlin foreign-language bindings from the compiled
-//! `bitmesh_core` library **without** Xcode or the Android SDK/NDK — which is exactly
+//! `nimmesh_core` library **without** Xcode or the Android SDK/NDK — which is exactly
 //! what G1 needs (native toolchains land at G5). Once the `cdylib` is built, run e.g.:
 //!
 //! ```text
 //! cargo run --bin uniffi-bindgen -- generate \
-//!     --library target/debug/libbitmesh_core.dylib \
+//!     --library target/debug/libnimmesh_core.dylib \
 //!     --language swift --language kotlin \
 //!     --out-dir bindings/generated
 //! ```
