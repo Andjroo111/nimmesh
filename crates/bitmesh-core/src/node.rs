@@ -278,6 +278,33 @@ impl MeshNode {
         self.ctx.cached_balance(&addr)
     }
 
+    /// G16: the honest "will it send?" answer from this node's live mesh state — `Online`
+    /// (a gateway is reachable: this node has internet, or it has heard a gateway head beacon
+    /// with peers connected), `Meshed` (peers but no gateway yet — a send relays + waits via
+    /// store-and-forward), or `Offline` (no peers — queued until a device is in range).
+    /// Read-only, non-blocking; reads only public mesh state, no keys.
+    pub fn reachability(&self) -> crate::reachability::Reachability {
+        crate::reachability::assess_reachability(
+            self.ctx.gateway.is_some(),
+            self.ctx.peer_degree() as u32,
+            self.ctx.cached_head().is_some(),
+        )
+    }
+
+    /// G16: blocks remaining before a signed tx's validity window closes, judged against the
+    /// freshest head this node has heard (G9). `None` if it can't be judged (no head heard, or
+    /// no `valid_until`); `Some(0)` once expired. Pair with `secs_until_expiry` for a "~N min
+    /// left" stamp and the re-sign nudge near expiry. Read-only, non-blocking, no keys.
+    pub fn blocks_until_expiry(&self, valid_until: u32) -> Option<u32> {
+        crate::reachability::blocks_until_expiry(self.ctx.cached_head(), Some(valid_until))
+    }
+
+    /// G16: the validity countdown as an estimated number of seconds (~1 block/s). `None` when
+    /// it can't be judged. Non-blocking, read-only.
+    pub fn secs_until_expiry(&self, valid_until: u32) -> Option<u32> {
+        crate::reachability::secs_until_expiry(self.ctx.cached_head(), Some(valid_until))
+    }
+
     /// G20: report this device's battery so the relay can be a **good citizen without
     /// costing the user**. The native shim calls this on battery changes (iOS `UIDevice`,
     /// Android `BatteryManager`): the relay then carries everything while charging / high,

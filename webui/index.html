@@ -158,6 +158,12 @@
   .send-stub { display: flex; align-items: center; gap: 8px; justify-content: center; margin: 18px 24px 0;
     padding: 10px 14px; border-radius: 8px; background: rgba(5,130,202,.07); color: #0582ca;
     font-size: 12.5px; font-weight: 600; }
+  /* G16: the "will it send?" reachability line — a static status dot (no pulse) + honest copy. */
+  .send-reach { display: flex; align-items: center; gap: 10px; margin: 6px 24px 0; padding: 11px 14px;
+    border-radius: 8px; background: rgba(31,35,72,.04); font-size: 13px; font-weight: 600; color: rgba(31,35,72,.7); }
+  .send-reach .dot { width: 9px; height: 9px; border-radius: 50%; background: #21bca5; flex: 0 0 auto; }
+  .send-reach.meshed .dot { background: #fc8702; }
+  .send-reach.offline .dot { background: rgba(31,35,72,.3); }
 </style>
 </head>
 <body>
@@ -306,6 +312,12 @@
     <div class="title">Send Transaction</div>
     <button class="s-close sheet-close" aria-label="Close"><svg viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
   </div>
+  <!-- G16: the honest "will it send?" answer. Static reassurance here; on device the bridge
+       sets it live to Online / Meshed / Offline from the node's mesh reach (Phase D). -->
+  <div class="send-reach" id="send-reach">
+    <span class="dot"></span>
+    <span id="send-reach-text">Relays over the mesh and reaches the network when a connected device is online</span>
+  </div>
   <div class="contacts-row">
     <div class="contacts-btn">
       <svg viewBox="0 0 24 28" fill="none"><rect x="2" y="2" width="20" height="24" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="11" r="3.2" fill="currentColor"/><path d="M6.5 20.5c0-3 2.5-5 5.5-5s5.5 2 5.5 5" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>
@@ -389,6 +401,21 @@
     banner.classList.toggle('nq-orange', !isCritical);     // orange words variant
   }
 
+  // G16: the honest "will it send?" line on the Send sheet, from the node's mesh reach.
+  function applyReachability(r) {
+    const el = document.getElementById('send-reach');
+    const txt = document.getElementById('send-reach-text');
+    if (!el || !txt) return;
+    const MAP = {
+      online: ['', 'A gateway is reachable, so this sends to the network now'],
+      meshed: ['meshed', 'Connected to the mesh, relaying until it reaches the network'],
+      offline: ['offline', 'No devices nearby yet, queued until one is in range'],
+    };
+    const [cls, copy] = MAP[r] || ['', 'Relays over the mesh and reaches the network when a connected device is online'];
+    el.className = 'send-reach' + (cls ? ' ' + cls : '');
+    txt.textContent = copy;
+  }
+
   // A1/A4: the mesh status line is always visible (the obvious "this is the offline mesh"
   // differentiator). On device the bridge enriches it with live peers/network/core.
   if (window.bitmesh) {
@@ -397,6 +424,13 @@
       document.getElementById('meshbar-text').textContent =
         `mesh ${m.state} · ${m.peers} nearby · ${n.network} · core ${v.core}`;
     } catch (e) { console.error('bridge probe failed', e); }
+    // G16: light up the Send sheet's "will it send?" line from the node's reach. With no
+    // native radio yet (Phase D) the bridge honestly reports offline; once the shim runs a
+    // MeshNode, the same call returns live Online / Meshed / Offline.
+    try {
+      const r = await bitmesh.reachability();
+      applyReachability(r.reachability);
+    } catch (e) { /* keep the static reassurance line if reachability is unavailable */ }
     // G19: ask the policy about the balance the home is showing (752 NIM). No keys/balance
     // live in-app yet (C1 keys + Phase D node), so this is the displayed demo balance; once
     // real keys + a real balance land, the same call drives the nudge for real. No key/seed

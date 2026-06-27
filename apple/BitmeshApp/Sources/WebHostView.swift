@@ -5,7 +5,8 @@ import BitmeshCore
 /// Hosts the real `nimiq-ui` web wallet (`webui/index.html`, bundled as a folder
 /// reference) in a `WKWebView` and bridges it to the Rust core (A1).
 ///
-/// The bridge is **read-only**: `version`, `network`, `meshStatus`, `backupUrgency` (G19).
+/// The bridge is **read-only**: `version`, `network`, `meshStatus`, `reachability` (G16),
+/// `backupUrgency` (G19).
 /// It signs nothing, broadcasts nothing, and never sees key/seed material — so it stays firmly
 /// non-money-path. The signing path (Send → enclave → queue) is wired separately, behind
 /// Andjroo, in the money-path slice (C1). The radio is not native yet (Phase D), so
@@ -76,6 +77,8 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         version: function () { return call('version'); },
         network: function () { return call('network'); },
         meshStatus: function () { return call('meshStatus'); },
+        // G16: the honest "will it send?" reach (online|meshed|offline). Read-only.
+        reachability: function () { return call('reachability'); },
         // G19: how hard to nudge a backup, from the account's public state. Read-only —
         // no key/seed crosses; the Rust policy decides (none|gentle|important|critical).
         backupUrgency: function (s) { return call('backupUrgency', s || {}); }
@@ -107,6 +110,10 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         case "meshStatus":
             // No native BLE radio yet (Phase D). Report the honest state, not a fake one.
             return (true, ["state": "offline", "peers": 0])
+        case "reachability":
+            // G16: with no native radio yet (Phase D) there is no mesh to reach — the honest
+            // answer is `offline`. Once the shim runs a `MeshNode`, return `node.reachability()`.
+            return (true, ["reachability": "offline"])
         case "backupUrgency":
             // G19: read-only — the Rust policy decides how hard to nudge a backup from the
             // account's public state. No key/seed is read here; only public facts cross.

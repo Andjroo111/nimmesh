@@ -128,7 +128,7 @@ Rust-core logic (cargo-tested) + web UI (screenshot-verified). None handle keys 
 | #   | Goal                                                          | money-path | auto-merge | deps | status |
 | --- | ----------------------------------------------------------- | :--------: | :--------: | ---- | ------ |
 | G15 | Balance over mesh — gateway balance query + fiat + "synced X ago"; last-known → accounts-proof | no | yes | A2, G9 | 🟡 core+FFI done · UI stamp + accounts-proof = follow-ups |
-| G16 | Reachability + smart send queue ("will it send?")            | no | yes | A3 | todo |
+| G16 | Reachability + smart send queue ("will it send?")            | no | yes | A3 | ✅ done |
 | G17 | Settlement closure both ways (receipt → "landed" for sender + receiver) | no | yes | A3 | todo |
 | G18 | Contacts + amount requests (request packet carries no keys)  | no | yes | A3 | todo |
 | G19 | Backup nudge (self-custody protection)                       | no | yes | A2 | ✅ done |
@@ -394,3 +394,15 @@ the signer — but our live example drives our core end-to-end for every money-c
   goals G19+G20 shipped.** Remaining Phase B (G16 reachability/smart-queue, G17 settlement-closure,
   G18 contacts/requests) are still autonomous-safe; G15's UI stamp + G20's UI line + battery wiring
   are batched for Phase D. Phase C (money path) / D (native shim) / E (vision) remain Andjroo-gated.
+- **2026-06-27** — **G16 done** (#27, v0.14.0, non-money-path → auto-merge): "will it send?"
+  reachability + the validity-window countdown — the offline-pay anxiety, answered honestly. New
+  `reachability.rs` (pure, clock-free, key-free): `assess_reachability(self_gateway, peers,
+  heard_gateway) -> Reachability` (Online = a gateway is reachable / Meshed = peers but no gateway,
+  relays + waits via G7 / Offline = no peers); `blocks_until_expiry`/`secs_until_expiry` (~1 block/s)
+  render the G9 validity countdown; `needs_resign` nudges in the last ~600 blocks. Node FFI
+  `reachability()` + `blocks_until_expiry`/`secs_until_expiry`; iOS bridge `reachability` (honest
+  `offline` until the radio runs); the Send sheet leads with the honest "will it send?" line (static
+  dot + live-on-device copy). **183 tests** (7 new), clippy/fmt/size-guard clean, `nq lint` 0 errors,
+  iOS BUILD SUCCEEDED, reachability line screenshot-verified at 390px. **Honest scope:** live reach +
+  countdown + the signed-tx auto-send queue need a running in-app `MeshNode` (Phase D) + the signing
+  seam (C1); G16 ships the signal layer + FFI those read. Next: **G17** (settlement closure both ways).

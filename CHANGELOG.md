@@ -2,6 +2,34 @@
 
 All notable changes to nimiq.bitmesh. Each PR bumps the version and adds an entry.
 
+## [0.14.0] — 2026-06-27
+
+### Added — G16: "will it send?" reachability + validity-window countdown — non-money-path
+
+The biggest anxiety of paying offline is not knowing whether the payment can get anywhere. G16
+turns the node's existing mesh state into an honest answer, and tells the user how long a signed tx
+stays spendable.
+
+- `crates/bitmesh-core/src/reachability.rs` (new): pure, clock-free, key-free signals over public
+  state. `assess_reachability(self_is_gateway, peer_count, heard_gateway) -> Reachability`
+  (`Online` = a gateway is reachable; `Meshed` = peers but no gateway yet, relays + waits via G7
+  store-and-forward; `Offline` = no peers). `blocks_until_expiry` / `secs_until_expiry` (~1 block/s)
+  render the G9 validity-window countdown; `needs_resign` fires a re-sign nudge in the last ~600
+  blocks. 7 unit tests.
+- `node.rs` (FFI): `reachability()` (from the live peer count + a heard gateway beacon + whether this
+  node is itself a gateway), `blocks_until_expiry(valid_until)`, `secs_until_expiry(valid_until)`.
+- `apple/.../WebHostView.swift`: read-only bridge gains `reachability` (honest `offline` until the
+  native radio runs — there is no mesh to reach yet).
+- `webui/index.html`: the Send sheet now leads with the honest "will it send?" line — a static status
+  dot (no pulse) + copy, driven live by the bridge (`Online` / `Meshed` / `Offline`) when a node runs.
+
+**Honest scope:** the live reach + the validity countdown + the actual queue-and-auto-send of a
+*signed* tx need a running in-app `MeshNode` (Phase D) and the signing seam (C1, money-path). G16 ships
+the honest signal layer + FFI both of those read; the Rust assessment is the audited deliverable.
+
+183 tests green (cargo), `cargo clippy -D warnings` + `cargo fmt --check` + size-guard clean, `nq lint`
+0 errors, iOS `xcodebuild` BUILD SUCCEEDED, Send-sheet reachability line screenshot-verified at 390px.
+
 ## [0.13.0] — 2026-06-27
 
 ### Added — G20: good-citizen + battery-aware relay — non-money-path

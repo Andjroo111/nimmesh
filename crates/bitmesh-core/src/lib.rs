@@ -97,6 +97,14 @@ pub mod beacon;
 // head-beacon hash (follow-up). Read-only public state — no keys, no signing (non-money-path).
 pub mod balance;
 
+// G16: "will it send?" reachability + the validity-window countdown (non-money-path).
+// `reachability` turns the node's public mesh state (peer count + a heard gateway head
+// beacon, G9 + whether this node is itself a gateway) into an honest `Reachability`
+// (Online → Meshed → Offline), and renders how many blocks/seconds a signed tx has left
+// before its validity window closes (+ a near-expiry re-sign nudge). Pure, clock-free,
+// key-free signals over existing state; the actual signed-tx queue/auto-send is C1 (money-path).
+pub mod reachability;
+
 // G20: good-citizen + battery-aware relay (non-money-path). `citizen` owns the relay
 // `RelayPosture` derived from the device battery (Full → Reduced → Frugal → Off: relay
 // everything while charging/high, damp when mid, carry only the money path when low, stop
