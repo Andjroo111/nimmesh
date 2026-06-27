@@ -30,6 +30,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 use std::time::Instant;
 
+use crate::balance::{BalanceCache, BalanceResponse, CachedBalance};
 use crate::beacon::{
     decode_beacon, encode_beacon, is_expired, BeaconScheduler, HeadBeacon, HeadCache,
 };
@@ -39,6 +40,7 @@ use crate::envelope::{decode_envelope, encode_envelope, NimiqEnvelope};
 use crate::fragment::{parse_fragment, Reassembler};
 use crate::gateway::{MeshGateway, ReceiptStatus, SubmitContext};
 use crate::gcs::GcsFilter;
+use crate::nimiq::address::Address;
 use crate::nimiq::VALIDITY_WINDOW;
 use crate::packet::{MessageType, Packet, BROADCAST_RECIPIENT, DEFAULT_TTL, PEER_ID_LEN};
 use crate::radio::BleRadio;
@@ -71,9 +73,9 @@ const RECEIPT_PAYLOAD_LEN: usize = 33;
 /// fields, never the opaque payload (PROTOCOL.md dedup intent). For a flooded `nimiqTx`
 /// this header tuple is the packet's identity; the endpoints separately correlate
 /// receipts by the envelope `txId`.
-type RelayKey = (u8, [u8; PEER_ID_LEN], u64);
+pub(crate) type RelayKey = (u8, [u8; PEER_ID_LEN], u64);
 
-fn relay_key(p: &Packet) -> RelayKey {
+pub(crate) fn relay_key(p: &Packet) -> RelayKey {
     (p.msg_type.to_u8(), p.sender_id, p.timestamp_ms)
 }
 
@@ -121,6 +123,9 @@ pub struct WorkerCtx {
     /// anchor `validityStartHeight` — so it is shared (behind a `Mutex`), unlike the
     /// worker-thread-local [`WorkerState`].
     head: Mutex<HeadCache>,
+    /// G15: this node's last-known per-address balances, heard via `nimiqBalanceResponse`
+    /// (`0x34`). Shared (the FFI `cached_balance` reads it); monotonic by head height.
+    balances: Mutex<BalanceCache>,
     /// Monotonic per-node sequence used as the packet `timestamp_ms` so each flooded
     /// packet has a unique blind [`RelayKey`] (the mock's deterministic clock).
     seq: AtomicU64,
@@ -140,6 +145,8 @@ pub struct WorkerCtx {
     /// G9: count of `nimiqTx` packets dropped (GC'd) because their validity window had
     /// already closed against the cached head — neither relayed nor stored.
     expired_dropped: AtomicUsize,
+    /// G15: count of `nimiqBalanceResponse` frames this gateway has answered + flooded.
+    pub(crate) balance_answered: AtomicUsize,
 }
 
 impl WorkerCtx {
@@ -156,6 +163,7 @@ impl WorkerCtx {
             origin: Mutex::new(OriginShared::default()),
             settled: Condvar::new(),
             head: Mutex::new(HeadCache::default()),
+            balances: Mutex::new(BalanceCache::new()),
             seq: AtomicU64::new(1),
             forwarded: AtomicUsize::new(0),
             send_attempts: AtomicUsize::new(0),
@@ -166,6 +174,7 @@ impl WorkerCtx {
             rsr_received: AtomicUsize::new(0),
             beacon_emitted: AtomicUsize::new(0),
             expired_dropped: AtomicUsize::new(0),
+            balance_answered: AtomicUsize::new(0),
         }
     }
 
@@ -234,6 +243,10 @@ impl WorkerCtx {
     pub(crate) fn expired_dropped(&self) -> usize {
         self.expired_dropped.load(Ordering::Relaxed)
     }
+    #[cfg(test)]
+    pub(crate) fn balance_answered(&self) -> usize {
+        self.balance_answered.load(Ordering::Relaxed)
+    }
 
     /// G9: cache a head beacon (monotonic; validates `networkId`). Returns whether the
     /// cached head advanced. Called by the worker on a `nimiqHeadBeacon` receipt.
@@ -246,6 +259,18 @@ impl WorkerCtx {
     /// head it has heard, never a stale one).
     pub(crate) fn cached_head(&self) -> Option<u32> {
         self.head.lock().unwrap().latest()
+    }
+
+    /// G15: cache a balance response (monotonic by head height; `networkId`-guarded). Returns
+    /// whether it updated. Called by the worker on a `nimiqBalanceResponse` receipt (and by a
+    /// gateway for its own answer).
+    pub(crate) fn cache_balance(&self, resp: &BalanceResponse) -> bool {
+        self.balances.lock().unwrap().observe(resp)
+    }
+
+    /// G15: the last-known balance for `address`, or `None`. The FFI `cached_balance` reads it.
+    pub(crate) fn cached_balance(&self, address: &Address) -> Option<CachedBalance> {
+        self.balances.lock().unwrap().get(address)
     }
 
     pub(crate) fn status(&self, tx_id: &TxId) -> PaymentStatus {
@@ -307,7 +332,7 @@ impl WorkerCtx {
     }
 
     /// Build a fresh broadcast packet originated by this node.
-    fn build_packet(&self, msg_type: MessageType, payload: Vec<u8>) -> Packet {
+    pub(crate) fn build_packet(&self, msg_type: MessageType, payload: Vec<u8>) -> Packet {
         let mut p = Packet::new(msg_type, self.sender_id, payload);
         p.recipient_id = Some(BROADCAST_RECIPIENT);
         p.ttl = DEFAULT_TTL;
@@ -324,7 +349,7 @@ impl WorkerCtx {
 
     /// Fire-and-forget flood of `bytes` to every connected peer. Snapshots the peer set
     /// first so the radio is never called while holding the lock (no re-entrancy hazard).
-    fn flood(&self, bytes: Vec<u8>) {
+    pub(crate) fn flood(&self, bytes: Vec<u8>) {
         self.flood_excluding(bytes, None);
     }
 
@@ -348,7 +373,7 @@ impl WorkerCtx {
 /// injectable jitter/RNG), the fragment [`Reassembler`], and a monotonic clock used as
 /// the reassembler's logical time.
 pub(crate) struct WorkerState {
-    relay_seen: DedupCache<RelayKey>,
+    pub(crate) relay_seen: DedupCache<RelayKey>,
     gateway_seen: DedupCache<TxId>,
     policy: RelayPolicy,
     reassembler: Reassembler,
@@ -384,7 +409,7 @@ impl WorkerState {
 /// G7: remember a packet in the recent-packet cache so this node can later serve it to a
 /// peer catching up via gossip-sync. Bumps `recent_stored` only on a fresh insert (the
 /// store-and-forward "no duplicates" invariant the rejoin test asserts).
-fn remember(ctx: &WorkerCtx, st: &mut WorkerState, packet: &Packet) {
+pub(crate) fn remember(ctx: &WorkerCtx, st: &mut WorkerState, packet: &Packet) {
     let now = st.now_ms();
     if st.recent.insert(packet_id(packet), packet.clone(), now) {
         ctx.recent_stored.fetch_add(1, Ordering::Relaxed);
@@ -517,6 +542,14 @@ fn dispatch_packet(ctx: &WorkerCtx, packet: Packet, src: Option<&str>, st: &mut 
         MessageType::NimiqTxReceipt => handle_receipt(ctx, packet, src, st),
         // G9: a gateway's head beacon — cache the freshest head, then flood it onward.
         MessageType::NimiqHeadBeacon => handle_head_beacon(ctx, packet, src, st),
+        // G15: a balance query — a gateway answers it; everyone relays it onward.
+        MessageType::NimiqBalanceQuery => {
+            crate::balance::handle_balance_query(ctx, packet, src, st)
+        }
+        // G15: a balance response — cache the (unverified) balance, then flood it onward.
+        MessageType::NimiqBalanceResponse => {
+            crate::balance::handle_balance_response(ctx, packet, src, st)
+        }
         // G6: the fragment path — carry the fragment onward and feed the reassembler.
         MessageType::Fragment => handle_fragment(ctx, packet, src, st),
         // G11 `noiseEncrypted` (0x11) and any other relayable type: blind dedup + remember
@@ -694,7 +727,12 @@ fn dispatch_reassembled(ctx: &WorkerCtx, packet: Packet, st: &mut WorkerState) {
 /// 3. **jitter** — a small injected delay before the write desynchronises neighbours
 ///    (zero under the test policy);
 /// 4. **source exclusion** — never echo back out the link it arrived on (`src`).
-fn relay_onward(ctx: &WorkerCtx, mut packet: Packet, src: Option<&str>, st: &mut WorkerState) {
+pub(crate) fn relay_onward(
+    ctx: &WorkerCtx,
+    mut packet: Packet,
+    src: Option<&str>,
+    st: &mut WorkerState,
+) {
     if !st.policy.should_relay(ctx.peer_degree()) {
         return;
     }

@@ -24,11 +24,13 @@ use std::thread::JoinHandle;
 #[cfg(test)]
 use std::time::Duration;
 
+use crate::balance::{flood_local_balance_query, CachedBalance};
 use crate::engine::{
     emit_head_beacon, emit_request_sync, flood_local_tx, maintenance_tick, process_inbound,
     PaymentStatus, WorkerCtx, WorkerState,
 };
 use crate::gateway::MeshGateway;
+use crate::nimiq::address::Address;
 use crate::packet::PEER_ID_LEN;
 use crate::radio::BleRadio;
 use crate::relay::RelayPolicy;
@@ -52,6 +54,8 @@ enum Job {
     SyncTick,
     /// G9: a beacon poll — a gateway floods a `nimiqHeadBeacon` only if the tick is due.
     BeaconTick,
+    /// G15: flood a `nimiqBalanceQuery` for this address (asks any gateway for its balance).
+    BalanceQuery(Address),
     /// Drain and exit (teardown).
     Shutdown,
 }
@@ -115,6 +119,11 @@ fn run_worker(ctx: Arc<WorkerCtx>, rx: Receiver<Job>, policy: RelayPolicy) {
             Job::BeaconTick => {
                 let _ = catch_unwind(AssertUnwindSafe(|| {
                     emit_head_beacon(&ctx, &mut st);
+                }));
+            }
+            Job::BalanceQuery(addr) => {
+                let _ = catch_unwind(AssertUnwindSafe(|| {
+                    flood_local_balance_query(&ctx, addr, &mut st);
                 }));
             }
         }
@@ -242,6 +251,30 @@ impl MeshNode {
     /// heard, never a stale one (non-blocking read).
     pub fn cached_head_height(&self) -> Option<u32> {
         self.ctx.cached_head()
+    }
+
+    /// G15: ask the mesh for `address`'s balance — flood a `nimiqBalanceQuery` (`0x33`) that any
+    /// internet-bearing gateway answers with a `nimiqBalanceResponse` (`0x34`), which
+    /// [`MeshNode::cached_balance`] then reads. `address` is the user-friendly `NQ…` form; an
+    /// unparseable address is a no-op. **Non-blocking (ADR-0002 gotcha a):** only enqueues; the
+    /// worker floods off the callback thread. Read-only — carries only a public address, no keys.
+    pub fn query_balance(&self, address: String) {
+        let Ok(addr) = Address::from_user_friendly(&address) else {
+            return; // not a valid Nimiq address — nothing to ask.
+        };
+        if let Some(tx) = self.job_tx.lock().unwrap().as_ref() {
+            let _ = tx.send(Job::BalanceQuery(addr));
+        }
+    }
+
+    /// G15: the last-known balance for `address` heard over the mesh, or `None` before any
+    /// `nimiqBalanceResponse` has arrived (or for an unparseable address). **Unverified /
+    /// last-known**: a relay is untrusted, so the UI must show it as such — the returned
+    /// `head_height` drives a "synced X ago" freshness stamp (compare to
+    /// [`MeshNode::cached_head_height`]). A trustless accounts-proof is the follow-up. Non-blocking.
+    pub fn cached_balance(&self, address: String) -> Option<CachedBalance> {
+        let addr = Address::from_user_friendly(&address).ok()?;
+        self.ctx.cached_balance(&addr)
     }
 
     /// G9: build a [`crate::nimiq::TransferIntent`] anchored to the freshest cached head
@@ -397,6 +430,17 @@ impl MeshNode {
     #[cfg(test)]
     pub(crate) fn expired_dropped(&self) -> usize {
         self.ctx.expired_dropped()
+    }
+    /// G15: `nimiqBalanceResponse` frames this gateway has answered + flooded.
+    #[cfg(test)]
+    pub(crate) fn balance_answered(&self) -> usize {
+        self.ctx.balance_answered()
+    }
+    /// G15: the last-known cached balance for a user-friendly address (test read).
+    #[cfg(test)]
+    pub(crate) fn test_cached_balance(&self, address: &str) -> Option<CachedBalance> {
+        let addr = Address::from_user_friendly(address).ok()?;
+        self.ctx.cached_balance(&addr)
     }
 }
 

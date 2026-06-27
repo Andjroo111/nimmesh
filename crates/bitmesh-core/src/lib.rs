@@ -89,6 +89,14 @@ pub mod store_forward;
 // Non-money-path: reads a public head height, carries opaque references — no signing/broadcast.
 pub mod beacon;
 
+// G15: account balance over the mesh (PROTOCOL.md / Andjroo's feature). `balance` owns the
+// `nimiqBalanceQuery` (0x33) + `nimiqBalanceResponse` (0x34) payload codecs and the clock-free
+// per-address last-known-balance cache (monotonic by head height, like the G9 `HeadCache`).
+// A node floods a query; an internet-bearing gateway answers with the balance it read at a
+// head height. The answer is UNVERIFIED/last-known until an accounts-proof binds it to the
+// head-beacon hash (follow-up). Read-only public state — no keys, no signing (non-money-path).
+pub mod balance;
+
 // G3: offline Nimiq Albatross signing (TESTNET, money-path / Andjroo-gated). `nimiq` is the
 // byte-exact transaction signer — `serializeContent` (67 B), the full `Basic`-format wire
 // blob (139 B), the `Blake2b-256` tx hash, and the user-friendly `NQ`-IBAN address codec —

@@ -21,6 +21,7 @@ use crate::engine::PaymentStatus;
 use crate::fragment::fragment_message;
 use crate::gateway::{MeshGateway, MockGateway, Receipt, ReceiptStatus, RpcGateway};
 use crate::mock_radio::{MeshHarness, MockEther, MockRadio};
+use crate::nimiq::address::Address;
 use crate::node::MeshNode;
 use crate::packet::MessageType;
 use crate::radio::BleRadio;
@@ -99,6 +100,61 @@ fn gateway_submits_once_despite_two_relay_paths() {
     let tx_id = origin.submit_local_tx(b"tx".to_vec());
     assert_eq!(origin.wait_payment(&tx_id, SETTLE), PaymentStatus::Settled);
     assert_eq!(gw.submission_count(), 1);
+    h.shutdown();
+}
+
+// --- G15: balance over the mesh ---------------------------------------------------
+
+#[test]
+fn balance_query_is_answered_by_a_gateway_and_cached_across_the_mesh() {
+    // origin <-> relay <-> gateway: the origin floods a balance query at TTL=7; only the
+    // gateway (internet) can answer; its `nimiqBalanceResponse` floods back through the relay
+    // and the origin caches the (unverified, last-known) balance + the head it was read at.
+    let mut h = MeshHarness::new();
+    let gw = Arc::new(MockGateway::new(default_network()));
+    gw.set_balance(11_000_000_000, 4_428_402); // 110_000 NIM at testnet head 4_428_402
+    let origin = h.add_node("origin", &[1]);
+    let relay = h.add_node("relay", &[2]);
+    let gateway = h.add_gateway("gw", &[3], gw.clone());
+    h.connect("origin", "relay");
+    h.connect("relay", "gw");
+
+    // A valid address that round-trips through the user-friendly <-> 20-byte codec.
+    let addr = Address::from_bytes([0x11; 20]).to_user_friendly();
+    origin.query_balance(addr.clone());
+
+    assert!(
+        wait_until(|| origin.test_cached_balance(&addr).is_some(), SETTLE),
+        "the balance response never reached the origin"
+    );
+    let cached = origin.test_cached_balance(&addr).expect("balance cached");
+    assert_eq!(cached.balance, 11_000_000_000);
+    assert_eq!(cached.head_height, 4_428_402);
+    assert_eq!(cached.network_id, default_network().wire_id());
+    // The gateway answered exactly once (the query dedups across relay echoes).
+    assert_eq!(gateway.balance_answered(), 1);
+    // The blind relay carried the query + the response.
+    assert!(relay.forwarded_count() >= 1);
+    h.shutdown();
+}
+
+#[test]
+fn gateway_with_no_balance_answers_nothing() {
+    // A gateway that has no chain view (no `set_balance`) answers nothing — the node simply
+    // never learns a balance, rather than caching a wrong/zero one.
+    let mut h = MeshHarness::new();
+    let gw = Arc::new(MockGateway::new(default_network())); // no balance configured
+    let origin = h.add_node("origin", &[1]);
+    let gateway = h.add_gateway("gw", &[3], gw.clone());
+    h.connect("origin", "gw");
+
+    let addr = Address::from_bytes([0x22; 20]).to_user_friendly();
+    origin.query_balance(addr.clone());
+
+    // Give the query time to flood + (not) be answered.
+    std::thread::sleep(Duration::from_millis(80));
+    assert_eq!(gateway.balance_answered(), 0);
+    assert!(origin.test_cached_balance(&addr).is_none());
     h.shutdown();
 }
 

@@ -127,7 +127,7 @@ Rust-core logic (cargo-tested) + web UI (screenshot-verified). None handle keys 
 
 | #   | Goal                                                          | money-path | auto-merge | deps | status |
 | --- | ----------------------------------------------------------- | :--------: | :--------: | ---- | ------ |
-| G15 | Balance over mesh — gateway balance query + fiat + "synced X ago"; last-known → accounts-proof | no | yes | A2, G9 | todo |
+| G15 | Balance over mesh — gateway balance query + fiat + "synced X ago"; last-known → accounts-proof | no | yes | A2, G9 | 🟡 core+FFI done · UI stamp + accounts-proof = follow-ups |
 | G16 | Reachability + smart send queue ("will it send?")            | no | yes | A3 | todo |
 | G17 | Settlement closure both ways (receipt → "landed" for sender + receiver) | no | yes | A3 | todo |
 | G18 | Contacts + amount requests (request packet carries no keys)  | no | yes | A3 | todo |
@@ -350,3 +350,16 @@ the signer — but our live example drives our core end-to-end for every money-c
   screenshot: both pills loaded + live mesh line). `nq lint` 0 errors, no overflow. Auto-merged.
   ⏸️ **Phase A done — the app you can hold is built.** Next: **Phase B** (G15 balance-over-mesh
   first), all autonomous; Phase C/D/E remain gated for Andjroo.
+- **2026-06-27** — **G15 balance-over-mesh — core + FFI done** (v0.11.0, non-money-path). Andjroo's
+  feature: get a balance with no internet by asking the mesh. New `balance.rs` (wire codecs for
+  `nimiqBalanceQuery 0x33` + `nimiqBalanceResponse 0x34` + a clock-free per-address `BalanceCache`,
+  monotonic by head height); `MeshGateway::balance_of` answers via the existing read-only
+  `get_account` (RpcGateway) / a test value (MockGateway); engine `handle_balance_query`/
+  `handle_balance_response` + `flood_local_balance_query`; node FFI `query_balance` /
+  `cached_balance`. **146 tests** incl. 2 e2e mesh round-trips (query→gateway-answer→cache;
+  no-balance→no-answer). Built as the two-part increment: part 1 = wire format + cache (PR'd as the
+  first commit), part 2 = gateway/engine/FFI + e2e. **Honest scope:** balance is unverified/
+  last-known (untrusted relay) until a trustless **accounts-proof** (follow-up); the UI **fiat +
+  "synced X ago"** stamp lands when a `MeshNode` runs in-app (native shim, **Phase D**) — the FFI is
+  ready. Two banner UI fixes also merged this session (#41 component swap, #42 grey container).
+  Next autonomous: **G19** (backup nudge) / **G20** (good-citizen relay) — pure logic/UI, no node needed.

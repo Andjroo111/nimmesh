@@ -286,6 +286,8 @@ mod tests {
             MessageType::NimiqTx,
             MessageType::NimiqTxReceipt,
             MessageType::NimiqHeadBeacon,
+            MessageType::NimiqBalanceQuery,
+            MessageType::NimiqBalanceResponse,
         ] {
             let p = sample(ty, vec![0xAB; 50]);
             let bytes = encode(&p).unwrap();

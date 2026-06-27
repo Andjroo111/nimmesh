@@ -2,6 +2,35 @@
 
 All notable changes to nimiq.bitmesh. Each PR bumps the version and adds an entry.
 
+## [0.11.0] — 2026-06-27
+
+### Added — G15 (Rust core): account balance over the mesh — non-money-path
+
+Andjroo's feature: get an account's balance with no internet, by asking the mesh. A node floods a
+**balance query**; any internet-bearing **gateway** answers with the balance it read at a head
+height; every node caches it (unverified / last-known) and relays it onward. Read-only public
+state — no keys, no signing. Mirrors the G9 head-beacon pattern end to end.
+
+- `crates/bitmesh-core/src/balance.rs` (new): `nimiqBalanceQuery` (`0x33`, 20-byte address) +
+  `nimiqBalanceResponse` (`0x34`, addr+balance+headHeight+networkId) payload codecs (length-exact,
+  panic-free) + `BalanceCache` — clock-free, per-address, **monotonic by head height** (no stale
+  rollback), `networkId`-guarded. `CachedBalance` is FFI-visible (`uniffi::Record`).
+- `gateway.rs`: `MeshGateway::balance_of()` — `RpcGateway` reads it via the existing read-only
+  `get_account` + `block_number` (no new capability, testnet-guarded); `MockGateway::set_balance`
+  for tests. `BalanceAnswer { balance, head_height, network_id }`.
+- `engine.rs`: `flood_local_balance_query` + `handle_balance_query` (a gateway answers + floods a
+  response, dedups, relays) + `handle_balance_response` (cache + remember + relay) wired into the
+  dispatch; a per-node `BalanceCache` + `cache_balance`/`cached_balance`.
+- `node.rs` (FFI): `query_balance(address)` (floods a query; unparseable address = no-op) +
+  `cached_balance(address) -> CachedBalance?` (last-known; `head_height` drives a future
+  "synced X ago" stamp). New `Job::BalanceQuery`.
+- Tests: 6 `balance` unit tests + 2 end-to-end mesh tests (query→gateway-answer→cache across
+  origin↔relay↔gateway; gateway-with-no-balance answers nothing). **146 tests green**, clippy + fmt clean.
+- **Honest scope:** the balance is **unverified / last-known** (a relay is untrusted) until a
+  trustless **accounts-proof** binds it to the head-beacon hash (follow-up). The UI **"+ fiat +
+  'synced X ago'"** binding lands when a `MeshNode` runs in the app (the native shim, Phase D) —
+  the FFI (`query_balance`/`cached_balance`/`cached_head_height`) is ready for it.
+
 ## [Unreleased]
 
 ### Fixed — backup banner used a hand-written markup instead of the real component (web UI)

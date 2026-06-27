@@ -109,6 +109,30 @@ pub trait MeshGateway: Send + Sync {
     fn head_beacon(&self) -> Option<HeadBeacon> {
         None
     }
+
+    /// G15: answer a mesh balance query — the public on-chain balance for `address` (the
+    /// user-friendly `NQ…` form), read at the gateway's current head. `None` for a node with
+    /// no live chain view (the record-only [`MockGateway`] by default, unless a test sets one)
+    /// or on a transient RPC failure (emit nothing rather than a wrong/stale balance). The
+    /// engine floods the returned answer as a `nimiqBalanceResponse` (`0x34`). **Read-only**:
+    /// public state only, never key material (non-money-path).
+    fn balance_of(&self, address: &str) -> Option<BalanceAnswer> {
+        let _ = address;
+        None
+    }
+}
+
+/// A gateway's answer to a balance query (G15): the balance it read for the address, the head
+/// height it read at (the freshness anchor), and the network it is on. **Unverified** by the
+/// receiving node until a future accounts-proof binds it to the head-beacon hash.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BalanceAnswer {
+    /// Balance in luna (1 NIM = 100_000 luna).
+    pub balance: u64,
+    /// The chain head height the balance was read at.
+    pub head_height: u32,
+    /// The Albatross network-id byte the gateway is on (testnet `5`).
+    pub network_id: u8,
 }
 
 /// A record-only [`MeshGateway`] for the mock pay-loop: no network, no money path.
@@ -120,6 +144,9 @@ pub struct MockGateway {
     network: NetworkId,
     submissions: Mutex<Vec<Vec<u8>>>,
     forced_status: Mutex<ReceiptStatus>,
+    /// G15: an optional `(balance, head_height)` this mock answers balance queries with.
+    /// `None` (default) means it answers nothing — like a gateway with no chain view.
+    balance: Mutex<Option<(u64, u32)>>,
 }
 
 impl MockGateway {
@@ -129,7 +156,14 @@ impl MockGateway {
             network,
             submissions: Mutex::new(Vec::new()),
             forced_status: Mutex::new(ReceiptStatus::Accepted),
+            balance: Mutex::new(None),
         }
+    }
+
+    /// G15: make this mock answer balance queries with `balance` luna at `head_height`
+    /// (on its configured network). Lets a mesh test exercise the query→answer→cache loop.
+    pub fn set_balance(&self, balance: u64, head_height: u32) {
+        *self.balance.lock().unwrap() = Some((balance, head_height));
     }
 
     /// The network this gateway is configured for.
@@ -154,6 +188,17 @@ impl MockGateway {
 }
 
 impl MeshGateway for MockGateway {
+    /// G15: answer with the configured `(balance, head_height)` (if any) on this gateway's
+    /// network. Records nothing and reads nothing real — purely the test-injected value.
+    fn balance_of(&self, _address: &str) -> Option<BalanceAnswer> {
+        let (balance, head_height) = (*self.balance.lock().unwrap())?;
+        Some(BalanceAnswer {
+            balance,
+            head_height,
+            network_id: self.network.wire_id(),
+        })
+    }
+
     fn submit(&self, tx_wire: Vec<u8>) -> Result<Receipt, MeshError> {
         // G8: the real gateway validates networkId + validity window here, then calls
         //     `sendRawTransaction(rawHex)` against a public Albatross TESTNET RPC
@@ -271,6 +316,20 @@ impl MeshGateway for RpcGateway {
     fn head_beacon(&self) -> Option<HeadBeacon> {
         let height = self.rpc.block_number().ok()?;
         Some(HeadBeacon::new(height, self.network_id))
+    }
+
+    /// G15: read the address's public balance via the existing read-only `get_account`, anchored
+    /// to the current head (`block_number`). No NEW capability — reuses the same testnet-guarded
+    /// RPC the broadcast path already uses; never broadcasts, never touches keys. A transient RPC
+    /// failure or an unknown account yields `None` (the node keeps its last-known balance).
+    fn balance_of(&self, address: &str) -> Option<BalanceAnswer> {
+        let head_height = self.rpc.block_number().ok()?;
+        let account = self.rpc.get_account(address).ok()??;
+        Some(BalanceAnswer {
+            balance: account.balance,
+            head_height,
+            network_id: self.network_id,
+        })
     }
 }
 

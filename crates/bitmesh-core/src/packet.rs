@@ -84,6 +84,13 @@ pub enum MessageType {
     NimiqTxReceipt = 0x31,
     /// `0x32` — a gateway → mesh head beacon `{height, blockHash, networkId}`.
     NimiqHeadBeacon = 0x32,
+    /// `0x33` — a mesh → gateway **balance query** `{address}` (G15). Read-only: asks any
+    /// internet-bearing gateway for an address's on-chain balance. Carries no key material.
+    NimiqBalanceQuery = 0x33,
+    /// `0x34` — a gateway → mesh **balance response** `{address, balance, headHeight, networkId}`
+    /// (G15). The balance as the gateway read it at `headHeight`; **unverified** (a relay is
+    /// untrusted) until a future accounts-proof. Read-only, non-money-path.
+    NimiqBalanceResponse = 0x34,
 }
 
 impl MessageType {
@@ -104,6 +111,8 @@ impl MessageType {
             0x30 => Some(MessageType::NimiqTx),
             0x31 => Some(MessageType::NimiqTxReceipt),
             0x32 => Some(MessageType::NimiqHeadBeacon),
+            0x33 => Some(MessageType::NimiqBalanceQuery),
+            0x34 => Some(MessageType::NimiqBalanceResponse),
             _ => None,
         }
     }
