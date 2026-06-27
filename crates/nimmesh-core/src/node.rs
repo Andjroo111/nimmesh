@@ -292,6 +292,12 @@ impl MeshNode {
         }
     }
 
+    /// G5: how many BLE peers are currently connected — the live mesh-status reading the
+    /// native shim drives (each `on_peer_connected`/`on_peer_disconnected` moves it). Non-blocking.
+    pub fn peer_count(&self) -> u32 {
+        self.ctx.peer_degree() as u32
+    }
+
     /// G15: the last-known balance for `address` heard over the mesh, or `None` before any
     /// `nimiqBalanceResponse` has arrived (or for an unparseable address). **Unverified /
     /// last-known**: a relay is untrusted, so the UI must show it as such — the returned

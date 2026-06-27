@@ -1,3 +1,4 @@
+import Security
 import SwiftUI
 import WebKit
 import NimmeshCore
@@ -8,9 +9,10 @@ import NimmeshCore
 /// The bridge is **read-only**: `version`, `network`, `meshStatus`, `reachability` (G16),
 /// `backupUrgency` (G19).
 /// It signs nothing, broadcasts nothing, and never sees key/seed material — so it stays firmly
-/// non-money-path. The signing path (Send → enclave → queue) is wired separately, behind
-/// Andjroo, in the money-path slice (C1). The radio is not native yet (Phase D), so
-/// `meshStatus` honestly reports `offline` / `0 peers` until CoreBluetooth lands.
+/// non-money-path. The testnet send path (sign with the Keychain key → broadcast) is the C1c
+/// `sendTransaction` async bridge. The offline BLE mesh is the native `BleMeshRadio` (G5)
+/// driving a `MeshNode`; `meshStatus`/`reachability` read it live (0 peers on the simulator,
+/// real peers on device — the 2-phone interop test).
 struct WebHostView: UIViewRepresentable {
     func makeCoordinator() -> Bridge { Bridge() }
 
@@ -61,6 +63,19 @@ struct WebHostView: UIViewRepresentable {
 final class Bridge: NSObject, WKScriptMessageHandler {
     static let channel = "nimmesh"
     weak var webView: WKWebView?
+
+    // G5: the offline BLE mesh — a CoreBluetooth radio driving a Rust `MeshNode`. Built once
+    // (lazily, on the first meshStatus probe at launch); the node holds the radio strongly, the
+    // radio holds the node weakly. On the simulator BLE is unsupported (0 peers, no crash); on a
+    // real device it advertises + scans for real (the 2-phone interop test).
+    private let bleRadio = BleMeshRadio()
+    private lazy var node: MeshNode = {
+        var sid = Data(count: 8)
+        _ = sid.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 8, $0.baseAddress!) }
+        let n = MeshNode(senderId: sid, radio: bleRadio)
+        bleRadio.node = n
+        return n
+    }()
 
     /// Injected at document start. Exposes a tiny promise-based RPC the web UI calls:
     /// `await window.nimmesh.version()` etc. If the handler is ever absent (e.g. the
@@ -171,12 +186,20 @@ final class Bridge: NSObject, WKScriptMessageHandler {
                 "loopSafe": networkIsLoopSafe(network: n),
             ])
         case "meshStatus":
-            // No native BLE radio yet (Phase D). Report the honest state, not a fake one.
-            return (true, ["state": "offline", "peers": 0])
+            // G5: the live mesh reading from the BLE-backed node (constructing it here also
+            // brings the radio up). Simulator: 0 peers (BLE unsupported); device: real peers.
+            let peers = Int(node.peerCount())
+            return (true, ["state": peers > 0 ? "meshed" : "offline", "peers": peers])
         case "reachability":
-            // G16: with no native radio yet (Phase D) there is no mesh to reach — the honest
-            // answer is `offline`. Once the shim runs a `MeshNode`, return `node.reachability()`.
-            return (true, ["reachability": "offline"])
+            // G16/G5: the live "will it send?" reach from the BLE-backed node (peers + a heard
+            // gateway beacon). Simulator: offline (no BLE); device: meshed/online with peers.
+            let r: String
+            switch node.reachability() {
+            case .online: r = "online"
+            case .meshed: r = "meshed"
+            case .offline: r = "offline"
+            }
+            return (true, ["reachability": r])
         case "walletAddress":
             // C1: the wallet's testnet NQ address, derived from the Keychain Ed25519 public
             // key. The seed stays in the Keychain — only the public address leaves.

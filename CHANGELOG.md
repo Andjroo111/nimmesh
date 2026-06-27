@@ -2,6 +2,33 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.25.0] — 2026-06-27
+
+### Added — G5: the native CoreBluetooth BLE shim (the offline mesh radio)
+
+The offline mesh now has a real radio. `apple/NimmeshApp/Sources/BleMeshRadio.swift` implements the
+Rust `BleRadio` foreign trait with CoreBluetooth — **dual-role**: a `CBPeripheralManager` advertises
+the nimmesh service + a write/notify characteristic (inbound bytes); a `CBCentralManager` scans,
+connects, subscribes, and writes (outbound). Fire-and-forget `send` (outcome → `node.onSendResult`),
+the node held **weakly** (ADR-0002 gotcha d), peers keyed by their CB UUID.
+
+- `WebHostView.swift`: the bridge now constructs a real `MeshNode(senderId:, radio: BleMeshRadio)` (the
+  radio comes up — advertise + scan); `meshStatus` + `reachability` read the **live node** (peer count
+  + heard-gateway). Simulator: 0 peers (BLE unsupported, no crash); device: real peers.
+- `node.rs`: `peer_count()` FFI (the live mesh-status reading the shim drives).
+- `docs/DEVICE-TEST.md` (new): the **phone-test runbook** — free-tier Apple ID signing (no $99 needed),
+  install on 2 phones, the offline-mesh testnet test, and the real-funds mainnet test.
+
+**Phone-test scope (genuinely yours):** the byte-pipe + discovery compile clean and the app runs the
+mesh stack without crashing in the sim, but **on-device BLE interop + tuning is the 2-phone test** —
+MTU for the 256-B packet (the Rust G6 fragmenter splits larger), the iOS background overflow-UUID dead
+spot, and collapsing the two directed links per pair. The core protocol (relay/dedup/TTL/store-and-
+forward) is already proven headlessly; this wires it to a real radio.
+
+213 tests green, `cargo clippy --all-features -D warnings` + `cargo fmt --check` + size-guard clean,
+iOS `xcodebuild` BUILD SUCCEEDED, the app runs in the sim with the BLE node live (mesh bar:
+`offline · 0 nearby · testnet · core 0.24.0 · head …`).
+
 ## [0.24.0] — 2026-06-27
 
 ### Added — C1c-2: the app sends on testnet (sign → broadcast), + ATS fix + banner one-line
