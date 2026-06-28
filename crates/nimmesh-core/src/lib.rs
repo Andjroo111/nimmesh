@@ -38,6 +38,10 @@ pub mod packet;
 // extracted from the `swap_demo_server` example so it's covered by a deterministic test. Pure std.
 pub mod demo_http;
 
+// G55/G57: the discovery health derivation — a pure read-only summary of the G42 IntentMetrics
+// (status / match-rate / dominant drop). Surfaced by the demo's /api/health; no behaviour depends on it.
+pub mod swap_health;
+
 // Mesh swap (F2, feat/mesh-swap): the swap wire messages (`0x40`–`0x44`) + their TLV envelope,
 // layered on the same codec/relay/store-forward/gateway stack as `nimiqTx`. `swap_wire` is the
 // type-length-value codec for propose / accept / funding-proof / preimage-reveal / abort —

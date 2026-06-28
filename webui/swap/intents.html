@@ -107,6 +107,7 @@
 
       <div class="stats">
         <p class="stats-title">Discovery this session</p>
+        <p class="stats-health"><span data-health="status">Healthy</span> · <span data-health="matchRatePct">23</span>% match rate</p>
         <div class="stats-top">
           <div class="stat"><span class="stat-num" data-stat="seen">128</span><span class="stat-lbl">seen</span></div>
           <div class="stat"><span class="stat-num green" data-stat="matched">12</span><span class="stat-lbl">matched</span></div>
@@ -190,8 +191,22 @@
       });
   }
 
+  function loadHealth() {
+    fetch('/api/health')
+      .then((r) => r.json())
+      .then((hh) => {
+        for (const el of document.querySelectorAll('[data-health]')) {
+          if (el.dataset.health in hh) el.textContent = hh[el.dataset.health];
+        }
+      })
+      .catch(() => {
+        /* offline: keep the static fixture health line */
+      });
+  }
+
   await upgradeIdenticons(document); // draw the static rows' identicons first
   loadStats();
+  loadHealth();
   await loadIntents();
 </script>
 </body>

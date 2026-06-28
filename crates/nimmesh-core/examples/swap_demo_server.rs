@@ -120,6 +120,11 @@ fn route(
             "application/json",
             nimmesh_core::demo_http::stats_fixture_json().into_bytes(),
         ),
+        ("GET", "/api/health") => (
+            "200 OK",
+            "application/json",
+            nimmesh_core::demo_http::health_fixture_json().into_bytes(),
+        ),
         ("GET", _) => serve_static(path, webui_root),
         _ => ("404 Not Found", "text/plain", b"not found".to_vec()),
     }

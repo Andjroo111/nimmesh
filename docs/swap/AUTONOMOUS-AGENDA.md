@@ -465,11 +465,20 @@ signing stay human-gated.)
       each asserted present in BOTH the ledger AND the concatenated crate `src/` text (so a rename that
       misses the doc fails the gate); (2) the cited file paths exist + their basenames are cited.
       Curated (not every backtick) to stay false-positive-free. 2 tests, 5/5 stable.
-- [ ] **G57 — Surface discovery health in the demo + a non-test accessor.** Lift the G55 `DiscoveryHealth`
+- [x] **G57 — Surface discovery health in the demo + a non-test accessor.** Lift the G55 `DiscoveryHealth`
       to a real (non-cfg-test) derivation over the live `IntentMetrics` (so it's an actual diagnostic, not
       just a test), expose it via a `MeshNode` accessor + a `GET /api/health` fixture endpoint (like G54),
       and show a small read-only health line/pill on `intents.html` (fixture-fed; `nq lint` 0 errors +
       screenshot). Pure observability; sim/testnet.
+      Done: NEW non-test `swap_health` module — `DiscoveryHealth`/`DiscoveryStatus`/`DominantDrop` +
+      `discovery_health(seen, matched, dropped_*)` (the G55 logic, lifted verbatim out of the test file).
+      `demo_http::health_fixture_json()` CONSUMES `discovery_health` over the same fixture counts as the
+      stats (so no dead code, and health stays consistent with stats → Healthy / 23% / dominant=rate);
+      served at `GET /api/health`. `intents.html` shows a grey health line under the stats title
+      (`Healthy · 23% match rate`, mono %, fixture-fed with a `loadHealth` fetch + no-op fallback). The
+      G55 test file now imports the lifted module and asserts the same cases. `nq lint` 0 errors,
+      screenshot-verified, demo-http test marker-checks `/api/health`. A LIVE `MeshNode` health accessor
+      stays OG-6-gated (the derivation is ready; the node-side surfacing waits on the bridge). 6 tests.
 - [ ] **G58 — Discovery architecture doc.** A `docs/swap/DISCOVERY.md` tying the G34–G55 layer together
       (the discovery analogue of `MESH-INTEGRATION.md`): the intent lifecycle, each gate in order, the wire
       format, the security properties, and pointers to the per-goal code + tests. Docs only.

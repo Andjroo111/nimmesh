@@ -1,138 +1,36 @@
 //! # swap_health_tests — discovery health self-check (G55, cfg(test))
 //!
-//! A small read-only health summary derived purely from the G42 [`IntentMetrics`] counters, so a node
-//! or dev can see at a glance whether discovery is working or being abused. No behaviour depends on it.
-//! It lives with the tests because the snapshot it reads ([`IntentMetricsSnapshot`]) is itself
-//! `cfg(test)` — if discovery health is ever surfaced in production, it lifts to a non-test accessor
-//! over the live `IntentMetrics` unchanged.
-//!
-//! [`IntentMetrics`]: crate::swap_node::IntentMetrics
+//! Tests for the [`crate::swap_health`] derivation (the types + logic were lifted out of here to a
+//! real non-test module in G57; these assertions are unchanged). Pure classifier coverage over raw
+//! counts, plus an end-to-end check that drives a real node's live counters.
 
-use crate::swap_node::IntentMetricsSnapshot;
-
-/// Which gate rejected the most intents — a diagnostic hint.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DominantDrop {
-    None,
-    Rate,
-    Expiry,
-    Signature,
-    Throttle,
-}
-
-/// A coarse classification of the discovery layer's state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DiscoveryStatus {
-    /// No intents seen yet.
-    Idle,
-    /// Intents arrive but none match — normal when no compatible counterparty is near (drops are
-    /// mostly wrong-rate / expired, not abuse).
-    NoCounterpartiesYet,
-    /// Rejections are dominated by forged signatures or throttled floods — a sign of abuse.
-    PossiblyUnderAttack,
-    /// At least one swap has been discovered.
-    Healthy,
-}
-
-/// A read-only health summary derived from the discovery counters (G55).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DiscoveryHealth {
-    pub(crate) total_dropped: usize,
-    pub(crate) match_rate_pct: usize,
-    pub(crate) dominant_drop: DominantDrop,
-    pub(crate) status: DiscoveryStatus,
-}
-
-impl IntentMetricsSnapshot {
-    /// Derive a [`DiscoveryHealth`] from the counters (G55). Pure, total, no allocation.
-    pub(crate) fn health(&self) -> DiscoveryHealth {
-        let total_dropped = self.dropped_rate
-            + self.dropped_expiry
-            + self.dropped_throttle
-            + self.dropped_signature;
-        // Match rate over the RESOLVED intents (matched + dropped); a buffered-but-unresolved intent
-        // counts toward neither. `max(1, …)` keeps it well-defined at zero.
-        let match_rate_pct = self.matched * 100 / (self.matched + total_dropped).max(1);
-
-        // The biggest single drop reason. The candidate order puts the abuse reasons LAST so that
-        // `max_by_key` (which returns the last of equal maxima) breaks ties toward flagging abuse.
-        let dominant_drop = [
-            (self.dropped_expiry, DominantDrop::Expiry),
-            (self.dropped_rate, DominantDrop::Rate),
-            (self.dropped_throttle, DominantDrop::Throttle),
-            (self.dropped_signature, DominantDrop::Signature),
-        ]
-        .into_iter()
-        .filter(|(n, _)| *n > 0)
-        .max_by_key(|(n, _)| *n)
-        .map(|(_, d)| d)
-        .unwrap_or(DominantDrop::None);
-
-        let status = if self.seen == 0 {
-            DiscoveryStatus::Idle
-        } else if self.matched > 0 {
-            DiscoveryStatus::Healthy
-        } else if matches!(
-            dominant_drop,
-            DominantDrop::Signature | DominantDrop::Throttle
-        ) {
-            DiscoveryStatus::PossiblyUnderAttack
-        } else {
-            DiscoveryStatus::NoCounterpartiesYet
-        };
-
-        DiscoveryHealth {
-            total_dropped,
-            match_rate_pct,
-            dominant_drop,
-            status,
-        }
-    }
-}
-
-/// Build a snapshot with the given counters (readvertised is irrelevant to health).
-fn snap(
-    seen: usize,
-    matched: usize,
-    rate: usize,
-    expiry: usize,
-    throttle: usize,
-    sig: usize,
-) -> IntentMetricsSnapshot {
-    IntentMetricsSnapshot {
-        seen,
-        matched,
-        dropped_rate: rate,
-        dropped_expiry: expiry,
-        dropped_throttle: throttle,
-        dropped_signature: sig,
-        readvertised: 0,
-    }
-}
+use crate::swap_health::{discovery_health, DiscoveryStatus, DominantDrop};
 
 #[test]
 fn health_classifies_each_discovery_state() {
+    // discovery_health(seen, matched, rate, expiry, throttle, signature).
+
     // Idle — nothing seen yet.
-    let h = snap(0, 0, 0, 0, 0, 0).health();
+    let h = discovery_health(0, 0, 0, 0, 0, 0);
     assert_eq!(h.status, DiscoveryStatus::Idle);
     assert_eq!(h.total_dropped, 0);
     assert_eq!(h.match_rate_pct, 0);
     assert_eq!(h.dominant_drop, DominantDrop::None);
 
     // Seen but no match, drops mostly wrong-rate/expired → just no counterparty, not abuse.
-    let h = snap(5, 0, 3, 2, 0, 0).health();
+    let h = discovery_health(5, 0, 3, 2, 0, 0);
     assert_eq!(h.status, DiscoveryStatus::NoCounterpartiesYet);
     assert_eq!(h.dominant_drop, DominantDrop::Rate); // 3 > 2
     assert_eq!(h.total_dropped, 5);
     assert_eq!(h.match_rate_pct, 0);
 
     // Rejections dominated by forged signatures → possibly under attack.
-    let h = snap(10, 0, 1, 0, 2, 5).health();
+    let h = discovery_health(10, 0, 1, 0, 2, 5);
     assert_eq!(h.status, DiscoveryStatus::PossiblyUnderAttack);
     assert_eq!(h.dominant_drop, DominantDrop::Signature); // 5 is the max
 
     // A match makes it healthy, and the match rate is over resolved intents.
-    let h = snap(8, 3, 1, 0, 0, 0).health();
+    let h = discovery_health(8, 3, 1, 0, 0, 0);
     assert_eq!(h.status, DiscoveryStatus::Healthy);
     assert_eq!(h.total_dropped, 1);
     assert_eq!(h.match_rate_pct, 75); // 3 / (3 + 1)
@@ -141,16 +39,16 @@ fn health_classifies_each_discovery_state() {
 
 #[test]
 fn health_match_rate_and_drop_ties_are_deterministic() {
-    assert_eq!(snap(2, 1, 3, 0, 0, 0).health().match_rate_pct, 25); // 1 / (1+3)
-    assert_eq!(snap(2, 1, 0, 0, 0, 0).health().match_rate_pct, 100); // no drops
+    assert_eq!(discovery_health(2, 1, 3, 0, 0, 0).match_rate_pct, 25); // 1 / (1+3)
+    assert_eq!(discovery_health(2, 1, 0, 0, 0, 0).match_rate_pct, 100); // no drops
 
     // A tie between two non-abuse reasons breaks toward the later candidate (rate over expiry).
     assert_eq!(
-        snap(4, 0, 2, 2, 0, 0).health().dominant_drop,
+        discovery_health(4, 0, 2, 2, 0, 0).dominant_drop,
         DominantDrop::Rate
     );
     // A tie that includes an abuse reason breaks toward flagging abuse.
-    let h = snap(4, 0, 2, 0, 0, 2).health();
+    let h = discovery_health(4, 0, 2, 0, 0, 2);
     assert_eq!(h.dominant_drop, DominantDrop::Signature);
     assert_eq!(h.status, DiscoveryStatus::PossiblyUnderAttack);
 }
@@ -185,7 +83,15 @@ fn health_reads_a_forged_flood_off_a_real_node_as_an_attack() {
         "the forged flood should register as signature drops"
     );
 
-    let health = alice.intent_metrics().health();
+    let m = alice.intent_metrics();
+    let health = discovery_health(
+        m.seen,
+        m.matched,
+        m.dropped_rate,
+        m.dropped_expiry,
+        m.dropped_throttle,
+        m.dropped_signature,
+    );
     assert_eq!(health.status, DiscoveryStatus::PossiblyUnderAttack);
     assert_eq!(health.dominant_drop, DominantDrop::Signature);
     assert_eq!(health.match_rate_pct, 0);

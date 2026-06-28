@@ -2,7 +2,9 @@
 //! ([`nimmesh_core::demo_http`]). No port, no sockets — it calls `serve_static` directly, so the
 //! G38/G46 intents demo can't silently rot and the path-traversal sandbox stays closed.
 
-use nimmesh_core::demo_http::{intents_fixture_json, serve_static, stats_fixture_json};
+use nimmesh_core::demo_http::{
+    health_fixture_json, intents_fixture_json, serve_static, stats_fixture_json,
+};
 use std::path::PathBuf;
 
 /// The demo tree, resolved from the crate manifest dir so the test is CWD-independent. `serve_static`
@@ -97,5 +99,24 @@ fn the_discovery_api_fixtures_are_well_formed_json() {
     assert!(
         stats.contains("\"throttled\":7"),
         "carries a dropped-by-reason count"
+    );
+
+    // G57: the health fixture is derived from the same counts, so it stays consistent with the stats.
+    let health = health_fixture_json();
+    assert!(
+        health.trim_start().starts_with('{'),
+        "health is a JSON object"
+    );
+    assert!(
+        health.contains("\"status\":\"Healthy\""),
+        "12 matches → Healthy"
+    );
+    assert!(
+        health.contains("\"matchRatePct\":23"),
+        "12 / (12 + 39 dropped) = 23%"
+    );
+    assert!(
+        health.contains("\"dominantDrop\":\"rate\""),
+        "the rate drop (18) is the largest"
     );
 }

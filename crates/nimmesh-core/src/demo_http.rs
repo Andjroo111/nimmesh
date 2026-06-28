@@ -64,3 +64,18 @@ pub fn stats_fixture_json() -> String {
     r#"{"seen":128,"matched":12,"readvertised":34,"expired":9,"rate":18,"forged":5,"throttled":7}"#
         .to_string()
 }
+
+/// G57: the demo's discovery-health fixture, as JSON. Derived from the SAME fixture counts as
+/// [`stats_fixture_json`] via [`crate::swap_health::discovery_health`], so the health line on the page
+/// is always consistent with its stats. Live app: derived from the node's real counters.
+pub fn health_fixture_json() -> String {
+    // seen, matched, dropped_rate, dropped_expiry, dropped_throttle, dropped_signature.
+    let h = crate::swap_health::discovery_health(128, 12, 18, 9, 7, 5);
+    format!(
+        r#"{{"status":"{}","matchRatePct":{},"dominantDrop":"{}","totalDropped":{}}}"#,
+        h.status.as_str(),
+        h.match_rate_pct,
+        h.dominant_drop.as_str(),
+        h.total_dropped,
+    )
+}

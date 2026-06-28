@@ -45,7 +45,9 @@ cargo run --example swap_demo_server --features bitcoin-leg
 
 Below the list it also shows a **discovery-stats strip** (G46): the node's G42 `IntentMetrics` —
 intents `seen` / `matched` / `re-advertised`, and dropped-by-reason (`expired` G35 / `rate` G40 /
-`forged` G41 / `throttled` G36) — so the otherwise-invisible gate activity is legible at a glance.
+`forged` G41 / `throttled` G36) — so the otherwise-invisible gate activity is legible at a glance,
+topped by a one-line **health summary** (G57: status + match rate, e.g. `Healthy · 23% match rate`)
+derived from those same counts via `swap_health::discovery_health` and served at `GET /api/health`.
 
 - **Now:** the rows AND the stats are **fixture data**. Opened as a static file the page renders its
   inline fixtures; opened behind the server (above) the page's `loadIntents`/`loadStats` seam upgrades
