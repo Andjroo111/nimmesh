@@ -15,14 +15,17 @@
 //! Funding target = **P2WSH** (`OP_0 SHA256(redeem)`). **Signet by default; mainnet is gated.**
 //! Builds the HTLC script + P2WSH address **and** the BIP143-signed claim/refund txs (the full
 //! signed bytes match `bitcoinjs-lib` exactly — both use deterministic RFC6979 + low-S ECDSA).
-//! Broadcasting is the B2 gateway; the on-device signing seam (vs the in-process key here) is a
-//! follow-up mirroring `nimiq::signer`'s `EnclaveKey`.
+//! Broadcasting is the B2 gateway. Signing goes through the [`BtcEnclaveKey`] seam (the BTC mirror
+//! of [`crate::nimiq::signer::EnclaveKey`]): the secp256k1 secret stays behind the trait — only a
+//! 33-byte public key and a DER signature over the BIP143 sighash ever leave it, so a native Secure
+//! Enclave / Keystore impl drives on-device signing. The raw-key `claim_tx`/`refund_tx` are thin
+//! wrappers over an in-memory key for tests/dev.
 
 use bitcoin::absolute::LockTime;
 use bitcoin::hashes::Hash;
 use bitcoin::opcodes::all as op;
 use bitcoin::script::{Builder, ScriptBuf};
-use bitcoin::secp256k1::{Message, Secp256k1, SecretKey};
+use bitcoin::secp256k1::{ecdsa, All, Message, PublicKey, Secp256k1, SecretKey};
 use bitcoin::sighash::{EcdsaSighashType, SighashCache};
 use bitcoin::transaction::Version;
 use bitcoin::{Address, Amount, Network, OutPoint, Sequence, Transaction, TxIn, TxOut, Witness};
@@ -89,7 +92,21 @@ impl BtcHtlcParams {
         payout_sat: u64,
         recipient_sk: &[u8; 32],
     ) -> Result<Vec<u8>, BtcError> {
-        let sk = SecretKey::from_slice(recipient_sk).map_err(|_| BtcError::BadKey)?;
+        let key = InMemoryBtcEnclaveKey::from_secret(recipient_sk)?;
+        self.claim_tx_with_key(funded, preimage, dest_spk, payout_sat, &key)
+    }
+
+    /// Like [`claim_tx`](Self::claim_tx) but signs through the opaque [`BtcEnclaveKey`] seam — the
+    /// secp256k1 secret never enters this crate, only a signature comes back. This is the on-device
+    /// path (a native Secure Enclave / Keystore impl); `claim_tx` is the in-memory wrapper for dev.
+    pub fn claim_tx_with_key(
+        &self,
+        funded: &FundedHtlc,
+        preimage: &[u8; HASH_LEN],
+        dest_spk: ScriptBuf,
+        payout_sat: u64,
+        key: &dyn BtcEnclaveKey,
+    ) -> Result<Vec<u8>, BtcError> {
         // claim: nLockTime 0, final sequence; branch items = [preimage, 0x01 (IF-true)].
         self.sign_spend(
             funded,
@@ -98,7 +115,7 @@ impl BtcHtlcParams {
             0,
             0xffff_ffff,
             &[preimage, &[0x01]],
-            &sk,
+            key,
         )
     }
 
@@ -112,7 +129,18 @@ impl BtcHtlcParams {
         payout_sat: u64,
         sender_sk: &[u8; 32],
     ) -> Result<Vec<u8>, BtcError> {
-        let sk = SecretKey::from_slice(sender_sk).map_err(|_| BtcError::BadKey)?;
+        let key = InMemoryBtcEnclaveKey::from_secret(sender_sk)?;
+        self.refund_tx_with_key(funded, dest_spk, payout_sat, &key)
+    }
+
+    /// Like [`refund_tx`](Self::refund_tx) but signs through the [`BtcEnclaveKey`] seam (on-device).
+    pub fn refund_tx_with_key(
+        &self,
+        funded: &FundedHtlc,
+        dest_spk: ScriptBuf,
+        payout_sat: u64,
+        key: &dyn BtcEnclaveKey,
+    ) -> Result<Vec<u8>, BtcError> {
         let locktime = u32::try_from(self.cltv_locktime).map_err(|_| BtcError::BadLocktime)?;
         // refund: nLockTime = cltv, sequence 0xfffffffe (non-final, enables CLTV); branch = [<empty>].
         self.sign_spend(
@@ -122,12 +150,13 @@ impl BtcHtlcParams {
             locktime,
             0xffff_fffe,
             &[&[]],
-            &sk,
+            key,
         )
     }
 
-    /// Build a 1-in/1-out spend of the funded HTLC, sign input 0 over the BIP143 segwit-v0 sighash,
-    /// and assemble the witness `[sig, <branch items…>, redeemScript]`.
+    /// Build a 1-in/1-out spend of the funded HTLC, sign input 0 over the BIP143 segwit-v0 sighash
+    /// **through the [`BtcEnclaveKey`] seam** (the secret never enters this function), and assemble
+    /// the witness `[sig, <branch items…>, redeemScript]`.
     #[allow(clippy::too_many_arguments)]
     fn sign_spend(
         &self,
@@ -137,7 +166,7 @@ impl BtcHtlcParams {
         locktime: u32,
         sequence: u32,
         branch: &[&[u8]],
-        sk: &SecretKey,
+        key: &dyn BtcEnclaveKey,
     ) -> Result<Vec<u8>, BtcError> {
         let redeem = self.redeem_script();
         let mut tx = Transaction {
@@ -162,8 +191,13 @@ impl BtcHtlcParams {
                 EcdsaSighashType::All,
             )
             .map_err(|_| BtcError::Sighash)?;
-        let secp = Secp256k1::new();
-        let sig = secp.sign_ecdsa(&Message::from_digest(sighash.to_byte_array()), sk);
+        // Sign the 32-byte sighash behind the key seam; only the DER signature comes back.
+        let der = key.sign_sighash(sighash.to_byte_array().to_vec());
+        // Re-normalize to low-S so even a native enclave that returns a high-S signature can't
+        // produce a non-standard (relay-rejected) tx. For the in-memory key this is already
+        // canonical, so the bytes stay byte-identical to bitcoinjs-lib.
+        let mut sig = ecdsa::Signature::from_der(&der).map_err(|_| BtcError::BadSignature)?;
+        sig.normalize_s();
         let mut sig_bytes = sig.serialize_der().to_vec();
         sig_bytes.push(EcdsaSighashType::All as u8); // append the sighash-type byte
         let mut witness = Witness::new();
@@ -174,6 +208,69 @@ impl BtcHtlcParams {
         witness.push(redeem.as_bytes());
         tx.input[0].witness = witness;
         Ok(bitcoin::consensus::encode::serialize(&tx))
+    }
+}
+
+// --- BtcEnclaveKey: the native secp256k1 key seam (the BTC mirror of nimiq::signer::EnclaveKey) ---
+
+/// The opaque native secp256k1 key seam for the Bitcoin leg. The Secure Enclave / Android Keystore
+/// implements this so the **secp256k1 secret never crosses the FFI boundary**: only the 33-byte
+/// compressed public key leaves (to build the HTLC redeem script + the P2WPKH payout address) and a
+/// DER-encoded ECDSA signature over the 32-byte BIP143 sighash leaves. [`BtcHtlcParams::sign_spend`]
+/// re-normalizes the returned signature to low-S, so a native impl cannot produce a non-standard
+/// (relay-rejected) signature.
+///
+/// `// NATIVE:` on iOS a real impl signs via a non-exportable secp256k1 `SecKey`; on Android via a
+/// hardware-backed `KeyStore` entry. One wallet seed derives **both** this BTC key (BIP32/BIP84) and
+/// the NIM [`EnclaveKey`](crate::nimiq::signer::EnclaveKey) — that derivation is the native layer's
+/// job; the core only ever sees the opaque handle. Verified on-device later; here we model the shape.
+#[uniffi::export(with_foreign)]
+pub trait BtcEnclaveKey: Send + Sync {
+    /// The 33-byte compressed secp256k1 public key (safe to leak; goes into the redeem script and
+    /// the P2WPKH payout address).
+    fn public_key(&self) -> Vec<u8>;
+    /// Sign the 32-byte BIP143 segwit-v0 sighash digest, returning the DER-encoded ECDSA signature
+    /// (no sighash-type byte — the tx assembler appends it). MUST be over secp256k1; SHOULD be
+    /// RFC6979-deterministic + low-S (the assembler normalizes low-S regardless).
+    fn sign_sighash(&self, sighash: Vec<u8>) -> Vec<u8>;
+}
+
+/// In-process reference [`BtcEnclaveKey`] for tests/dev ONLY. **Not** FFI-exported: a secret-bearing
+/// constructor must never appear on the UniFFI surface (the seed never crosses FFI). Production uses
+/// a native enclave-backed impl. Signs with deterministic RFC6979 + low-S, so its output is
+/// byte-identical to `bitcoinjs-lib` and consensus-canonical.
+pub struct InMemoryBtcEnclaveKey {
+    secret: SecretKey,
+    secp: Secp256k1<All>,
+}
+
+impl InMemoryBtcEnclaveKey {
+    /// Build from a 32-byte secp256k1 secret (Rust-side test/dev only). Errors if the bytes are not
+    /// a valid secp256k1 scalar.
+    pub fn from_secret(secret: &[u8; 32]) -> Result<Self, BtcError> {
+        Ok(InMemoryBtcEnclaveKey {
+            secret: SecretKey::from_slice(secret).map_err(|_| BtcError::BadKey)?,
+            secp: Secp256k1::new(),
+        })
+    }
+}
+
+impl BtcEnclaveKey for InMemoryBtcEnclaveKey {
+    fn public_key(&self) -> Vec<u8> {
+        PublicKey::from_secret_key(&self.secp, &self.secret)
+            .serialize()
+            .to_vec()
+    }
+
+    fn sign_sighash(&self, sighash: Vec<u8>) -> Vec<u8> {
+        let digest: [u8; HASH_LEN] = match sighash.as_slice().try_into() {
+            Ok(d) => d,
+            Err(_) => return Vec::new(), // wrong-length digest → empty sig → assembler rejects
+        };
+        self.secp
+            .sign_ecdsa(&Message::from_digest(digest), &self.secret)
+            .serialize_der()
+            .to_vec()
     }
 }
 
@@ -197,6 +294,8 @@ pub enum BtcError {
     BadLocktime,
     /// The BIP143 sighash could not be computed.
     Sighash,
+    /// The key seam returned a signature that is not parseable DER (corrupt / wrong-length digest).
+    BadSignature,
 }
 
 impl std::fmt::Display for BtcError {
@@ -205,6 +304,7 @@ impl std::fmt::Display for BtcError {
             BtcError::BadKey => write!(f, "invalid secp256k1 secret key"),
             BtcError::BadLocktime => write!(f, "CLTV locktime does not fit a u32"),
             BtcError::Sighash => write!(f, "could not compute the BIP143 sighash"),
+            BtcError::BadSignature => write!(f, "key seam returned an unparseable signature"),
         }
     }
 }
@@ -325,5 +425,56 @@ mod tests {
             .refund_tx(&fixture_funded(), dest_spk(), 99_000, &[0x22u8; 32])
             .unwrap();
         assert_eq!(bytes_to_hex(&refund), "0200000000010111111111111111111111111111111111111111111111111111111111111111110000000000feffffff01b882010000000000160014751e76e8199196d454941c45d1b3a323f1433bd6034830450221009191bae0530e6717c382bb066969a19443d071b06e31cb40a03bf39784bfbb3c02205615e27fcb79ff17838de55053eb0bfb0179b88d5047db740f8d7b650e8db55701007363a820ae216c2ef5247a3782c135efa279a3e4cdc61094270f5d2be58c6204b7a612c98821034f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aaac67045623406ab1752102466d7fcae563e5cb09a0d1870bb580344804617879a14949cf22285f1bae3f27ac685623406a");
+    }
+
+    // The on-device key seam: driving the spend through `BtcEnclaveKey` must produce byte-identical
+    // bytes to the raw-key path — proving the seam is faithful (same on-chain tx, secret behind FFI).
+    #[test]
+    fn enclave_seam_signs_byte_identically_to_raw_key() {
+        let recipient = InMemoryBtcEnclaveKey::from_secret(&[0x11u8; 32]).unwrap();
+        let sender = InMemoryBtcEnclaveKey::from_secret(&[0x22u8; 32]).unwrap();
+        // The seam exposes exactly the compressed pubkeys baked into the reference redeem script.
+        assert_eq!(
+            bytes_to_hex(&recipient.public_key()),
+            "034f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa"
+        );
+        assert_eq!(
+            bytes_to_hex(&sender.public_key()),
+            "02466d7fcae563e5cb09a0d1870bb580344804617879a14949cf22285f1bae3f27"
+        );
+
+        let preimage: [u8; 32] = std::array::from_fn(|i| (i + 1) as u8);
+        // claim through the seam == claim with the raw key (which is itself pinned to bitcoinjs).
+        let via_seam = spend_params()
+            .claim_tx_with_key(&fixture_funded(), &preimage, dest_spk(), 99_000, &recipient)
+            .unwrap();
+        let via_raw = spend_params()
+            .claim_tx(
+                &fixture_funded(),
+                &preimage,
+                dest_spk(),
+                99_000,
+                &[0x11u8; 32],
+            )
+            .unwrap();
+        assert_eq!(via_seam, via_raw);
+        // refund through the seam == refund with the raw key.
+        let refund_seam = spend_params()
+            .refund_tx_with_key(&fixture_funded(), dest_spk(), 99_000, &sender)
+            .unwrap();
+        let refund_raw = spend_params()
+            .refund_tx(&fixture_funded(), dest_spk(), 99_000, &[0x22u8; 32])
+            .unwrap();
+        assert_eq!(refund_seam, refund_raw);
+    }
+
+    #[test]
+    fn enclave_key_rejects_a_bad_secret() {
+        // The all-zero scalar is not a valid secp256k1 key. (Match rather than `unwrap_err` so the
+        // secret-holding key type never needs a `Debug` impl that could leak the seed.)
+        match InMemoryBtcEnclaveKey::from_secret(&[0u8; 32]) {
+            Err(e) => assert_eq!(e, BtcError::BadKey),
+            Ok(_) => panic!("all-zero scalar must be rejected"),
+        }
     }
 }

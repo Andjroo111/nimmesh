@@ -25,9 +25,9 @@ use std::str::FromStr;
 use std::thread::sleep;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use nimmesh_core::bitcoin::secp256k1::{PublicKey, Secp256k1, SecretKey};
+use nimmesh_core::bitcoin::secp256k1::PublicKey;
 use nimmesh_core::bitcoin::{Address as BtcAddress, CompressedPublicKey, Network, Txid};
-use nimmesh_core::btc::{BtcHtlcParams, FundedHtlc};
+use nimmesh_core::btc::{BtcEnclaveKey, BtcHtlcParams, FundedHtlc, InMemoryBtcEnclaveKey};
 use nimmesh_core::btc_gateway::{BtcSignetGateway, DEFAULT_SIGNET_API};
 use nimmesh_core::nimiq::address::Address as NimAddress;
 use nimmesh_core::nimiq::hex::bytes_to_hex;
@@ -65,7 +65,10 @@ fn env_seed(var: &str) -> Result<[u8; 32], Box<dyn Error>> {
     }
 }
 fn now_secs() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs()
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
 }
 
 /// Sign 67-byte content with an Ed25519 enclave key → (pubkey, sig).
@@ -77,18 +80,19 @@ fn nim_sign(key: &dyn EnclaveKey, content: &[u8]) -> ([u8; 32], [u8; 64]) {
 
 fn main() -> Result<(), Box<dyn Error>> {
     println!("== nimiq.nimmesh — LIVE atomic NIM<->BTC swap (one secret, two chains) ==");
-    let secp = Secp256k1::new();
 
     // --- keys: persistent (reusable, recoverable) from env, else fresh. The swapped funds land in
     // the NIM + BTC wallets these derive, so they cycle back instead of stranding. ---
     let nim_seed = env_seed("NIMMESH_NIM_SEED")?;
     let btc_seed = env_seed("NIMMESH_BTC_SEED")?;
     let alice_nim = InMemoryEnclaveKey::from_secret(&nim_seed);
-    let bob_nim = InMemoryEnclaveKey::from_secret(&nim_seed); // self NIM HTLC → NIM returns to the wallet
-    let alice_btc_sk = btc_seed; // BTC claimant → BTC returns to the wallet
-    let bob_btc_sk = btc_seed; // BTC refunder (same treasury)
-    let alice_btc_pk = PublicKey::from_secret_key(&secp, &SecretKey::from_slice(&alice_btc_sk)?);
-    let bob_btc_pk = PublicKey::from_secret_key(&secp, &SecretKey::from_slice(&bob_btc_sk)?);
+    // self NIM HTLC → NIM returns to the wallet:
+    let bob_nim = InMemoryEnclaveKey::from_secret(&nim_seed);
+    // BTC keys live behind the on-device enclave seam: only the pubkey + a signature ever leave it.
+    let alice_btc_key = InMemoryBtcEnclaveKey::from_secret(&btc_seed)?; // claimant → BTC returns here
+    let bob_btc_key = InMemoryBtcEnclaveKey::from_secret(&btc_seed)?; // refunder (same treasury)
+    let alice_btc_pk = PublicKey::from_slice(&alice_btc_key.public_key())?;
+    let bob_btc_pk = PublicKey::from_slice(&bob_btc_key.public_key())?;
 
     let alice_nim_addr = NimAddress::from_public_key(&nim_sign(&alice_nim, &[]).0);
     let bob_nim_addr = NimAddress::from_public_key(&bob_nim.public_key().try_into().unwrap());
@@ -104,7 +108,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("\nsecret S      : {}", bytes_to_hex(&secret));
     println!("hashlock H    : {}  (locks BOTH legs)", bytes_to_hex(&h));
     println!("Alice NIM     : {}", alice_nim_addr.to_user_friendly());
-    println!("Bob   NIM     : {}  <- NIM lands here", bob_nim_addr.to_user_friendly());
+    println!(
+        "Bob   NIM     : {}  <- NIM lands here",
+        bob_nim_addr.to_user_friendly()
+    );
     println!("Alice BTC     : {alice_btc_payout}  <- BTC lands here");
 
     let rpc = HttpGatewayRpc::new(DEFAULT_TESTNET_RPC_URL, NetworkId::Testnet)?;
@@ -142,9 +149,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
     let nim_contract = creation.contract_address();
     let (apk, asig) = nim_sign(&alice_nim, &creation.serialize_content());
-    let nim_fund_hex = bytes_to_hex(&creation.serialize_wire(&signature_proof_single_sig(&apk, &asig)));
+    let nim_fund_hex =
+        bytes_to_hex(&creation.serialize_wire(&signature_proof_single_sig(&apk, &asig)));
     let nim_fund_txid = rpc.send_raw_transaction(&nim_fund_hex)?;
-    println!("    NIM HTLC funded: contract {}", nim_contract.to_user_friendly());
+    println!(
+        "    NIM HTLC funded: contract {}",
+        nim_contract.to_user_friendly()
+    );
     println!("    tx {NIM_EXPLORER}/{nim_fund_txid}");
     wait_nim(&rpc, &nim_fund_txid, "NIM HTLC funding")?;
 
@@ -152,8 +163,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let btc = BtcHtlcParams {
         hash_root: h,
         recipient_pubkey: alice_btc_pk.serialize(), // Alice claims with the preimage
-        sender_pubkey: bob_btc_pk.serialize(),       // Bob refunds after CLTV
-        cltv_locktime: (now_secs() + 3_600) as i64,  // T_B = now + 1 h (Unix-secs; shorter leg)
+        sender_pubkey: bob_btc_pk.serialize(),      // Bob refunds after CLTV
+        cltv_locktime: (now_secs() + 3_600) as i64, // T_B = now + 1 h (Unix-secs; shorter leg)
     };
     let btc_addr = btc.p2wsh_address(btc_net).to_string();
     let base = std::env::var("NIMMESH_BTC_API").unwrap_or_else(|_| DEFAULT_SIGNET_API.to_string());
@@ -168,8 +179,17 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
         if let Ok(utxos) = gw.address_utxos(&btc_addr) {
             if let Some(u) = utxos.into_iter().find(|u| u.value > BTC_FEE_SAT) {
-                println!("    BTC HTLC funded: {} sat at {}:{}", u.value, &u.txid[..12], u.vout);
-                break FundedHtlc { txid: Txid::from_str(&u.txid)?, vout: u.vout, value_sat: u.value };
+                println!(
+                    "    BTC HTLC funded: {} sat at {}:{}",
+                    u.value,
+                    &u.txid[..12],
+                    u.vout
+                );
+                break FundedHtlc {
+                    txid: Txid::from_str(&u.txid)?,
+                    vout: u.vout,
+                    value_sat: u.value,
+                };
             }
         }
         sleep(POLL);
@@ -177,7 +197,13 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // ===== 3) Alice claims the BTC, REVEALING S on-chain =====
     println!("\n[3] Alice claims the BTC HTLC (reveals S) …");
-    let claim = btc.claim_tx(&funded, &secret, alice_btc_payout.script_pubkey(), funded.value_sat - BTC_FEE_SAT, &alice_btc_sk)?;
+    let claim = btc.claim_tx_with_key(
+        &funded,
+        &secret,
+        alice_btc_payout.script_pubkey(),
+        funded.value_sat - BTC_FEE_SAT,
+        &alice_btc_key,
+    )?;
     let btc_claim_txid = gw.broadcast(&bytes_to_hex(&claim))?;
     println!("    BTC claim broadcast: {btc_claim_txid}");
     println!("    S is now public in the witness on the BTC chain.");
@@ -200,9 +226,19 @@ fn main() -> Result<(), Box<dyn Error>> {
     wait_nim(&rpc, &nim_claim_txid, "NIM claim")?;
 
     println!("\n✅✅ ATOMIC SWAP COMPLETE — one secret, two chains:");
-    println!("   Bob's NIM wallet {} received {NIM_LOCK_LUNA} luna", bob_nim_addr.to_user_friendly());
+    println!(
+        "   Bob's NIM wallet {} received {NIM_LOCK_LUNA} luna",
+        bob_nim_addr.to_user_friendly()
+    );
     println!("   Alice's BTC wallet {alice_btc_payout} received the BTC");
-    println!("   BTC claim: https://mempool.space/{}/tx/{btc_claim_txid}", if btc_net == Network::Testnet { "testnet" } else { "signet" });
+    println!(
+        "   BTC claim: https://mempool.space/{}/tx/{btc_claim_txid}",
+        if btc_net == Network::Testnet {
+            "testnet"
+        } else {
+            "signet"
+        }
+    );
     Ok(())
 }
 
