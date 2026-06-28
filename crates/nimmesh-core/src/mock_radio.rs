@@ -344,6 +344,27 @@ impl MeshHarness {
         self.attach(peer_id, node, radio)
     }
 
+    /// G14 (test): add a swap **participant** node — a plain relay that also runs a `SwapSession`
+    /// for `identity`, so it decodes its own `swap_id` off the swap stream and floods replies.
+    #[cfg(test)]
+    pub fn add_participant(
+        &mut self,
+        peer_id: &str,
+        sender_id: &[u8],
+        identity: crate::swap_session::NodeIdentity,
+        ladder: crate::swap::LadderParams,
+    ) -> Arc<MeshNode> {
+        let radio = MockRadio::new(peer_id, self.ether.clone());
+        let node = MeshNode::new_participant(
+            sender_id.to_vec(),
+            radio.clone(),
+            RelayPolicy::deterministic(),
+            identity,
+            ladder,
+        );
+        self.attach(peer_id, node, radio)
+    }
+
     /// Add a node that also acts as a gateway (records submissions + emits receipts).
     pub fn add_gateway(
         &mut self,

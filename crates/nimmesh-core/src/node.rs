@@ -36,6 +36,7 @@ use crate::packet::PEER_ID_LEN;
 use crate::radio::BleRadio;
 use crate::relay::RelayPolicy;
 use crate::settlement::{PaymentStatus, Settlement};
+use crate::swap_session::SwapSession;
 use crate::transport::{mock_tx_id, TxId};
 
 /// A unit of work handed from a BLE callback to the worker thread.
@@ -58,6 +59,13 @@ enum Job {
     BeaconTick,
     /// G15: flood a `nimiqBalanceQuery` for this address (asks any gateway for its balance).
     BalanceQuery(Address),
+    /// G14 (test): register an initiator coordinator + flood its `Propose` (swap origination).
+    #[cfg(test)]
+    StartSwap {
+        swap_id: [u8; crate::swap_wire::SWAP_ID_LEN],
+        coordinator: Box<crate::swap_coordinator::SwapCoordinator>,
+        propose: Box<crate::swap_wire::SwapEnvelope>,
+    },
     /// Drain and exit (teardown).
     Shutdown,
 }
@@ -98,8 +106,9 @@ fn run_worker(
     rx: Receiver<Job>,
     policy: RelayPolicy,
     verify_before_relay: bool,
+    swap: Option<SwapSession>,
 ) {
-    let mut st = WorkerState::new(policy, verify_before_relay);
+    let mut st = WorkerState::new(policy, verify_before_relay, swap);
     while let Ok(job) = rx.recv() {
         match job {
             Job::Shutdown => break,
@@ -133,6 +142,16 @@ fn run_worker(
                     flood_local_balance_query(&ctx, addr, &mut st);
                 }));
             }
+            #[cfg(test)]
+            Job::StartSwap {
+                swap_id,
+                coordinator,
+                propose,
+            } => {
+                let _ = catch_unwind(AssertUnwindSafe(|| {
+                    crate::swap_node::start_swap(&ctx, swap_id, *coordinator, *propose, &mut st);
+                }));
+            }
         }
     }
 }
@@ -148,7 +167,14 @@ impl MeshNode {
     #[uniffi::constructor]
     pub fn new(sender_id: Vec<u8>, radio: Arc<dyn BleRadio>) -> Arc<Self> {
         // Production verifies every `nimiqTx` before relaying (G12 spam filter, RISKS.md #4).
-        Self::build(sender_id, radio, None, RelayPolicy::production(), true)
+        Self::build(
+            sender_id,
+            radio,
+            None,
+            RelayPolicy::production(),
+            true,
+            None,
+        )
     }
 
     /// A peer connected (`CBPeripheral` / GATT link up). Cheap: record it as a flood
@@ -391,6 +417,7 @@ impl MeshNode {
         gateway: Option<Arc<dyn MeshGateway>>,
         policy: RelayPolicy,
         verify_before_relay: bool,
+        swap: Option<SwapSession>,
     ) -> Arc<Self> {
         let ctx = Arc::new(WorkerCtx::new(
             to_sender_id(&sender_id),
@@ -399,8 +426,9 @@ impl MeshNode {
         ));
         let (tx, rx) = channel();
         let worker_ctx = ctx.clone();
-        let worker =
-            std::thread::spawn(move || run_worker(worker_ctx, rx, policy, verify_before_relay));
+        let worker = std::thread::spawn(move || {
+            run_worker(worker_ctx, rx, policy, verify_before_relay, swap)
+        });
         // Bring the radio up. Real BLE starts advertising + scanning concurrently.
         radio.start_advertising();
         radio.start_scanning();
@@ -420,7 +448,21 @@ impl MeshNode {
         policy: RelayPolicy,
     ) -> Arc<Self> {
         // Verify off: the harness floods opaque stand-in bytes (not real signed txs).
-        Self::build(sender_id, radio, None, policy, false)
+        Self::build(sender_id, radio, None, policy, false, None)
+    }
+
+    /// G14 (test): a swap **participant** node — a plain node that also runs a [`SwapSession`] for
+    /// `identity`, so it decodes its own `swap_id` off the swap stream and floods replies.
+    #[cfg(test)]
+    pub(crate) fn new_participant(
+        sender_id: Vec<u8>,
+        radio: Arc<dyn BleRadio>,
+        policy: RelayPolicy,
+        identity: crate::swap_session::NodeIdentity,
+        ladder: crate::swap::LadderParams,
+    ) -> Arc<Self> {
+        let session = SwapSession::new(identity, ladder);
+        Self::build(sender_id, radio, None, policy, false, Some(session))
     }
 
     /// Build a gateway node with a caller-chosen relay policy (deterministic in tests).
@@ -430,7 +472,7 @@ impl MeshNode {
         gateway: Arc<dyn MeshGateway>,
         policy: RelayPolicy,
     ) -> Arc<Self> {
-        Self::build(sender_id, radio, Some(gateway), policy, false)
+        Self::build(sender_id, radio, Some(gateway), policy, false, None)
     }
 
     /// G12 harness helper: a verifying plain node (verify-before-relay ON) — used by the
@@ -440,7 +482,7 @@ impl MeshNode {
         radio: Arc<dyn BleRadio>,
         policy: RelayPolicy,
     ) -> Arc<Self> {
-        Self::build(sender_id, radio, None, policy, true)
+        Self::build(sender_id, radio, None, policy, true, None)
     }
 
     fn do_shutdown(&self) {
@@ -461,6 +503,32 @@ impl MeshNode {
     #[cfg(test)]
     pub(crate) fn wait_payment(&self, tx_id: &[u8], timeout: Duration) -> PaymentStatus {
         self.ctx.wait(to_tx_id(tx_id), timeout)
+    }
+
+    /// G14 (test): originate a swap — register the initiator `coordinator` + flood its `Propose`.
+    #[cfg(test)]
+    pub(crate) fn start_swap(
+        &self,
+        swap_id: [u8; crate::swap_wire::SWAP_ID_LEN],
+        coordinator: crate::swap_coordinator::SwapCoordinator,
+        propose: crate::swap_wire::SwapEnvelope,
+    ) {
+        if let Some(tx) = self.job_tx.lock().unwrap().as_ref() {
+            let _ = tx.send(Job::StartSwap {
+                swap_id,
+                coordinator: Box::new(coordinator),
+                propose: Box::new(propose),
+            });
+        }
+    }
+
+    /// G14 (test): this node's phase for a swap it participates in (reads the observable mirror).
+    #[cfg(test)]
+    pub(crate) fn swap_phase(
+        &self,
+        swap_id: [u8; crate::swap_wire::SWAP_ID_LEN],
+    ) -> Option<crate::swap::SwapPhase> {
+        crate::swap_node::swap_phase(&self.ctx, swap_id)
     }
 
     /// How many packets this node has relayed onward (test/observability hook).

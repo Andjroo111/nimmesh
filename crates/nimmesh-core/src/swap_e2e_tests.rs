@@ -312,6 +312,138 @@ fn a_swap_funding_proof_rides_the_multi_hop_mesh_blindly() {
     );
 }
 
+// --- G14: the SwapSession ↔ MeshNode hook, driven over the REAL node loop ---------------
+
+/// Build a `(swap_id, terms)` pair + the two parties' identities/contexts for a node-level swap.
+#[cfg(test)]
+fn participant_fixtures() -> (
+    [u8; 16],
+    crate::swap_session::NodeIdentity,
+    crate::swap_session::NodeIdentity,
+    crate::swap_coordinator::SwapContext,
+) {
+    use crate::swap_coordinator::SwapContext;
+    use crate::swap_session::NodeIdentity;
+    let swap_id = [0x7A; 16];
+    let pk = |b: u8| {
+        let mut k = [b; 33];
+        k[0] = 0x02;
+        k
+    };
+    let alice_id = NodeIdentity {
+        nim_address: [0xA1; 20],
+        btc_address: b"tb1qalice".to_vec(),
+        btc_pubkey: pk(0x11),
+    };
+    let bob_id = NodeIdentity {
+        nim_address: [0xB2; 20],
+        btc_address: b"tb1qbob".to_vec(),
+        btc_pubkey: pk(0x22),
+    };
+    // Alice's initiator context (she gives NIM, wants BTC), terms = the proven-safe ladder.
+    let alice_ctx = SwapContext {
+        swap_id,
+        terms: terms(),
+        hashlock: sha256(&[42u8; 32]),
+        nim_address: alice_id.nim_address,
+        btc_address: alice_id.btc_address.clone(),
+        btc_pubkey: alice_id.btc_pubkey,
+        give_amount: GIVE_NIM,
+        take_amount: TAKE_BTC,
+        network_id: 5,
+    };
+    (swap_id, alice_id, bob_id, alice_ctx)
+}
+
+#[test]
+fn a_responder_node_accepts_a_proposed_swap_injected_over_the_mesh() {
+    // G14: a swap `Propose` packet is injected at a participant node `bob`. Through the REAL node
+    // receive loop (decode → dispatch → SwapSession route → reply flood) bob spins up a responder
+    // coordinator, reaches `Accepted`, and floods a `SwapAccept` — which a connected relay carries
+    // onward. Proves the MeshNode swap hook works end to end, not the session in isolation.
+    use crate::codec::encode;
+    use crate::mock_radio::MeshHarness;
+    use crate::packet::{MessageType, Packet, BROADCAST_RECIPIENT};
+    use crate::swap::{LadderParams, SwapPhase};
+    use crate::swap_coordinator::SwapCoordinator;
+    use crate::swap_wire::encode_swap;
+    use crate::test_support::{wait_until, SETTLE};
+
+    let (swap_id, _alice_id, bob_id, alice_ctx) = participant_fixtures();
+    let mut h = MeshHarness::new();
+    let bob = h.add_participant("bob", &[2], bob_id, LadderParams::default());
+    let relay = h.add_node("relay", &[3]);
+    h.connect("bob", "relay");
+
+    // Alice (off-mesh here) builds her Propose; it arrives at bob from some upstream peer.
+    let (_alice, propose) =
+        SwapCoordinator::new_initiator(alice_ctx, [42u8; 32], LadderParams::default());
+    let mut packet = Packet::new(
+        MessageType::SwapPropose,
+        [9u8; 8],
+        encode_swap(&propose).unwrap(),
+    );
+    packet.recipient_id = Some(BROADCAST_RECIPIENT);
+    bob.on_packet_received_from("alice".to_string(), encode(&packet).unwrap());
+
+    // Bob's node routes the Propose to its session and accepts — observable via the phase mirror.
+    assert!(
+        wait_until(
+            || bob.swap_phase(swap_id) == Some(SwapPhase::Accepted),
+            SETTLE
+        ),
+        "bob did not accept the proposed swap through the node loop"
+    );
+    // And bob flooded a reply (the SwapAccept) which the relay carried onward.
+    assert!(
+        wait_until(|| relay.forwarded_count() >= 1, SETTLE),
+        "bob's Accept reply never reached / was relayed by the neighbour"
+    );
+
+    h.shutdown();
+}
+
+#[test]
+fn two_participant_nodes_negotiate_propose_and_accept_over_the_real_mesh() {
+    // G14: the full negotiation handshake over the real mesh. Alice (initiator participant) floods a
+    // `Propose`; bob (responder participant) routes it, accepts, floods an `Accept`; alice's node
+    // routes that `Accept` back to her initiator coordinator. Both reach `Accepted` with no hand
+    // orchestration — the session hook drives both node loops.
+    use crate::mock_radio::MeshHarness;
+    use crate::swap::{LadderParams, SwapPhase};
+    use crate::swap_coordinator::SwapCoordinator;
+    use crate::test_support::{wait_until, SETTLE};
+
+    let (swap_id, alice_id, bob_id, alice_ctx) = participant_fixtures();
+    let mut h = MeshHarness::new();
+    let alice = h.add_participant("alice", &[1], alice_id, LadderParams::default());
+    let bob = h.add_participant("bob", &[2], bob_id, LadderParams::default());
+    h.connect("alice", "bob");
+
+    // Alice originates the swap: her coordinator + the Propose to flood.
+    let (coordinator, propose) =
+        SwapCoordinator::new_initiator(alice_ctx, [42u8; 32], LadderParams::default());
+    alice.start_swap(swap_id, coordinator, propose);
+
+    // Bob accepts (he saw the Propose) and alice learns of it (she saw the Accept flooded back).
+    assert!(
+        wait_until(
+            || bob.swap_phase(swap_id) == Some(SwapPhase::Accepted),
+            SETTLE
+        ),
+        "bob never accepted alice's proposal over the mesh"
+    );
+    assert!(
+        wait_until(
+            || alice.swap_phase(swap_id) == Some(SwapPhase::Accepted),
+            SETTLE
+        ),
+        "alice never received bob's Accept over the mesh"
+    );
+
+    h.shutdown();
+}
+
 #[test]
 fn a_full_swap_is_negotiated_and_settled_via_wire_messages() {
     // G5: a complete swap expressed as the wire message SEQUENCE — Propose → Accept → FundingProof

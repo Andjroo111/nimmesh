@@ -59,6 +59,11 @@ pub mod swap_coordinator;
 // packet receipt and the coordinators. Pure routing: no keys, no bitcoin.
 pub mod swap_session;
 
+// Mesh swap: the SwapSession <-> MeshNode hook. `swap_node` holds the worker-side swap-packet
+// handlers that blind-relay every swap packet (privacy) and, for a participant node, route it to
+// the `SwapSession` and flood the reply -- packets in, coordinator dispatch, envelopes out.
+pub mod swap_node;
+
 // Mesh swap (F3): the swap state machine + the `Δ_safe` timelock-safety gate. `swap` owns the
 // clock-free, height-anchored lifecycle (propose → accept → fund → reveal → settle, with a refund
 // exit in every funded phase) and `assess_ladder` — the gate that REFUSES to fund a swap whose

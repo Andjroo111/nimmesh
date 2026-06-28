@@ -23,7 +23,7 @@
 //! `txWire` is **opaque** end to end — no signing, no broadcast, no key material (that is
 //! G3/G8, money-path and Andjroo-gated).
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 #[cfg(test)]
@@ -47,6 +47,9 @@ use crate::ratelimit::PeerRateLimiter;
 use crate::relay::{relayed_ttl, RelayPolicy};
 use crate::settlement::{PaymentStatus, SettlementDirection, SettlementLedger};
 use crate::store_forward::{packet_id, RecentCache, SyncScheduler};
+use crate::swap::SwapPhase;
+use crate::swap_session::SwapSession;
+use crate::swap_wire::SWAP_ID_LEN;
 use crate::transport::{mock_tx_id, TxId};
 
 /// LRU bound for the blind packet-relay dedup (hostile-flood ceiling, RISKS.md #4).
@@ -139,6 +142,10 @@ pub struct WorkerCtx {
     stop_after_ack: AtomicUsize,
     /// G15: count of `nimiqBalanceResponse` frames this gateway has answered + flooded.
     pub(crate) balance_answered: AtomicUsize,
+    /// G14: observable mirror of the worker-thread `SwapSession`'s per-swap phase, so the FFI side
+    /// can read a swap's progress without reaching into the worker-thread-local session. Written +
+    /// read in [`crate::swap_node`]. Empty on a pure relay (no session).
+    pub(crate) swaps: Mutex<HashMap<[u8; SWAP_ID_LEN], SwapPhase>>,
 }
 
 impl WorkerCtx {
@@ -170,6 +177,7 @@ impl WorkerCtx {
             rate_limited: AtomicUsize::new(0),
             stop_after_ack: AtomicUsize::new(0),
             balance_answered: AtomicUsize::new(0),
+            swaps: Mutex::new(HashMap::new()),
         }
     }
 
@@ -375,10 +383,18 @@ pub(crate) struct WorkerState {
     /// G12: txIds we have seen a gateway receipt (ACK) for — stop re-carrying a landed tx.
     acked: DedupCache<TxId>,
     start: Instant,
+    /// G14: present iff this node is a swap **participant** (not just a blind relay). When set, the
+    /// node decodes its own `swap_id` off the otherwise-opaque swap stream and floods replies; a
+    /// pure relay leaves this `None` and never parses a swap.
+    pub(crate) swap: Option<SwapSession>,
 }
 
 impl WorkerState {
-    pub(crate) fn new(policy: RelayPolicy, verify_before_relay: bool) -> Self {
+    pub(crate) fn new(
+        policy: RelayPolicy,
+        verify_before_relay: bool,
+        swap: Option<SwapSession>,
+    ) -> Self {
         WorkerState {
             relay_seen: DedupCache::new(RELAY_CACHE_CAP),
             gateway_seen: DedupCache::new(GATEWAY_CACHE_CAP),
@@ -391,6 +407,7 @@ impl WorkerState {
             limiter: PeerRateLimiter::new(),
             acked: DedupCache::new(GATEWAY_CACHE_CAP),
             start: Instant::now(),
+            swap,
         }
     }
 
@@ -526,23 +543,14 @@ fn dispatch_packet(ctx: &WorkerCtx, packet: Packet, src: Option<&str>, st: &mut 
         }
         // G6: the fragment path — carry the fragment onward and feed the reassembler.
         MessageType::Fragment => handle_fragment(ctx, packet, src, st),
-        // F4b (mesh swap): the swap packets (`0x40`–`0x44`: propose / accept / funding-proof /
-        // preimage-reveal / abort) ride the mesh as **blind-relayed opaque bytes** — exactly the
-        // `nimiqTx` / `noiseEncrypted` path: blind dedup → remember (so G7 store-and-forward can
-        // serve a swap message to a peer that was out of range, and a rejoining party catches up)
-        // → degree-adaptive TTL relay. The relay **never parses** the swap (terms, addresses, and
-        // the signed funding/claim tx blobs stay opaque, core value #3); a *participant* node
-        // decodes only its own `swapId` off this stream (Phase-D, needs a running in-app node).
+        // F4b/G14 (mesh swap): blind-relay the swap packet (`0x40`–`0x44`) like a `nimiqTx`, and —
+        // for a participant node — route it to the local `SwapSession` and flood the reply. The
+        // relay never parses a swap (privacy, core value #3). See [`crate::swap_node`].
         MessageType::SwapPropose
         | MessageType::SwapAccept
         | MessageType::SwapFundingProof
         | MessageType::SwapPreimageReveal
-        | MessageType::SwapAbort => {
-            if st.relay_seen.insert(relay_key(&packet)) {
-                remember(ctx, st, &packet);
-                relay_onward(ctx, packet, src, st);
-            }
-        }
+        | MessageType::SwapAbort => crate::swap_node::handle_swap_packet(ctx, packet, src, st),
         // G11 `noiseEncrypted` (0x11) and any other relayable type: blind dedup + remember
         // + adaptive TTL relay. A `noiseEncrypted` blob is **opaque** to
         // the relay (transport-privacy) — only its two endpoints decrypt it via a Noise

@@ -90,6 +90,15 @@ impl SwapSession {
         self.coordinators.is_empty()
     }
 
+    /// A snapshot of every in-flight swap's `(swap_id, phase)` — the node mirrors this into shared
+    /// state so the FFI side can observe a swap's progress without reaching into the worker thread.
+    pub fn phases(&self) -> Vec<([u8; SWAP_ID_LEN], crate::swap::SwapPhase)> {
+        self.coordinators
+            .iter()
+            .map(|(id, c)| (*id, c.phase()))
+            .collect()
+    }
+
     /// Route an incoming swap packet (`kind` from the [`MessageType`], `payload` the TLV bytes) to
     /// the right coordinator. Returns outgoing `(MessageType, bytes)` envelopes to flood. A fresh
     /// `Propose` spins up a responder coordinator; `Accept`/`FundingProof` dispatch to the existing

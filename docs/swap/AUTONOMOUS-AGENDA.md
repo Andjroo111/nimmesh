@@ -59,7 +59,7 @@ now exist but nothing wires them to the actual `MeshNode` packet loop, and the r
 for abandoned half-negotiated swaps. The next-highest-value work is closing that integration gap and
 hardening the router against a hostile/lossy mesh.)
 
-- [ ] **G14 — MeshNode swap hook.** Wire `SwapSession` into the `MeshNode` receive path: on a swap
+- [x] **G14 — MeshNode swap hook.** Wire `SwapSession` into the `MeshNode` receive path: on a swap
       `MessageType`, hand the packet to the session and flood the returned envelopes back over the
       radio. Tested over the `MockRadio`/`MeshHarness` — a swap message injected at one node produces
       the right flooded reply, end to end through the real node loop (not the session in isolation).
