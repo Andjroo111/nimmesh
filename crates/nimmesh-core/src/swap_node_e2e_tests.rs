@@ -475,3 +475,56 @@ fn many_concurrent_swaps_all_settle_over_a_lossy_mesh() {
 
     h.shutdown();
 }
+
+#[test]
+fn a_rejoining_participant_catches_up_a_swap_via_store_and_forward() {
+    // G22: a swap Propose floods while bob is not yet on the mesh; a relay stores it (G7
+    // store-and-forward). When bob joins late and issues a gossip-sync (requestSync), the relay
+    // serves him the missed Propose, he accepts, and the whole swap drives to completion over the
+    // relay — proving the swap inherits the mesh's offline resilience. No node is ever polled, so
+    // the G20 retransmit plays no part: bob's ONLY path to the Propose (which flooded before he
+    // existed) is the gossip-sync reply, so his settling proves the store-and-forward catch-up.
+    use crate::mock_radio::MeshHarness;
+    use crate::swap::{LadderParams, SwapPhase};
+    use crate::swap_coordinator::SwapCoordinator;
+    use crate::test_support::{wait_until, SETTLE};
+
+    let (swap_id, alice_id, bob_id, alice_ctx) = participant_fixtures();
+    let mut h = MeshHarness::new();
+    let alice = h.add_participant("alice", &[1], alice_id, LadderParams::default());
+    let relay = h.add_node("relay", &[9]);
+    h.connect("alice", "relay");
+
+    // Alice proposes while bob is absent; the relay stores the Propose for later store-and-forward.
+    let (coordinator, propose) =
+        SwapCoordinator::new_initiator(alice_ctx, [42u8; 32], LadderParams::default());
+    alice.start_swap(swap_id, coordinator, propose);
+    assert!(
+        wait_until(|| relay.recent_stored() >= 1, SETTLE),
+        "the relay never stored the swap Propose for store-and-forward"
+    );
+
+    // Bob joins late and gossip-syncs: the relay serves him the missed Propose, he accepts, and the
+    // swap drives end to end over the two-hop relay (no loss, no polling → a pure catch-up). Both
+    // settle and — with no maintenance tick to reap them — stay Settled for the assertion.
+    let bob = h.add_participant("bob", &[2], bob_id, LadderParams::default());
+    h.connect("bob", "relay");
+    bob.request_sync();
+
+    assert!(
+        wait_until(
+            || bob.swap_phase(swap_id) == Some(SwapPhase::Settled),
+            SETTLE
+        ),
+        "bob did not catch up + settle the swap via store-and-forward"
+    );
+    assert!(
+        wait_until(
+            || alice.swap_phase(swap_id) == Some(SwapPhase::Settled),
+            SETTLE
+        ),
+        "alice's side did not settle after bob's catch-up"
+    );
+
+    h.shutdown();
+}
