@@ -52,6 +52,8 @@ pub struct SwapSnapshot {
     pub btc_locked: bool,
     /// Whether the secret has been revealed (read off the BTC claim).
     pub secret_revealed: bool,
+    /// Whether the swap stalled and both legs were reclaimed via the timeout refund (funds safe).
+    pub refunded: bool,
     /// A short display id of the last broadcast tx, if any.
     pub last_tx_id: Option<String>,
     /// The BTC P2WSH HTLC address both sides derive.
@@ -100,6 +102,7 @@ pub struct SwapSim {
     btc_claim: Option<Vec<u8>>,
     last_tx_id: Option<String>,
     secret_revealed: bool,
+    refunded: bool,
 }
 
 impl SwapSim {
@@ -163,6 +166,7 @@ impl SwapSim {
             btc_claim: None,
             last_tx_id: None,
             secret_revealed: false,
+            refunded: false,
         }
     }
 
@@ -219,15 +223,33 @@ impl SwapSim {
         Ok(self.snapshot())
     }
 
+    /// The safety net: from `BothFunded` (after step 3) the swap stalls, and **both sides reclaim
+    /// their own funds via the timeout refund path** — the initiator its NIM (past `T_A`), the
+    /// responder its BTC (past `T_B`). Worst case is a refund, never a loss. Errors if called before
+    /// both legs are funded.
+    pub fn stall_and_refund(&mut self) -> Result<SwapSnapshot, EngineError> {
+        let nim_refund = self.initiator.refund(T_A_MS + 1, VSH)?;
+        let _ = expect_broadcast(nim_refund, SwapLegId::Nim)?;
+        let btc_refund = self.responder.refund(T_B_MS + 1, VSH)?;
+        let tx = expect_broadcast(btc_refund, SwapLegId::Counterparty)?;
+        self.last_tx_id = Some(tx_id(&tx));
+        self.refunded = true;
+        Ok(self.snapshot())
+    }
+
     /// The current state without advancing.
     pub fn snapshot(&self) -> SwapSnapshot {
-        let label = match self.step {
-            0 => "Ready",
-            1 => "Proposing swap",
-            2 => "Locking up NIM",
-            3 => "Waiting for Bitcoin",
-            4 => "Claiming Bitcoin",
-            _ => "Settling",
+        let label = if self.refunded {
+            "Refunded — funds safe"
+        } else {
+            match self.step {
+                0 => "Ready",
+                1 => "Proposing swap",
+                2 => "Locking up NIM",
+                3 => "Waiting for Bitcoin",
+                4 => "Claiming Bitcoin",
+                _ => "Settling",
+            }
         };
         SwapSnapshot {
             step: self.step,
@@ -238,6 +260,7 @@ impl SwapSim {
             nim_locked: self.step >= 3,
             btc_locked: self.step >= 5,
             secret_revealed: self.secret_revealed,
+            refunded: self.refunded,
             last_tx_id: self.last_tx_id.clone(),
             btc_htlc_address: self.btc_htlc_address.clone(),
             done: self.initiator.phase() == SwapPhase::Settled
@@ -331,5 +354,29 @@ mod tests {
         sim.reset();
         assert_eq!(sim.snapshot().step, 0);
         assert!(!sim.snapshot().done);
+    }
+
+    #[test]
+    fn stall_refunds_both_sides_through_the_real_engines() {
+        let mut sim = SwapSim::new();
+        sim.step().unwrap(); // accept
+        sim.step().unwrap(); // lock NIM
+        let s = sim.step().unwrap(); // both funded
+        assert_eq!(s.initiator_phase, "BothFunded");
+
+        // The swap stalls; both sides reclaim their own funds via the timeout refund. No loss.
+        let r = sim.stall_and_refund().unwrap();
+        assert!(r.refunded);
+        assert!(!r.done); // not a successful settle — but funds are safe
+        assert_eq!(r.label, "Refunded — funds safe");
+        assert_eq!(r.initiator_phase, "Refunded");
+        assert_eq!(r.responder_phase, "Refunded");
+    }
+
+    #[test]
+    fn cannot_refund_before_both_legs_are_funded() {
+        let mut sim = SwapSim::new();
+        sim.step().unwrap(); // accept only — nothing locked yet
+        assert!(sim.stall_and_refund().is_err());
     }
 }
