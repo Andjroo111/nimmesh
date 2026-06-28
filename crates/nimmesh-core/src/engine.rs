@@ -382,9 +382,8 @@ pub(crate) struct WorkerState {
     pub(crate) swap: Option<SwapSession>,
     /// G26: a participant's signer seam (`MockSigner` today; the money-path signer drops in here). `Some` iff `swap`.
     pub(crate) signer: Option<Box<dyn crate::swap_signer::SwapSigner>>,
-    /// G36/G37: per-sender match-attempt cap (anti-spam) + bounded standing-intent re-advertise.
-    pub(crate) intent_throttle: crate::swap_node::IntentThrottle,
-    pub(crate) intent_advertiser: crate::swap_node::IntentAdvertiser,
+    /// G36/G37/G39: discovery-layer state — per-sender throttle, re-advertise schedule, match window.
+    pub(crate) intents: crate::swap_node::IntentState,
 }
 
 impl WorkerState {
@@ -408,8 +407,7 @@ impl WorkerState {
             start: Instant::now(),
             swap,
             signer,
-            intent_throttle: crate::swap_node::IntentThrottle::new(),
-            intent_advertiser: crate::swap_node::IntentAdvertiser::new(),
+            intents: crate::swap_node::IntentState::new(),
         }
     }
 

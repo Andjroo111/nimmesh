@@ -242,10 +242,20 @@ signing stay human-gated.)
       **LIVE WIRING BLOCKED (human-gated):** streaming the intents this node actually saw from the
       Rust core into the page needs the native WebView↔Rust bridge; the page renders fixtures and
       marks the `loadIntents` seam where live data plugs in.
-- [ ] **G39 — Best-rate intent selection.** Today a NIM-giver initiates on the FIRST crossing BTC-giver
+- [x] **G39 — Best-rate intent selection.** Today a NIM-giver initiates on the FIRST crossing BTC-giver
       intent it sees. When several complementary intents are live, it should instead pick the one with the
       best rate for itself (most BTC per NIM), with a deterministic tie-break, rather than first-come.
       Collect candidates over a short bounded tick window, then initiate against the best. Sim/testnet.
+      Done: `IntentMatcher` in `swap_node` — `handle_intent` no longer initiates immediately; it buffers
+      each crossing candidate (deduped by swap_id, bounded by `MAX_INTENT_CANDIDATES`, still gated by the
+      G36 throttle) and opens a `INTENT_MATCH_WINDOW_TICKS`-tick window. The window close in `gc_tick`
+      picks the best candidate (highest BTC-per-NIM, cross-multiplied; tie-break = smaller swap_id) and
+      initiates via the extracted `initiate_from_intent` (records the Propose for retransmit). The three
+      discovery fields folded into one `IntentState` (throttle + advertiser + matcher), keeping engine.rs
+      at 798. Tests: worse-rate-first/better-second → better wins, worse not initiated; a rate tie breaks
+      deterministically (smaller swap_id, order-independent); the G34 single-intent path still settles
+      (now window-driven); the flooder test reframed (one swap per window, later sender still matches).
+      11/11 discovery tests, 12/12 stable.
 - [ ] **G40 — Amount tolerance in matching.** `would_initiate_against` crosses on rate but the initiator
       always uses ITS own standing amounts; a 100k-NIM intent shouldn't match a counterparty that wants a
       5M-NIM trade. Add a min/max acceptable trade-size band to the intent + an amount-compatibility check,

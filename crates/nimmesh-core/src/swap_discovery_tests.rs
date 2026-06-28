@@ -31,6 +31,15 @@ fn btc_giver_intent(pubkey_tag: u8) -> SwapIntent {
     }
 }
 
+/// A BTC-giver intent (distinct `pubkey_tag`) asking a specific rate: `nim_amount` NIM per
+/// `btc_amount` BTC. Lower NIM-per-BTC = a better rate for the NIM-giver (more BTC per NIM).
+fn btc_giver_intent_at(pubkey_tag: u8, nim_amount: u64, btc_amount: u64) -> SwapIntent {
+    let mut i = btc_giver_intent(pubkey_tag);
+    i.nim_amount = nim_amount;
+    i.btc_amount = btc_amount;
+    i
+}
+
 /// Build a `SwapIntent` mirroring an identity's addresses, valid through `expiry_height`.
 fn intent_for(id: &NodeIdentity, gives: Asset, nim: u64, btc: u64, expiry: u64) -> SwapIntent {
     SwapIntent {
@@ -99,8 +108,12 @@ fn a_complementary_intent_kicks_off_a_swap_that_settles() {
     let bob = h.add_participant("bob", &[2], bob_id, LadderParams::default());
     h.connect("alice", "bob");
 
-    // Bob's intent reaches alice; alice matches it and initiates the swap.
+    // Bob's intent reaches alice; she buffers it as a match candidate (G39), then the window close on
+    // the maintenance tick initiates the Propose; bob accepts and the swap drives to Settled.
     flood_intent(&alice, &bob_intent, 1);
+    for _ in 0..4 {
+        alice.poll_sync();
+    }
 
     assert!(
         wait_until(
@@ -256,15 +269,15 @@ fn the_intent_throttle_caps_each_sender_independently() {
 }
 
 #[test]
-fn one_flooder_cannot_exhaust_the_matcher_but_another_sender_still_matches() {
-    // G36: a hostile node floods many distinct rate-crossing intents (distinct pubkey → distinct
-    // swap_id, each a fresh match attempt). The per-sender throttle caps how many alice acts on, so
-    // the flooder can't fill all her swap slots — and a legit intent from a DIFFERENT sender still
-    // matches. (The concurrency cap is 16, far above the per-sender cap, so the throttle is what
-    // bounds this, not the slot count.)
+fn a_flooder_yields_one_swap_per_window_and_a_later_sender_still_matches() {
+    // G36 + G39: a hostile node sprays many distinct rate-crossing intents in one window. Under
+    // best-rate selection the window initiates against just ONE of them (the best), so a flooder can
+    // never spin up a coordinator per intent. A legit intent from a DIFFERENT sender, in a later
+    // window, still matches. (The per-sender throttle additionally bounds how many of the flooder's
+    // candidates even enter the buffer; the pure throttle test covers that in isolation.)
     use crate::mock_radio::MeshHarness;
     use crate::swap::LadderParams;
-    use crate::swap_node::{derive_swap_id, DEFAULT_INTENT_MATCH_CAP_PER_SENDER};
+    use crate::swap_node::derive_swap_id;
     use crate::test_support::{wait_until, SETTLE};
 
     let (_swap_id, alice_id, _bob_id, _ctx) = participant_fixtures();
@@ -275,47 +288,50 @@ fn one_flooder_cannot_exhaust_the_matcher_but_another_sender_still_matches() {
     let mut h = MeshHarness::new();
     let alice = h.add_participant("alice", &[1], alice_id, LadderParams::default());
 
-    let cap = DEFAULT_INTENT_MATCH_CAP_PER_SENDER as usize;
-    let flood = cap + 6; // well over one sender's budget, still under the 16-slot concurrency cap
-
-    // One hostile sender floods `flood` distinct matching intents.
+    // One hostile sender floods 10 distinct matching intents (all in one window).
     let flooder = [0xF1; 8];
-    let swap_ids: Vec<_> = (0..flood)
+    let swap_ids: Vec<_> = (0..10u64)
         .map(|i| {
             let intent = btc_giver_intent(i as u8 + 1);
             let id = derive_swap_id(&alice_intent, &intent);
             alice.on_packet_received_from(
                 "link".to_string(),
-                intent_frame(&intent, flooder, 100 + i as u64),
+                intent_frame(&intent, flooder, 100 + i),
             );
             id
         })
         .collect();
+    for _ in 0..4 {
+        alice.poll_sync(); // close the window
+    }
 
-    let admitted = || {
+    let initiated = || {
         swap_ids
             .iter()
             .filter(|id| alice.swap_phase(**id).is_some())
             .count()
     };
     assert!(
-        wait_until(|| admitted() >= cap, SETTLE),
-        "alice should admit up to the per-sender cap"
+        wait_until(|| initiated() >= 1, SETTLE),
+        "the best flooded candidate should initiate"
     );
     std::thread::sleep(std::time::Duration::from_millis(30));
     assert_eq!(
-        admitted(),
-        cap,
-        "a single flooder must not exceed its per-sender match budget"
+        initiated(),
+        1,
+        "a flooder must get at most one swap per window, not one per intent"
     );
 
-    // A legit intent from a DIFFERENT sender still gets through (its own budget).
+    // A DIFFERENT sender's intent in a later window still matches (its own budget, its own window).
     let other = btc_giver_intent(0xC8);
     let other_id = derive_swap_id(&alice_intent, &other);
     alice.on_packet_received_from("link2".to_string(), intent_frame(&other, [0xB0; 8], 9_000));
+    for _ in 0..4 {
+        alice.poll_sync();
+    }
     assert!(
         wait_until(|| alice.swap_phase(other_id).is_some(), SETTLE),
-        "a different sender must still match through the throttle"
+        "a different sender must still match in a later window"
     );
 
     h.shutdown();
@@ -457,4 +473,93 @@ fn an_expired_standing_intent_is_not_re_advertised() {
     );
 
     node.shutdown();
+}
+
+#[test]
+fn the_best_rate_candidate_in_a_window_wins_not_the_first() {
+    // G39: two crossing candidates arrive in one window. The WORSE rate arrives first, the BETTER
+    // second. Best-rate selection must initiate against the better one (most BTC per NIM for alice) —
+    // proving the node no longer just takes the first crossing intent it sees.
+    use crate::mock_radio::MeshHarness;
+    use crate::swap::LadderParams;
+    use crate::swap_node::derive_swap_id;
+    use crate::test_support::{wait_until, SETTLE};
+
+    let (_swap_id, alice_id, _bob_id, _ctx) = participant_fixtures();
+    let alice_intent = intent_for(&alice_id, Asset::Nim, 200_000, 50_000, FRESH); // alice gives up to 4.0
+    let mut alice_id = alice_id;
+    alice_id.standing_intent = Some(alice_intent.clone());
+
+    let mut h = MeshHarness::new();
+    let alice = h.add_participant("alice", &[1], alice_id, LadderParams::default());
+
+    let bad = btc_giver_intent_at(0x20, 200_000, 50_000); // asks 4.0 NIM/BTC (just crosses)
+    let good = btc_giver_intent_at(0x10, 150_000, 50_000); // asks 3.0 NIM/BTC → better for alice
+    let bad_id = derive_swap_id(&alice_intent, &bad);
+    let good_id = derive_swap_id(&alice_intent, &good);
+
+    // Worse first, better second — both in the same window.
+    alice.on_packet_received_from("a".to_string(), intent_frame(&bad, [0xB0; 8], 1));
+    alice.on_packet_received_from("a".to_string(), intent_frame(&good, [0xB1; 8], 2));
+    for _ in 0..4 {
+        alice.poll_sync();
+    }
+
+    assert!(
+        wait_until(|| alice.swap_phase(good_id).is_some(), SETTLE),
+        "the better-rate candidate should win the window"
+    );
+    std::thread::sleep(std::time::Duration::from_millis(30));
+    assert!(
+        alice.swap_phase(bad_id).is_none(),
+        "the worse-rate candidate must not be initiated"
+    );
+
+    h.shutdown();
+}
+
+#[test]
+fn a_rate_tie_in_a_window_breaks_deterministically() {
+    // G39: two candidates with the SAME rate but different pubkeys tie. The tie-break (smaller swap_id)
+    // must pick exactly one, deterministically, regardless of arrival order.
+    use crate::mock_radio::MeshHarness;
+    use crate::swap::LadderParams;
+    use crate::swap_node::derive_swap_id;
+    use crate::test_support::{wait_until, SETTLE};
+
+    let (_swap_id, alice_id, _bob_id, _ctx) = participant_fixtures();
+    let alice_intent = intent_for(&alice_id, Asset::Nim, 200_000, 50_000, FRESH);
+    let mut alice_id = alice_id;
+    alice_id.standing_intent = Some(alice_intent.clone());
+
+    let mut h = MeshHarness::new();
+    let alice = h.add_participant("alice", &[1], alice_id, LadderParams::default());
+
+    let a = btc_giver_intent(0x30); // 180k/50k
+    let b = btc_giver_intent(0x31); // 180k/50k — same rate, different pubkey
+    let a_id = derive_swap_id(&alice_intent, &a);
+    let b_id = derive_swap_id(&alice_intent, &b);
+    let (winner, loser) = if a_id < b_id {
+        (a_id, b_id)
+    } else {
+        (b_id, a_id)
+    };
+
+    alice.on_packet_received_from("a".to_string(), intent_frame(&a, [0xB0; 8], 1));
+    alice.on_packet_received_from("a".to_string(), intent_frame(&b, [0xB1; 8], 2));
+    for _ in 0..4 {
+        alice.poll_sync();
+    }
+
+    assert!(
+        wait_until(|| alice.swap_phase(winner).is_some(), SETTLE),
+        "the smaller swap_id should win a rate tie"
+    );
+    std::thread::sleep(std::time::Duration::from_millis(30));
+    assert!(
+        alice.swap_phase(loser).is_none(),
+        "only one candidate wins a tie"
+    );
+
+    h.shutdown();
 }

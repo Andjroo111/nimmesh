@@ -127,6 +127,100 @@ impl IntentAdvertiser {
     }
 }
 
+/// G39: how many maintenance ticks the candidate-collection window stays open before the best
+/// crossing intent in it is chosen. Short, so discovery still feels instant, yet long enough to let a
+/// few near-simultaneous advertisements arrive and compete on rate.
+const INTENT_MATCH_WINDOW_TICKS: u32 = 2;
+/// G39: a hard cap on buffered candidates per window (a memory bound atop the per-sender throttle).
+const MAX_INTENT_CANDIDATES: usize = 64;
+
+/// G39: a short collection window over crossing swap-intent candidates. A NIM-giver no longer
+/// initiates against the FIRST complementary intent it sees; it buffers the crossing candidates that
+/// arrive within a bounded tick window, then initiates against the one offering the BEST rate (most
+/// BTC per NIM), with a deterministic tie-break. Tick-counted, so it is deterministic with no clock.
+pub(crate) struct IntentMatcher {
+    candidates: Vec<([u8; SWAP_ID_LEN], crate::swap_intent::SwapIntent)>,
+    window: u32,
+}
+
+impl IntentMatcher {
+    pub(crate) fn new() -> Self {
+        IntentMatcher {
+            candidates: Vec::new(),
+            window: 0,
+        }
+    }
+
+    /// Whether `swap_id` is already a buffered candidate this window (so a re-flood is ignored).
+    pub(crate) fn contains(&self, swap_id: &[u8; SWAP_ID_LEN]) -> bool {
+        self.candidates.iter().any(|(id, _)| id == swap_id)
+    }
+
+    /// Buffer a crossing candidate, opening the window if it is closed. Bounded by
+    /// `MAX_INTENT_CANDIDATES`; a full buffer drops the newcomer.
+    pub(crate) fn add_candidate(
+        &mut self,
+        swap_id: [u8; SWAP_ID_LEN],
+        intent: crate::swap_intent::SwapIntent,
+    ) {
+        if self.candidates.len() >= MAX_INTENT_CANDIDATES {
+            return;
+        }
+        if self.window == 0 {
+            self.window = INTENT_MATCH_WINDOW_TICKS;
+        }
+        self.candidates.push((swap_id, intent));
+    }
+
+    /// Advance one maintenance tick. When the window closes, return the BEST buffered candidate's
+    /// swap_id and clear the buffer; otherwise `None`.
+    pub(crate) fn tick(&mut self) -> Option<[u8; SWAP_ID_LEN]> {
+        if self.window == 0 {
+            return None;
+        }
+        self.window -= 1;
+        if self.window > 0 {
+            return None;
+        }
+        let best = self.best().map(|(id, _)| *id);
+        self.candidates.clear();
+        best
+    }
+
+    /// The best candidate for the NIM-giver: the highest BTC-per-NIM rate (cross-multiplied to avoid
+    /// division), tie-broken by the smaller swap_id so the choice is fully deterministic.
+    fn best(&self) -> Option<&([u8; SWAP_ID_LEN], crate::swap_intent::SwapIntent)> {
+        self.candidates.iter().reduce(|best, c| {
+            // `c` beats `best` when c.btc/c.nim > best.btc/best.nim, i.e. c.btc*best.nim > best.btc*c.nim.
+            let lhs = (c.1.btc_amount as u128) * (best.1.nim_amount as u128);
+            let rhs = (best.1.btc_amount as u128) * (c.1.nim_amount as u128);
+            if lhs > rhs || (lhs == rhs && c.0 < best.0) {
+                c
+            } else {
+                best
+            }
+        })
+    }
+}
+
+/// G36/G37/G39: the worker's discovery-layer state — the per-sender match-attempt throttle, the
+/// standing-intent re-advertise schedule, and the best-rate match window.
+pub(crate) struct IntentState {
+    pub(crate) throttle: IntentThrottle,
+    pub(crate) advertiser: IntentAdvertiser,
+    pub(crate) matcher: IntentMatcher,
+}
+
+impl IntentState {
+    pub(crate) fn new() -> Self {
+        IntentState {
+            throttle: IntentThrottle::new(),
+            advertiser: IntentAdvertiser::new(),
+            matcher: IntentMatcher::new(),
+        }
+    }
+}
+
 /// A swap packet (`0x40`–`0x44`). Blind-relay it onward like any flooded packet, and — if this node
 /// is a participant — route it to our own [`crate::swap_session::SwapSession`] and flood whatever
 /// reply it produces (a `Propose` → an `Accept`, etc.).
@@ -160,14 +254,10 @@ pub(crate) fn handle_swap_packet(
     // flood (which re-borrows `st` for dedup/remember), so the replies are collected first.
     if st.swap.is_some() {
         if packet.msg_type == MessageType::SwapIntent {
-            // G34: discovery — match the intent against our standing one and maybe initiate a swap.
-            // G36: keyed by the flood's origin (`sender_id`) so the per-sender throttle can cap a
-            // hostile flooder without penalising a different advertiser.
-            let replies = handle_intent(st, packet.sender_id, &packet.payload);
-            sync_swap_phases(ctx, st);
-            for (mt, payload) in replies {
-                flood_swap_reply(ctx, mt, payload, st);
-            }
+            // G34/G39: discovery — buffer the intent against our standing one as a match-window
+            // candidate (the window close in `gc_tick` initiates the best). G36: keyed by the flood's
+            // origin (`sender_id`) so the per-sender throttle caps a flooder, not a real advertiser.
+            handle_intent(st, packet.sender_id, &packet.payload);
         } else if let Some(kind) = SwapKind::from_message_type(packet.msg_type) {
             let head = ctx.cached_head().map(u64::from).unwrap_or(0);
             let mut replies = match st.swap.as_mut() {
@@ -294,44 +384,68 @@ fn coordinator<'a>(
     st.swap.as_mut().and_then(|s| s.coordinator(swap_id))
 }
 
-/// G34: a received swap intent. If this node holds a complementary standing intent that crosses on
-/// rate (so it is the NIM-giver / initiator) and is under its concurrency cap, build an initiator
-/// coordinator and return its `Propose` to flood — turning discovery into a real swap. A BTC-giver
-/// (or no standing intent) returns nothing and just waits for a Propose.
-fn handle_intent(
-    st: &mut WorkerState,
-    sender: [u8; PEER_ID_LEN],
-    payload: &[u8],
-) -> Vec<(MessageType, Vec<u8>)> {
+/// G34/G39: a received swap intent. If this node holds a complementary standing intent that crosses
+/// on rate (so it is the NIM-giver / initiator) and is under its concurrency cap, BUFFER it as a
+/// candidate for the current match window (G39) — the window close in [`gc_tick`] then initiates
+/// against the best-rate candidate. A BTC-giver (or no standing intent) buffers nothing and just
+/// waits for a Propose. Returns no immediate reply (initiation is deferred to the window close).
+fn handle_intent(st: &mut WorkerState, sender: [u8; PEER_ID_LEN], payload: &[u8]) {
     let Ok(incoming) = crate::swap_intent::decode_intent(payload) else {
-        return Vec::new();
+        return;
     };
-    // Read everything we need under one immutable borrow, then build + insert under a fresh one.
-    let (standing, ladder, swap_id) = {
+    let swap_id = {
+        let Some(session) = st.swap.as_ref() else {
+            return;
+        };
+        let Some(standing) = session.identity.standing_intent.as_ref() else {
+            return;
+        };
+        if !standing.would_initiate_against(&incoming)
+            || session.len() >= session.identity.max_concurrent_swaps
+        {
+            return;
+        }
+        let swap_id = derive_swap_id(standing, &incoming);
+        if session.coordinators.contains_key(&swap_id) {
+            return; // already initiating this exact swap
+        }
+        swap_id
+    };
+
+    // G39: a re-flood we've already buffered this window is ignored (so it doesn't double-charge).
+    if st.intents.matcher.contains(&swap_id) {
+        return;
+    }
+    // G36: charge the sender's budget — a flooder that has spent it can't keep filling the buffer.
+    if !st.intents.throttle.admit(sender) {
+        return;
+    }
+    // G39: collect it; the window close initiates against the best candidate, not the first.
+    st.intents.matcher.add_candidate(swap_id, incoming);
+}
+
+/// G34/G39: build this node's initiator coordinator for the `swap_id` chosen out of the match window
+/// and return its `Propose` to flood. Uses this node's standing-intent terms + the sim secret
+/// (money-path gated). Re-checks the concurrency cap / dedup at close time, since state may have moved
+/// on while the window was open.
+fn initiate_from_intent(
+    st: &mut WorkerState,
+    swap_id: [u8; SWAP_ID_LEN],
+) -> Vec<(MessageType, Vec<u8>)> {
+    let (standing, ladder) = {
         let Some(session) = st.swap.as_ref() else {
             return Vec::new();
         };
         let Some(standing) = session.identity.standing_intent.clone() else {
             return Vec::new();
         };
-        if !standing.would_initiate_against(&incoming)
+        if session.coordinators.contains_key(&swap_id)
             || session.len() >= session.identity.max_concurrent_swaps
         {
             return Vec::new();
         }
-        let swap_id = derive_swap_id(&standing, &incoming);
-        if session.coordinators.contains_key(&swap_id) {
-            return Vec::new(); // already initiating this exact swap
-        }
-        (standing, session.ladder, swap_id)
+        (standing, session.ladder)
     };
-
-    // G36: this is a genuinely-new matching intent (it crossed on rate, is under the concurrency cap,
-    // and isn't a swap we're already initiating). Charge it against the sender's match budget — once
-    // a flooder has spent its budget, drop further attempts so it can't monopolise our swap slots.
-    if !st.intent_throttle.admit(sender) {
-        return Vec::new();
-    }
 
     let secret = sim_secret(&swap_id);
     let ctx = crate::swap_coordinator::SwapContext {
@@ -466,6 +580,16 @@ pub(crate) fn gc_tick(ctx: &WorkerCtx, st: &mut WorkerState) {
             flood_swap_reply(ctx, MessageType::SwapAbort, payload, st);
         }
     }
+    // G39: close the match window (if due) and initiate against the best buffered candidate, recording
+    // the Propose so a lossy mesh retransmits it.
+    if let Some(swap_id) = st.intents.matcher.tick() {
+        for (mt, payload) in initiate_from_intent(st, swap_id) {
+            if let Some(session) = st.swap.as_mut() {
+                session.record_action(swap_id, mt, payload.clone());
+            }
+            flood_swap_reply(ctx, mt, payload, st);
+        }
+    }
     readvertise_intent(ctx, st, head);
     sync_swap_phases(ctx, st);
 }
@@ -481,7 +605,7 @@ fn readvertise_intent(ctx: &WorkerCtx, st: &mut WorkerState, head: u64) {
         };
         if !session.coordinators.is_empty() {
             // A swap formed → stop advertising; reset so a later idle spell starts a fresh campaign.
-            st.intent_advertiser.reset();
+            st.intents.advertiser.reset();
             return;
         }
         match &session.identity.standing_intent {
@@ -489,7 +613,7 @@ fn readvertise_intent(ctx: &WorkerCtx, st: &mut WorkerState, head: u64) {
             _ => return, // no standing intent, or it has expired (G35) → nothing to re-advertise
         }
     };
-    if st.intent_advertiser.on_tick() {
+    if st.intents.advertiser.on_tick() {
         let bytes = crate::swap_intent::encode_intent(&intent);
         flood_swap_reply(ctx, MessageType::SwapIntent, bytes, st);
     }
