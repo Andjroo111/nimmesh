@@ -327,16 +327,45 @@
   }
 
   const go = p => { phase = Math.max(0, Math.min(MAXP, p)); errored = false; render(); };
+
+  // --- engine mode (?engine=1): the progress screen is driven by the REAL SwapEngine via the demo
+  //     server (cargo run --example swap_demo_server). The setup/confirm screens are unchanged;
+  //     "Confirm & sign" starts the engine, and each Next advances one real engine action. ---
+  const engineMode = new URLSearchParams(location.search).get('engine') === '1';
+  let engineActive = false;
+  const api = path => fetch(path, { method: 'POST' }).then(r => r.json());
+
+  function applyEngineSnap(snap) {
+    const show = snap.done ? 'done' : 'progress';
+    for (const [k, el] of Object.entries(screens)) el.classList.toggle('hidden', k !== show);
+    walletBg.style.display = 'none'; scrim.style.display = 'none';
+    $('#phase-name').textContent = snap.done ? 'Done' : snap.label;
+    if (snap.done) return;
+    $('#step-count').textContent = `${snap.step}/${snap.total}`;
+    $('#step-label').textContent = snap.label;
+    pieceNim.classList.toggle('locked', snap.nimLocked); // gold = real NIM HTLC locked on-chain(sim)
+    pieceBtc.classList.toggle('locked', snap.btcLocked); // orange = real BTC HTLC claimed
+    $('#warn').style.visibility = 'visible';
+    const step = snap.step - 1, dots = $('#phase-dots').children;
+    for (let i = 0; i < dots.length; i++) {
+      dots[i].classList.toggle('done', i < step);
+      dots[i].classList.toggle('on', i === step);
+    }
+    errToast.classList.add('hidden');
+  }
+  const engineStart = async () => { await api('/api/reset'); applyEngineSnap(await api('/api/advance')); };
+  const engineNext = async () => applyEngineSnap(await api('/api/advance'));
+
   $('#start-swap').onclick = () => go(1);  // setup → confirm
-  $('#authorize').onclick = () => go(2);   // confirm → progress (sign + start)
-  $('#next').onclick = () => go(phase + 1);
-  $('#prev').onclick = () => go(phase - 1);
+  $('#authorize').onclick = () => { if (engineMode) { engineActive = true; engineStart(); } else go(2); };
+  $('#next').onclick = () => { if (engineMode && engineActive) engineNext(); else go(phase + 1); };
+  $('#prev').onclick = () => { if (engineMode && engineActive) { engineActive = false; go(1); } else go(phase - 1); };
   $('.back').onclick = () => go(0);        // confirm → setup
-  document.querySelectorAll('.close, .minimize').forEach(b => b.onclick = () => go(0));
+  document.querySelectorAll('.close, .minimize').forEach(b => b.onclick = () => { engineActive = false; go(0); });
   addEventListener('keydown', e => {
-    if (e.key === 'ArrowRight') go(phase + 1);
-    else if (e.key === 'ArrowLeft') go(phase - 1);
-    else if (e.key === 'e' && PHASES[phase].screen === 'progress') { errored = !errored; render(); }
+    if (e.key === 'ArrowRight') { if (engineMode && engineActive) engineNext(); else go(phase + 1); }
+    else if (e.key === 'ArrowLeft') { if (engineMode && engineActive) { engineActive = false; go(1); } else go(phase - 1); }
+    else if (e.key === 'e' && !engineActive && PHASES[phase].screen === 'progress') { errored = !errored; render(); }
   });
   render();
 </script>

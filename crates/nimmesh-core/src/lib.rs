@@ -98,6 +98,13 @@ pub mod swap_engine;
 #[cfg(feature = "bitcoin-leg")]
 pub mod swap_ffi;
 
+// Swap demo: an in-memory sim chain + dual-engine stepper (behind `bitcoin-leg`). `swap_sim::SwapSim`
+// drives a full initiator+responder atomic swap one real engine action per `step()` against a
+// simulated chain — what the browser demo server runs so the UI is powered by the real engine.
+// Sim/testnet only; no real funds. See docs/swap/DEMO-LOOP.md.
+#[cfg(feature = "bitcoin-leg")]
+pub mod swap_sim;
+
 // Mesh swap (B2): the BTC gateway — broadcast + confirmation over a public signet indexer
 // (mempool.space), behind the `bitcoin-gateway` feature (adds `ureq`/`serde_json`). The one online
 // hop for the BTC leg; signet-only (mainnet base refused). See docs/swap/BTC-LEG.md.

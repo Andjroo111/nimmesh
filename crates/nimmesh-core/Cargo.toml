@@ -41,6 +41,12 @@ required-features = ["bitcoin-gateway"]
 name = "live_cross_chain_swap"
 required-features = ["gateway-rpc", "bitcoin-gateway"]
 
+# Swap demo: a std-only HTTP server that runs the REAL engine (swap_sim) against an in-memory sim
+# chain and serves webui/, so the browser UI is powered by the actual SwapEngine. Sim-only, no funds.
+[[example]]
+name = "swap_demo_server"
+required-features = ["bitcoin-leg"]
+
 [features]
 # G8: the real blocking HTTP JSON-RPC gateway client (`ureq` + `serde_json`) + the
 # keypair-entropy source for the live example. OFF by default so the pure-protocol core
