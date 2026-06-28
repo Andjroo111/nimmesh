@@ -121,6 +121,24 @@ impl SwapCoordinator {
         self.peer_btc_pubkey
     }
 
+    /// This node's role in the swap (initiator funds NIM + claims BTC; responder mirrors).
+    pub fn role(&self) -> SwapRole {
+        self.swap.role
+    }
+
+    /// (Initiator, sim) Claim the counterparty leg using this node's **own** stored secret as the
+    /// stand-in claim `tx_wire`. Production builds + signs a real claim tx that embeds `S`
+    /// (money-path, gated); the sim carries `S` directly. Returns the `PreimageReveal` envelope to
+    /// flood. `S` never leaves the coordinator except embedded in this reveal — which is its entire
+    /// purpose (it unlocks the responder's claim).
+    pub fn claim_and_reveal_sim(
+        &mut self,
+        tx_id: [u8; HASH_LEN],
+    ) -> Result<SwapEnvelope, CoordError> {
+        let secret = self.secret.ok_or(CoordError::BadPreimage)?;
+        self.claim_and_reveal(secret.to_vec(), tx_id)
+    }
+
     /// Whether this swap is **stale** at `head` and safe to forget: it is neither terminal nor
     /// holding any of this node's funds, and `head` has passed its longer (`T_A`) timelock — so the
     /// negotiation can never complete (a swap whose timelock has passed can no longer be funded or

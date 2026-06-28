@@ -13,7 +13,8 @@
 use crate::codec::encode;
 use crate::engine::{relay_key, relay_onward, remember, WorkerCtx, WorkerState};
 use crate::packet::{MessageType, Packet};
-use crate::swap_wire::SwapKind;
+use crate::swap::{SwapPhase, SwapRole};
+use crate::swap_wire::{decode_swap, encode_swap, SwapEnvelope, SwapKind, SWAP_ID_LEN};
 
 /// A swap packet (`0x40`–`0x44`). Blind-relay it onward like any flooded packet, and — if this node
 /// is a participant — route it to our own [`crate::swap_session::SwapSession`] and flood whatever
@@ -36,12 +37,15 @@ pub(crate) fn handle_swap_packet(
     if st.swap.is_some() {
         if let Some(kind) = SwapKind::from_message_type(packet.msg_type) {
             let head = ctx.cached_head().map(u64::from).unwrap_or(0);
-            let replies = match st.swap.as_mut() {
+            let mut replies = match st.swap.as_mut() {
                 Some(session) => session
                     .on_message(kind, &packet.payload, head)
                     .unwrap_or_default(),
                 None => Vec::new(),
             };
+            // G17: after the message advanced our coordinator, take this node's next phase-driven
+            // chain action (fund / claim / settle, sim tx bytes) and flood its envelope(s) too.
+            replies.extend(drive_swap(st, kind, &packet.payload, head));
             sync_swap_phases(ctx, st);
             for (mt, payload) in replies {
                 flood_swap_reply(ctx, mt, payload, st);
@@ -51,6 +55,90 @@ pub(crate) fn handle_swap_packet(
 
     // Blind relay onward (source link excluded), identical to the pure-relay path.
     relay_onward(ctx, packet, src, st);
+}
+
+/// G17: the node-side swap **driver**. After an incoming message advanced our coordinator for a
+/// swap, take this node's next phase-driven chain action and return the envelope(s) to flood. Each
+/// inbound message triggers at most one action — the coordinator's phase is the idempotency guard,
+/// so a replayed/duplicate message (which doesn't change the phase) drives nothing twice. Uses
+/// sim / stand-in tx bytes; the production path builds + signs real funding/claim txs (money-path,
+/// gated) and feeds them to the same `fund` / `claim_and_reveal` calls.
+fn drive_swap(
+    st: &mut WorkerState,
+    last_kind: SwapKind,
+    last_payload: &[u8],
+    head: u64,
+) -> Vec<(MessageType, Vec<u8>)> {
+    let Ok(env) = decode_swap(last_kind, last_payload) else {
+        return Vec::new();
+    };
+    let swap_id = env.swap_id;
+    let Some(session) = st.swap.as_mut() else {
+        return Vec::new();
+    };
+
+    // A responder learns S off an incoming PreimageReveal (sim: tx_wire carries the 32-byte secret),
+    // verifies it opens the hashlock, and advances to Revealed — it then claims its leg + settles
+    // in the match below.
+    if last_kind == SwapKind::PreimageReveal {
+        if let Some(secret) = env
+            .tx_wire
+            .as_deref()
+            .and_then(|w| w.get(..32))
+            .and_then(|s| <[u8; 32]>::try_from(s).ok())
+        {
+            if let Some(coord) = session.coordinator(&swap_id) {
+                let _ = coord.recv_reveal(&env, secret);
+            }
+        }
+    }
+
+    let Some(coord) = session.coordinator(&swap_id) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    match (coord.role(), coord.phase()) {
+        // Initiator: once the responder accepted, fund the NIM leg → FundingProof.
+        (SwapRole::Initiator, SwapPhase::Accepted) => {
+            if let Ok(fp) = coord.fund(head, vec![0x11; 248], sim_tx_id(&swap_id, 0xF1)) {
+                push_env(&mut out, MessageType::SwapFundingProof, &fp);
+            }
+        }
+        // Responder: once it has seen the initiator's funding, fund the BTC leg → FundingProof.
+        (SwapRole::Responder, SwapPhase::InitiatorFunded) => {
+            if let Ok(fp) = coord.fund(head, vec![0x22; 120], sim_tx_id(&swap_id, 0xF2)) {
+                push_env(&mut out, MessageType::SwapFundingProof, &fp);
+            }
+        }
+        // Initiator: once both legs are funded, claim the counterparty leg (revealing S) → settle.
+        (SwapRole::Initiator, SwapPhase::BothFunded) => {
+            if let Ok(rev) = coord.claim_and_reveal_sim(sim_tx_id(&swap_id, 0xF3)) {
+                push_env(&mut out, MessageType::SwapPreimageReveal, &rev);
+                let _ = coord.settle();
+            }
+        }
+        // Responder: S is out and it has claimed its leg (sim) — settle. No mesh message needed.
+        (SwapRole::Responder, SwapPhase::Revealed) => {
+            let _ = coord.settle();
+        }
+        _ => {}
+    }
+    out
+}
+
+/// Encode a driven envelope and tag it with its flood [`MessageType`].
+fn push_env(out: &mut Vec<(MessageType, Vec<u8>)>, mt: MessageType, env: &SwapEnvelope) {
+    if let Ok(bytes) = encode_swap(env) {
+        out.push((mt, bytes));
+    }
+}
+
+/// A deterministic stand-in tx id for a sim leg action (swap_id-derived; real ids come from the
+/// signed tx the money-path builds).
+fn sim_tx_id(swap_id: &[u8; SWAP_ID_LEN], tag: u8) -> [u8; 32] {
+    let mut id = [tag; 32];
+    id[..SWAP_ID_LEN].copy_from_slice(swap_id);
+    id
 }
 
 /// Flood a swap envelope this node originated (an `Accept` reply, or a `Propose`). Mirrors the

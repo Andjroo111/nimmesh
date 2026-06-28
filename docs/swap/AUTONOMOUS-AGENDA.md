@@ -77,7 +77,7 @@ fund/claim/refund are manual coordinator calls, no FundingProof/Reveal/Abort is 
 change, and nothing drives the safety refund at the node level. The next-highest-value work closes
 that node-side driver gap, all sim/stand-in tx bytes — real tx signing stays money-path-gated.)
 
-- [ ] **G17 — Full swap lifecycle over the real mesh node loop.** Extend G14: a node-side driver
+- [x] **G17 — Full swap lifecycle over the real mesh node loop.** Extend G14: a node-side driver
       that reacts to phase changes — fund its own leg + flood the `FundingProof`, and on `BothFunded`
       the initiator claims + floods the `PreimageReveal` (responder extracts `S`, claims its leg) —
       using sim / stand-in tx bytes (no real signing). Two participant nodes drive a whole swap to

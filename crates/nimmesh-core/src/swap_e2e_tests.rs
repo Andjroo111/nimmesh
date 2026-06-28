@@ -404,11 +404,13 @@ fn a_responder_node_accepts_a_proposed_swap_injected_over_the_mesh() {
 }
 
 #[test]
-fn two_participant_nodes_negotiate_propose_and_accept_over_the_real_mesh() {
-    // G14: the full negotiation handshake over the real mesh. Alice (initiator participant) floods a
-    // `Propose`; bob (responder participant) routes it, accepts, floods an `Accept`; alice's node
-    // routes that `Accept` back to her initiator coordinator. Both reach `Accepted` with no hand
-    // orchestration — the session hook drives both node loops.
+fn two_participant_nodes_drive_a_full_swap_to_settled_over_the_real_mesh() {
+    // G17: the WHOLE swap lifecycle over the real mesh, with no hand orchestration — the node-side
+    // driver reacts to each coordinator phase change. Alice (initiator) floods a `Propose`; bob
+    // (responder) accepts; alice funds NIM + floods a `FundingProof`; bob funds BTC + floods his
+    // own; alice (both funded) claims the BTC leg revealing `S` + floods a `PreimageReveal`; bob
+    // reads `S`, claims his NIM leg, and both settle. Propose → Accept → fund → fund → reveal →
+    // settle, all driven by the two MeshNode loops over the flood path (sim / stand-in tx bytes).
     use crate::mock_radio::MeshHarness;
     use crate::swap::{LadderParams, SwapPhase};
     use crate::swap_coordinator::SwapCoordinator;
@@ -420,25 +422,25 @@ fn two_participant_nodes_negotiate_propose_and_accept_over_the_real_mesh() {
     let bob = h.add_participant("bob", &[2], bob_id, LadderParams::default());
     h.connect("alice", "bob");
 
-    // Alice originates the swap: her coordinator + the Propose to flood.
+    // Alice originates the swap: her coordinator + the Propose to flood. Everything after is driven.
     let (coordinator, propose) =
         SwapCoordinator::new_initiator(alice_ctx, [42u8; 32], LadderParams::default());
     alice.start_swap(swap_id, coordinator, propose);
 
-    // Bob accepts (he saw the Propose) and alice learns of it (she saw the Accept flooded back).
+    // Both sides drive themselves all the way to Settled — neither leg left one-sided.
     assert!(
         wait_until(
-            || bob.swap_phase(swap_id) == Some(SwapPhase::Accepted),
+            || alice.swap_phase(swap_id) == Some(SwapPhase::Settled),
             SETTLE
         ),
-        "bob never accepted alice's proposal over the mesh"
+        "alice's swap never settled over the mesh"
     );
     assert!(
         wait_until(
-            || alice.swap_phase(swap_id) == Some(SwapPhase::Accepted),
+            || bob.swap_phase(swap_id) == Some(SwapPhase::Settled),
             SETTLE
         ),
-        "alice never received bob's Accept over the mesh"
+        "bob's swap never settled over the mesh"
     );
 
     h.shutdown();
