@@ -1,0 +1,225 @@
+/* StatusScreen — Nimiq Hub full-card status overlay (loading/success/warning/error).
+   Requires nimiq-style (legacy) for .nq-green-bg/.nq-blue-bg/.nq-orange-bg/.nq-red-bg gradients,
+   .nq-h1/.nq-h2/.nq-text typography, .nq-icon sizing and .nq-button/.nq-link.
+   All selectors namespaced under .status-screen. */
+
+.status-screen {
+    --status-screen-margin: .75rem;
+    display: flex;
+    flex-direction: column;
+    border-radius: 0.625rem;
+    width: calc(100% - 2 * var(--status-screen-margin));
+    height: calc(100% - 2 * var(--status-screen-margin));
+    margin: var(--status-screen-margin);
+    z-index: 1000;
+    position: relative;
+    flex-grow: 1;
+}
+
+.status-screen .wrapper {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    flex-grow: 1;
+    border-radius: 0.625rem;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.status-screen .icon-row,
+.status-screen .status-row,
+.status-screen .action-row {
+    width: 100%;
+    text-align: center;
+}
+
+.status-screen .success .icon-row {
+    margin-top: 2rem;
+}
+
+.status-screen .status-row {
+    --status-font-size: 2.5rem;
+    margin-top: 2rem; /* Same as title margin-bottom, to equalize spacing to center icon */
+    margin-bottom: 5rem;
+    height: var(--status-font-size); /* 1 line of status text. For multiple lines, the text overflows to the top */
+    position: relative;
+}
+
+.status-screen.small .status-row {
+    margin-bottom: 2.5rem;
+}
+
+.status-screen .status {
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0 2rem;
+    font-size: var(--status-font-size);
+    font-weight: normal;
+    line-height: 1.2;
+    opacity: 1;
+}
+
+.status-screen.small .status {
+    /* on small layout center multiple lines vertically instead of overflowing to the top */
+    transform: translateY(calc(50% - var(--status-font-size) / 2));
+}
+
+.status-screen .status-row.transition .status {
+    transition: transform 500ms, opacity 500ms;
+}
+
+.status-screen .status-row.transition .status.current {
+    transform: translateY(-100%);
+    opacity: 0;
+}
+
+.status-screen.small .status-row.transition .status.current {
+    /* on small layout move message less to avoid that it flies over half the screen */
+    transform: translateY(calc(-1 * var(--status-font-size)));
+}
+
+.status-screen .status-row:not(.transition) .status.next {
+    transform: translateY(100%);
+    opacity: 0;
+}
+
+.status-screen .spacer {
+    padding-top: 2rem;
+}
+
+.status-screen .success .spacer {
+    padding-top: 6rem;
+}
+
+.status-screen .spacer.with-main-action {
+    padding-bottom: 8rem;
+}
+
+.status-screen .spacer.with-alternative-action {
+    margin-bottom: 2rem;
+}
+
+.status-screen .action-row {
+    padding-bottom: 2rem;
+}
+
+.status-screen .action-row .nq-link {
+    color: white;
+    font-size: 2rem;
+}
+
+/* FADE transitions (used by the Vue component when switching states) */
+
+.status-screen .fade-loading-leave-active,
+.status-screen .fade-result-leave-active {
+    transition: opacity 300ms;
+}
+
+.status-screen .fade-loading-enter-active,
+.status-screen .fade-result-enter-active {
+    transition: opacity 700ms 300ms;
+}
+
+.status-screen .fade-loading-enter,
+.status-screen .fade-loading-enter-from,
+.status-screen .fade-loading-leave-to,
+.status-screen .fade-result-enter,
+.status-screen .fade-result-enter-from,
+.status-screen .fade-result-leave-to {
+    opacity: 0;
+}
+
+/* Global (unscoped) part of upstream StatusScreen.vue, verbatim */
+
+.status-screen .title {
+    line-height: 1;
+    margin-top: 4rem;
+    white-space: pre-line;
+}
+
+.status-screen.small .title {
+    margin-top: 3rem;
+    margin-bottom: 2rem;
+    font-size: 2.5rem;
+}
+
+.status-screen .icon-row .nq-icon {
+    margin: auto;
+}
+
+.status-screen .success .nq-icon {
+    font-size: 9rem;
+}
+
+.status-screen .warning .nq-icon {
+    font-size: 10rem;
+}
+
+.status-screen .error .nq-icon {
+    font-size: 12rem;
+}
+
+.status-screen .icon-row .title,
+.status-screen .icon-row .message {
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.status-screen .icon-row .title {
+    max-width: 80%;
+    line-height: 1.4;
+}
+
+.status-screen .message {
+    max-width: 70%;
+    opacity: 1;
+}
+
+.status-screen.exit-transition .success .icon-row {
+    animation: success-title-slide 1s;
+}
+
+@keyframes success-title-slide {
+    from { transform: translateY(8rem); }
+    to   { transform: translateY(0); }
+}
+
+/* Optional entry animation that components can apply on the status-screen */
+.status-screen.grow-from-bottom-button {
+    position: absolute;
+    animation: status-screen-grow-from-bottom-button .6s forwards cubic-bezier(0.25, 0, 0, 1);
+    overflow: hidden;
+}
+
+@keyframes status-screen-grow-from-bottom-button {
+    0%,
+    20% {
+        max-width: calc(100% - 12rem);
+        max-height: 7.5rem;
+        bottom: calc(4.25rem - var(--status-screen-margin));
+        left: calc(6rem - var(--status-screen-margin));
+        border-radius: 4rem;
+    }
+
+    0% {
+        opacity: 0;
+    }
+
+    25% {
+        opacity: 1;
+    }
+
+    100% {
+        max-width: calc(100% - 2 * var(--status-screen-margin));
+        max-height: calc(100% - 2 * var(--status-screen-margin));
+        bottom: 0;
+        left: 0;
+        border-radius: 0.5rem;
+    }
+}

@@ -1,0 +1,25 @@
+<!-- StatusScreen: full-card status overlay (Nimiq Hub). Place inside a sized, positioned
+     container — typically a .small-page.nq-card — it fills it with a .75rem inset.
+     This is the SUCCESS state (.exit-transition on the root slides the icon-row up once).
+
+     Other states — swap the .wrapper:
+       loading: <div class="status-screen nq-blue-bg"> (or nq-light-blue-bg) with
+                <div class="wrapper"><h1 class="title nq-h1">…</h1><div class="icon-row">spinner</div>
+                <div class="status-row"><div class="status current nq-h2">…</div></div></div>
+       warning: <div class="wrapper warning nq-orange-bg"> with face-neutral icon, optional
+                <p class="message nq-text">…</p> and an .action-row with
+                <button class="nq-button orange inverse">…</button>
+       error:   <div class="wrapper error nq-red-bg"> with face-sad icon, same action-row
+                pattern using <button class="nq-button red inverse">. -->
+<div class="status-screen exit-transition">
+    <div class="wrapper success nq-green-bg">
+        <div class="spacer"></div>
+
+        <div class="icon-row">
+            <svg class="nq-icon" width="74" height="74" viewBox="0 0 74 74" xmlns="http://www.w3.org/2000/svg"><path d="M71.12 1.84a4.5 4.5 0 0 0-6.28 1.04l-42.1 58.74L8.68 47.54a4.5 4.5 0 1 0-6.36 6.37l17.8 17.81a4.57 4.57 0 0 0 6.84-.56l45.2-63.03a4.5 4.5 0 0 0-1.04-6.29z" fill="currentColor" stroke="currentColor" stroke-width=".8"/></svg>
+            <h1 class="title nq-h1">Payment successful.</h1>
+        </div>
+
+        <div class="spacer"></div>
+    </div>
+</div>

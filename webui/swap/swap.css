@@ -1,0 +1,216 @@
+/* nimmesh swap flow — built on @nimiq/style (legacy, html{font-size:8px}).
+   Custom CSS in px. Mirrors the Nimiq Wallet swap screens (references IMG_6737–6740)
+   for our peer-to-peer NIM⇄BTC HTLC atomic swap (no Fastspot intermediary). */
+
+:root {
+  --navy: #1f2348;
+  --navy-60: rgba(255, 255, 255, 0.6);
+  --navy-40: rgba(255, 255, 255, 0.4);
+  --ink-50: rgba(31, 35, 72, 0.5);
+  --ink-40: rgba(31, 35, 72, 0.4);
+  --ink-12: rgba(31, 35, 72, 0.12);
+  --btc: #f7931a;
+  --gold: #e9b213;
+  --green: #21bca5;
+  --blue-bg: radial-gradient(100% 100% at bottom right, #260133, #1f2348);
+  --ease: cubic-bezier(0.25, 0, 0, 1);
+}
+
+* { box-sizing: border-box; }
+body {
+  font-family: 'Mulish', 'Muli', system-ui, sans-serif !important;
+  margin: 0;
+  background: #d9d9de;
+  color: var(--navy);
+}
+
+.phone {
+  width: 100%;
+  max-width: 390px;
+  margin: 0 auto;
+  min-height: 100vh;
+  position: relative;
+  background: #f3f3f5;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- iOS-style status bar (so screens read as a real phone, not a dev mock) ---- */
+.statusbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 26px 6px; font-weight: 700; font-size: 15px; color: var(--navy);
+  position: relative; z-index: 30; flex: 0 0 auto;
+}
+.statusbar .right { display: flex; align-items: center; gap: 6px; }
+.statusbar .bars { display: flex; align-items: flex-end; gap: 2px; height: 11px; }
+.statusbar .bars i { width: 3px; background: var(--navy); border-radius: 1px; }
+.statusbar .bars i:nth-child(1) { height: 5px; }
+.statusbar .bars i:nth-child(2) { height: 7px; }
+.statusbar .bars i:nth-child(3) { height: 9px; }
+.statusbar .bars i:nth-child(4) { height: 11px; }
+.statusbar .net { font-size: 13px; font-weight: 700; }
+.statusbar .batt { width: 24px; height: 12px; border-radius: 3px; box-shadow: inset 0 0 0 1.5px rgba(31,35,72,.4); position: relative; }
+.statusbar .batt::after { content: ''; position: absolute; right: -3px; top: 3.5px; width: 2px; height: 5px; border-radius: 0 1px 1px 0; background: rgba(31,35,72,.4); }
+.statusbar .batt::before { content: ''; position: absolute; left: 1.5px; top: 1.5px; bottom: 1.5px; width: 11px; border-radius: 1.5px; background: var(--navy); }
+
+.stage { flex: 1; position: relative; display: flex; }
+.hidden { display: none !important; }
+
+/* ---- dimmed wallet backdrop behind the setup sheet (modal context, like the reference) ---- */
+.wallet-bg { position: absolute; inset: 0; padding: 14px 20px; color: var(--navy); }
+.wallet-bg .banner {
+  display: flex; align-items: center; gap: 8px; font-weight: 700; color: #9a6a2c; font-size: 14px;
+  box-shadow: inset 0 0 0 1.5px rgba(154,106,44,.3); border-radius: 12px; padding: 10px 12px;
+}
+.wallet-bg .banner .pill { margin-left: auto; background: #9a6a2c; color: #fff; border-radius: 500px; padding: 5px 12px; font-size: 13px; }
+.wallet-bg .navrow { display: flex; align-items: center; justify-content: space-between; padding: 18px 4px 0; color: var(--ink-40); }
+.wallet-bg .total { text-align: center; margin-top: 30px; }
+.wallet-bg .total .lbl { font-size: 13px; font-weight: 700; letter-spacing: .08em; color: var(--ink-40); }
+.wallet-bg .total .amt { font-size: 52px; font-weight: 700; margin-top: 6px; }
+.scrim { position: absolute; inset: 0; background: rgba(31, 35, 72, 0.28); }
+
+/* ============================ SCREEN 1 — Swap Currencies ============================ */
+.sheet {
+  position: relative; z-index: 5;
+  background: #fff; width: 100%; margin-top: auto;
+  border-radius: 22px 22px 0 0;
+  padding: 26px 26px 26px;
+  box-shadow: 0 -10px 50px rgba(0, 0, 0, 0.12);
+  display: flex; flex-direction: column; gap: 22px;
+}
+.sheet-head { display: flex; align-items: center; justify-content: center; position: relative; }
+.sheet-head h2 { font-size: 26px; font-weight: 700; margin: 0; }
+.sheet-head .close {
+  position: absolute; right: 0; top: 50%; transform: translateY(-50%);
+  width: 30px; height: 30px; border-radius: 50%; border: 0; cursor: pointer;
+  background: rgba(31, 35, 72, 0.06); color: var(--ink-50); font-size: 18px; line-height: 1;
+}
+
+.pair { display: flex; align-items: center; justify-content: center; gap: 14px; }
+.pair .pill {
+  display: inline-flex; align-items: center; gap: 9px;
+  background: rgba(31, 35, 72, 0.05); border-radius: 500px;
+  padding: 10px 18px; font-weight: 700; font-size: 18px; min-width: 104px; justify-content: center;
+}
+.pair .pill .chev { color: var(--ink-40); font-size: 10px; }
+.pair .swapicon { color: var(--ink-40); flex: 0 0 auto; }
+
+.disclaimer { text-align: center; color: var(--ink-50); font-size: 14px; font-weight: 600; margin: -4px 0 0; }
+
+/* match the reference: the NIM "Yellow Address" segment is GOLD. The component paints the bar with
+   `background-color: currentColor` + a currentColor border, so set the COLOR (flat gold), not a
+   gradient — that keeps the clean flat fill the reference shows. */
+.swap-balance-bar .bar.left { color: var(--gold) !important; }
+
+.amount-row { display: flex; justify-content: space-between; align-items: flex-start; }
+.amount-row .side { display: flex; flex-direction: column; gap: 4px; }
+.amount-row .side.right { align-items: flex-end; }
+.amount-row .box {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  box-shadow: inset 0 0 0 2px rgba(31, 35, 72, 0.1); border-radius: 6px;
+  padding: 7px 11px; font-weight: 700; font-size: 21px;
+}
+.amount-row .ticker { font-weight: 700; font-size: 15px; }
+.amount-row .fiat { color: var(--ink-40); font-size: 17px; font-weight: 600; }
+
+.confirm-btn { align-self: stretch; margin-top: 2px; }
+.terms { text-align: center; color: var(--ink-40); font-size: 13px; line-height: 1.5; margin: 0; }
+.terms b { color: var(--ink-50); font-weight: 700; }
+
+/* back button on the Confirm sheet head */
+.sheet-head .back {
+  position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  width: 30px; height: 30px; border-radius: 50%; border: 0; cursor: pointer;
+  background: rgba(31, 35, 72, 0.06); color: var(--ink-50); font-size: 18px; line-height: 1;
+}
+.fees { text-align: center; color: var(--ink-40); font-size: 16px; font-weight: 600; margin: -6px 0 0; }
+
+.confirm-accounts { display: flex; justify-content: space-between; align-items: center; }
+.confirm-accounts .acct { display: flex; align-items: center; gap: 12px; }
+.confirm-accounts .identicon { width: 44px; height: 44px; flex: 0 0 auto; }
+.confirm-accounts .identicon img, .confirm-accounts .coin { width: 44px; height: 44px; display: block; }
+.confirm-accounts .meta { display: flex; flex-direction: column; gap: 1px; }
+.confirm-accounts .acct.right .meta { text-align: right; }
+.confirm-accounts label { font-size: 18px; font-weight: 700; }
+.confirm-accounts .bal { color: var(--ink-40); font-size: 15px; font-weight: 600; }
+
+.split-bar { display: flex; align-items: center; height: 26px; }
+.split-bar .seg { height: 100%; border-radius: 500px; }
+.split-bar .seg.nim { background: var(--gold); } /* flat "Yellow Address" gold, like the reference */
+.split-bar .seg.btc { background: #f7931a; }
+.split-bar .sep { width: 2px; height: 34px; background: rgba(31, 35, 72, 0.35); margin: 0 7px; border-radius: 2px; flex: 0 0 auto; }
+
+.delta-row { display: flex; justify-content: space-between; }
+.delta-row .side { display: flex; flex-direction: column; gap: 3px; }
+.delta-row .side.right { align-items: flex-end; }
+.delta-row .give { font-size: 22px; font-weight: 700; color: rgba(31, 35, 72, 0.6); }
+.delta-row .recv { font-size: 22px; font-weight: 700; color: var(--green); }
+.delta-row .fiat { color: var(--ink-40); font-size: 16px; font-weight: 600; }
+.delta-row .fiat.green { color: var(--green); opacity: 0.75; }
+
+/* ============================ SCREEN 2 — Performing Atomic Swap ============================ */
+.navy {
+  position: absolute; inset: 0; z-index: 10;
+  background-image: var(--blue-bg);
+  color: #fff;
+  padding: 24px 26px 28px;
+  display: flex; flex-direction: column; align-items: center;
+}
+.navy .minimize {
+  position: absolute; right: 22px; top: 20px;
+  width: 34px; height: 34px; border-radius: 50%; border: 0; cursor: pointer;
+  background: rgba(255, 255, 255, 0.1); color: rgba(255,255,255,.7); font-size: 16px;
+  display: grid; place-items: center;
+}
+.navy h2 { font-size: 25px; font-weight: 700; margin: 30px 0 8px; text-align: center; text-wrap: balance; }
+.navy .sub { color: var(--navy-60); font-size: 16px; text-align: center; margin: 0; max-width: 270px; line-height: 1.4; }
+
+/* the REAL wallet SwapAnimation: interlocking circuit puzzle-pieces. rem here is the legacy 8px root
+   (nimiq-style sets html{font-size:8px}), matching the upstream component's own units. */
+.swap-anim { width: 100%; display: flex; justify-content: center; margin: auto 0 14px; overflow: hidden; }
+.swap-anim .animation { display: flex; flex-direction: row; justify-content: center; align-items: center; }
+.swap-anim .left, .swap-anim .right { height: 9.5rem; z-index: 1; }
+.swap-anim .left { transform: translate3d(-0.5rem, 0, 0); }
+.swap-anim .right { transform: translate3d(0.5rem, 0, 0); }
+.swap-anim .piece { height: 100%; width: auto; display: block; }
+.swap-anim .spinner { height: 6.5rem; width: 6.5rem; overflow: visible; flex: 0 0 auto; z-index: 2; }
+.swap-anim .spinner circle { animation: spinner-rotate reverse 1s linear infinite; }
+.swap-anim .spinner circle:first-of-type { transform-origin: 50% 0%; }
+.swap-anim .spinner circle:last-of-type { transform-origin: 50% 100%; }
+.swap-anim .fill { opacity: 0; transition: opacity 0.6s var(--ease); }
+.swap-anim .locked .fill { opacity: 1; }
+.swap-anim .identicon-border { transform-origin: 33.33% 50%; transform: scale(1.15); }
+@keyframes spinner-rotate { 0% { transform: rotate(-32deg); } 100% { transform: rotate(328deg); } }
+
+.anim-amounts { display: flex; justify-content: space-between; width: 100%; padding: 0 6px; }
+.anim-amounts .amt { font-size: 17px; font-weight: 700; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.anim-amounts .amt .dir { color: var(--navy-40); }
+
+.step { margin-top: auto; text-align: center; font-size: 23px; font-weight: 700; display: flex; gap: 10px; justify-content: center; align-items: baseline; }
+.step .count { color: var(--navy-60); font-variant-numeric: tabular-nums; }
+.phases { display: flex; gap: 7px; margin-top: 16px; }
+.phases i { width: 7px; height: 7px; border-radius: 50%; background: rgba(255, 255, 255, 0.2); transition: background 0.3s var(--ease); }
+.phases i.on { background: #fff; }
+.phases i.done { background: var(--green); }
+.warn { color: #fc8702; font-weight: 700; font-size: 15px; text-align: center; margin: 16px 0 0; min-height: 20px; }
+
+/* success overlay (status-screen) */
+#success.status-screen { position: absolute; inset: 0; z-index: 10; overflow: hidden; }
+
+/* error toast pinned to the bottom of the navy screen (matches IMG_6740) */
+.swap-toast { position: absolute; left: 18px; right: 18px; bottom: 22px; z-index: 12; }
+.swap-toast .nq-toast { position: static; width: 100%; box-sizing: border-box; }
+
+/* ---- tiny floating phase stepper (demo only; hidden in captures via .no-demo) ---- */
+.stepper {
+  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 60;
+  display: flex; align-items: center; gap: 4px;
+  background: #1f2348; color: #fff; border-radius: 500px;
+  padding: 5px 6px; font-size: 12px; font-weight: 700; box-shadow: 0 6px 20px rgba(0,0,0,.25);
+}
+.stepper button { border: 0; background: rgba(255,255,255,.14); color: #fff; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; font-size: 13px; }
+.stepper .lbl { padding: 0 8px; min-width: 56px; text-align: center; opacity: .85; }
+.no-demo .stepper { display: none; }
+
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
