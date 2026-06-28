@@ -571,6 +571,86 @@ fn a_stalled_funds_locked_swap_refunds_itself_via_the_worker_tick() {
 }
 
 #[test]
+fn a_gc_abort_tears_down_the_swap_on_the_counterparty_over_the_mesh() {
+    // G19: symmetric teardown. Two participants accept the same proposal (un-funded) but the phantom
+    // initiator never funds. When bob's GC drops his stale swap, he floods a SwapAbort — and carol,
+    // who never even heard the head beacon, frees her slot too. An abort from one participant clears
+    // the swap on the other over the real mesh.
+    use crate::codec::encode;
+    use crate::mock_radio::MeshHarness;
+    use crate::packet::{MessageType, Packet, BROADCAST_RECIPIENT};
+    use crate::swap::{LadderParams, SwapPhase};
+    use crate::swap_coordinator::SwapCoordinator;
+    use crate::swap_session::NodeIdentity;
+    use crate::swap_wire::{encode_swap, BTC_PUBKEY_LEN, NIM_ADDRESS_LEN};
+    use crate::test_support::{make_beacon_packet, wait_until, SETTLE};
+
+    let (swap_id, _alice_id, bob_id, alice_ctx) = participant_fixtures();
+    let carol_id = NodeIdentity {
+        nim_address: [0xC3; NIM_ADDRESS_LEN],
+        btc_address: b"tb1qcarol".to_vec(),
+        btc_pubkey: {
+            let mut k = [0x33; BTC_PUBKEY_LEN];
+            k[0] = 0x02;
+            k
+        },
+    };
+    let mut h = MeshHarness::new();
+    let bob = h.add_participant("bob", &[2], bob_id, LadderParams::default());
+    let carol = h.add_participant("carol", &[3], carol_id, LadderParams::default());
+    h.connect("bob", "carol");
+
+    // A Propose injected at bob is accepted by bob AND relayed to carol, who also accepts — two
+    // responders to a phantom initiator that never funds. Both sit at Accepted (un-funded).
+    let (_a, propose) =
+        SwapCoordinator::new_initiator(alice_ctx, [42u8; 32], LadderParams::default());
+    let mut pkt = Packet::new(
+        MessageType::SwapPropose,
+        [9u8; 8],
+        encode_swap(&propose).unwrap(),
+    );
+    pkt.recipient_id = Some(BROADCAST_RECIPIENT);
+    bob.on_packet_received_from("alice".to_string(), encode(&pkt).unwrap());
+    assert!(
+        wait_until(
+            || bob.swap_phase(swap_id) == Some(SwapPhase::Accepted),
+            SETTLE
+        ),
+        "bob never accepted"
+    );
+    assert!(
+        wait_until(
+            || carol.swap_phase(swap_id) == Some(SwapPhase::Accepted),
+            SETTLE
+        ),
+        "carol never accepted the relayed propose"
+    );
+
+    // Bob hears a head beacon past T_A → his GC drops the stale swap AND floods a teardown Abort.
+    bob.on_packet_received_from(
+        "gw".to_string(),
+        make_beacon_packet([7; 8], 10_001, 5, 7, 1),
+    );
+    assert!(
+        wait_until(|| bob.cached_head_height() == Some(10_001), SETTLE),
+        "bob never cached the beacon"
+    );
+    bob.poll_sync();
+
+    // Bob's swap is GC'd, and his Abort clears carol's swap too — symmetric teardown over the mesh.
+    assert!(
+        wait_until(|| bob.swap_phase(swap_id).is_none(), SETTLE),
+        "bob's stale swap was not GC'd"
+    );
+    assert!(
+        wait_until(|| carol.swap_phase(swap_id).is_none(), SETTLE),
+        "carol's swap was not torn down by bob's abort"
+    );
+
+    h.shutdown();
+}
+
+#[test]
 fn a_full_swap_is_negotiated_and_settled_via_wire_messages() {
     // G5: a complete swap expressed as the wire message SEQUENCE — Propose → Accept → FundingProof
     // (NIM) → FundingProof (BTC) → PreimageReveal — each message built by `swap_messages`, wrapped

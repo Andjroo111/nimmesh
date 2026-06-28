@@ -171,15 +171,23 @@ pub(crate) fn sync_swap_phases(ctx: &WorkerCtx, st: &WorkerState) {
     }
 }
 
-/// G16: GC tick — drop terminal/stale swaps (so a long-lived node sheds abandoned half-opened
-/// swaps) and refresh the phase mirror. Driven off the worker's maintenance tick.
+/// G16/G18/G19: GC tick — refund funds-locked-expired swaps + drop terminal/stale ones (so a
+/// long-lived node sheds abandoned half-opened swaps), then (G19) flood a teardown `SwapAbort` for
+/// each stale un-funded swap dropped so the counterparty frees its slot too. Refresh the phase
+/// mirror. Driven off the worker's maintenance tick.
 pub(crate) fn gc_tick(ctx: &WorkerCtx, st: &mut WorkerState) {
     if st.swap.is_none() {
         return;
     }
     let head = ctx.cached_head().map(u64::from).unwrap_or(0);
-    if let Some(session) = st.swap.as_mut() {
-        session.tick(head);
+    let aborted = match st.swap.as_mut() {
+        Some(session) => session.tick(head),
+        None => Vec::new(),
+    };
+    for swap_id in aborted {
+        if let Ok(payload) = encode_swap(&crate::swap_messages::abort(swap_id, 0)) {
+            flood_swap_reply(ctx, MessageType::SwapAbort, payload, st);
+        }
     }
     sync_swap_phases(ctx, st);
 }

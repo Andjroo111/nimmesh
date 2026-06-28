@@ -85,6 +85,24 @@ that node-side driver gap, all sim/stand-in tx bytes — real tx signing stays m
 - [x] **G18 — Node-level refund tick (the safety exit over the mesh).** For a funds-locked swap whose
       own timelock has passed, the worker tick drives `refund_after_timeout` (sim) → `Refunded`, then
       GC reaps it — proving "worst case is a refund" holds at the node level, not just in the model.
-- [ ] **G19 — Abort emission + symmetric teardown.** When a node locally cancels an un-funded swap
+- [x] **G19 — Abort emission + symmetric teardown.** When a node locally cancels an un-funded swap
       (or GCs a stale proposal it originated), it floods a `SwapAbort` so the counterparty frees its
       slot too. Tested: an abort from one participant clears the swap on the other over the mesh.
+
+When the ladder is exhausted again, re-scan and append. (Re-scan after G19: the whole swap protocol
+now runs + tears down + refunds end to end through the node loop on a *reliable* mesh. The remaining
+frontier is **resilience under loss** — each phase action floods exactly once, so a single dropped
+`FundingProof`/`PreimageReveal` stalls a swap, and a lost reveal could even strand the responder
+without `S`. The next work makes swaps survive a real lossy/partitioned BLE mesh. Still sim/testnet,
+money-path gated.)
+
+- [ ] **G20 — Pending-action retransmit (don't let a lost message strand a swap).** The node caches
+      each swap's last-emitted action envelope and re-floods it on the maintenance tick while the
+      swap is non-terminal and unadvanced, so a dropped `FundingProof`/`PreimageReveal`/`Accept` is
+      recovered (idempotent — the coordinator's phase absorbs duplicates). Tested over a lossy mesh.
+- [ ] **G21 — Many concurrent swaps over a lossy mesh.** With retransmit in place, drive N
+      participant-pair swaps to `Settled` (or clean refund) through two+ `MeshNode` loops over a
+      `MockEther` with loss + latency, asserting no one-sided settlement under adversarial conditions.
+- [ ] **G22 — Swap catch-up via store-and-forward on rejoin.** A participant that was out of range
+      when a swap message flooded catches it up via the G7 gossip-sync on rejoin, and the swap still
+      completes — proving the swap inherits the mesh's offline resilience.

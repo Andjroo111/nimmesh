@@ -15,7 +15,8 @@ use crate::swap::LadderParams;
 use crate::swap_coordinator::{CoordError, SwapContext, SwapCoordinator};
 use crate::swap_messages::SwapProposal;
 use crate::swap_wire::{
-    decode_swap, encode_swap, SwapKind, SwapWireError, BTC_PUBKEY_LEN, NIM_ADDRESS_LEN, SWAP_ID_LEN,
+    decode_swap, encode_swap, SwapEnvelope, SwapKind, SwapWireError, BTC_PUBKEY_LEN,
+    NIM_ADDRESS_LEN, SWAP_ID_LEN,
 };
 
 /// This node's fixed identity (everything a coordinator needs that isn't learned from the peer).
@@ -155,9 +156,17 @@ impl SwapSession {
                 Ok(vec![])
             }
             SwapKind::Abort => {
-                // The counterparty bailed before either side committed funds: free the slot. A
+                // The counterparty bailed: free the slot — but ONLY if WE have no funds locked. A
+                // counterparty abort must never drop our funded coordinator; that leg still has to
+                // refund via the timeout path (a dropped coordinator would strand the refund). A
                 // stray Abort for an unknown swap is a harmless no-op.
-                self.coordinators.remove(&swap_id);
+                if self
+                    .coordinators
+                    .get(&swap_id)
+                    .is_some_and(|c| !c.phase().has_funds_locked())
+                {
+                    self.coordinators.remove(&swap_id);
+                }
                 Ok(vec![])
             }
         }
@@ -184,22 +193,44 @@ impl SwapSession {
         self.coordinators.remove(swap_id).is_some()
     }
 
+    /// Locally cancel an **un-funded** swap: drop it and return a `SwapAbort` envelope to flood so
+    /// the counterparty frees its slot too (symmetric teardown). Returns `None` — and changes
+    /// nothing — if the swap is unknown or holds funds: a funded swap must **refund** via the
+    /// timeout path, never abort (aborting would strand the counterparty's funded leg).
+    pub fn cancel(&mut self, swap_id: &[u8; SWAP_ID_LEN]) -> Option<SwapEnvelope> {
+        let c = self.coordinators.get(swap_id)?;
+        if c.phase().has_funds_locked() {
+            return None;
+        }
+        self.coordinators.remove(swap_id);
+        Some(crate::swap_messages::abort(*swap_id, 0))
+    }
+
     /// GC + safety-exit tick. First, any funds-locked swap whose own timeout has passed **refunds
     /// itself** — the always-available safety exit when a swap stalls (worst case: you get your own
     /// funds back). Then drop every coordinator that is terminal (Settled/Aborted/Refunded, incl.
     /// the just-refunded) or **stale** — a non-funded negotiation whose timelock has passed — so a
-    /// long-lived node can't be memory-exhausted by half-opened or abandoned swaps. Returns how many
-    /// were dropped. The node drives this off its worker maintenance tick.
-    pub fn tick(&mut self, head: u64) -> usize {
+    /// long-lived node can't be memory-exhausted by half-opened or abandoned swaps. Returns the
+    /// swap_ids dropped as **stale un-funded** negotiations — the ones for which the node should
+    /// flood a teardown `SwapAbort` so the counterparty frees its slot too (a refund-reaped or
+    /// already-terminal swap is dropped but NOT returned: it needs no teardown message). The node
+    /// drives this off its worker maintenance tick.
+    pub fn tick(&mut self, head: u64) -> Vec<[u8; SWAP_ID_LEN]> {
         // Safety exit: a funds-locked swap past its timeout refunds itself (no-op for non-funded or
         // not-yet-due swaps). In the sim the transition is the refund; production broadcasts the tx.
         for c in self.coordinators.values_mut() {
             let _ = c.refund_after_timeout(head);
         }
-        let before = self.coordinators.len();
+        // Stale = un-funded + non-terminal + past its timelock — these get a teardown Abort.
+        let stale: Vec<[u8; SWAP_ID_LEN]> = self
+            .coordinators
+            .iter()
+            .filter(|(_, c)| c.is_stale(head))
+            .map(|(id, _)| *id)
+            .collect();
         self.coordinators
             .retain(|_, c| !c.phase().is_terminal() && !c.is_stale(head));
-        before - self.coordinators.len()
+        stale
     }
 }
 
@@ -305,7 +336,7 @@ mod tests {
         );
         // Before its timeout a funds-locked swap is kept — the refund isn't due, and it's never
         // "stale" while it holds funds, so the GC tick leaves it alone to finish settling.
-        assert_eq!(alice.tick(5_000), 0);
+        assert!(alice.tick(5_000).is_empty());
         assert_eq!(alice.len(), 1);
 
         // Alice claims BTC (reveals S) → PreimageReveal → Bob's session routes it; Bob's node
@@ -485,10 +516,11 @@ mod tests {
             SwapPhase::Accepted
         );
 
-        // At/under the deadline it is kept; once the head passes T_A it is GC'd.
-        assert_eq!(bob.tick(10_000), 0);
+        // At/under the deadline it is kept; once the head passes T_A it is GC'd — and reported as a
+        // stale un-funded drop (so the node floods a teardown Abort for it).
+        assert!(bob.tick(10_000).is_empty());
         assert_eq!(bob.len(), 1);
-        assert_eq!(bob.tick(10_001), 1);
+        assert_eq!(bob.tick(10_001), vec![swap_id]);
         assert!(bob.is_empty());
     }
 
@@ -500,7 +532,7 @@ mod tests {
             bob.on_message(SwapKind::Propose, &propose_bytes(swap_id), 0)
                 .unwrap(),
         );
-        assert_eq!(bob.tick(0), 0);
+        assert!(bob.tick(0).is_empty());
         assert_eq!(bob.len(), 1);
     }
 
@@ -537,10 +569,81 @@ mod tests {
             .has_funds_locked());
 
         // The counterparty never funds. Before alice's T_A (10_000) the swap is kept; once the head
-        // passes it, the tick refunds her leg and reaps it.
-        assert_eq!(alice.tick(5_000), 0);
+        // passes it, the tick refunds her leg and reaps it. A refund-reaped swap is NOT reported as
+        // a stale abort (no teardown message — the counterparty handles its own refund).
+        assert!(alice.tick(5_000).is_empty());
         assert_eq!(alice.len(), 1);
-        assert_eq!(alice.tick(10_001), 1);
+        assert!(alice.tick(10_001).is_empty());
         assert!(alice.is_empty());
+    }
+
+    // --- G19: abort emission + symmetric teardown ------------------------------------
+
+    /// Drive a fresh session's coordinator to a funds-locked phase (initiator funds NIM). Returns
+    /// the session + the swap_id.
+    fn funds_locked_session() -> (SwapSession, [u8; SWAP_ID_LEN]) {
+        let mut alice = SwapSession::new(identity(0x11), LadderParams::default());
+        let swap_id = [0xAB; SWAP_ID_LEN];
+        let (coord, _propose) =
+            SwapCoordinator::new_initiator(ctx(swap_id, 0x11), [42u8; 32], LadderParams::default());
+        alice.add_initiator(swap_id, coord);
+        let accept = crate::swap_messages::SwapAcceptance {
+            swap_id,
+            nim_address: [0xB2; NIM_ADDRESS_LEN],
+            btc_address: b"tb1qbob".to_vec(),
+            btc_pubkey: [0x03; BTC_PUBKEY_LEN],
+        }
+        .to_envelope();
+        alice
+            .on_message(SwapKind::Accept, &encode_swap(&accept).unwrap(), 0)
+            .unwrap();
+        alice
+            .coordinator(&swap_id)
+            .unwrap()
+            .fund(0, vec![0x11; 248], [0xC1; 32])
+            .unwrap();
+        (alice, swap_id)
+    }
+
+    #[test]
+    fn cancel_emits_an_abort_and_frees_an_unfunded_swap() {
+        let mut bob = SwapSession::new(identity(0x22), LadderParams::default());
+        let swap_id = [0xCD; SWAP_ID_LEN];
+        only(
+            bob.on_message(SwapKind::Propose, &propose_bytes(swap_id), 0)
+                .unwrap(),
+        );
+        let abort = bob
+            .cancel(&swap_id)
+            .expect("an un-funded swap can be cancelled");
+        assert_eq!(abort.swap_id, swap_id);
+        assert!(bob.is_empty());
+        // Cancelling an unknown swap is a no-op (no abort).
+        assert!(bob.cancel(&swap_id).is_none());
+    }
+
+    #[test]
+    fn cancel_refuses_a_funds_locked_swap() {
+        // A funded swap must REFUND, never abort — cancel returns None and keeps the coordinator.
+        let (mut alice, swap_id) = funds_locked_session();
+        assert!(alice.cancel(&swap_id).is_none());
+        assert_eq!(alice.len(), 1);
+    }
+
+    #[test]
+    fn an_inbound_abort_never_drops_a_funds_locked_coordinator() {
+        // A counterparty abort must not strand our funded leg — we keep it (it refunds via timeout).
+        let (mut alice, swap_id) = funds_locked_session();
+        let abort = encode_swap(&crate::swap_messages::abort(swap_id, 0)).unwrap();
+        assert!(alice
+            .on_message(SwapKind::Abort, &abort, 0)
+            .unwrap()
+            .is_empty());
+        assert_eq!(alice.len(), 1);
+        assert!(alice
+            .coordinator(&swap_id)
+            .unwrap()
+            .phase()
+            .has_funds_locked());
     }
 }
