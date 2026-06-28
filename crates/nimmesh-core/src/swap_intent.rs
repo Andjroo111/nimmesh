@@ -7,10 +7,14 @@
 //! intent is the discovery layer, the existing swap protocol is the settlement layer.
 //!
 //! By convention the **NIM-giver is the initiator** (it generates `S` and proposes; it claims the
-//! BTC leg, revealing `S`). So matching is one-sided: a node whose standing intent gives NIM, on
-//! seeing a BTC-giver intent that crosses on rate, initiates; a BTC-giver just waits for the Propose
-//! (its [`crate::swap_rate::RatePolicy`] then governs acceptance). The intent rides the mesh as
-//! opaque blind-relayed bytes like every other swap packet.
+//! counterparty leg, revealing `S`). So matching is one-sided: a node whose standing intent gives
+//! NIM, on seeing a counter-asset giver intent that crosses on rate, initiates; the counter-asset
+//! giver just waits for the Propose (its [`crate::swap_rate::RatePolicy`] then governs acceptance).
+//! The intent rides the mesh as opaque blind-relayed bytes like every other swap packet.
+//!
+//! The counterparty asset is either **BTC** or **USDC-on-Polygon** ([`Asset`]); a NIM-giver names the
+//! one it wants in `counter_asset`, so NIM⇄USDC discovers exactly like NIM⇄BTC and the two markets
+//! stay separate (a NIM-wants-BTC intent never matches a USDC giver).
 
 use ed25519_dalek::Signer;
 
@@ -23,6 +27,9 @@ pub enum Asset {
     Nim,
     /// The advertiser gives BTC (so it is the would-be responder).
     Btc,
+    /// The advertiser gives USDC on Polygon (so it is the would-be responder). NIM⇄USDC discovers over
+    /// the mesh exactly like NIM⇄BTC; the counterparty leg is `swap_usdc_leg::UsdcLeg` (P2).
+    Usdc,
 }
 
 /// A discovery advertisement: the trade a node wants, plus the addresses a matcher needs to propose.
@@ -30,6 +37,11 @@ pub enum Asset {
 pub struct SwapIntent {
     /// Which side the advertiser funds.
     pub gives: Asset,
+    /// The **non-NIM** asset of this trade (BTC or USDC). A non-NIM giver sets this to its own `gives`;
+    /// a NIM giver sets it to the asset it WANTS in return. A swap only forms when both sides name the
+    /// same `counter_asset` — needed because BTC sats and 6-decimal micro-USDC are different scales, so
+    /// `btc_amount`'s unit (and thus the rate-cross) is only meaningful once the counter asset is fixed.
+    pub counter_asset: Asset,
     /// NIM in the trade, in luna.
     pub nim_amount: u64,
     /// BTC in the trade, in satoshis.
@@ -68,14 +80,19 @@ pub const INTENT_SIG_LEN: usize = 64;
 
 impl SwapIntent {
     /// Whether **this** node (holding `self` as its standing intent) should INITIATE a swap in
-    /// response to `incoming`. True only when: `self` gives NIM and `incoming` gives BTC (so this
-    /// node is the NIM-giver / initiator), the networks match, both amounts are non-zero, and the
-    /// rates cross — `self`'s NIM-per-BTC is at least what `incoming` asks, i.e.
-    /// `self.nim/self.btc >= incoming.nim/incoming.btc`, cross-multiplied to avoid float / overflow.
-    /// A BTC-giver never initiates (it waits for the Propose), so this is one-sided by design.
+    /// response to `incoming`. True only when: `self` gives NIM and `incoming` gives exactly the
+    /// non-NIM asset `self` wants (`incoming.gives == self.counter_asset`, and `incoming` is not also
+    /// a NIM-giver), so this node is the NIM-giver / initiator; the networks match; both counterparty
+    /// amounts are non-zero; and the rates cross — `self`'s NIM-per-counter is at least what `incoming`
+    /// asks, i.e. `self.nim/self.counter >= incoming.nim/incoming.counter`, cross-multiplied to avoid
+    /// float / overflow. (Both sides express `btc_amount` in the same unit because `counter_asset`
+    /// matches — sats for BTC, micro-USDC for USDC.) A counter-asset giver never initiates (it waits
+    /// for the Propose), so this is one-sided by design, and a NIM-wants-BTC intent never matches a
+    /// USDC giver (or vice versa).
     pub fn would_initiate_against(&self, incoming: &SwapIntent) -> bool {
         self.gives == Asset::Nim
-            && incoming.gives == Asset::Btc
+            && incoming.gives != Asset::Nim
+            && incoming.gives == self.counter_asset
             && self.network_id == incoming.network_id
             && self.btc_amount > 0
             && incoming.btc_amount > 0
@@ -160,14 +177,31 @@ pub enum IntentError {
     Malformed,
 }
 
+/// The 1-byte wire tag for an asset.
+fn asset_to_u8(a: Asset) -> u8 {
+    match a {
+        Asset::Nim => 0,
+        Asset::Btc => 1,
+        Asset::Usdc => 2,
+    }
+}
+
+/// Decode a 1-byte asset tag (`Malformed` on an unknown byte).
+fn asset_from_u8(b: u8) -> Result<Asset, IntentError> {
+    match b {
+        0 => Ok(Asset::Nim),
+        1 => Ok(Asset::Btc),
+        2 => Ok(Asset::Usdc),
+        _ => Err(IntentError::Malformed),
+    }
+}
+
 /// Encode an intent's **signed content** — every field except the trailing signature (G41). This is
 /// exactly what [`SwapIntent::signing_bytes`] signs and verifies over.
 fn encode_intent_content(intent: &SwapIntent) -> Vec<u8> {
     let mut out = Vec::new();
-    out.push(match intent.gives {
-        Asset::Nim => 0,
-        Asset::Btc => 1,
-    });
+    out.push(asset_to_u8(intent.gives));
+    out.push(asset_to_u8(intent.counter_asset));
     out.extend_from_slice(&intent.nim_amount.to_be_bytes());
     out.extend_from_slice(&intent.btc_amount.to_be_bytes());
     out.extend_from_slice(&intent.expiry_height.to_be_bytes());
@@ -200,11 +234,8 @@ pub fn decode_intent(bytes: &[u8]) -> Result<SwapIntent, IntentError> {
         Some(s)
     };
     let t = IntentError::Truncated;
-    let gives = match take(1).ok_or(t)?[0] {
-        0 => Asset::Nim,
-        1 => Asset::Btc,
-        _ => return Err(IntentError::Malformed),
-    };
+    let gives = asset_from_u8(take(1).ok_or(t)?[0])?;
+    let counter_asset = asset_from_u8(take(1).ok_or(t)?[0])?;
     let nim_amount = u64::from_be_bytes(take(8).ok_or(t)?.try_into().unwrap());
     let btc_amount = u64::from_be_bytes(take(8).ok_or(t)?.try_into().unwrap());
     let expiry_height = u64::from_be_bytes(take(8).ok_or(t)?.try_into().unwrap());
@@ -219,6 +250,7 @@ pub fn decode_intent(bytes: &[u8]) -> Result<SwapIntent, IntentError> {
     let signature: [u8; INTENT_SIG_LEN] = take(INTENT_SIG_LEN).ok_or(t)?.try_into().unwrap();
     Ok(SwapIntent {
         gives,
+        counter_asset,
         nim_amount,
         btc_amount,
         expiry_height,
@@ -238,8 +270,24 @@ mod tests {
     use super::*;
 
     fn intent(gives: Asset, nim: u64, btc: u64) -> SwapIntent {
+        // A NIM-giver wants BTC by default (the historic NIM⇄BTC pairs); a counter-asset giver names
+        // its own asset. `intent_wanting` overrides the NIM-giver's wanted asset for NIM⇄USDC.
+        intent_wanting(
+            gives,
+            if gives == Asset::Nim {
+                Asset::Btc
+            } else {
+                gives
+            },
+            nim,
+            btc,
+        )
+    }
+
+    fn intent_wanting(gives: Asset, counter_asset: Asset, nim: u64, btc: u64) -> SwapIntent {
         SwapIntent {
             gives,
+            counter_asset,
             nim_amount: nim,
             btc_amount: btc,
             expiry_height: 1_000_000,
@@ -266,6 +314,52 @@ mod tests {
         assert!(me.would_initiate_against(&intent(Asset::Btc, 150_000, 50_000)));
         assert!(me.would_initiate_against(&intent(Asset::Btc, 200_000, 50_000))); // exact cross
         assert!(!me.would_initiate_against(&intent(Asset::Btc, 250_000, 50_000)));
+    }
+
+    #[test]
+    fn a_nim_giver_initiates_against_a_crossing_usdc_giver_exactly_like_btc() {
+        // NIM⇄USDC behaves identically: I give 200_000 NIM and want 100_000000 micro-USDC (100 USDC).
+        // A USDC-giver asking less NIM (a better rate) crosses; one asking more does not. `btc_amount`
+        // carries the counterparty amount in micro-USDC here (both sides agree on counter_asset=Usdc).
+        let me = intent_wanting(Asset::Nim, Asset::Usdc, 200_000, 100_000_000);
+        let usdc = |nim| intent(Asset::Usdc, nim, 100_000_000);
+        assert!(me.would_initiate_against(&usdc(150_000)));
+        assert!(me.would_initiate_against(&usdc(200_000))); // exact cross
+        assert!(!me.would_initiate_against(&usdc(250_000)));
+    }
+
+    #[test]
+    fn a_nim_giver_never_matches_the_wrong_counter_asset() {
+        // Wanting BTC does NOT match a USDC giver, and wanting USDC does NOT match a BTC giver — even
+        // when the raw amounts would cross. The counter_asset gate keeps the two markets separate.
+        let wants_btc = intent_wanting(Asset::Nim, Asset::Btc, 200_000, 50_000);
+        let wants_usdc = intent_wanting(Asset::Nim, Asset::Usdc, 200_000, 50_000);
+        assert!(!wants_btc.would_initiate_against(&intent(Asset::Usdc, 150_000, 50_000)));
+        assert!(!wants_usdc.would_initiate_against(&intent(Asset::Btc, 150_000, 50_000)));
+        // ...but each matches its own asset.
+        assert!(wants_btc.would_initiate_against(&intent(Asset::Btc, 150_000, 50_000)));
+        assert!(wants_usdc.would_initiate_against(&intent(Asset::Usdc, 150_000, 50_000)));
+    }
+
+    #[test]
+    fn a_usdc_giver_never_initiates() {
+        // Like a BTC-giver, a USDC-giver waits for the Propose; it never initiates.
+        assert!(
+            !intent(Asset::Usdc, 200_000, 100_000_000).would_initiate_against(&intent_wanting(
+                Asset::Nim,
+                Asset::Usdc,
+                150_000,
+                100_000_000
+            ))
+        );
+    }
+
+    #[test]
+    fn a_usdc_intent_round_trips_through_the_codec() {
+        let mut i = intent_wanting(Asset::Usdc, Asset::Usdc, 123_456, 78_900_000);
+        i.expiry_height = 4_242;
+        sign_intent(&mut i, &[0x5A; 32]); // exercise pubkey + signature + both asset tags through the codec
+        assert_eq!(decode_intent(&encode_intent(&i)), Ok(i));
     }
 
     #[test]

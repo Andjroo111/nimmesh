@@ -21,6 +21,7 @@ pub(crate) fn btc_giver_intent(pubkey_tag: u8) -> SwapIntent {
     btc_pubkey[1] = pubkey_tag;
     SwapIntent {
         gives: Asset::Btc,
+        counter_asset: Asset::Btc,
         nim_amount: 180_000,
         btc_amount: 50_000,
         expiry_height: FRESH,
@@ -69,6 +70,12 @@ pub(crate) fn intent_for(
 ) -> SwapIntent {
     SwapIntent {
         gives,
+        // Historic NIM⇄BTC discovery tests: a NIM-giver wants BTC; a counter-asset giver names its own.
+        counter_asset: if gives == Asset::Nim {
+            Asset::Btc
+        } else {
+            gives
+        },
         nim_amount: nim,
         btc_amount: btc,
         expiry_height: expiry,

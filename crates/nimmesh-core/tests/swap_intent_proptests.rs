@@ -15,7 +15,7 @@ use nimmesh_core::swap_wire::{BTC_PUBKEY_LEN, NIM_ADDRESS_LEN};
 use proptest::prelude::*;
 
 fn arb_asset() -> impl Strategy<Value = Asset> {
-    prop_oneof![Just(Asset::Nim), Just(Asset::Btc)]
+    prop_oneof![Just(Asset::Nim), Just(Asset::Btc), Just(Asset::Usdc)]
 }
 
 /// A fully-arbitrary well-formed intent (every field independently generated).
@@ -23,6 +23,7 @@ fn arb_intent() -> impl Strategy<Value = SwapIntent> {
     (
         (
             arb_asset(),
+            arb_asset(), // counter_asset (independently arbitrary — the codec carries any pair)
             any::<u64>(),
             any::<u64>(),
             any::<u64>(),
@@ -40,10 +41,20 @@ fn arb_intent() -> impl Strategy<Value = SwapIntent> {
     )
         .prop_map(
             |(
-                (gives, nim_amount, btc_amount, expiry_height, min_nim, max_nim, nim_pubkey),
+                (
+                    gives,
+                    counter_asset,
+                    nim_amount,
+                    btc_amount,
+                    expiry_height,
+                    min_nim,
+                    max_nim,
+                    nim_pubkey,
+                ),
                 (nim_address, btc_pubkey, btc_address, network_id, signature),
             )| SwapIntent {
                 gives,
+                counter_asset,
                 nim_amount,
                 btc_amount,
                 expiry_height,

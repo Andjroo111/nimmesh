@@ -113,8 +113,33 @@ leg was validated vs `bitcoinjs-lib`; the EVM leg vs known keccak/ABI vectors + 
 `EvmSigner` seam), P4c (real `k256` signer), all validated vs published EIP-155 vectors. The signing
 stack can produce a byte-exact signed Polygon tx; what stays owner-gated is a real funded key, mainnet,
 and the actual broadcast (an RPC client).
-- [ ] **P5 — Discovery for USDC.** Extend `SwapIntent`'s `Asset` to include `Usdc` so NIM⇄USDC pairs
-      discover over the mesh exactly like NIM⇄BTC; tests.
+- [x] **P5 — Discovery for USDC.** Done: `Asset::Usdc` (wire tag 2) + a new `counter_asset: Asset`
+      field on `SwapIntent` (a non-NIM giver sets it to its own `gives`; a NIM giver sets it to the
+      asset it WANTS) — needed because BTC sats and 6-dec micro-USDC are different scales, so the
+      rate-cross is only meaningful once the counter asset is fixed. `asset_to_u8`/`asset_from_u8`
+      helpers DRY the codec (both asset tags) and keep `Malformed`/`Truncated` handling correct;
+      `would_initiate_against` is now asset-aware (`self.gives==Nim && incoming.gives==self.counter_asset
+      && incoming.gives!=Nim && rates cross`). Tests prove NIM⇄USDC matches symmetric to NIM⇄BTC, a
+      NIM-wants-BTC intent does NOT match a USDC giver (and vice versa), a USDC giver never initiates,
+      and the wire round-trips (lib + `swap_intent_proptests` now generate `Usdc` + an arbitrary
+      `counter_asset`; decode-never-panics holds). Pure discovery/wire change — no money-path, no
+      polygon-leg dep. Gate green ×3, clippy clean ×3, `swap_intent.rs` 481 lines.
 
-(Re-scan + append 2–4 goals when the ladder is exhausted: Polygon RPC client (gated), gas abstraction,
-a USDC demo, mainnet — all owner-gated where they touch real funds.)
+### Status: the P1–P5 USDC ladder is COMPLETE
+The USDC-on-Polygon leg now spans the full stack: EVM primitives (P1), the HTLC leg model + NIM⇄USDC
+atomicity proof (P2), ABI calldata (P3), the EIP-155 tx signing-hash + signed-tx assembly + real
+`k256` signer (P4a–c, vs published vectors), and mesh discovery (P5). Everything is sim/testnet,
+money-path gated.
+
+Re-scan — next goals (append as they're built):
+- [ ] **P6 — discovery↔engine leg selection.** Map a matched `Asset::Usdc` intent to a `UsdcLeg`
+      counterparty in the swap engine/coordinator (today it assumes BTC), so a discovered NIM⇄USDC pair
+      drives the P2 leg end to end in SIM. Pure wiring + tests; no funds.
+- [ ] **P7 — carry the EVM counterparty payout address.** The intent carries `btc_pubkey`/`btc_address`;
+      a USDC counterparty's payout is a 20-byte `evm::evm_address`. Add a clean way to carry it for the
+      USDC side (or generalise the payout field) + tests. (Was the optional P5b.)
+- [ ] **P8 — Polygon RPC gateway client (GATED).** A blocking JSON-RPC client (eth_sendRawTransaction /
+      eth_getTransactionReceipt / eth_getTransactionCount) behind a `polygon-gateway` feature, Amoy
+      only; **broadcast + real funds = needs:owner** (mirrors `bitcoin-gateway`).
+- [ ] **P9 — gas abstraction note + USDC swap demo.** Document the MATIC-for-gas problem (relayer /
+      EIP-2771 / paymaster) and add a sim USDC swap demo path; mainnet/real funds owner-gated.
