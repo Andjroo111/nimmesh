@@ -136,8 +136,9 @@ impl SwapCoordinator {
                 reason: "Propose is for a different swap",
             });
         }
-        self.peer_btc_pubkey = Some(p.btc_pubkey);
+        // Gate FIRST: a rejected accept (e.g. unsafe ladder) must leave no learned state behind.
         self.swap.accept(head, &self.ladder)?;
+        self.peer_btc_pubkey = Some(p.btc_pubkey);
         Ok(SwapAcceptance {
             swap_id: self.ctx.swap_id,
             nim_address: self.ctx.nim_address,
@@ -157,8 +158,8 @@ impl SwapCoordinator {
                 reason: "Accept is for a different swap",
             });
         }
+        self.swap.accept(head, &self.ladder)?; // gate first; on failure, learn nothing
         self.peer_btc_pubkey = Some(a.btc_pubkey);
-        self.swap.accept(head, &self.ladder)?;
         Ok(())
     }
 
@@ -339,5 +340,65 @@ mod tests {
             Err(CoordError::BadPreimage)
         );
         assert_eq!(bob.phase(), SwapPhase::BothFunded);
+    }
+
+    #[test]
+    fn out_of_order_funding_proof_before_accept_is_rejected() {
+        // A FundingProof arrives before bob has even accepted — rejected, state unchanged.
+        let mut bob = SwapCoordinator::new_responder(ctx(0x22, 0xB2), LadderParams::default());
+        let fp = tx_envelope([0x7A; SWAP_ID_LEN], SwapLegId::Nim, vec![0u8; 8], [0; 32]);
+        assert!(matches!(
+            bob.recv_funding_proof(&fp),
+            Err(CoordError::Swap(SwapError::IllegalTransition { .. }))
+        ));
+        assert_eq!(bob.phase(), SwapPhase::Proposed);
+    }
+
+    #[test]
+    fn duplicate_accept_is_rejected_without_corrupting_state() {
+        let (head, p) = (0, LadderParams::default());
+        let (mut alice, propose) = SwapCoordinator::new_initiator(ctx(0x11, 0xA1), [42u8; 32], p);
+        let mut bob = SwapCoordinator::new_responder(ctx(0x22, 0xB2), p);
+        let accept = bob.recv_propose(&propose, head).unwrap();
+        alice.recv_accept(&accept, head).unwrap();
+        let learned = alice.peer_btc_pubkey();
+        // A replayed Accept is rejected (already Accepted) and changes nothing.
+        assert!(matches!(
+            alice.recv_accept(&accept, head),
+            Err(CoordError::Swap(SwapError::IllegalTransition { .. }))
+        ));
+        assert_eq!(alice.phase(), SwapPhase::Accepted);
+        assert_eq!(alice.peer_btc_pubkey(), learned);
+    }
+
+    #[test]
+    fn an_unsafe_ladder_refuses_to_accept_and_learns_nothing() {
+        // margin = 10000 - 5000 = 5000; require 6000 → MarginTooThin → refuse to fund this swap.
+        let strict = LadderParams {
+            delta_safe_blocks: 6_000,
+            min_claim_window_blocks: 1_800,
+        };
+        let (_alice, propose) = SwapCoordinator::new_initiator(ctx(0x11, 0xA1), [42u8; 32], strict);
+        let mut bob = SwapCoordinator::new_responder(ctx(0x22, 0xB2), strict);
+        assert!(matches!(
+            bob.recv_propose(&propose, 0),
+            Err(CoordError::Swap(SwapError::UnsafeLadder(_)))
+        ));
+        assert_eq!(bob.phase(), SwapPhase::Proposed); // not accepted
+        assert_eq!(bob.peer_btc_pubkey(), None); // hardening: nothing learned on a failed accept
+    }
+
+    #[test]
+    fn a_propose_for_a_different_swap_is_rejected() {
+        let mut bob = SwapCoordinator::new_responder(ctx(0x22, 0xB2), LadderParams::default());
+        let mut other = ctx(0x11, 0xA1);
+        other.swap_id = [0xFF; SWAP_ID_LEN]; // a Propose for some other swap
+        let (_a, propose) =
+            SwapCoordinator::new_initiator(other, [42u8; 32], LadderParams::default());
+        assert!(matches!(
+            bob.recv_propose(&propose, 0),
+            Err(CoordError::BadMessage { .. })
+        ));
+        assert_eq!(bob.phase(), SwapPhase::Proposed);
     }
 }

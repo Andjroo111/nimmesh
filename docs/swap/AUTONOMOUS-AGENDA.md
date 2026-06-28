@@ -22,7 +22,7 @@ green, log one line, and schedule the next iteration. No human prompt between go
       swap envelope, advances the local swap state, and produces the next outgoing envelope(s) — the
       brain a mesh node runs. Test: drive a full swap between two coordinators exchanging envelopes
       (no hand orchestration).
-- [ ] **G9 — Adversarial wire/sim paths.** Robustness over a lossy mesh: a wrong-preimage reveal is
+- [x] **G9 — Adversarial wire/sim paths.** Robustness over a lossy mesh: a wrong-preimage reveal is
       rejected, out-of-order / duplicate messages are idempotent, an unsafe ladder refuses to fund.
 - [ ] **G10 — Swap fees tooltip (UI).** Port the wallet's real `SwapFeesTooltip` into the Confirm
       screen (fee breakdown) — actual component, no approximation.
