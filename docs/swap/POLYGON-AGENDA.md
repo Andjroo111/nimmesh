@@ -144,9 +144,18 @@ Re-scan — next goals (append as they're built):
       settlement). SIM only; EVM payout addresses are placeholders until P7. Gate green ×3, clippy clean
       ×3, `swap_leg_select.rs` 47 lines. (`swap_engine` itself stays BTC-coupled — full engine
       generalization is P6b if ever needed; the seam + sim proof cover the discovery→UsdcLeg path.)
-- [ ] **P7 — carry the EVM counterparty payout address.** The intent carries `btc_pubkey`/`btc_address`;
-      a USDC counterparty's payout is a 20-byte `evm::evm_address`. Add a clean way to carry it for the
-      USDC side (or generalise the payout field) + tests. (Was the optional P5b.)
+- [x] **P7 — carry the EVM counterparty payout address.** Done: a fixed 20-byte `evm_address` field on
+      `SwapIntent` (the advertiser's own Polygon account — its USDC payout/claim address; all-zero for a
+      pure NIM⇄BTC intent), `EVM_ADDRESS_LEN = 20`, threaded through `encode_intent_content` (so the
+      signature covers it) + `decode_intent` (fixed 20-byte read) + every construction site (the
+      swap_intent helper, swap_discovery_tests `btc_giver_intent`/`intent_for`, swap_intent_proptests
+      `arb_intent`, swap_usdc_discovery_tests). A `usdc_leg_for_pair(nim_giver, usdc_giver)` builder
+      (polygon-leg) constructs the `UsdcLeg` from a matched pair's carried addresses — USDC-giver =
+      sender (funder), NIM-giver = receiver (claimant). The P6 discovery sim now builds the leg from
+      the carried addresses (placeholders gone) and asserts `sender()`/`receiver()` equal the intents'
+      `evm_address`es; it still settles atomically. Wire round-trip test proves `evm_address` survives
+      the codec + is signed-over (tamper → `verify_authentic` fails). Pure discovery/wire change. Gate
+      green ×3, clippy clean ×3.
 - [ ] **P8 — Polygon RPC gateway client (GATED).** A blocking JSON-RPC client (eth_sendRawTransaction /
       eth_getTransactionReceipt / eth_getTransactionCount) behind a `polygon-gateway` feature, Amoy
       only; **broadcast + real funds = needs:owner** (mirrors `bitcoin-gateway`).

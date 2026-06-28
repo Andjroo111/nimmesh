@@ -31,6 +31,7 @@ pub(crate) fn btc_giver_intent(pubkey_tag: u8) -> SwapIntent {
         nim_address: [0xC3; NIM_ADDRESS_LEN],
         btc_pubkey,
         btc_address: b"tb1qflood".to_vec(),
+        evm_address: [0u8; 20],
         network_id: 5,
         signature: [0u8; 64],
     }
@@ -85,6 +86,7 @@ pub(crate) fn intent_for(
         nim_address: id.nim_address,
         btc_pubkey: id.btc_pubkey,
         btc_address: id.btc_address.clone(),
+        evm_address: [0u8; 20],
         network_id: 5,
         signature: [0u8; 64],
     }

@@ -14,19 +14,19 @@ use crate::swap::{LadderParams, Swap, SwapAction, SwapPhase, SwapRole, SwapTerms
 use crate::swap_intent::{Asset, SwapIntent, INTENT_PUBKEY_LEN, INTENT_SIG_LEN};
 use crate::swap_leg::{sha256, HtlcParams, LegOutcome, MockLeg, SwapLeg};
 use crate::swap_leg_select::{counterparty_leg_for, CounterpartyLeg};
-use crate::swap_usdc_leg::{UsdcLeg, MICRO_USDC};
+use crate::swap_usdc_leg::{usdc_leg_for_pair, UsdcLeg, MICRO_USDC};
 use crate::swap_wire::{SwapLegId, BTC_PUBKEY_LEN, NIM_ADDRESS_LEN};
 
 // Sim timelocks — the same fixed values `swap_node::initiate_from_intent` uses (safe at head 0).
 const T_A: u64 = 10_000; // NIM leg (longer)
 const T_B: u64 = 5_000; // USDC leg (shorter)
 
-// Placeholder EVM accounts for the USDC escrow (P7 carries the real payout address in the intent).
-const USDC_GIVER_EVM: [u8; 20] = [0xB0; 20]; // funds the USDC escrow
-const NIM_GIVER_EVM: [u8; 20] = [0xA1; 20]; // claims the USDC escrow
+// The EVM accounts each side advertises in its intent (P7 carries these in the wire `evm_address`).
+const USDC_GIVER_EVM: [u8; 20] = [0xB0; 20]; // the USDC-giver funds the escrow from here
+const NIM_GIVER_EVM: [u8; 20] = [0xA1; 20]; // the NIM-giver claims the USDC to here
 
 /// A discovery intent. `counter_usdc` is the counterparty amount in micro-USDC (the `btc_amount`
-/// field carries it when `counter_asset == Usdc`).
+/// field carries it when `counter_asset == Usdc`). The advertiser's own `evm_address` is set by role.
 fn intent(gives: Asset, counter_asset: Asset, nim: u64, counter_usdc: u64) -> SwapIntent {
     SwapIntent {
         gives,
@@ -44,6 +44,11 @@ fn intent(gives: Asset, counter_asset: Asset, nim: u64, counter_usdc: u64) -> Sw
             k
         },
         btc_address: b"unused-for-usdc".to_vec(),
+        evm_address: if gives == Asset::Nim {
+            NIM_GIVER_EVM
+        } else {
+            USDC_GIVER_EVM
+        },
         network_id: 5,
         signature: [0u8; INTENT_SIG_LEN],
     }
@@ -68,6 +73,8 @@ struct Matched {
     terms: SwapTerms,
     give_nim: u64,
     take_usdc: u64,
+    nim_giver: SwapIntent,
+    usdc_giver: SwapIntent,
 }
 
 fn matched_usdc_pair() -> Matched {
@@ -96,6 +103,8 @@ fn matched_usdc_pair() -> Matched {
         // The swap executes at the INITIATOR's amounts.
         give_nim: standing.nim_amount,
         take_usdc: standing.btc_amount,
+        nim_giver: standing,
+        usdc_giver: incoming,
     }
 }
 
@@ -109,7 +118,11 @@ fn fund_both(m: &Matched) -> (Swap, Swap, MockLeg, UsdcLeg, [u8; 32]) {
     let mut alice = Swap::new(SwapRole::Initiator, m.terms);
     let mut bob = Swap::new(SwapRole::Responder, m.terms);
     let mut nim_leg = MockLeg::new();
-    let mut usdc_leg = UsdcLeg::new(USDC_GIVER_EVM, NIM_GIVER_EVM);
+    // The USDC leg is built FROM the matched intent pair's carried EVM addresses (P7): the USDC-giver
+    // funds (sender), the NIM-giver claims (receiver).
+    let mut usdc_leg = usdc_leg_for_pair(&m.nim_giver, &m.usdc_giver);
+    assert_eq!(usdc_leg.sender(), USDC_GIVER_EVM);
+    assert_eq!(usdc_leg.receiver(), NIM_GIVER_EVM);
 
     alice.accept(0, &p).unwrap();
     bob.accept(0, &p).unwrap();

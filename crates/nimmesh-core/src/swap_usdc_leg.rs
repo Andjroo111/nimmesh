@@ -191,6 +191,18 @@ impl SwapLeg for UsdcLeg {
     }
 }
 
+/// Build the USDC counterparty leg for a MATCHED NIM⇄USDC intent pair (P7): the escrow's `sender`
+/// (funder) is the USDC-giver's `evm_address`, its `receiver` (claimant) is the NIM-giver's
+/// `evm_address` — the two payout addresses carried in the discovery intents ([`crate::swap_intent`]).
+/// The caller has already confirmed the pair matches (`SwapIntent::would_initiate_against`) and that
+/// the counterparty leg is USDC (`swap_leg_select::counterparty_leg_for`).
+pub fn usdc_leg_for_pair(
+    nim_giver: &crate::swap_intent::SwapIntent,
+    usdc_giver: &crate::swap_intent::SwapIntent,
+) -> UsdcLeg {
+    UsdcLeg::new(usdc_giver.evm_address, nim_giver.evm_address)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

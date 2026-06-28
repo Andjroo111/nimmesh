@@ -66,6 +66,10 @@ pub struct SwapIntent {
     pub btc_pubkey: [u8; BTC_PUBKEY_LEN],
     /// The advertiser's BTC payout address bytes.
     pub btc_address: Vec<u8>,
+    /// The advertiser's 20-byte EVM (Polygon) account — its USDC payout/claim address, used as the
+    /// `UsdcLeg` party when `counter_asset == Usdc` (a NIM-giver wanting USDC claims to it; a USDC-giver
+    /// funds from it). All-zero for a pure NIM⇄BTC intent that carries no EVM identity.
+    pub evm_address: [u8; EVM_ADDRESS_LEN],
     /// The Albatross network id (a swap only forms within one network).
     pub network_id: u8,
     /// The advertiser's Ed25519 signature (64 bytes) over [`SwapIntent::signing_bytes`] — every field
@@ -77,6 +81,8 @@ pub struct SwapIntent {
 pub const INTENT_PUBKEY_LEN: usize = 32;
 /// Ed25519 signature length carried by an intent (G41).
 pub const INTENT_SIG_LEN: usize = 64;
+/// EVM (Polygon) account address length carried by an intent for the USDC counter-asset (P7).
+pub const EVM_ADDRESS_LEN: usize = 20;
 
 impl SwapIntent {
     /// Whether **this** node (holding `self` as its standing intent) should INITIATE a swap in
@@ -213,6 +219,7 @@ fn encode_intent_content(intent: &SwapIntent) -> Vec<u8> {
     out.push(intent.network_id);
     out.extend_from_slice(&(intent.btc_address.len() as u16).to_be_bytes());
     out.extend_from_slice(&intent.btc_address);
+    out.extend_from_slice(&intent.evm_address); // fixed 20 bytes (P7)
     out
 }
 
@@ -247,6 +254,7 @@ pub fn decode_intent(bytes: &[u8]) -> Result<SwapIntent, IntentError> {
     let network_id = take(1).ok_or(t)?[0];
     let addr_len = u16::from_be_bytes(take(2).ok_or(t)?.try_into().unwrap()) as usize;
     let btc_address = take(addr_len).ok_or(t)?.to_vec();
+    let evm_address: [u8; EVM_ADDRESS_LEN] = take(EVM_ADDRESS_LEN).ok_or(t)?.try_into().unwrap();
     let signature: [u8; INTENT_SIG_LEN] = take(INTENT_SIG_LEN).ok_or(t)?.try_into().unwrap();
     Ok(SwapIntent {
         gives,
@@ -261,6 +269,7 @@ pub fn decode_intent(bytes: &[u8]) -> Result<SwapIntent, IntentError> {
         btc_pubkey,
         network_id,
         btc_address,
+        evm_address,
         signature,
     })
 }
@@ -301,6 +310,7 @@ mod tests {
                 k
             },
             btc_address: b"tb1qalice".to_vec(),
+            evm_address: [0xE7; EVM_ADDRESS_LEN],
             network_id: 5,
             signature: [0u8; INTENT_SIG_LEN],
         }
@@ -360,6 +370,22 @@ mod tests {
         i.expiry_height = 4_242;
         sign_intent(&mut i, &[0x5A; 32]); // exercise pubkey + signature + both asset tags through the codec
         assert_eq!(decode_intent(&encode_intent(&i)), Ok(i));
+    }
+
+    #[test]
+    fn the_evm_address_round_trips_and_is_signed_over() {
+        // P7: the 20-byte EVM payout address survives the codec and is covered by the signature.
+        let mut i = intent_wanting(Asset::Usdc, Asset::Usdc, 50_000, 25_000_000);
+        i.evm_address = [0x9D; EVM_ADDRESS_LEN]; // a distinct, non-default address
+        sign_intent(&mut i, &[0x33; 32]);
+        let back = decode_intent(&encode_intent(&i)).unwrap();
+        assert_eq!(back.evm_address, [0x9D; EVM_ADDRESS_LEN]);
+        assert_eq!(back, i);
+        assert!(back.verify_authentic());
+        // Tampering the EVM address breaks the signature (it's in signing_bytes).
+        let mut tampered = back;
+        tampered.evm_address[0] ^= 0xFF;
+        assert!(!tampered.verify_authentic());
     }
 
     #[test]

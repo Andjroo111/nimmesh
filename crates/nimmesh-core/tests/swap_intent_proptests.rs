@@ -9,7 +9,8 @@
 //!    it (G41 forgery resistance, as a property over arbitrary intents).
 
 use nimmesh_core::swap_intent::{
-    decode_intent, encode_intent, sign_intent, Asset, SwapIntent, INTENT_PUBKEY_LEN, INTENT_SIG_LEN,
+    decode_intent, encode_intent, sign_intent, Asset, SwapIntent, EVM_ADDRESS_LEN,
+    INTENT_PUBKEY_LEN, INTENT_SIG_LEN,
 };
 use nimmesh_core::swap_wire::{BTC_PUBKEY_LEN, NIM_ADDRESS_LEN};
 use proptest::prelude::*;
@@ -35,6 +36,7 @@ fn arb_intent() -> impl Strategy<Value = SwapIntent> {
             any::<[u8; NIM_ADDRESS_LEN]>(),
             any::<[u8; BTC_PUBKEY_LEN]>(),
             proptest::collection::vec(any::<u8>(), 0..=255), // btc_address (≤ u16 TLV len)
+            any::<[u8; EVM_ADDRESS_LEN]>(),
             any::<u8>(),
             any::<[u8; INTENT_SIG_LEN]>(),
         ),
@@ -51,7 +53,7 @@ fn arb_intent() -> impl Strategy<Value = SwapIntent> {
                     max_nim,
                     nim_pubkey,
                 ),
-                (nim_address, btc_pubkey, btc_address, network_id, signature),
+                (nim_address, btc_pubkey, btc_address, evm_address, network_id, signature),
             )| SwapIntent {
                 gives,
                 counter_asset,
@@ -64,6 +66,7 @@ fn arb_intent() -> impl Strategy<Value = SwapIntent> {
                 nim_address,
                 btc_pubkey,
                 btc_address,
+                evm_address,
                 network_id,
                 signature,
             },
