@@ -54,11 +54,29 @@ impl From<CoordError> for SessionError {
     }
 }
 
+/// How many maintenance ticks a node keeps re-flooding a swap's last action before giving up — the
+/// retransmit budget that lets a swap survive a lossy mesh (G20). Generous: a healthy mesh advances
+/// the swap (resetting the budget) within a tick or two; a very lossy one gets many retries.
+const RETRANSMIT_TTL: u8 = 32;
+
+/// The last action a node emitted for a swap, buffered for retransmit. Decoupled from the
+/// coordinator's lifetime so a Settled initiator keeps re-flooding its `PreimageReveal` (the mesh's
+/// stand-in for the responder reading `S` off the on-chain claim) for a bounded window after it
+/// settled.
+struct PendingAction {
+    msg_type: MessageType,
+    payload: Vec<u8>,
+    ttl: u8,
+}
+
 /// One node's view of all its in-flight swaps.
 pub struct SwapSession {
     identity: NodeIdentity,
     ladder: LadderParams,
     coordinators: HashMap<[u8; SWAP_ID_LEN], SwapCoordinator>,
+    /// G20: per-swap last-emitted action, re-flooded each tick (TTL-bounded) to recover a message
+    /// dropped over a lossy mesh.
+    pending: HashMap<[u8; SWAP_ID_LEN], PendingAction>,
 }
 
 impl SwapSession {
@@ -68,6 +86,7 @@ impl SwapSession {
             identity,
             ladder,
             coordinators: HashMap::new(),
+            pending: HashMap::new(),
         }
     }
 
@@ -166,6 +185,7 @@ impl SwapSession {
                     .is_some_and(|c| !c.phase().has_funds_locked())
                 {
                     self.coordinators.remove(&swap_id);
+                    self.pending.remove(&swap_id); // torn down — stop retransmitting.
                 }
                 Ok(vec![])
             }
@@ -203,7 +223,39 @@ impl SwapSession {
             return None;
         }
         self.coordinators.remove(swap_id);
+        self.pending.remove(swap_id);
         Some(crate::swap_messages::abort(*swap_id, 0))
+    }
+
+    /// G20: remember the last action this node emitted for a swap, so the node re-floods it on the
+    /// maintenance tick until the swap advances — recovering a `Propose`/`Accept`/`FundingProof`/
+    /// `PreimageReveal` dropped over a lossy mesh. Replacing the action resets its retransmit budget.
+    pub fn record_action(
+        &mut self,
+        swap_id: [u8; SWAP_ID_LEN],
+        msg_type: MessageType,
+        payload: Vec<u8>,
+    ) {
+        self.pending.insert(
+            swap_id,
+            PendingAction {
+                msg_type,
+                payload,
+                ttl: RETRANSMIT_TTL,
+            },
+        );
+    }
+
+    /// G20: the actions to re-flood this tick — every buffered pending action, decrementing each
+    /// one's retransmit budget and dropping those that have run out. Called by the worker tick.
+    pub fn pending_retransmits(&mut self) -> Vec<(MessageType, Vec<u8>)> {
+        let mut out = Vec::new();
+        self.pending.retain(|_, a| {
+            out.push((a.msg_type, a.payload.clone()));
+            a.ttl -= 1;
+            a.ttl > 0
+        });
+        out
     }
 
     /// GC + safety-exit tick. First, any funds-locked swap whose own timeout has passed **refunds
@@ -228,8 +280,24 @@ impl SwapSession {
             .filter(|(_, c)| c.is_stale(head))
             .map(|(id, _)| *id)
             .collect();
+        // Drop terminal + stale coordinators. Prune the pending action for every drop EXCEPT a
+        // Settled one: a Settled initiator's `PreimageReveal` must keep propagating to the responder
+        // (its own TTL expires it, decoupled from the now-gone coordinator — G20); a refund / abort /
+        // stale teardown's action is dead, so stop retransmitting it.
+        let prune: Vec<[u8; SWAP_ID_LEN]> = self
+            .coordinators
+            .iter()
+            .filter(|(_, c)| {
+                (c.phase().is_terminal() && c.phase() != crate::swap::SwapPhase::Settled)
+                    || c.is_stale(head)
+            })
+            .map(|(id, _)| *id)
+            .collect();
         self.coordinators
             .retain(|_, c| !c.phase().is_terminal() && !c.is_stale(head));
+        for id in prune {
+            self.pending.remove(&id);
+        }
         stale
     }
 }
@@ -645,5 +713,53 @@ mod tests {
             .unwrap()
             .phase()
             .has_funds_locked());
+    }
+
+    // --- G20: pending-action retransmit ----------------------------------------------
+
+    #[test]
+    fn a_pending_action_retransmits_until_its_budget_runs_out() {
+        let mut bob = SwapSession::new(identity(0x22), LadderParams::default());
+        let swap_id = [0xE1; SWAP_ID_LEN];
+        only(
+            bob.on_message(SwapKind::Propose, &propose_bytes(swap_id), 0)
+                .unwrap(),
+        );
+        bob.record_action(swap_id, MessageType::SwapAccept, vec![1, 2, 3]);
+        // Re-flooded every tick for its whole budget, then it expires (so a vanished counterparty
+        // doesn't draw retransmits forever).
+        for _ in 0..RETRANSMIT_TTL {
+            assert_eq!(bob.pending_retransmits().len(), 1);
+        }
+        assert!(bob.pending_retransmits().is_empty());
+    }
+
+    #[test]
+    fn tearing_down_a_swap_stops_its_retransmits() {
+        let mut bob = SwapSession::new(identity(0x22), LadderParams::default());
+        let swap_id = [0xE2; SWAP_ID_LEN];
+        only(
+            bob.on_message(SwapKind::Propose, &propose_bytes(swap_id), 0)
+                .unwrap(),
+        );
+        bob.record_action(swap_id, MessageType::SwapAccept, vec![1]);
+        // A local cancel drops the pending action (nothing left to retransmit).
+        bob.cancel(&swap_id);
+        assert!(bob.pending_retransmits().is_empty());
+    }
+
+    #[test]
+    fn a_stale_gc_drops_the_pending_retransmit() {
+        let mut bob = SwapSession::new(identity(0x22), LadderParams::default());
+        let swap_id = [0xE3; SWAP_ID_LEN];
+        only(
+            bob.on_message(SwapKind::Propose, &propose_bytes(swap_id), 0)
+                .unwrap(),
+        );
+        bob.record_action(swap_id, MessageType::SwapAccept, vec![1]);
+        // GC past the deadline drops the un-funded swap AND its pending action (we flood an Abort
+        // for it instead, not a retransmit of the dead negotiation).
+        assert_eq!(bob.tick(10_001), vec![swap_id]);
+        assert!(bob.pending_retransmits().is_empty());
     }
 }

@@ -96,7 +96,7 @@ frontier is **resilience under loss** — each phase action floods exactly once,
 without `S`. The next work makes swaps survive a real lossy/partitioned BLE mesh. Still sim/testnet,
 money-path gated.)
 
-- [ ] **G20 — Pending-action retransmit (don't let a lost message strand a swap).** The node caches
+- [x] **G20 — Pending-action retransmit (don't let a lost message strand a swap).** The node caches
       each swap's last-emitted action envelope and re-floods it on the maintenance tick while the
       swap is non-terminal and unadvanced, so a dropped `FundingProof`/`PreimageReveal`/`Accept` is
       recovered (idempotent — the coordinator's phase absorbs duplicates). Tested over a lossy mesh.

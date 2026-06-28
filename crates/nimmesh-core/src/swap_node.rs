@@ -46,6 +46,16 @@ pub(crate) fn handle_swap_packet(
             // G17: after the message advanced our coordinator, take this node's next phase-driven
             // chain action (fund / claim / settle, sim tx bytes) and flood its envelope(s) too.
             replies.extend(drive_swap(st, kind, &packet.payload, head));
+            // G20: remember this swap's latest action so the tick can re-flood it if it's dropped.
+            // All replies here are for the incoming packet's swap_id.
+            if let (Some(swap_id), Some(last)) = (
+                decode_swap(kind, &packet.payload).ok().map(|e| e.swap_id),
+                replies.last().cloned(),
+            ) {
+                if let Some(session) = st.swap.as_mut() {
+                    session.record_action(swap_id, last.0, last.1);
+                }
+            }
             sync_swap_phases(ctx, st);
             for (mt, payload) in replies {
                 flood_swap_reply(ctx, mt, payload, st);
@@ -180,6 +190,16 @@ pub(crate) fn gc_tick(ctx: &WorkerCtx, st: &mut WorkerState) {
         return;
     }
     let head = ctx.cached_head().map(u64::from).unwrap_or(0);
+    // G20: re-flood each live swap's last action (recover a message dropped over a lossy mesh). The
+    // coordinator's phase absorbs duplicates, so this is idempotent. Retransmit BEFORE the GC reap
+    // so a just-Settled initiator's reveal still goes out.
+    let retransmits = match st.swap.as_mut() {
+        Some(session) => session.pending_retransmits(),
+        None => Vec::new(),
+    };
+    for (mt, payload) in retransmits {
+        flood_swap_reply(ctx, mt, payload, st);
+    }
     let aborted = match st.swap.as_mut() {
         Some(session) => session.tick(head),
         None => Vec::new(),
@@ -218,6 +238,10 @@ pub(crate) fn start_swap(
     session.add_initiator(swap_id, coordinator);
     sync_swap_phases(ctx, st);
     if let Ok(payload) = crate::swap_wire::encode_swap(&propose) {
+        // G20: remember the Propose so the tick retransmits it if the first flood is lost.
+        if let Some(session) = st.swap.as_mut() {
+            session.record_action(swap_id, MessageType::SwapPropose, payload.clone());
+        }
         flood_swap_reply(ctx, MessageType::SwapPropose, payload, st);
     }
 }

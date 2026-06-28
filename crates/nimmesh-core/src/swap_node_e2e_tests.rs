@@ -1,0 +1,409 @@
+//! # swap_node_e2e_tests — whole swaps driven over the REAL MeshNode loop (G14–G20, cfg(test))
+//!
+//! Where [`crate::swap_e2e_tests`] proves the swap *protocol* (state machines + escrows + the wire
+//! codec), this drives complete swaps through two or more [`crate::node::MeshNode`] worker loops over
+//! the [`crate::mock_radio`] virtual mesh — exercising the integration the agenda built up: the
+//! participant hook (G14), the full lifecycle driver (G17), the GC/expiry tick (G16), the node-level
+//! refund safety exit (G18), abort teardown (G19), and pending-action retransmit resilience over a
+//! lossy mesh (G20). Each test wires a `MeshHarness`, originates/injects swap packets, and asserts on
+//! the observable per-swap phase mirror — proving the behaviour end to end, not the session in
+//! isolation.
+
+use crate::swap::SwapTerms;
+use crate::swap_leg::sha256;
+
+const GIVE_NIM: u64 = 100_000; // luna the initiator gives on the NIM leg
+const TAKE_BTC: u64 = 50_000; // sats the responder gives on the BTC leg
+const T_A: u64 = 10_000; // NIM-leg timeout (longer)
+const T_B: u64 = 5_000; // counterparty-leg timeout (shorter)
+
+fn terms() -> SwapTerms {
+    SwapTerms {
+        nim_timeout: T_A,
+        counterparty_timeout: T_B,
+    }
+}
+
+// --- G14: the SwapSession ↔ MeshNode hook, driven over the REAL node loop ---------------
+
+/// Build a `(swap_id, terms)` pair + the two parties' identities/contexts for a node-level swap.
+#[cfg(test)]
+fn participant_fixtures() -> (
+    [u8; 16],
+    crate::swap_session::NodeIdentity,
+    crate::swap_session::NodeIdentity,
+    crate::swap_coordinator::SwapContext,
+) {
+    use crate::swap_coordinator::SwapContext;
+    use crate::swap_session::NodeIdentity;
+    let swap_id = [0x7A; 16];
+    let pk = |b: u8| {
+        let mut k = [b; 33];
+        k[0] = 0x02;
+        k
+    };
+    let alice_id = NodeIdentity {
+        nim_address: [0xA1; 20],
+        btc_address: b"tb1qalice".to_vec(),
+        btc_pubkey: pk(0x11),
+    };
+    let bob_id = NodeIdentity {
+        nim_address: [0xB2; 20],
+        btc_address: b"tb1qbob".to_vec(),
+        btc_pubkey: pk(0x22),
+    };
+    // Alice's initiator context (she gives NIM, wants BTC), terms = the proven-safe ladder.
+    let alice_ctx = SwapContext {
+        swap_id,
+        terms: terms(),
+        hashlock: sha256(&[42u8; 32]),
+        nim_address: alice_id.nim_address,
+        btc_address: alice_id.btc_address.clone(),
+        btc_pubkey: alice_id.btc_pubkey,
+        give_amount: GIVE_NIM,
+        take_amount: TAKE_BTC,
+        network_id: 5,
+    };
+    (swap_id, alice_id, bob_id, alice_ctx)
+}
+
+#[test]
+fn a_responder_node_accepts_a_proposed_swap_injected_over_the_mesh() {
+    // G14: a swap `Propose` packet is injected at a participant node `bob`. Through the REAL node
+    // receive loop (decode → dispatch → SwapSession route → reply flood) bob spins up a responder
+    // coordinator, reaches `Accepted`, and floods a `SwapAccept` — which a connected relay carries
+    // onward. Proves the MeshNode swap hook works end to end, not the session in isolation.
+    use crate::codec::encode;
+    use crate::mock_radio::MeshHarness;
+    use crate::packet::{MessageType, Packet, BROADCAST_RECIPIENT};
+    use crate::swap::{LadderParams, SwapPhase};
+    use crate::swap_coordinator::SwapCoordinator;
+    use crate::swap_wire::encode_swap;
+    use crate::test_support::{wait_until, SETTLE};
+
+    let (swap_id, _alice_id, bob_id, alice_ctx) = participant_fixtures();
+    let mut h = MeshHarness::new();
+    let bob = h.add_participant("bob", &[2], bob_id, LadderParams::default());
+    let relay = h.add_node("relay", &[3]);
+    h.connect("bob", "relay");
+
+    // Alice (off-mesh here) builds her Propose; it arrives at bob from some upstream peer.
+    let (_alice, propose) =
+        SwapCoordinator::new_initiator(alice_ctx, [42u8; 32], LadderParams::default());
+    let mut packet = Packet::new(
+        MessageType::SwapPropose,
+        [9u8; 8],
+        encode_swap(&propose).unwrap(),
+    );
+    packet.recipient_id = Some(BROADCAST_RECIPIENT);
+    bob.on_packet_received_from("alice".to_string(), encode(&packet).unwrap());
+
+    // Bob's node routes the Propose to its session and accepts — observable via the phase mirror.
+    assert!(
+        wait_until(
+            || bob.swap_phase(swap_id) == Some(SwapPhase::Accepted),
+            SETTLE
+        ),
+        "bob did not accept the proposed swap through the node loop"
+    );
+    // And bob flooded a reply (the SwapAccept) which the relay carried onward.
+    assert!(
+        wait_until(|| relay.forwarded_count() >= 1, SETTLE),
+        "bob's Accept reply never reached / was relayed by the neighbour"
+    );
+
+    h.shutdown();
+}
+
+#[test]
+fn two_participant_nodes_drive_a_full_swap_to_settled_over_the_real_mesh() {
+    // G17: the WHOLE swap lifecycle over the real mesh, with no hand orchestration — the node-side
+    // driver reacts to each coordinator phase change. Alice (initiator) floods a `Propose`; bob
+    // (responder) accepts; alice funds NIM + floods a `FundingProof`; bob funds BTC + floods his
+    // own; alice (both funded) claims the BTC leg revealing `S` + floods a `PreimageReveal`; bob
+    // reads `S`, claims his NIM leg, and both settle. Propose → Accept → fund → fund → reveal →
+    // settle, all driven by the two MeshNode loops over the flood path (sim / stand-in tx bytes).
+    use crate::mock_radio::MeshHarness;
+    use crate::swap::{LadderParams, SwapPhase};
+    use crate::swap_coordinator::SwapCoordinator;
+    use crate::test_support::{wait_until, SETTLE};
+
+    let (swap_id, alice_id, bob_id, alice_ctx) = participant_fixtures();
+    let mut h = MeshHarness::new();
+    let alice = h.add_participant("alice", &[1], alice_id, LadderParams::default());
+    let bob = h.add_participant("bob", &[2], bob_id, LadderParams::default());
+    h.connect("alice", "bob");
+
+    // Alice originates the swap: her coordinator + the Propose to flood. Everything after is driven.
+    let (coordinator, propose) =
+        SwapCoordinator::new_initiator(alice_ctx, [42u8; 32], LadderParams::default());
+    alice.start_swap(swap_id, coordinator, propose);
+
+    // Both sides drive themselves all the way to Settled — neither leg left one-sided.
+    assert!(
+        wait_until(
+            || alice.swap_phase(swap_id) == Some(SwapPhase::Settled),
+            SETTLE
+        ),
+        "alice's swap never settled over the mesh"
+    );
+    assert!(
+        wait_until(
+            || bob.swap_phase(swap_id) == Some(SwapPhase::Settled),
+            SETTLE
+        ),
+        "bob's swap never settled over the mesh"
+    );
+
+    h.shutdown();
+}
+
+#[test]
+fn the_worker_gc_tick_sheds_a_stale_swap_once_the_head_passes_its_timelock() {
+    // G16: a participant node accepts a swap, then the negotiation stalls (never funds). Once the
+    // node hears a head beacon putting the chain head past the swap's T_A timelock (10_000 in the
+    // fixtures), the worker's maintenance/GC tick drops the dead swap — proving the session expiry
+    // is wired into the real MeshNode worker, not just callable on the session in isolation.
+    use crate::mock_radio::MeshHarness;
+    use crate::swap::{LadderParams, SwapPhase};
+    use crate::swap_coordinator::SwapCoordinator;
+    use crate::swap_wire::encode_swap;
+    use crate::test_support::{make_beacon_packet, wait_until, SETTLE};
+
+    let (swap_id, _alice_id, bob_id, alice_ctx) = participant_fixtures();
+    let mut h = MeshHarness::new();
+    let bob = h.add_participant("bob", &[2], bob_id, LadderParams::default());
+
+    // Bob accepts a proposed swap (no funds ever locked) — it sits in the session.
+    let (_alice, propose) =
+        SwapCoordinator::new_initiator(alice_ctx, [42u8; 32], LadderParams::default());
+    let mut packet = crate::packet::Packet::new(
+        crate::packet::MessageType::SwapPropose,
+        [9u8; 8],
+        encode_swap(&propose).unwrap(),
+    );
+    packet.recipient_id = Some(crate::packet::BROADCAST_RECIPIENT);
+    bob.on_packet_received_from("alice".to_string(), crate::codec::encode(&packet).unwrap());
+    assert!(
+        wait_until(
+            || bob.swap_phase(swap_id) == Some(SwapPhase::Accepted),
+            SETTLE
+        ),
+        "bob never accepted the proposed swap"
+    );
+
+    // Bob hears a head beacon putting the chain head at 10_001 — past the swap's T_A (10_000).
+    bob.on_packet_received_from(
+        "gw".to_string(),
+        make_beacon_packet([7; 8], 10_001, 5, 7, 1),
+    );
+    assert!(
+        wait_until(|| bob.cached_head_height() == Some(10_001), SETTLE),
+        "bob never cached the head beacon"
+    );
+
+    // The maintenance/GC tick now sheds the dead swap.
+    bob.poll_sync();
+    assert!(
+        wait_until(|| bob.swap_phase(swap_id).is_none(), SETTLE),
+        "the stale swap was not GC'd by the worker tick"
+    );
+
+    h.shutdown();
+}
+
+#[test]
+fn a_stalled_funds_locked_swap_refunds_itself_via_the_worker_tick() {
+    // G18: the safety exit over the mesh. Alice funds her NIM leg, but the counterparty never funds
+    // (vanished). Once alice hears a head beacon past her T_A timeout, the worker refund/GC tick
+    // refunds her leg (sim) and reaps the swap — proving "worst case is a refund" at the node level,
+    // not just in the state-machine model.
+    use crate::codec::encode;
+    use crate::mock_radio::MeshHarness;
+    use crate::packet::{MessageType, Packet, BROADCAST_RECIPIENT};
+    use crate::swap::{LadderParams, SwapPhase};
+    use crate::swap_coordinator::SwapCoordinator;
+    use crate::swap_messages::SwapAcceptance;
+    use crate::swap_wire::encode_swap;
+    use crate::test_support::{make_beacon_packet, wait_until, SETTLE};
+
+    let (swap_id, alice_id, _bob_id, alice_ctx) = participant_fixtures();
+    let mut h = MeshHarness::new();
+    let alice = h.add_participant("alice", &[1], alice_id, LadderParams::default());
+
+    // Alice originates the swap, then an Accept arrives from an off-mesh counterparty → her driver
+    // funds the NIM leg → SelfFunded (funds locked).
+    let (coordinator, propose) =
+        SwapCoordinator::new_initiator(alice_ctx, [42u8; 32], LadderParams::default());
+    alice.start_swap(swap_id, coordinator, propose);
+    let accept = SwapAcceptance {
+        swap_id,
+        nim_address: [0xB2; 20],
+        btc_address: b"tb1qbob".to_vec(),
+        btc_pubkey: {
+            let mut k = [0x22; 33];
+            k[0] = 0x03;
+            k
+        },
+    }
+    .to_envelope();
+    let mut pkt = Packet::new(
+        MessageType::SwapAccept,
+        [9u8; 8],
+        encode_swap(&accept).unwrap(),
+    );
+    pkt.recipient_id = Some(BROADCAST_RECIPIENT);
+    alice.on_packet_received_from("bob".to_string(), encode(&pkt).unwrap());
+    assert!(
+        wait_until(
+            || alice.swap_phase(swap_id) == Some(SwapPhase::SelfFunded),
+            SETTLE
+        ),
+        "alice never funded her leg"
+    );
+
+    // The counterparty never funds. Alice hears a head beacon past her T_A timeout (10_000).
+    alice.on_packet_received_from(
+        "gw".to_string(),
+        make_beacon_packet([7; 8], 10_001, 5, 7, 1),
+    );
+    assert!(
+        wait_until(|| alice.cached_head_height() == Some(10_001), SETTLE),
+        "alice never cached the head beacon"
+    );
+
+    // The worker refund/GC tick refunds her stalled leg and reaps the swap.
+    alice.poll_sync();
+    assert!(
+        wait_until(|| alice.swap_phase(swap_id).is_none(), SETTLE),
+        "the stalled funds-locked swap was not refunded + GC'd by the worker tick"
+    );
+
+    h.shutdown();
+}
+
+#[test]
+fn a_gc_abort_tears_down_the_swap_on_the_counterparty_over_the_mesh() {
+    // G19: symmetric teardown. Two participants accept the same proposal (un-funded) but the phantom
+    // initiator never funds. When bob's GC drops his stale swap, he floods a SwapAbort — and carol,
+    // who never even heard the head beacon, frees her slot too. An abort from one participant clears
+    // the swap on the other over the real mesh.
+    use crate::codec::encode;
+    use crate::mock_radio::MeshHarness;
+    use crate::packet::{MessageType, Packet, BROADCAST_RECIPIENT};
+    use crate::swap::{LadderParams, SwapPhase};
+    use crate::swap_coordinator::SwapCoordinator;
+    use crate::swap_session::NodeIdentity;
+    use crate::swap_wire::{encode_swap, BTC_PUBKEY_LEN, NIM_ADDRESS_LEN};
+    use crate::test_support::{make_beacon_packet, wait_until, SETTLE};
+
+    let (swap_id, _alice_id, bob_id, alice_ctx) = participant_fixtures();
+    let carol_id = NodeIdentity {
+        nim_address: [0xC3; NIM_ADDRESS_LEN],
+        btc_address: b"tb1qcarol".to_vec(),
+        btc_pubkey: {
+            let mut k = [0x33; BTC_PUBKEY_LEN];
+            k[0] = 0x02;
+            k
+        },
+    };
+    let mut h = MeshHarness::new();
+    let bob = h.add_participant("bob", &[2], bob_id, LadderParams::default());
+    let carol = h.add_participant("carol", &[3], carol_id, LadderParams::default());
+    h.connect("bob", "carol");
+
+    // A Propose injected at bob is accepted by bob AND relayed to carol, who also accepts — two
+    // responders to a phantom initiator that never funds. Both sit at Accepted (un-funded).
+    let (_a, propose) =
+        SwapCoordinator::new_initiator(alice_ctx, [42u8; 32], LadderParams::default());
+    let mut pkt = Packet::new(
+        MessageType::SwapPropose,
+        [9u8; 8],
+        encode_swap(&propose).unwrap(),
+    );
+    pkt.recipient_id = Some(BROADCAST_RECIPIENT);
+    bob.on_packet_received_from("alice".to_string(), encode(&pkt).unwrap());
+    assert!(
+        wait_until(
+            || bob.swap_phase(swap_id) == Some(SwapPhase::Accepted),
+            SETTLE
+        ),
+        "bob never accepted"
+    );
+    assert!(
+        wait_until(
+            || carol.swap_phase(swap_id) == Some(SwapPhase::Accepted),
+            SETTLE
+        ),
+        "carol never accepted the relayed propose"
+    );
+
+    // Bob hears a head beacon past T_A → his GC drops the stale swap AND floods a teardown Abort.
+    bob.on_packet_received_from(
+        "gw".to_string(),
+        make_beacon_packet([7; 8], 10_001, 5, 7, 1),
+    );
+    assert!(
+        wait_until(|| bob.cached_head_height() == Some(10_001), SETTLE),
+        "bob never cached the beacon"
+    );
+    bob.poll_sync();
+
+    // Bob's swap is GC'd, and his Abort clears carol's swap too — symmetric teardown over the mesh.
+    assert!(
+        wait_until(|| bob.swap_phase(swap_id).is_none(), SETTLE),
+        "bob's stale swap was not GC'd"
+    );
+    assert!(
+        wait_until(|| carol.swap_phase(swap_id).is_none(), SETTLE),
+        "carol's swap was not torn down by bob's abort"
+    );
+
+    h.shutdown();
+}
+
+#[test]
+fn a_swap_survives_a_lossy_mesh_via_retransmits() {
+    // G20: over a mesh that drops a third of every flood, a swap still completes — each side
+    // re-floods its last action on the maintenance tick until every message (Propose, Accept, both
+    // FundingProofs, and crucially the PreimageReveal that carries S) gets through. Without the
+    // retransmit a single dropped message would strand the swap. The ether's PRNG is deterministic,
+    // so this is reproducible, not flaky.
+    use crate::mock_radio::MeshHarness;
+    use crate::swap::LadderParams;
+    use crate::swap_coordinator::SwapCoordinator;
+    use std::time::Duration;
+
+    let (swap_id, alice_id, bob_id, alice_ctx) = participant_fixtures();
+    let mut h = MeshHarness::new();
+    let alice = h.add_participant("alice", &[1], alice_id, LadderParams::default());
+    let bob = h.add_participant("bob", &[2], bob_id, LadderParams::default());
+    h.connect("alice", "bob");
+    h.ether().set_loss(0.3); // a third of every flood is dropped
+
+    let (coordinator, propose) =
+        SwapCoordinator::new_initiator(alice_ctx, [42u8; 32], LadderParams::default());
+    alice.start_swap(swap_id, coordinator, propose);
+
+    // Drive the maintenance tick at a calm cadence (a delay between ticks lets each node's worker
+    // drain its queue), re-flooding each side's last action until every message gets through. With
+    // no head beacon the head stays 0, so a coordinator can ONLY leave the session by Settled → reap
+    // (never stale/refund) — so both sides going empty proves both settled (each claimed its leg),
+    // the reveal having survived the loss via retransmit.
+    let mut done = false;
+    for _ in 0..150 {
+        alice.poll_sync();
+        bob.poll_sync();
+        std::thread::sleep(Duration::from_millis(20));
+        if alice.swap_phase(swap_id).is_none() && bob.swap_phase(swap_id).is_none() {
+            done = true;
+            break;
+        }
+    }
+    assert!(
+        done,
+        "the swap did not settle on both sides over the lossy mesh"
+    );
+
+    h.shutdown();
+}
