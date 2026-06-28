@@ -6,6 +6,8 @@ green, log one line, and schedule the next iteration. No human prompt between go
 
 > The human-decision backlog (every money-path / native-bridge / mainnet item the loop deliberately
 > left gated, with the exact code seam each plugs into) lives in [`OWNER-GATED.md`](OWNER-GATED.md).
+> The G34–G58 discovery layer's engineering map (lifecycle, gates, security, tests) is
+> [`DISCOVERY.md`](DISCOVERY.md).
 
 ## Goal ladder (do in order; each is one iteration-sized chunk)
 
@@ -479,6 +481,31 @@ signing stay human-gated.)
       G55 test file now imports the lifted module and asserts the same cases. `nq lint` 0 errors,
       screenshot-verified, demo-http test marker-checks `/api/health`. A LIVE `MeshNode` health accessor
       stays OG-6-gated (the derivation is ready; the node-side surfacing waits on the bridge). 6 tests.
-- [ ] **G58 — Discovery architecture doc.** A `docs/swap/DISCOVERY.md` tying the G34–G55 layer together
+- [x] **G58 — Discovery architecture doc.** A `docs/swap/DISCOVERY.md` tying the G34–G55 layer together
       (the discovery analogue of `MESH-INTEGRATION.md`): the intent lifecycle, each gate in order, the wire
       format, the security properties, and pointers to the per-goal code + tests. Docs only.
+      Done: `docs/swap/DISCOVERY.md` — the engineering map for G34–G57: the `SwapIntent` wire (field
+      table), the advertise→flood→gates→window→Propose→settle lifecycle, the 8 gates IN ORDER with goal
+      tags + metric + the proving test, re-advertise/reconnect (G37/G47/G51), the security properties,
+      observability/health (G42/G55/G57), privacy (G45), crash recovery (G43), the demo + its endpoints,
+      and a "what's gated" pointer. All cited seams grepped + verified to exist; cross-linked from this
+      header. Docs only, Rust gate re-run (no drift).
+
+## Status: discovery layer COMPLETE (2026-06-28)
+
+The autonomously-buildable discovery ladder **G34–G58 is done** and merged to `feat/mesh-swap` (never
+to `main`). Shipped end to end: intent flood + match (G34), expiry (G35), per-sender + per-link
+anti-spam (G36/G53), bounded re-advertise with reconnect-resume (G37/G47/G51), best-rate match window
+(G39), amount bands (G40), Ed25519 authenticity (G41), metrics + health self-check (G42/G55/G57),
+restart recovery (G43), many-node completeness + deterministic loss recovery (G44/G47), privacy via
+ephemeral keys (G45), a fixture-backed demo with live JSON endpoints (G38/G46/G54/G57), fuzz/property
+tests (G3/G48), rot-guards for the demo + the gated ledger (G49/G56), and the consolidating
+`DISCOVERY.md` (G58). Green every commit (tests default + bitcoin-leg, clippy both, fmt, size-guard, nq
+lint). Money-path stayed gated throughout (`MockSigner` / `sim_secret`).
+
+**Everything remaining is owner-gated** — there is no further autonomously-buildable, non-gated step.
+The human-decision backlog (live native WebView↔Rust bridge, real NIM/BTC money-path signer, CSPRNG
+secret, mainnet/real funds, deeper privacy, UniFFI exposure) is OG-1…OG-6 in
+[`OWNER-GATED.md`](OWNER-GATED.md), each with the exact code seam it plugs into. The loop has reached a
+natural stopping point: `feat/mesh-swap` is ready for Andjroo's review + merge and the gate decisions.
+The autonomous loop is paused here (no further wake-ups) until then.
