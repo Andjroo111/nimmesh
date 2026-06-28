@@ -60,6 +60,8 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "5.9"
-        # Simulator builds need no signing; keeps headless CI/build clean.
-        CODE_SIGNING_ALLOWED: "NO"
-        CODE_SIGNING_REQUIRED: "NO"
+        # Simulator builds need no signing (keeps headless CI/build clean); a
+        # real-device build must sign, so scope the "off" to the simulator SDK
+        # only and let Xcode automatic signing handle device builds.
+        CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]: "NO"
+        CODE_SIGNING_REQUIRED[sdk=iphonesimulator*]: "NO"

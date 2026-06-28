@@ -252,11 +252,11 @@
         <div class="meta">
           <div class="flex-row">
             <div class="label">Mesh Wallet</div>
-            <span class="amount">752 <span class="currency nim">NIM</span></span>
+            <span class="amount" id="home-balance">752 <span class="currency nim">NIM</span></span>
           </div>
           <div class="flex-row">
             <div class="copyable"><div class="address" data-wallet-address title="NQ30 AM32 NHXL 29F7 XUY0 HR3R 7XHF EF4L LYBS">NQ30 AM32 NHXL 29F7 XUY0 HR3R 7XHF EF4L LYBS</div></div>
-            <span class="fiat-amount">$0.46</span>
+            <span class="fiat-amount" id="home-fiat">$0.46</span>
           </div>
         </div>
       </div>
@@ -271,9 +271,10 @@
     </div>
   </div>
 
-  <!-- Real Nimiq transaction list -->
+  <!-- Real Nimiq transaction list (live from the chain when running in the app; the rows
+       below are only a no-bridge browser preview — the app replaces them via #tx-list). -->
   <div class="tx-wrap">
-    <div class="transaction-list">
+    <div class="transaction-list" id="tx-list">
       <div class="month-label"><label>This month</label></div>
       <!-- G17: an incoming payment awaiting its gateway receipt — "did it land?". The same
            flooded receipt that settles the sender flips this to ✓ settled for the receiver. -->
@@ -567,6 +568,53 @@
     txt.textContent = copy;
   }
 
+  // C1d: format luna (1 NIM = 1e5 luna) as a Nimiq-style amount — thin-space grouped, trailing
+  // zeros trimmed (2500000 -> "25", 250000 -> "2.5", 11000000000 -> "110 000").
+  function fmtNim(luna) {
+    const nim = (Number(luna) || 0) / 1e5;
+    const s = nim.toFixed(5).replace(/\.?0+$/, '');
+    const [int, dec] = s.split('.');
+    const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    return dec ? `${grouped}.${dec}` : grouped;
+  }
+
+  // C1d: render the REAL transaction history (or an honest empty state for a fresh wallet).
+  // Each row mirrors the nimiq-ui transaction markup; the counterparty identicon is a real
+  // @nimiq/iqons render. Direction + counterparty + confirmed are decided by the Swift bridge.
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  async function renderHistory(txs) {
+    const list = document.getElementById('tx-list');
+    if (!list) return;
+    if (!txs.length) {
+      list.innerHTML = '<div class="tx-empty" style="text-align:center;padding:48px 24px;color:#1f2348;opacity:.45">'
+        + '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true" style="width:40px;height:40px;margin-bottom:12px"><circle cx="5" cy="18" r="2.4" fill="currentColor"/><circle cx="19" cy="18" r="2.4" fill="currentColor"/><circle cx="12" cy="5" r="2.4" fill="currentColor"/><path d="M6.4 16.3 10.7 6.9M13.3 6.9l4.3 9.4M7.2 18h9.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>'
+        + '<div style="font-weight:700;font-size:15px">No transactions yet</div>'
+        + '<div style="font-size:13px;opacity:.8;margin-top:4px">Fund your wallet and your payments show up here</div></div>';
+      return;
+    }
+    const rows = txs.map((t) => {
+      const d = new Date(t.timestamp || 0);
+      const day = d.getDate();
+      const mon = MONTHS[d.getMonth()] || '';
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mm = String(d.getMinutes()).padStart(2, '0');
+      const addr = (t.counterparty || '').trim();
+      const cls = t.confirmed ? 'confirmed' : 'pending';
+      const amtCls = t.incoming ? 'amounts isIncoming' : 'amounts';
+      const status = t.confirmed ? `${hh}:${mm}` : '<span class="tx-pending">Pending</span>';
+      return `<button class="transaction ${cls}">
+        <div class="date"><span class="day">${day}</span><br><span class="month">${mon}</span></div>
+        <div class="identicon" data-address="${addr}"><img alt="Nimiq identicon"></div>
+        <div class="data"><div class="address">${addr}</div><div class="time-and-message"><span>${status}</span></div></div>
+        <div class="${amtCls}"><span class="amount">${fmtNim(t.valueLuna)} <span class="currency nim">NIM</span></span><div class="fiat-amount fiat-loading">&nbsp;</div></div>
+      </button>`;
+    }).join('');
+    list.innerHTML = `<div class="month-label"><label>Recent</label></div>${rows}`;
+    for (const el of list.querySelectorAll('.identicon[data-address]')) {
+      try { el.querySelector('img').src = await Iqons.toDataUrl(el.dataset.address); } catch (e) {}
+    }
+  }
+
   // A1/A4: the mesh status line is always visible (the obvious "this is the offline mesh"
   // differentiator). On device the bridge enriches it with live peers/network/core.
   if (window.nimmesh) {
@@ -587,14 +635,6 @@
       const r = await nimmesh.reachability();
       applyReachability(r.reachability);
     } catch (e) { /* keep the static reassurance line if reachability is unavailable */ }
-    // G19: ask the policy about the balance the home is showing (752 NIM). No keys/balance
-    // live in-app yet (C1 keys + Phase D node), so this is the displayed demo balance; once
-    // real keys + a real balance land, the same call drives the nudge for real. No key/seed
-    // crosses the bridge — only the public balance + the backed-up flag.
-    try {
-      const u = await nimmesh.backupUrgency({ backedUp: false, balanceLuna: 752 * 100000, daysSinceFirstFunds: 0 });
-      applyBackupNudge(u.urgency);
-    } catch (e) { /* leave the default words banner if the policy call fails */ }
     // C1c: show THIS device's real wallet address (from the Keychain key) everywhere it
     // belongs — the home header, the Receive sheet grid + QR, and the wallet identicons.
     // The seed never crosses; only the public address comes over the bridge.
@@ -620,6 +660,30 @@
         }
       }
     } catch (e) { /* no wallet bridge (plain browser) — keep the demo address */ }
+    // C1d: the REAL balance + REAL transaction history from the chain — this replaces the
+    // design-mock numbers (the old 752 NIM + demo tx rows). Read-only public data; no key or
+    // seed crosses. A fresh wallet honestly shows 0 NIM and an empty history; funding it (or
+    // sending) updates both for real.
+    let balanceLuna = 0;
+    try {
+      const b = await nimmesh.walletBalance();
+      balanceLuna = (b && typeof b.luna === 'number') ? b.luna : 0;
+      const bal = document.getElementById('home-balance');
+      if (bal) bal.innerHTML = `${fmtNim(balanceLuna)} <span class="currency nim">NIM</span>`;
+      // testnet NIM has no market value — drop the fake fiat ($0.46) rather than invent one.
+      const fiat = document.getElementById('home-fiat');
+      if (fiat) fiat.textContent = '';
+    } catch (e) { /* keep the placeholder if balance is unavailable */ }
+    try {
+      const { txs } = await nimmesh.walletHistory();
+      await renderHistory(txs || []);
+    } catch (e) { await renderHistory([]); }
+    // G19: drive the backup nudge from the REAL balance (not the old mock 752). No key/seed
+    // crosses the bridge — only the public balance + the backed-up flag.
+    try {
+      const u = await nimmesh.backupUrgency({ backedUp: false, balanceLuna, daysSinceFirstFunds: 0 });
+      applyBackupNudge(u.urgency);
+    } catch (e) { /* leave the default words banner if the policy call fails */ }
   }
 
   // A4: fleet chrome — the global language pill + connect-wallet pill (shared nimiq-app-shell).

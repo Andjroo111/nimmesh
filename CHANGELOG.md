@@ -2,6 +2,38 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.27.0] — 2026-06-27
+
+### Fixed — the home shows REAL balance + REAL transaction history (no more mock numbers)
+
+The first on-device run surfaced that the home was still wearing the design mock's hardcoded
+data (`752 NIM`, `$0.46`, the demo `+25 / -2.5 / +110 000` rows). The wallet identity + network
+were real, but the displayed numbers were never wired to the chain. Now they are.
+
+- `apple/.../TestnetRpc.swift`: `NimiqRpc.transactions(address, max)` over
+  `getTransactionsByAddress(addr, max, null)` (the public node serves history).
+- `apple/.../WebHostView.swift`: a read-only `walletHistory` bridge method that normalises each
+  tx (direction / counterparty / value / confirmed) for the UI; no key or seed crosses.
+- `webui/index.html`: the home balance is driven by the live `walletBalance`, the transaction
+  list by live `walletHistory` (with an honest "No transactions yet" empty state for a fresh
+  wallet); the fake `$0.46` fiat is dropped (testnet has no market value); the backup nudge now
+  reads the real balance instead of the mock `752`. The mock rows remain only as a no-bridge
+  browser preview (the app replaces them via `#tx-list`).
+
+### Fixed — real-device code signing
+
+- `apple/project.yml`: scoped `CODE_SIGNING_ALLOWED/REQUIRED = NO` to the **simulator SDK only**
+  (`[sdk=iphonesimulator*]`), so headless/CI simulator builds stay sign-free while real-device
+  builds sign normally via Xcode automatic signing. (Device install was failing "executable is
+  not codesigned" because the off-switch was unconditional.)
+
+### Note — Keychain persistence is device-only (expected)
+
+On the **simulator** the unsigned build has no entitlements, so Keychain reads/writes fail
+(`errSecMissingEntitlement -34018`) and the wallet regenerates a key every launch. On a **signed
+device** the Keychain works and the wallet (address) persists. A recovery-phrase backup/restore
+flow is still TODO before real funds (`docs/DEVICE-TEST.md`).
+
 ## [0.26.0] — 2026-06-27
 
 ### Added — mainnet-capable network toggle (gated; default testnet)

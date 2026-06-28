@@ -115,6 +115,8 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         // C1c: live testnet — head height, balance, faucet, and the real send (sign+broadcast).
         headHeight: function () { return call('headHeight'); },
         walletBalance: function () { return call('walletBalance'); },
+        // C1d: this wallet's real on-chain transaction history (read-only public data).
+        walletHistory: function () { return call('walletHistory'); },
         fundFromFaucet: function () { return call('fundFromFaucet'); },
         sendTransaction: function (a) { return call('sendTransaction', a || {}); }
       };
@@ -129,7 +131,7 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         // C1c: the live-chain methods do network IO → run them off the main actor and resolve
         // when they complete. Everything else is synchronous (pure-core reads).
         switch method {
-        case "headHeight", "walletBalance", "fundFromFaucet", "sendTransaction":
+        case "headHeight", "walletBalance", "walletHistory", "fundFromFaucet", "sendTransaction":
             Task { let (ok, payload) = await self.handleAsync(method: method, args: args)
                 self.resolve(id: id, ok: ok, payload: payload) }
         default:
@@ -149,6 +151,25 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         case "walletBalance":
             guard let addr = Wallet.address() else { return (false, "no wallet") }
             return (true, ["luna": Int(await NimiqRpc.balance(addr))])
+        case "walletHistory":
+            // Real on-chain history for this wallet, normalised for the UI: direction +
+            // counterparty + confirmed are decided here (the seed never crosses; this is all
+            // public chain data). Newest first, capped.
+            guard let addr = Wallet.address() else { return (false, "no wallet") }
+            let selfCompact = addr.replacingOccurrences(of: " ", with: "").uppercased()
+            let txs: [[String: Any]] = (await NimiqRpc.transactions(addr, max: 20)).map { t in
+                let to = (t["to"] as? String ?? "").replacingOccurrences(of: " ", with: "").uppercased()
+                let incoming = (to == selfCompact)
+                return [
+                    "hash": t["hash"] as? String ?? "",
+                    "counterparty": incoming ? (t["from"] as? String ?? "") : (t["to"] as? String ?? ""),
+                    "valueLuna": (t["value"] as? NSNumber)?.intValue ?? 0,
+                    "timestamp": (t["timestamp"] as? NSNumber)?.doubleValue ?? 0,
+                    "incoming": incoming,
+                    "confirmed": ((t["blockNumber"] as? NSNumber)?.intValue ?? 0) > 0,
+                ]
+            }
+            return (true, ["txs": txs])
         case "fundFromFaucet":
             guard !NimiqRpc.isMainnet else { return (false, "faucet is testnet only") }
             guard let addr = Wallet.address() else { return (false, "no wallet") }

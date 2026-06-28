@@ -91,6 +91,16 @@ enum NimiqRpc {
         return b.uint64Value
     }
 
+    /// An address's recent transactions, newest first (empty on error / none). Uses
+    /// `getTransactionsByAddress(address, max, start_at)` — `start_at` is `null` for the head.
+    /// Each element is the raw RPC tx object (hash/from/to/value/timestamp/blockNumber/…).
+    static func transactions(_ address: String, max: Int = 20) async -> [[String: Any]] {
+        let compact = address.replacingOccurrences(of: " ", with: "")
+        guard let arr = (try? await call("getTransactionsByAddress", [compact, max, NSNull()])) as? [[String: Any]]
+        else { return [] }
+        return arr
+    }
+
     /// Tap the public testnet faucet to fund `address` (~10k NIM, for the in-app demo send).
     static func tapFaucet(_ address: String) async {
         var req = URLRequest(url: faucetURL)
