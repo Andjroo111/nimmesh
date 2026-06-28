@@ -2,6 +2,25 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.29.0] — 2026-06-27
+
+### Changed — onboarding rebuilt to match the real Nimiq Wallet + Keyguard
+
+The first hand-built onboarding was off-brand. Rebuilt it against the **real** wallet, using
+references captured live via Playwright (per the nimiq-ui rule: match real screens, never
+hand-guess):
+
+- **Welcome** now mirrors `wallet.nimiq.com`: big title + a green "Create new wallet" gradient
+  card + an "Import wallet" row (vs the real Create Account / Login rows).
+- **Recovery words (create + backup)** and **import** now use the real Keyguard pattern: a
+  **navy gradient sheet** with a **3-column numbered grid** (captured from the live testnet
+  Keyguard `#recovery-words` screen). Import is 24 numbered inputs with paste-the-whole-phrase
+  distribution + space/enter auto-advance; filled cells get a green ring.
+- **Confirm address** now renders the real `address-display` component (the 3×3 `format-nimiq`
+  chunked grid in Fira Mono), not a wrapping text line.
+- Captured references saved to `nimiq-branding-cli/references/screenshots/wallet-app/` and
+  `~/.nimmesh-refs/onboarding/` for future diffs.
+
 ## [0.28.0] — 2026-06-27
 
 ### Added — recovery-phrase wallet: create / import / back up (C1e)
