@@ -26,11 +26,20 @@ fn btc_giver_intent(pubkey_tag: u8) -> SwapIntent {
         expiry_height: FRESH,
         min_nim: 0,
         max_nim: u64::MAX,
+        nim_pubkey: [0u8; 32],
         nim_address: [0xC3; NIM_ADDRESS_LEN],
         btc_pubkey,
         btc_address: b"tb1qflood".to_vec(),
         network_id: 5,
+        signature: [0u8; 64],
     }
+}
+
+/// Authenticate `intent` (G41) under the Ed25519 secret `[seed; 32]` — fills its pubkey, NIM address,
+/// and signature so it passes `verify_authentic`. Apply LAST, after any amount/band mutation.
+fn signed(mut intent: SwapIntent, seed: u8) -> SwapIntent {
+    crate::swap_intent::sign_intent(&mut intent, &[seed; 32]);
+    intent
 }
 
 /// A BTC-giver intent (distinct `pubkey_tag`) asking a specific rate: `nim_amount` NIM per
@@ -59,10 +68,12 @@ fn intent_for(id: &NodeIdentity, gives: Asset, nim: u64, btc: u64, expiry: u64) 
         expiry_height: expiry,
         min_nim: 0,
         max_nim: u64::MAX,
+        nim_pubkey: [0u8; 32],
         nim_address: id.nim_address,
         btc_pubkey: id.btc_pubkey,
         btc_address: id.btc_address.clone(),
         network_id: 5,
+        signature: [0u8; 64],
     }
 }
 
@@ -109,7 +120,10 @@ fn a_complementary_intent_kicks_off_a_swap_that_settles() {
 
     let (_swap_id, alice_id, bob_id, _ctx) = participant_fixtures();
     let alice_intent = intent_for(&alice_id, Asset::Nim, 200_000, 50_000, FRESH);
-    let bob_intent = intent_for(&bob_id, Asset::Btc, 180_000, 50_000, FRESH); // asks 3.6 < 4.0 → cross
+    let bob_intent = signed(
+        intent_for(&bob_id, Asset::Btc, 180_000, 50_000, FRESH),
+        0x22,
+    ); // 3.6 < 4.0
     let swap_id = derive_swap_id(&alice_intent, &bob_intent);
 
     let mut alice_id = alice_id;
@@ -155,7 +169,10 @@ fn an_incompatible_rate_intent_is_not_matched() {
 
     let (_swap_id, alice_id, bob_id, _ctx) = participant_fixtures();
     let alice_intent = intent_for(&alice_id, Asset::Nim, 200_000, 50_000, FRESH);
-    let bob_intent = intent_for(&bob_id, Asset::Btc, 250_000, 50_000, FRESH); // asks 5.0 > 4.0 → no cross
+    let bob_intent = signed(
+        intent_for(&bob_id, Asset::Btc, 250_000, 50_000, FRESH),
+        0x22,
+    ); // 5.0 > 4.0
     let swap_id = derive_swap_id(&alice_intent, &bob_intent);
 
     let mut alice_id = alice_id;
@@ -189,7 +206,10 @@ fn an_expired_intent_does_not_match_even_when_the_rate_crosses() {
 
     let (_swap_id, alice_id, bob_id, _ctx) = participant_fixtures();
     let alice_intent = intent_for(&alice_id, Asset::Nim, 200_000, 50_000, FRESH);
-    let bob_intent = intent_for(&bob_id, Asset::Btc, 180_000, 50_000, 1_000); // crosses, but stale
+    let bob_intent = signed(
+        intent_for(&bob_id, Asset::Btc, 180_000, 50_000, 1_000),
+        0x22,
+    ); // crosses, stale
     let swap_id = derive_swap_id(&alice_intent, &bob_intent);
 
     let mut alice_id = alice_id;
@@ -304,7 +324,7 @@ fn a_flooder_yields_one_swap_per_window_and_a_later_sender_still_matches() {
     let flooder = [0xF1; 8];
     let swap_ids: Vec<_> = (0..10u64)
         .map(|i| {
-            let intent = btc_giver_intent(i as u8 + 1);
+            let intent = signed(btc_giver_intent(i as u8 + 1), i as u8 + 1);
             let id = derive_swap_id(&alice_intent, &intent);
             alice.on_packet_received_from(
                 "link".to_string(),
@@ -335,7 +355,7 @@ fn a_flooder_yields_one_swap_per_window_and_a_later_sender_still_matches() {
     );
 
     // A DIFFERENT sender's intent in a later window still matches (its own budget, its own window).
-    let other = btc_giver_intent(0xC8);
+    let other = signed(btc_giver_intent(0xC8), 0xC8);
     let other_id = derive_swap_id(&alice_intent, &other);
     alice.on_packet_received_from("link2".to_string(), intent_frame(&other, [0xB0; 8], 9_000));
     for _ in 0..4 {
@@ -505,8 +525,8 @@ fn the_best_rate_candidate_in_a_window_wins_not_the_first() {
     let mut h = MeshHarness::new();
     let alice = h.add_participant("alice", &[1], alice_id, LadderParams::default());
 
-    let bad = btc_giver_intent_at(0x20, 200_000, 50_000); // asks 4.0 NIM/BTC (just crosses)
-    let good = btc_giver_intent_at(0x10, 150_000, 50_000); // asks 3.0 NIM/BTC → better for alice
+    let bad = signed(btc_giver_intent_at(0x20, 200_000, 50_000), 0x20); // asks 4.0 (just crosses)
+    let good = signed(btc_giver_intent_at(0x10, 150_000, 50_000), 0x10); // asks 3.0 → better for alice
     let bad_id = derive_swap_id(&alice_intent, &bad);
     let good_id = derive_swap_id(&alice_intent, &good);
 
@@ -547,8 +567,8 @@ fn a_rate_tie_in_a_window_breaks_deterministically() {
     let mut h = MeshHarness::new();
     let alice = h.add_participant("alice", &[1], alice_id, LadderParams::default());
 
-    let a = btc_giver_intent(0x30); // 180k/50k
-    let b = btc_giver_intent(0x31); // 180k/50k — same rate, different pubkey
+    let a = signed(btc_giver_intent(0x30), 0x30); // 180k/50k
+    let b = signed(btc_giver_intent(0x31), 0x31); // 180k/50k, same rate, different pubkey
     let a_id = derive_swap_id(&alice_intent, &a);
     let b_id = derive_swap_id(&alice_intent, &b);
     let (winner, loser) = if a_id < b_id {
@@ -597,7 +617,7 @@ fn a_band_compatible_counterparty_matches() {
     let mut h = MeshHarness::new();
     let alice = h.add_participant("alice", &[1], alice_id, LadderParams::default());
 
-    let bob = btc_giver_intent_at(0x40, 180_000, 50_000); // 180k ∈ [50k, 500k], rate 3.6 crosses
+    let bob = signed(btc_giver_intent_at(0x40, 180_000, 50_000), 0x40); // 180k ∈ [50k,500k], 3.6 crosses
     let swap_id = derive_swap_id(&alice_intent, &bob);
     alice.on_packet_received_from("a".to_string(), intent_frame(&bob, [0xB0; 8], 1));
     for _ in 0..4 {
@@ -631,8 +651,8 @@ fn a_mis_sized_counterparty_does_not_match_even_at_a_crossing_rate() {
     let mut h = MeshHarness::new();
     let alice = h.add_participant("alice", &[1], alice_id, LadderParams::default());
 
-    let whale = btc_giver_intent_at(0x50, 5_000_000, 1_250_000); // 5M > 500k, rate 4.0 crosses
-    let dust = btc_giver_intent_at(0x51, 40, 10); // 40 < 50k, rate 4.0 crosses
+    let whale = signed(btc_giver_intent_at(0x50, 5_000_000, 1_250_000), 0x50); // 5M > 500k, 4.0 crosses
+    let dust = signed(btc_giver_intent_at(0x51, 40, 10), 0x51); // 40 < 50k, 4.0 crosses
     let whale_id = derive_swap_id(&alice_intent, &whale);
     let dust_id = derive_swap_id(&alice_intent, &dust);
     alice.on_packet_received_from("a".to_string(), intent_frame(&whale, [0xB0; 8], 1));
@@ -648,6 +668,57 @@ fn a_mis_sized_counterparty_does_not_match_even_at_a_crossing_rate() {
     assert!(
         alice.swap_phase(dust_id).is_none(),
         "a too-small counterparty must not match"
+    );
+
+    h.shutdown();
+}
+
+#[test]
+fn a_forged_intent_is_rejected_at_the_matcher() {
+    // G41: a node only acts on an authentically-signed intent. An authentic crossing intent matches;
+    // a tampered one (signed then a field changed) and an unsigned one do NOT — a forged advertisement
+    // can't make a matcher initiate a swap, even at a crossing rate within the band.
+    use crate::mock_radio::MeshHarness;
+    use crate::swap::LadderParams;
+    use crate::swap_node::derive_swap_id;
+    use crate::test_support::{wait_until, SETTLE};
+
+    let (_swap_id, alice_id, _bob_id, _ctx) = participant_fixtures();
+    let alice_intent = intent_for(&alice_id, Asset::Nim, 200_000, 50_000, FRESH);
+    let mut alice_id = alice_id;
+    alice_id.standing_intent = Some(alice_intent.clone());
+
+    let mut h = MeshHarness::new();
+    let alice = h.add_participant("alice", &[1], alice_id, LadderParams::default());
+
+    let authentic = signed(btc_giver_intent(0x60), 0x60);
+    let mut tampered = signed(btc_giver_intent(0x61), 0x61);
+    tampered.nim_amount += 1; // breaks the signature; still crosses on rate, still in band
+    let unsigned = btc_giver_intent(0x62); // never signed
+
+    let authentic_id = derive_swap_id(&alice_intent, &authentic);
+    let tampered_id = derive_swap_id(&alice_intent, &tampered);
+    let unsigned_id = derive_swap_id(&alice_intent, &unsigned);
+
+    alice.on_packet_received_from("a".to_string(), intent_frame(&authentic, [0xB0; 8], 1));
+    alice.on_packet_received_from("a".to_string(), intent_frame(&tampered, [0xB1; 8], 2));
+    alice.on_packet_received_from("a".to_string(), intent_frame(&unsigned, [0xB2; 8], 3));
+    for _ in 0..4 {
+        alice.poll_sync();
+    }
+
+    assert!(
+        wait_until(|| alice.swap_phase(authentic_id).is_some(), SETTLE),
+        "an authentically-signed intent should match"
+    );
+    std::thread::sleep(std::time::Duration::from_millis(30));
+    assert!(
+        alice.swap_phase(tampered_id).is_none(),
+        "a tampered (bad-signature) intent must not match"
+    );
+    assert!(
+        alice.swap_phase(unsigned_id).is_none(),
+        "an unsigned intent must not match"
     );
 
     h.shutdown();

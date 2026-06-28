@@ -267,10 +267,19 @@ signing stay human-gated.)
       matches; a whale (5M) and a dust (40) both cross on rate yet do NOT match; round-trip + symmetric
       unit test. Existing G34/G39 tests use a wide-open default band (unaffected). 13/13 discovery, 10/10
       stable.
-- [ ] **G41 — Intent authenticity signature.** An intent carries addresses but isn't authenticated — a
+- [x] **G41 — Intent authenticity signature.** An intent carries addresses but isn't authenticated — a
       node could forge an intent "from" someone else's addresses to grief a matcher. Add a signature over
       the intent metadata (advertiser's key) + verify-on-match, so a matcher only acts on an authentic
       intent. Sign is over discovery metadata, NOT funds (sim key fine; money-path stays gated). Testnet.
+      Done: `SwapIntent` gained `nim_pubkey` (Ed25519) + `signature` on the wire; `signing_bytes()` =
+      the full encoding minus the trailing 64 sig bytes; `verify_authentic()` checks (a) the pubkey
+      hashes to the claimed `nim_address` (`Address::from_public_key`, Blake2b) AND (b) the signature
+      verifies (`ed25519_dalek::verify_strict`) over `signing_bytes` — REUSING the existing tx-signing
+      crypto, no hand-rolled primitives. `sign_intent(secret)` helper fills pubkey/address/sig.
+      `handle_intent` rejects a non-authentic incoming intent before matching. Tests: unit (signed
+      verifies; wrong-address/tampered-field/junk-sig all rejected) + node (an authentic intent matches,
+      a tampered and an unsigned one do NOT, even at a crossing rate in band). Relay stays blind (no
+      verify on relay — privacy + cheap; only a would-be matcher verifies). 14/14 discovery, 10/10 stable.
 - [ ] **G42 — Discovery-layer observability counters.** The intent layer is unmeasurable. Count intents
       seen / matched / dropped-by-rate / dropped-by-throttle / dropped-by-expiry / re-advertised, exposed
       through the existing worker counters (like `rate_limited` / `recent_stored`). Read-only; no behaviour

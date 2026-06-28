@@ -12,6 +12,8 @@
 //! (its [`crate::swap_rate::RatePolicy`] then governs acceptance). The intent rides the mesh as
 //! opaque blind-relayed bytes like every other swap packet.
 
+use ed25519_dalek::Signer;
+
 use crate::swap_wire::{BTC_PUBKEY_LEN, NIM_ADDRESS_LEN};
 
 /// Which asset the advertiser **funds** in the trade.
@@ -42,7 +44,11 @@ pub struct SwapIntent {
     /// The largest NIM trade size (in luna) the advertiser will accept (G40). A swap whose NIM size is
     /// above this is too large to match. `u64::MAX` means "no upper bound".
     pub max_nim: u64,
-    /// The advertiser's NIM address (20 raw bytes).
+    /// The advertiser's Ed25519 public key (32 bytes). It must hash to `nim_address` and is the key the
+    /// `signature` verifies under — together they authenticate the intent (G41).
+    pub nim_pubkey: [u8; INTENT_PUBKEY_LEN],
+    /// The advertiser's NIM address (20 raw bytes) — `Blake2b-256(nim_pubkey)[..20]` for an authentic
+    /// intent.
     pub nim_address: [u8; NIM_ADDRESS_LEN],
     /// The advertiser's BTC claimant pubkey (33 bytes).
     pub btc_pubkey: [u8; BTC_PUBKEY_LEN],
@@ -50,7 +56,15 @@ pub struct SwapIntent {
     pub btc_address: Vec<u8>,
     /// The Albatross network id (a swap only forms within one network).
     pub network_id: u8,
+    /// The advertiser's Ed25519 signature (64 bytes) over [`SwapIntent::signing_bytes`] — every field
+    /// EXCEPT this one. A matcher acts only on an intent whose signature verifies (G41).
+    pub signature: [u8; INTENT_SIG_LEN],
 }
+
+/// Ed25519 public-key length carried by an intent (G41).
+pub const INTENT_PUBKEY_LEN: usize = 32;
+/// Ed25519 signature length carried by an intent (G41).
+pub const INTENT_SIG_LEN: usize = 64;
 
 impl SwapIntent {
     /// Whether **this** node (holding `self` as its standing intent) should INITIATE a swap in
@@ -87,6 +101,43 @@ impl SwapIntent {
             && incoming.nim_amount >= self.min_nim
             && incoming.nim_amount <= self.max_nim
     }
+
+    /// The canonical bytes an intent's [`signature`](SwapIntent::signature) covers (G41): every field
+    /// EXCEPT the signature itself, i.e. the full wire encoding minus the trailing 64 signature bytes.
+    pub fn signing_bytes(&self) -> Vec<u8> {
+        encode_intent_content(self)
+    }
+
+    /// Whether this intent is authentic (G41): its embedded `nim_pubkey` hashes to the claimed
+    /// `nim_address`, AND its `signature` is a valid Ed25519 signature (RFC-8032 `verify_strict`) over
+    /// [`signing_bytes`](SwapIntent::signing_bytes). A forged intent — a key that doesn't match the
+    /// address, a tampered field, or a junk signature — returns `false`. Pure + panic-free.
+    pub fn verify_authentic(&self) -> bool {
+        if crate::nimiq::address::Address::from_public_key(&self.nim_pubkey).as_bytes()
+            != &self.nim_address
+        {
+            return false;
+        }
+        let Ok(vk) = ed25519_dalek::VerifyingKey::from_bytes(&self.nim_pubkey) else {
+            return false;
+        };
+        vk.verify_strict(
+            &self.signing_bytes(),
+            &ed25519_dalek::Signature::from_bytes(&self.signature),
+        )
+        .is_ok()
+    }
+}
+
+/// Sign `intent` with the Ed25519 secret seed (G41), filling its `nim_pubkey`, `nim_address`, and
+/// `signature` so it passes [`SwapIntent::verify_authentic`]. The advertiser/test helper for producing
+/// an authentic intent — the seed stays on the host (a production advertiser signs via its enclave).
+pub fn sign_intent(intent: &mut SwapIntent, secret: &[u8; 32]) {
+    let sk = ed25519_dalek::SigningKey::from_bytes(secret);
+    let pubkey = sk.verifying_key().to_bytes();
+    intent.nim_pubkey = pubkey;
+    intent.nim_address = *crate::nimiq::address::Address::from_public_key(&pubkey).as_bytes();
+    intent.signature = sk.sign(&intent.signing_bytes()).to_bytes();
 }
 
 /// A decode failure (carries no payload).
@@ -98,8 +149,9 @@ pub enum IntentError {
     Malformed,
 }
 
-/// Encode an intent to bytes (flooded as a `SwapIntent` packet payload).
-pub fn encode_intent(intent: &SwapIntent) -> Vec<u8> {
+/// Encode an intent's **signed content** — every field except the trailing signature (G41). This is
+/// exactly what [`SwapIntent::signing_bytes`] signs and verifies over.
+fn encode_intent_content(intent: &SwapIntent) -> Vec<u8> {
     let mut out = Vec::new();
     out.push(match intent.gives {
         Asset::Nim => 0,
@@ -110,11 +162,20 @@ pub fn encode_intent(intent: &SwapIntent) -> Vec<u8> {
     out.extend_from_slice(&intent.expiry_height.to_be_bytes());
     out.extend_from_slice(&intent.min_nim.to_be_bytes());
     out.extend_from_slice(&intent.max_nim.to_be_bytes());
+    out.extend_from_slice(&intent.nim_pubkey);
     out.extend_from_slice(&intent.nim_address);
     out.extend_from_slice(&intent.btc_pubkey);
     out.push(intent.network_id);
     out.extend_from_slice(&(intent.btc_address.len() as u16).to_be_bytes());
     out.extend_from_slice(&intent.btc_address);
+    out
+}
+
+/// Encode an intent to bytes (flooded as a `SwapIntent` packet payload): the signed content followed
+/// by the 64-byte signature (G41).
+pub fn encode_intent(intent: &SwapIntent) -> Vec<u8> {
+    let mut out = encode_intent_content(intent);
+    out.extend_from_slice(&intent.signature);
     out
 }
 
@@ -138,11 +199,13 @@ pub fn decode_intent(bytes: &[u8]) -> Result<SwapIntent, IntentError> {
     let expiry_height = u64::from_be_bytes(take(8).ok_or(t)?.try_into().unwrap());
     let min_nim = u64::from_be_bytes(take(8).ok_or(t)?.try_into().unwrap());
     let max_nim = u64::from_be_bytes(take(8).ok_or(t)?.try_into().unwrap());
+    let nim_pubkey: [u8; INTENT_PUBKEY_LEN] = take(INTENT_PUBKEY_LEN).ok_or(t)?.try_into().unwrap();
     let nim_address: [u8; NIM_ADDRESS_LEN] = take(NIM_ADDRESS_LEN).ok_or(t)?.try_into().unwrap();
     let btc_pubkey: [u8; BTC_PUBKEY_LEN] = take(BTC_PUBKEY_LEN).ok_or(t)?.try_into().unwrap();
     let network_id = take(1).ok_or(t)?[0];
     let addr_len = u16::from_be_bytes(take(2).ok_or(t)?.try_into().unwrap()) as usize;
     let btc_address = take(addr_len).ok_or(t)?.to_vec();
+    let signature: [u8; INTENT_SIG_LEN] = take(INTENT_SIG_LEN).ok_or(t)?.try_into().unwrap();
     Ok(SwapIntent {
         gives,
         nim_amount,
@@ -150,10 +213,12 @@ pub fn decode_intent(bytes: &[u8]) -> Result<SwapIntent, IntentError> {
         expiry_height,
         min_nim,
         max_nim,
+        nim_pubkey,
         nim_address,
         btc_pubkey,
         network_id,
         btc_address,
+        signature,
     })
 }
 
@@ -169,6 +234,7 @@ mod tests {
             expiry_height: 1_000_000,
             min_nim: 0,
             max_nim: u64::MAX,
+            nim_pubkey: [0x07; INTENT_PUBKEY_LEN],
             nim_address: [0xA1; NIM_ADDRESS_LEN],
             btc_pubkey: {
                 let mut k = [0x11; BTC_PUBKEY_LEN];
@@ -177,6 +243,7 @@ mod tests {
             },
             btc_address: b"tb1qalice".to_vec(),
             network_id: 5,
+            signature: [0u8; INTENT_SIG_LEN],
         }
     }
 
@@ -268,7 +335,36 @@ mod tests {
         i.expiry_height = 4_242; // exercise the new field through the codec
         i.min_nim = 1_111;
         i.max_nim = 9_999_999; // exercise the band fields through the codec
+        sign_intent(&mut i, &[0x5A; 32]); // exercise the pubkey + signature through the codec
         assert_eq!(decode_intent(&encode_intent(&i)), Ok(i));
+    }
+
+    #[test]
+    fn a_signed_intent_is_authentic_but_any_forgery_is_rejected() {
+        // G41: a properly-signed intent verifies; each forgery mode (wrong-key address, a tampered
+        // field, a junk signature) is rejected.
+        let mut authentic = intent(Asset::Btc, 180_000, 50_000);
+        sign_intent(&mut authentic, &[0x42; 32]);
+        assert!(authentic.verify_authentic());
+        // It survives the wire round-trip and still verifies.
+        assert!(decode_intent(&encode_intent(&authentic))
+            .unwrap()
+            .verify_authentic());
+
+        // (a) pubkey no longer hashes to the claimed address.
+        let mut wrong_addr = authentic.clone();
+        wrong_addr.nim_address[0] ^= 0xFF;
+        assert!(!wrong_addr.verify_authentic());
+
+        // (b) a field changed after signing → the signature no longer covers the content.
+        let mut tampered = authentic.clone();
+        tampered.nim_amount += 1;
+        assert!(!tampered.verify_authentic());
+
+        // (c) a junk signature.
+        let mut junk = authentic.clone();
+        junk.signature = [0u8; INTENT_SIG_LEN];
+        assert!(!junk.verify_authentic());
     }
 
     #[test]

@@ -393,6 +393,11 @@ fn handle_intent(st: &mut WorkerState, sender: [u8; PEER_ID_LEN], payload: &[u8]
     let Ok(incoming) = crate::swap_intent::decode_intent(payload) else {
         return;
     };
+    // G41: only act on an authentically-signed intent — its pubkey must hash to the claimed NIM
+    // address and its signature must verify. A forged advertisement can't make us initiate a swap.
+    if !incoming.verify_authentic() {
+        return;
+    }
     let swap_id = {
         let Some(session) = st.swap.as_ref() else {
             return;
