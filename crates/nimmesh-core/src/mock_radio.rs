@@ -365,6 +365,28 @@ impl MeshHarness {
         self.attach(peer_id, node, radio)
     }
 
+    /// G26 (test): add a participant node with a caller-supplied signer (the seam under test).
+    #[cfg(test)]
+    pub fn add_participant_with_signer(
+        &mut self,
+        peer_id: &str,
+        sender_id: &[u8],
+        identity: crate::swap_session::NodeIdentity,
+        ladder: crate::swap::LadderParams,
+        signer: Box<dyn crate::swap_signer::SwapSigner>,
+    ) -> Arc<MeshNode> {
+        let radio = MockRadio::new(peer_id, self.ether.clone());
+        let node = MeshNode::new_participant_with_signer(
+            sender_id.to_vec(),
+            radio.clone(),
+            RelayPolicy::deterministic(),
+            identity,
+            ladder,
+            signer,
+        );
+        self.attach(peer_id, node, radio)
+    }
+
     /// Add a node that also acts as a gateway (records submissions + emits receipts).
     pub fn add_gateway(
         &mut self,

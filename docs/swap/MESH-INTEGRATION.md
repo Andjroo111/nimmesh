@@ -34,6 +34,7 @@ Each layer is a separate module with one job:
 | `swap_coordinator` | `SwapCoordinator`, `SwapContext`, `CoordError` | One side of one swap. Turns the message protocol into method calls (`recv_propose` / `recv_accept` / `fund` / `recv_funding_proof` / `claim_and_reveal` / `recv_reveal` / `settle` / `refund_after_timeout`) over a `Swap` state machine. Owns coordination only: no keys, no bitcoin, no tx bytes (those are opaque blobs it carries). |
 | `swap_session` | `SwapSession`, `NodeIdentity`, `SessionError` | One node's view of all its in-flight swaps. Owns a `HashMap<swap_id, SwapCoordinator>`, routes each incoming packet to the right coordinator (spinning up a responder on a fresh `Propose`), and holds the per-swap retransmit buffer. Pure routing: no radio, no keys. |
 | `swap_node` | free fns over `WorkerCtx` / `WorkerState` | The glue to the BLE worker. `handle_swap_packet` (blind-relay + participant route), `drive_swap` (the phase-driven chain-action driver), `gc_tick` (the maintenance tick), `flood_swap_reply`, `sync_swap_phases`. |
+| `swap_signer` | `SwapSigner` (trait), `MockSigner` | The money-path seam. `build_funding(leg)` / `build_claim(secret)` turn a swap action into signed `(tx_wire, tx_id)` bytes. `MockSigner` is the sim stand-in every participant holds today; the real NIM/BTC signer drops in via the same trait. |
 | `engine` / `node` | `WorkerCtx`, `WorkerState`, `MeshNode` | The worker thread. `WorkerState.swap: Option<SwapSession>` makes a node a swap **participant**; `WorkerCtx.swaps` is the FFI-observable phase mirror. `MeshNode::new_participant` builds a participant; `dispatch_packet` routes swap packets; the `SyncTick` job runs `maintenance_tick` + `swap_node::gc_tick`. |
 
 ## Participant vs relay (the privacy line, core value #3)
@@ -66,9 +67,14 @@ replayed/duplicate message drives nothing twice.
   drive: fund NIM → SelfFunded, flood FundingProof ─►  recv_funding_proof → InitiatorFunded
                                                        drive: fund BTC → BothFunded, flood FundingProof
   recv_funding_proof → BothFunded       ◄──────────────────────────────────────────────────
-  drive: claim_and_reveal_sim → Revealed, flood PreimageReveal ─►  recv_reveal (extract S) → Revealed
-  drive: settle → Settled                                          drive: settle → Settled
+  drive: sign claim (reveals S) → claim_and_reveal → Revealed, flood PreimageReveal
+                                                          ─►  recv_reveal (extract S) → Revealed
+  drive: settle → Settled                                     drive: settle → Settled
 ```
+
+Each funding/claim tx is built by this node's **signer** (`swap_signer::SwapSigner`, the G26 seam),
+not inlined: the driver decides the action, asks the signer for the `(tx_wire, tx_id)`, feeds it to
+the coordinator, and floods the matching envelope.
 
 `SwapPhase` ladder: `Proposed → Accepted → {SelfFunded | InitiatorFunded} → BothFunded → Revealed →
 Settled`, with `Aborted` and `Refunded` as the other two terminal exits. `has_funds_locked()` is true
@@ -78,17 +84,19 @@ open); `is_terminal()` is `Settled | Aborted | Refunded`.
 ## Sim vs money-path (what is gated)
 
 The coordinator treats every on-chain tx as an opaque `Vec<u8>` (`tx_wire`) plus a 32-byte `tx_id`.
+The driver gets those bytes from this node's `SwapSigner` (G26): a node holds exactly one signer, and
+`drive_swap` calls `build_funding(leg, ..)` / `build_claim(secret, ..)` instead of inlining anything.
 
-- **Sim (built):** `drive_swap` feeds stand-in bytes (`vec![0x11; 248]` for a NIM funding,
-  `vec![0x22; 120]` for a BTC funding) and a deterministic `sim_tx_id`. The initiator reveals via
-  `claim_and_reveal_sim`, which carries the secret `S` itself as the stand-in claim `tx_wire`; the
-  responder extracts `S` from the first 32 bytes of the incoming `PreimageReveal`. The state
-  transitions are real; the bytes are placeholders.
-- **Money-path (gated):** in production a signer builds + signs real funding / claim txs (the NIM
-  HTLC and the BTC P2WSH, see `BTC-LEG.md` / `BTC-KEY-SEAM.md`) and feeds them to the **same**
-  `fund` / `claim_and_reveal` calls. No mainnet, no real funds, no live broadcast until that seam is
-  wired and reviewed. `S` never crosses the FFI boundary; it leaves a coordinator only embedded in
-  the reveal it floods, which is its entire purpose (it unlocks the counterparty's claim).
+- **Sim (built):** every participant holds the deterministic `MockSigner`. Its fundings are
+  fixed-length filler (`vec![0x11; 248]` for the NIM leg, `vec![0x22; 120]` for the BTC leg); its
+  claim `tx_wire` is the 32-byte secret `S` itself, which the responder extracts from the first 32
+  bytes of the incoming `PreimageReveal`. The state transitions are real; the bytes are placeholders.
+- **Money-path (gated):** the real NIM/BTC signer (the NIM HTLC and the BTC P2WSH, see `BTC-LEG.md` /
+  `BTC-KEY-SEAM.md`) is a different `SwapSigner` impl that drops into the same seam, no change to the
+  driver or protocol. No mainnet, no real funds, no live broadcast until it is wired and reviewed.
+  `S` leaves the initiator coordinator only to its own signer (intra-process, via `secret()`, never
+  the FFI boundary), to be embedded in the claim the signer builds, which is its entire purpose (it
+  unlocks the counterparty's claim).
 
 ## The maintenance tick: GC + safety exit + retransmit
 
@@ -140,6 +148,7 @@ proofs live in `swap_session.rs`; a fuzz proof lives in `tests/swap_session_prop
 | Store-and-forward: a late-joining node catches up via gossip-sync | `a_rejoining_participant_catches_up_a_swap_via_store_and_forward` |
 | Depth: a whole swap over a 5-hop blind relay line | `a_full_swap_rides_a_multi_hop_relay_line_end_to_end` |
 | Mid-swap outage: partition while funds-locked, recover after heal | `a_swap_partitioned_mid_flight_recovers_after_the_heal` |
+| Signer seam is pluggable: a different `SwapSigner` drives a full swap | `a_full_swap_drives_through_a_pluggable_signer` |
 
 The recurring no-one-sided check: with no head beacon the head stays 0, so a coordinator can only
 leave the session via `Settled → reap` (never stale, never refund). So "both sides go empty" proves

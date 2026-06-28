@@ -126,17 +126,12 @@ impl SwapCoordinator {
         self.swap.role
     }
 
-    /// (Initiator, sim) Claim the counterparty leg using this node's **own** stored secret as the
-    /// stand-in claim `tx_wire`. Production builds + signs a real claim tx that embeds `S`
-    /// (money-path, gated); the sim carries `S` directly. Returns the `PreimageReveal` envelope to
-    /// flood. `S` never leaves the coordinator except embedded in this reveal — which is its entire
-    /// purpose (it unlocks the responder's claim).
-    pub fn claim_and_reveal_sim(
-        &mut self,
-        tx_id: [u8; HASH_LEN],
-    ) -> Result<SwapEnvelope, CoordError> {
-        let secret = self.secret.ok_or(CoordError::BadPreimage)?;
-        self.claim_and_reveal(secret.to_vec(), tx_id)
+    /// (Initiator) This node's swap secret `S`, for its **own** signer to embed in the claim tx it
+    /// builds (the node and its signer are one trust domain; `S` never crosses the FFI boundary, and
+    /// it reaches the counterparty only inside the `PreimageReveal` the signed claim produces). The
+    /// responder has no secret, so this is `None` for it.
+    pub(crate) fn secret(&self) -> Option<[u8; HASH_LEN]> {
+        self.secret
     }
 
     /// Refund this node's own funded leg once its timeout has elapsed (`head > own timeout`) — the

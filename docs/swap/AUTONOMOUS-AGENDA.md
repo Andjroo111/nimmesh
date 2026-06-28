@@ -134,7 +134,7 @@ keys); and a node-level **adversarial-relay** proof that a blind relay seeing ev
 steal `S`, forge a settlement, or force a one-sided loss. The native bridge + real signing stay
 human-gated.)
 
-- [ ] **G26 — Signer seam (mock-exercised, real signing still gated).** Define the explicit trait the
+- [x] **G26 — Signer seam (mock-exercised, real signing still gated).** Define the explicit trait the
       node calls to turn a swap action into signed funding/claim `tx_wire` bytes (today `drive_swap`
       inlines stand-ins), and drive a full swap through a deterministic **mock** signer so the seam is
       proven the right shape for the real NIM/BTC signer to drop into later. No real keys, no broadcast.

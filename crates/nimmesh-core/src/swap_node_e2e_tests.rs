@@ -650,3 +650,75 @@ fn a_swap_partitioned_mid_flight_recovers_after_the_heal() {
 
     h.shutdown();
 }
+
+#[test]
+fn a_full_swap_drives_through_a_pluggable_signer() {
+    // G26: the signer seam is pluggable. Alice is wired with a DIFFERENT SwapSigner (other stand-in
+    // funding bytes; the claim still carries S in its first 32 bytes), and a whole swap still drives
+    // to Settled on both sides. Proves the real NIM/BTC money-path signer drops in through the same
+    // trait without touching the driver or the protocol. (Funding blobs stay <= 255 B: the wire TLV
+    // value length is one byte.)
+    use crate::mock_radio::MeshHarness;
+    use crate::swap::{LadderParams, SwapPhase};
+    use crate::swap_coordinator::SwapCoordinator;
+    use crate::swap_signer::SwapSigner;
+    use crate::swap_wire::{SwapLegId, SWAP_ID_LEN};
+    use crate::test_support::{wait_until, SETTLE};
+
+    struct PaddedSigner;
+    impl SwapSigner for PaddedSigner {
+        fn build_funding(
+            &self,
+            leg: SwapLegId,
+            _swap_id: [u8; SWAP_ID_LEN],
+        ) -> (Vec<u8>, [u8; 32]) {
+            let wire = match leg {
+                SwapLegId::Nim => vec![0xAB; 200],
+                SwapLegId::Counterparty => vec![0xCD; 64],
+            };
+            (wire, [0x09; 32])
+        }
+        fn build_claim(
+            &self,
+            _swap_id: [u8; SWAP_ID_LEN],
+            secret: [u8; 32],
+        ) -> (Vec<u8>, [u8; 32]) {
+            let mut wire = secret.to_vec(); // S first, so the responder reads it back...
+            wire.extend_from_slice(&[0xEE; 16]); // ...then padding the signer is free to add.
+            (wire, [0x08; 32])
+        }
+    }
+
+    let (swap_id, alice_id, bob_id, alice_ctx) = participant_fixtures();
+    let mut h = MeshHarness::new();
+    let alice = h.add_participant_with_signer(
+        "alice",
+        &[1],
+        alice_id,
+        LadderParams::default(),
+        Box::new(PaddedSigner),
+    );
+    let bob = h.add_participant("bob", &[2], bob_id, LadderParams::default());
+    h.connect("alice", "bob");
+
+    let (coordinator, propose) =
+        SwapCoordinator::new_initiator(alice_ctx, [42u8; 32], LadderParams::default());
+    alice.start_swap(swap_id, coordinator, propose);
+
+    assert!(
+        wait_until(
+            || alice.swap_phase(swap_id) == Some(SwapPhase::Settled),
+            SETTLE
+        ),
+        "alice never settled through the pluggable signer"
+    );
+    assert!(
+        wait_until(
+            || bob.swap_phase(swap_id) == Some(SwapPhase::Settled),
+            SETTLE
+        ),
+        "bob never settled (the pluggable signer's claim must still carry S for the responder)"
+    );
+
+    h.shutdown();
+}

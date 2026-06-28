@@ -383,10 +383,11 @@ pub(crate) struct WorkerState {
     /// G12: txIds we have seen a gateway receipt (ACK) for — stop re-carrying a landed tx.
     acked: DedupCache<TxId>,
     start: Instant,
-    /// G14: present iff this node is a swap **participant** (not just a blind relay). When set, the
-    /// node decodes its own `swap_id` off the otherwise-opaque swap stream and floods replies; a
-    /// pure relay leaves this `None` and never parses a swap.
+    /// G14: present iff this node is a swap **participant** (not a blind relay). When set, the node
+    /// decodes its own `swap_id` off the otherwise-opaque swap stream and floods replies.
     pub(crate) swap: Option<SwapSession>,
+    /// G26: a participant's signer seam (`MockSigner` today; the money-path signer drops in here). `Some` iff `swap`.
+    pub(crate) signer: Option<Box<dyn crate::swap_signer::SwapSigner>>,
 }
 
 impl WorkerState {
@@ -394,6 +395,7 @@ impl WorkerState {
         policy: RelayPolicy,
         verify_before_relay: bool,
         swap: Option<SwapSession>,
+        signer: Option<Box<dyn crate::swap_signer::SwapSigner>>,
     ) -> Self {
         WorkerState {
             relay_seen: DedupCache::new(RELAY_CACHE_CAP),
@@ -408,6 +410,7 @@ impl WorkerState {
             acked: DedupCache::new(GATEWAY_CACHE_CAP),
             start: Instant::now(),
             swap,
+            signer,
         }
     }
 

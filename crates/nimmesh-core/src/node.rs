@@ -107,8 +107,9 @@ fn run_worker(
     policy: RelayPolicy,
     verify_before_relay: bool,
     swap: Option<SwapSession>,
+    signer: Option<Box<dyn crate::swap_signer::SwapSigner>>,
 ) {
-    let mut st = WorkerState::new(policy, verify_before_relay, swap);
+    let mut st = WorkerState::new(policy, verify_before_relay, swap, signer);
     while let Ok(job) = rx.recv() {
         match job {
             Job::Shutdown => break,
@@ -175,6 +176,7 @@ impl MeshNode {
             None,
             RelayPolicy::production(),
             true,
+            None,
             None,
         )
     }
@@ -420,6 +422,7 @@ impl MeshNode {
         policy: RelayPolicy,
         verify_before_relay: bool,
         swap: Option<SwapSession>,
+        signer: Option<Box<dyn crate::swap_signer::SwapSigner>>,
     ) -> Arc<Self> {
         let ctx = Arc::new(WorkerCtx::new(
             to_sender_id(&sender_id),
@@ -429,7 +432,7 @@ impl MeshNode {
         let (tx, rx) = channel();
         let worker_ctx = ctx.clone();
         let worker = std::thread::spawn(move || {
-            run_worker(worker_ctx, rx, policy, verify_before_relay, swap)
+            run_worker(worker_ctx, rx, policy, verify_before_relay, swap, signer)
         });
         // Bring the radio up. Real BLE starts advertising + scanning concurrently.
         radio.start_advertising();
@@ -450,11 +453,12 @@ impl MeshNode {
         policy: RelayPolicy,
     ) -> Arc<Self> {
         // Verify off: the harness floods opaque stand-in bytes (not real signed txs).
-        Self::build(sender_id, radio, None, policy, false, None)
+        Self::build(sender_id, radio, None, policy, false, None, None)
     }
 
     /// G14 (test): a swap **participant** node — a plain node that also runs a [`SwapSession`] for
-    /// `identity`, so it decodes its own `swap_id` off the swap stream and floods replies.
+    /// `identity`, with the default sim signer (`MockSigner`), so it decodes its own `swap_id` off
+    /// the swap stream, builds its tx bytes via the signer seam, and floods replies.
     #[cfg(test)]
     pub(crate) fn new_participant(
         sender_id: Vec<u8>,
@@ -463,8 +467,37 @@ impl MeshNode {
         identity: crate::swap_session::NodeIdentity,
         ladder: crate::swap::LadderParams,
     ) -> Arc<Self> {
+        Self::new_participant_with_signer(
+            sender_id,
+            radio,
+            policy,
+            identity,
+            ladder,
+            Box::new(crate::swap_signer::MockSigner),
+        )
+    }
+
+    /// G26 (test): a participant node with a caller-supplied [`crate::swap_signer::SwapSigner`] —
+    /// proving the signer seam is pluggable (a different signer drops in unchanged).
+    #[cfg(test)]
+    pub(crate) fn new_participant_with_signer(
+        sender_id: Vec<u8>,
+        radio: Arc<dyn BleRadio>,
+        policy: RelayPolicy,
+        identity: crate::swap_session::NodeIdentity,
+        ladder: crate::swap::LadderParams,
+        signer: Box<dyn crate::swap_signer::SwapSigner>,
+    ) -> Arc<Self> {
         let session = SwapSession::new(identity, ladder);
-        Self::build(sender_id, radio, None, policy, false, Some(session))
+        Self::build(
+            sender_id,
+            radio,
+            None,
+            policy,
+            false,
+            Some(session),
+            Some(signer),
+        )
     }
 
     /// Build a gateway node with a caller-chosen relay policy (deterministic in tests).
@@ -474,7 +507,7 @@ impl MeshNode {
         gateway: Arc<dyn MeshGateway>,
         policy: RelayPolicy,
     ) -> Arc<Self> {
-        Self::build(sender_id, radio, Some(gateway), policy, false, None)
+        Self::build(sender_id, radio, Some(gateway), policy, false, None, None)
     }
 
     /// G12 harness helper: a verifying plain node (verify-before-relay ON) — used by the
@@ -484,7 +517,7 @@ impl MeshNode {
         radio: Arc<dyn BleRadio>,
         policy: RelayPolicy,
     ) -> Arc<Self> {
-        Self::build(sender_id, radio, None, policy, true, None)
+        Self::build(sender_id, radio, None, policy, true, None, None)
     }
 
     fn do_shutdown(&self) {

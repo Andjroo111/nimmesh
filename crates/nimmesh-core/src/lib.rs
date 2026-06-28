@@ -64,6 +64,11 @@ pub mod swap_session;
 // the `SwapSession` and flood the reply -- packets in, coordinator dispatch, envelopes out.
 pub mod swap_node;
 
+// Mesh swap: the signer seam. `swap_signer::SwapSigner` is the trait the node driver calls to turn a
+// swap action into signed funding/claim tx bytes (the gated money-path); `MockSigner` is the sim
+// stand-in every participant holds today, with the real NIM/BTC signer dropping in via the same trait.
+pub mod swap_signer;
+
 // Mesh swap (F3): the swap state machine + the `Δ_safe` timelock-safety gate. `swap` owns the
 // clock-free, height-anchored lifecycle (propose → accept → fund → reveal → settle, with a refund
 // exit in every funded phase) and `assess_ladder` — the gate that REFUSES to fund a swap whose
