@@ -274,6 +274,17 @@ impl BtcEnclaveKey for InMemoryBtcEnclaveKey {
     }
 }
 
+/// Extract the revealed preimage from a broadcast HTLC **claim** tx — witness item `[1]` of input 0
+/// (the claim witness is `[sig, preimage, 0x01, redeemScript]`). This is how the cross-chain
+/// counterparty learns `S` by watching the chain: once the initiator claims the BTC leg, `S` is
+/// public here and unlocks the NIM leg. Returns `None` if the bytes don't deserialize, there is no
+/// input, or item `[1]` is not a 32-byte value (e.g. a refund tx, whose item `[1]` is empty).
+pub fn extract_preimage(claim_tx: &[u8]) -> Option<[u8; HASH_LEN]> {
+    let tx: Transaction = bitcoin::consensus::encode::deserialize(claim_tx).ok()?;
+    let item = tx.input.first()?.witness.iter().nth(1)?;
+    item.try_into().ok()
+}
+
 /// A funded BTC HTLC the claim/refund spend from: which output (`txid:vout`) and its value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FundedHtlc {
@@ -469,6 +480,29 @@ mod tests {
             .refund_tx(&fixture_funded(), dest_spk(), 99_000, &[0x22u8; 32])
             .unwrap();
         assert_eq!(refund_seam, refund_raw);
+    }
+
+    #[test]
+    fn extract_preimage_reads_s_from_a_claim_and_none_from_a_refund() {
+        let preimage: [u8; 32] = std::array::from_fn(|i| (i + 1) as u8);
+        let claim = spend_params()
+            .claim_tx(
+                &fixture_funded(),
+                &preimage,
+                dest_spk(),
+                99_000,
+                &[0x11u8; 32],
+            )
+            .unwrap();
+        // The counterparty recovers exactly S from the claim witness.
+        assert_eq!(extract_preimage(&claim), Some(preimage));
+        // A refund reveals nothing (witness item [1] is empty, not a 32-byte preimage).
+        let refund = spend_params()
+            .refund_tx(&fixture_funded(), dest_spk(), 99_000, &[0x22u8; 32])
+            .unwrap();
+        assert_eq!(extract_preimage(&refund), None);
+        // Garbage in → None, never a panic.
+        assert_eq!(extract_preimage(&[0x00, 0x01, 0x02]), None);
     }
 
     #[test]

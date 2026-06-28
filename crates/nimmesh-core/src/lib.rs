@@ -82,6 +82,14 @@ pub use bitcoin;
 #[cfg(feature = "bitcoin-leg")]
 pub mod swap_btc_leg;
 
+// Mesh swap: the cross-chain swap ORCHESTRATOR (behind `bitcoin-leg`). `swap_engine::SwapEngine`
+// folds the `live_cross_chain_swap` example into a first-class, pure (no-network) API the UI + mesh
+// drive: it owns the `swap::Swap` state machine + this node's `NimiqLeg` + `BtcSwapLeg`, turning each
+// `SwapAction` into a concrete `SwapEffect` (tx bytes to broadcast, or a BTC address to fund). The
+// responder reads `S` off the on-chain BTC claim — atomicity stays real. Testnet only; mainnet gated.
+#[cfg(feature = "bitcoin-leg")]
+pub mod swap_engine;
+
 // Mesh swap (B2): the BTC gateway — broadcast + confirmation over a public signet indexer
 // (mempool.space), behind the `bitcoin-gateway` feature (adds `ureq`/`serde_json`). The one online
 // hop for the BTC leg; signet-only (mainnet base refused). See docs/swap/BTC-LEG.md.
