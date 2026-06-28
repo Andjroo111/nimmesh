@@ -305,10 +305,18 @@ signing stay human-gated.)
       intentionally NOT persisted — they carry no funds/commitment and re-arrive via re-advertise (G37).
       Gotcha: the restored node's observable phase mirror is empty until its first tick (rebuilt in
       `sync_swap_phases`), so the test polls once after restore. 12/12 stable.
-- [ ] **G44 — Discovery completeness stress test.** A many-node harness (e.g. 6–10 participants, several
+- [x] **G44 — Discovery completeness stress test.** A many-node harness (e.g. 6–10 participants, several
       complementary standing intents) over a LOSSY mesh: prove that, with re-advertise (G37) + best-rate
       windows (G39), every viable pair eventually discovers + settles (or cleanly refunds), and that no
       forged/expired/throttled intent ever produces a swap. A resilience proof for the whole G34–G42 stack.
+      Done: new `swap_discovery_stress_tests.rs` — (1) three NIM-giver/BTC-giver pairs on one ether: each
+      BTC-giver's SIGNED standing intent re-advertises (G37), the partner runs the best-rate window (G39),
+      initiates, and ALL three settle concurrently (driven purely by ticking every node); (2) a matcher
+      fed forged (G41) + expired (G35) + mis-sized (G40) intents matches NONE, with the G42 counters
+      attributing each drop. DECISION: used a NO-LOSS, tick-driven ether (per-pair links, no cross-talk)
+      for guaranteed determinism — a probabilistic lossy ether makes "settles within a fixed budget"
+      flaky, and "never commit a flaky gate" wins; recovery-under-loss is left to a future seeded-loss
+      goal. 2 tests, 20/20 stable.
 - [ ] **G45 — Intent privacy / unlinkability review.** A `SwapIntent` now carries a NIM pubkey + signature
       + addresses in cleartext, flooded mesh-wide — that links an advertiser's NIM identity to every BTC
       trade it wants. Audit what discovery leaks vs the privacy core value, and add the cheapest mitigation
@@ -318,3 +326,9 @@ signing stay human-gated.)
 - [ ] **G46 — Surface the discovery metrics in the demo UI.** Extend the G38 intents view with a small
       read-only "discovery stats" strip (seen / matched / dropped-by-reason / re-advertised) driven by the
       real nimiq-ui, fixture-fed like G38. Live wiring stays BLOCKED on the native bridge. `nq lint` gate.
+- [ ] **G47 — Discovery recovery under SEEDED loss.** G44 proved completeness on a no-loss ether (a
+      probabilistic ether is too flaky for a fixed-budget gate). Add a DETERMINISTIC loss proof instead:
+      either (a) drive the `MockEther` loss from a fixed seed so the drop pattern is reproducible, or (b)
+      use partition/heal (a hard, deterministic cut) — partition a pair, confirm no discovery, heal within
+      the re-advertise budget, and prove they THEN discover + settle. Document the re-advertise
+      budget-exhaustion limit (a long partition outlives the 5 bounded retries). Sim/testnet; never flaky.

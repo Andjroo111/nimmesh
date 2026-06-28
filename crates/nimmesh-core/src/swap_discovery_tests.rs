@@ -52,7 +52,7 @@ pub(crate) fn btc_giver_intent_at(pubkey_tag: u8, nim_amount: u64, btc_amount: u
 }
 
 /// Set a node's acceptable NIM trade-size band (G40).
-fn with_band(mut i: SwapIntent, min_nim: u64, max_nim: u64) -> SwapIntent {
+pub(crate) fn with_band(mut i: SwapIntent, min_nim: u64, max_nim: u64) -> SwapIntent {
     i.min_nim = min_nim;
     i.max_nim = max_nim;
     i
