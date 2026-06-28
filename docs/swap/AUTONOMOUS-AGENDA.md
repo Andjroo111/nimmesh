@@ -158,7 +158,7 @@ close real gaps a real deployment needs, none needing a human decision.)
       amounts: give `SwapCoordinator`/`recv_propose` an acceptance policy (a min acceptable rate /
       tolerance band) and reject a lopsided proposal before accepting. Node-level test: a fair-rate
       proposal is accepted, a bad-rate one is rejected (no coordinator created), both over the loop.
-- [ ] **G30 — Concurrent-swap cap (anti-DoS).** A participant caps how many in-flight swaps it will
+- [x] **G30 — Concurrent-swap cap (anti-DoS).** A participant caps how many in-flight swaps it will
       hold, dropping new `Propose`s beyond the cap so a Propose-spammer cannot exhaust memory faster
       than the GC reaps. Test: past the cap, a fresh `Propose` is dropped (no new coordinator); a slot
       freed by GC/teardown lets a later one in again.

@@ -21,8 +21,13 @@ use crate::swap_wire::{
 
 pub use crate::swap_rate::RatePolicy;
 
+/// G30: the default cap on how many swaps a participant holds at once — a spammer can't make a node
+/// hold more than this (the GC reaps the stale ones, freeing slots). A phone realistically runs a
+/// handful of swaps; a generous default that still bounds memory against a `Propose` flood.
+pub const DEFAULT_MAX_CONCURRENT_SWAPS: usize = 16;
+
 /// This node's fixed identity (everything a coordinator needs that isn't learned from the peer),
-/// plus the responder rate policy this node brings to a swap.
+/// plus the responder policies this node brings to a swap (rate floor + concurrency cap).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NodeIdentity {
     /// This node's NIM address (20 raw bytes).
@@ -33,6 +38,9 @@ pub struct NodeIdentity {
     pub btc_pubkey: [u8; BTC_PUBKEY_LEN],
     /// The minimum exchange rate this node accepts as a responder (default: [`RatePolicy::accept_all`]).
     pub rate_policy: RatePolicy,
+    /// Max swaps this node will hold at once; a fresh `Propose` past it is dropped (anti-DoS,
+    /// default [`DEFAULT_MAX_CONCURRENT_SWAPS`]). Own swaps via `add_initiator` are uncapped.
+    pub max_concurrent_swaps: usize,
 }
 
 /// A routing failure.
@@ -145,6 +153,12 @@ impl SwapSession {
                 // clobber the in-flight coordinator (whether one we initiated or an accepted
                 // responder). Drop the duplicate with no reply — the live swap is untouched.
                 if self.coordinators.contains_key(&swap_id) {
+                    return Ok(Vec::new());
+                }
+                // Concurrency cap (anti-DoS): a `Propose`-spammer can't make us hold more than the
+                // cap at once. Drop a fresh Propose when full (the GC reaps stale ones, freeing
+                // slots). Own swaps (`add_initiator`) bypass this.
+                if self.coordinators.len() >= self.identity.max_concurrent_swaps {
                     return Ok(Vec::new());
                 }
                 let p = SwapProposal::from_envelope(&env).ok_or(SessionError::BadPropose)?;
@@ -332,6 +346,7 @@ mod tests {
             btc_address: b"tb1qnode".to_vec(),
             btc_pubkey: pk,
             rate_policy: RatePolicy::accept_all(),
+            max_concurrent_swaps: DEFAULT_MAX_CONCURRENT_SWAPS,
         }
     }
 

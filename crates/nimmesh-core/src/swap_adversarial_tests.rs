@@ -148,3 +148,142 @@ fn a_forged_reveal_with_the_wrong_secret_cannot_settle_a_participant() {
 
     h.shutdown();
 }
+
+// --- G30: concurrent-swap cap (anti-DoS) ----------------------------------------------------------
+
+/// A fair-rate `Propose` envelope (3.0 NIM/BTC) for `swap_id` — accepted by any non-strict policy.
+fn fair_propose(swap_id: [u8; 16]) -> crate::swap_wire::SwapEnvelope {
+    let mut pk = [0x11; 33];
+    pk[0] = 0x02;
+    crate::swap_messages::SwapProposal {
+        swap_id,
+        hashlock: crate::swap_leg::sha256(&[42u8; 32]),
+        give_amount: 150_000,
+        take_amount: 50_000,
+        terms: crate::swap::SwapTerms {
+            nim_timeout: 10_000,
+            counterparty_timeout: 5_000,
+        },
+        nim_address: [0xA1; 20],
+        btc_address: b"tb1qalice".to_vec(),
+        btc_pubkey: pk,
+        network_id: 5,
+    }
+    .to_envelope()
+}
+
+/// Bob's identity with an accept-all rate and a `cap` on concurrent swaps.
+fn bob_identity(cap: usize) -> crate::swap_session::NodeIdentity {
+    let mut pk = [0x22; 33];
+    pk[0] = 0x02;
+    crate::swap_session::NodeIdentity {
+        nim_address: [0xB2; 20],
+        btc_address: b"tb1qbob".to_vec(),
+        btc_pubkey: pk,
+        rate_policy: crate::swap_session::RatePolicy::accept_all(),
+        max_concurrent_swaps: cap,
+    }
+}
+
+#[test]
+fn the_session_caps_concurrent_swaps_and_a_freed_slot_reopens() {
+    use crate::swap::LadderParams;
+    use crate::swap_session::SwapSession;
+    use crate::swap_wire::{encode_swap, SwapKind};
+
+    let mut bob = SwapSession::new(bob_identity(2), LadderParams::default());
+    let propose = |id| encode_swap(&fair_propose(id)).unwrap();
+
+    // Two Proposes fill the cap (each returns one Accept).
+    for id in [[0x01; 16], [0x02; 16]] {
+        let out = bob.on_message(SwapKind::Propose, &propose(id), 0).unwrap();
+        assert_eq!(out.len(), 1);
+    }
+    assert_eq!(bob.len(), 2);
+
+    // A third is dropped at the cap: no Accept, no coordinator.
+    assert!(bob
+        .on_message(SwapKind::Propose, &propose([0x03; 16]), 0)
+        .unwrap()
+        .is_empty());
+    assert_eq!(bob.len(), 2);
+    assert!(bob.coordinator(&[0x03; 16]).is_none());
+
+    // Freeing a slot (aborting an un-funded swap) lets a later Propose in again.
+    bob.on_message(
+        SwapKind::Abort,
+        &encode_swap(&crate::swap_messages::abort([0x01; 16], 0)).unwrap(),
+        0,
+    )
+    .unwrap();
+    assert_eq!(bob.len(), 1);
+    assert_eq!(
+        bob.on_message(SwapKind::Propose, &propose([0x04; 16]), 0)
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(bob.len(), 2);
+}
+
+#[test]
+fn a_participant_caps_concurrent_swaps_over_the_mesh() {
+    // G30: bob holds at most 2 swaps. Three Proposes flood in: the first two are accepted, the third
+    // is dropped (no coordinator). Aborting one frees a slot, so a later Propose is accepted again.
+    use crate::codec::encode;
+    use crate::mock_radio::MeshHarness;
+    use crate::packet::{MessageType, Packet, BROADCAST_RECIPIENT};
+    use crate::swap::{LadderParams, SwapPhase};
+    use crate::swap_wire::{encode_swap, SwapEnvelope};
+    use crate::test_support::{wait_until, SETTLE};
+
+    let mut h = MeshHarness::new();
+    let bob = h.add_participant("bob", &[2], bob_identity(2), LadderParams::default());
+
+    let inject = |mt: MessageType, env: &SwapEnvelope, ts: u64| {
+        let mut pkt = Packet::new(mt, [9u8; 8], encode_swap(env).unwrap());
+        pkt.recipient_id = Some(BROADCAST_RECIPIENT);
+        pkt.timestamp_ms = ts;
+        bob.on_packet_received_from("spammer".to_string(), encode(&pkt).unwrap());
+    };
+
+    inject(MessageType::SwapPropose, &fair_propose([0x01; 16]), 1);
+    inject(MessageType::SwapPropose, &fair_propose([0x02; 16]), 2);
+    assert!(
+        wait_until(
+            || bob.swap_phase([0x01; 16]) == Some(SwapPhase::Accepted)
+                && bob.swap_phase([0x02; 16]) == Some(SwapPhase::Accepted),
+            SETTLE
+        ),
+        "the first two proposals should be accepted"
+    );
+
+    // A third, past the cap, is dropped (the cap never creates a coordinator, so this is stable).
+    inject(MessageType::SwapPropose, &fair_propose([0x03; 16]), 3);
+    std::thread::sleep(std::time::Duration::from_millis(30));
+    assert!(
+        bob.swap_phase([0x03; 16]).is_none(),
+        "the third proposal must be dropped at the cap"
+    );
+
+    // Abort frees a slot, so a later proposal is accepted again.
+    inject(
+        MessageType::SwapAbort,
+        &crate::swap_messages::abort([0x01; 16], 0),
+        4,
+    );
+    assert!(
+        wait_until(|| bob.swap_phase([0x01; 16]).is_none(), SETTLE),
+        "the aborted swap should clear"
+    );
+    inject(MessageType::SwapPropose, &fair_propose([0x04; 16]), 5);
+    assert!(
+        wait_until(
+            || bob.swap_phase([0x04; 16]) == Some(SwapPhase::Accepted),
+            SETTLE
+        ),
+        "a slot freed by the abort lets a later proposal in"
+    );
+
+    h.shutdown();
+}
