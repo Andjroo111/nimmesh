@@ -229,10 +229,19 @@ signing stay human-gated.)
       Tests (drive the real worker maintenance tick over `poll_sync`, count `SwapIntent` frames via a
       bytes-capturing `SpyRadio`): an unmatched node re-advertises exactly the cap then stops; a node
       in a swap re-advertises 0×; an expired standing intent re-advertises 0×. 12/12 stable.
-- [ ] **G38 — Surface live intents in the demo UI.** The discovery layer is invisible. Add a read-only
+- [x] **G38 — Surface live intents in the demo UI.** The discovery layer is invisible. Add a read-only
       "open intents seen on the mesh" view to the demo (drive the real nimiq-ui registry components, vendor
       real assets per the branding rules) listing each peer's give/take/rate + freshness — no new money
       path, just a window onto what G34–G37 already flood. UI-gated only if it needs the native bridge.
+      Done: `webui/swap/intents.html` + `intents.css` — a static, fixture-fed read-only intents list
+      built on the REAL vendored nimiq-ui (legacy `@nimiq/style`, `@nimiq/iqons` identicons via the
+      vendored sprite) and the swap demo's own tokens: each row shows the peer identicon, give→take
+      with NIM/BTC brand tickers + mono grouped amounts, the rate, and Fresh/Expired (the G35 expiry
+      rule made visible against the chain head — the expired row is dimmed). Passes `nq lint` (0
+      errors) and renders clean at 390px (screenshot-verified). RUN-DEMO.md documents it.
+      **LIVE WIRING BLOCKED (human-gated):** streaming the intents this node actually saw from the
+      Rust core into the page needs the native WebView↔Rust bridge; the page renders fixtures and
+      marks the `loadIntents` seam where live data plugs in.
 - [ ] **G39 — Best-rate intent selection.** Today a NIM-giver initiates on the FIRST crossing BTC-giver
       intent it sees. When several complementary intents are live, it should instead pick the one with the
       best rate for itself (most BTC per NIM), with a deterministic tie-break, rather than first-come.

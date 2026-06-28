@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>nimmesh — Open intents</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Mulish:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css?family=Fira+Mono&text=0123456789ABCDEFGHJKLMNPQRSTUVXY%20" rel="stylesheet">
+<link rel="stylesheet" href="../nimiq/legacy/nimiq-style.min.css">
+<link rel="stylesheet" href="swap.css">
+<link rel="stylesheet" href="intents.css">
+</head>
+<body>
+<div class="phone">
+  <div class="statusbar">
+    <span class="time">9:05</span>
+    <span class="right">
+      <span class="bars"><i></i><i></i><i></i><i></i></span>
+      <span class="net">5G</span>
+      <span class="batt"></span>
+    </span>
+  </div>
+
+  <div class="stage">
+    <section class="intents-sheet">
+      <h2>Open intents</h2>
+      <p class="intents-sub">Peers near you advertising a swap</p>
+      <p class="intents-head">Mesh at block <span class="num">4&thinsp;500&thinsp;000</span></p>
+
+      <ul class="intent-list" id="intent-list">
+
+        <li class="intent fresh">
+          <div class="identicon" data-address="NQ34 248J PA4S 8VK2 SS54 9N0B M89U HE5L AB48">
+            <img src='data:image/svg+xml,<svg width="64" height="64" viewBox="0 -4 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path opacity=".1" d="M62.3 25.4L49.2 2.6A5.3 5.3 0 0 0 44.6 0H18.4c-1.9 0-3.6 1-4.6 2.6L.7 25.4c-1 1.6-1 3.6 0 5.2l13.1 22.8c1 1.6 2.7 2.6 4.6 2.6h26.2c1.9 0 3.6-1 4.6-2.6l13-22.8c1-1.6 1-3.6.1-5.2z" fill="url(%23ph)"/><defs><radialGradient id="ph" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(-63 0 0 -56 63 56)"><stop stop-color="%23260133"/><stop offset="1" stop-color="%231F2348"/></radialGradient></defs></svg>' alt="Peer identicon">
+          </div>
+          <div class="intent-trade">
+            <div class="intent-pair">
+              <span><span class="num">12&thinsp;500</span> <span class="tk nim">NIM</span></span>
+              <svg class="arrow" width="16" height="12" viewBox="0 0 16 12" fill="none"><path d="M1 6h13M10 1l4 5-4 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span><span class="num">0.05</span> <span class="tk btc">BTC</span></span>
+            </div>
+            <div class="intent-rate">1 BTC = <span class="num">250&thinsp;000</span> NIM</div>
+          </div>
+          <div class="intent-meta">
+            <span class="freshness">Fresh</span>
+            <span class="expiry">in <span class="num">3&thinsp;000</span> blocks</span>
+          </div>
+        </li>
+
+        <li class="intent fresh">
+          <div class="identicon" data-address="NQ91 8E7L K0ST 3FM2 9R6D 7B1V XQH4 5N2P GJ0A">
+            <img src='data:image/svg+xml,<svg width="64" height="64" viewBox="0 -4 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path opacity=".1" d="M62.3 25.4L49.2 2.6A5.3 5.3 0 0 0 44.6 0H18.4c-1.9 0-3.6 1-4.6 2.6L.7 25.4c-1 1.6-1 3.6 0 5.2l13.1 22.8c1 1.6 2.7 2.6 4.6 2.6h26.2c1.9 0 3.6-1 4.6-2.6l13-22.8c1-1.6 1-3.6.1-5.2z" fill="url(%23ph)"/><defs><radialGradient id="ph" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(-63 0 0 -56 63 56)"><stop stop-color="%23260133"/><stop offset="1" stop-color="%231F2348"/></radialGradient></defs></svg>' alt="Peer identicon">
+          </div>
+          <div class="intent-trade">
+            <div class="intent-pair">
+              <span><span class="num">0.02</span> <span class="tk btc">BTC</span></span>
+              <svg class="arrow" width="16" height="12" viewBox="0 0 16 12" fill="none"><path d="M1 6h13M10 1l4 5-4 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span><span class="num">5&thinsp;200</span> <span class="tk nim">NIM</span></span>
+            </div>
+            <div class="intent-rate">1 BTC = <span class="num">260&thinsp;000</span> NIM</div>
+          </div>
+          <div class="intent-meta">
+            <span class="freshness">Fresh</span>
+            <span class="expiry">in <span class="num">2&thinsp;200</span> blocks</span>
+          </div>
+        </li>
+
+        <li class="intent expired">
+          <div class="identicon" data-address="NQ05 6RT2 9LMD 0KX7 V3B8 EH4N PS1Q 7J6F 2A0C">
+            <img src='data:image/svg+xml,<svg width="64" height="64" viewBox="0 -4 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path opacity=".1" d="M62.3 25.4L49.2 2.6A5.3 5.3 0 0 0 44.6 0H18.4c-1.9 0-3.6 1-4.6 2.6L.7 25.4c-1 1.6-1 3.6 0 5.2l13.1 22.8c1 1.6 2.7 2.6 4.6 2.6h26.2c1.9 0 3.6-1 4.6-2.6l13-22.8c1-1.6 1-3.6.1-5.2z" fill="url(%23ph)"/><defs><radialGradient id="ph" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(-63 0 0 -56 63 56)"><stop stop-color="%23260133"/><stop offset="1" stop-color="%231F2348"/></radialGradient></defs></svg>' alt="Peer identicon">
+          </div>
+          <div class="intent-trade">
+            <div class="intent-pair">
+              <span><span class="num">40&thinsp;000</span> <span class="tk nim">NIM</span></span>
+              <svg class="arrow" width="16" height="12" viewBox="0 0 16 12" fill="none"><path d="M1 6h13M10 1l4 5-4 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span><span class="num">0.16</span> <span class="tk btc">BTC</span></span>
+            </div>
+            <div class="intent-rate">1 BTC = <span class="num">250&thinsp;000</span> NIM</div>
+          </div>
+          <div class="intent-meta">
+            <span class="freshness">Expired</span>
+            <span class="expiry">at block <span class="num">4&thinsp;499&thinsp;000</span></span>
+          </div>
+        </li>
+
+        <li class="intent fresh">
+          <div class="identicon" data-address="NQ77 1KD9 4VR0 8XPS 2M5H 6T3B EL9N 0AQ7 J84U">
+            <img src='data:image/svg+xml,<svg width="64" height="64" viewBox="0 -4 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path opacity=".1" d="M62.3 25.4L49.2 2.6A5.3 5.3 0 0 0 44.6 0H18.4c-1.9 0-3.6 1-4.6 2.6L.7 25.4c-1 1.6-1 3.6 0 5.2l13.1 22.8c1 1.6 2.7 2.6 4.6 2.6h26.2c1.9 0 3.6-1 4.6-2.6l13-22.8c1-1.6 1-3.6.1-5.2z" fill="url(%23ph)"/><defs><radialGradient id="ph" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(-63 0 0 -56 63 56)"><stop stop-color="%23260133"/><stop offset="1" stop-color="%231F2348"/></radialGradient></defs></svg>' alt="Peer identicon">
+          </div>
+          <div class="intent-trade">
+            <div class="intent-pair">
+              <span><span class="num">0.1</span> <span class="tk btc">BTC</span></span>
+              <svg class="arrow" width="16" height="12" viewBox="0 0 16 12" fill="none"><path d="M1 6h13M10 1l4 5-4 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span><span class="num">26&thinsp;000</span> <span class="tk nim">NIM</span></span>
+            </div>
+            <div class="intent-rate">1 BTC = <span class="num">260&thinsp;000</span> NIM</div>
+          </div>
+          <div class="intent-meta">
+            <span class="freshness">Fresh</span>
+            <span class="expiry">in <span class="num">12&thinsp;000</span> blocks</span>
+          </div>
+        </li>
+
+      </ul>
+
+      <p class="intents-foot">Demo data, not live. In the app these intents stream in over the mesh as peers flood them</p>
+    </section>
+  </div>
+</div>
+
+<script type="module">
+  // FIXTURE VIEW: the rows above are canned. In the live app each row is one SwapIntent this node
+  // has seen flooded over the mesh (G34), streamed from the Rust core across the native WebView/Rust
+  // bridge. That hookup is human-gated (the bridge), so the demo renders fixtures. Freshness (the
+  // Fresh / Expired state) mirrors the G35 rule: an intent is fresh while the head is at or below its
+  // expiry height. See docs/swap/DEMO-LOOP.md.
+  import Iqons from 'https://cdn.jsdelivr.net/npm/@nimiq/iqons@1.6.0/dist/iqons.min.js';
+  // The REAL @nimiq/iqons@1.6.0 sprite is vendored locally; the CDN copy is only a file:// fallback.
+  const localSprite = '../nimiq/assets/img/iqons.min.svg';
+  const cdnSprite = 'https://cdn.jsdelivr.net/npm/@nimiq/iqons@1.6.0/dist/iqons.min.svg';
+  Iqons.svgPath = await fetch(localSprite, { method: 'HEAD' })
+    .then((r) => (r.ok ? localSprite : cdnSprite))
+    .catch(() => cdnSprite);
+
+  for (const el of document.querySelectorAll('.identicon[data-address]')) {
+    try {
+      el.querySelector('img').src = await Iqons.toDataUrl(el.dataset.address);
+    } catch (e) {
+      /* keep the placeholder hexagon if the sprite is unreachable */
+    }
+  }
+</script>
+</body>
+</html>

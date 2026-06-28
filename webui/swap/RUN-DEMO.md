@@ -29,3 +29,22 @@ server needed. Same screens; the data is canned instead of engine-driven.
 > The production path is the native WebView↔Rust bridge (UniFFI `SwapEngineHandle`). This local
 > server is the **browser-demo** transport — wasm isn't buildable here (no wasm clang; `uniffi_core`
 > doesn't target wasm). See `docs/swap/DEMO-LOOP.md`.
+
+## Open intents view (G38, discovery layer)
+
+`swap/intents.html` is a read-only "open intents seen on the mesh" view: a list of the swap
+advertisements (`SwapIntent`, G34) peers near you have flooded, with each one's give/take amounts,
+rate, and freshness (Fresh vs Expired, the G35 expiry rule made visible against the chain head).
+Built on the real vendored nimiq-ui (legacy `@nimiq/style`, `@nimiq/iqons` identicons) and the swap
+demo's own tokens; passes `nq lint` (0 errors).
+
+```sh
+cargo run --example swap_demo_server --features bitcoin-leg
+# → open http://127.0.0.1:8090/swap/intents.html
+```
+
+- **Now:** the rows are **fixture data** (canned), so the page is a self-contained static demo.
+- **BLOCKED (human-gated):** the live wiring — streaming the intents this node has actually seen from
+  the running Rust core (the `SwapSession` / discovery layer) into the page — needs the native
+  WebView↔Rust bridge, the same gate as the rest of the live wallet. The page marks where that data
+  plugs in (`loadIntents` seam in the inline module).
