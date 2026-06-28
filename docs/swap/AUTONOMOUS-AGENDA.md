@@ -120,7 +120,29 @@ reviewer has a guide. Still sim/testnet, money-path gated.)
 - [x] **G24 — Mid-swap partition + heal.** A swap that is mid-flight (e.g. one leg funded) when the
       mesh partitions recovers and completes after the heal, via retransmit + store-and-forward —
       proving resilience to a transient outage that strikes during the swap, not just before it.
-- [ ] **G25 — Node-integration architecture docs.** Write `docs/swap/MESH-INTEGRATION.md` mapping the
-      G8–G22 build: `SwapCoordinator` → `SwapSession` router → `swap_node` hook/driver → retransmit →
+- [x] **G25 — Node-integration architecture docs.** Write `docs/swap/MESH-INTEGRATION.md` mapping the
+      G8–G24 build: `SwapCoordinator` → `SwapSession` router → `swap_node` hook/driver → retransmit →
       GC/refund/abort ticks → the resilience properties, so the human reviewer + future work have a
       guide to the (now large) node-side swap stack. Docs only, no code risk.
+
+When the ladder is exhausted again, re-scan and append. (Re-scan after G25: the node-side swap stack
+is complete, hardened, resilient, and documented over the sim mesh. What remains is **breadth +
+real-money readiness**, all still sim/testnet-or-gated: a sweep of the older docs (SWAP / FEASIBILITY
+/ SWAP-ENGINE) to fold in the G8–G24 reality + link MESH-INTEGRATION; an explicit, typed **signer
+seam** so the gated money-path drops in cleanly (the shape, exercised with a mock signer — no real
+keys); and a node-level **adversarial-relay** proof that a blind relay seeing every packet cannot
+steal `S`, forge a settlement, or force a one-sided loss. The native bridge + real signing stay
+human-gated.)
+
+- [ ] **G26 — Signer seam (mock-exercised, real signing still gated).** Define the explicit trait the
+      node calls to turn a swap action into signed funding/claim `tx_wire` bytes (today `drive_swap`
+      inlines stand-ins), and drive a full swap through a deterministic **mock** signer so the seam is
+      proven the right shape for the real NIM/BTC signer to drop into later. No real keys, no broadcast.
+- [ ] **G27 — Adversarial blind relay cannot break a swap.** A node-level proof that a relay carrying
+      every swap packet (it sees the whole flooded stream) still cannot extract `S` before the reveal,
+      cannot forge a `FundingProof`/settlement the participants accept, and cannot force a one-sided
+      loss by selectively dropping (the timeout refund + retransmit protect). Builds on the protocol
+      `a_relay_with_the_wrong_secret_cannot_steal_a_leg`, raised to the node loop.
+- [ ] **G28 — Older swap docs sweep.** Fold the G8–G24 node-integration reality into `SWAP.md` /
+      `FEASIBILITY.md` / `SWAP-ENGINE.md` (status blocks + a link to `MESH-INTEGRATION.md`) so the doc
+      set is internally consistent and no longer describes only the pre-node-loop protocol. Docs only.
