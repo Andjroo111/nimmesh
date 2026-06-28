@@ -131,6 +131,14 @@ pub use bitcoin;
 #[cfg(feature = "polygon-leg")]
 pub mod evm;
 
+// Mesh swap (P2): the USDC-on-Polygon counterparty leg, behind `polygon-leg`. `swap_usdc_leg::UsdcLeg`
+// is a faithful in-memory model of the Polygon HTLC contract (newSwap/withdraw/refund) implementing
+// the chain-agnostic `swap_leg::SwapLeg` trait, so it plugs into the engine exactly like `MockLeg`.
+// The contract hashes with the SHA-256 precompile (0x02), so its hashlock H matches the NIM/BTC legs
+// and one secret unlocks all three. Sim only — no EVM tx-building/RPC/funds (P3/P4, gated).
+#[cfg(feature = "polygon-leg")]
+pub mod swap_usdc_leg;
+
 // Mesh swap: the REAL Bitcoin swap leg (behind `bitcoin-leg`) — the BTC-native analog of
 // `swap_builder::NimiqLeg`. Wraps `btc::BtcHtlcParams` + signs through the `btc::BtcEnclaveKey`
 // seam, exposing `htlc_address` / `build_claim` / `build_refund`. Supersedes the BTC half of the
@@ -328,6 +336,11 @@ mod swap_node_e2e_tests;
 mod swap_privacy_tests;
 #[cfg(test)]
 mod swap_resume_tests;
+// P2: the NIM⇄USDC atomicity proof — drives both state machines with a `UsdcLeg` counterparty leg.
+// Behind `polygon-leg` (the leg only exists with that feature), so it runs in the `--features
+// polygon-leg` gate pass.
+#[cfg(all(test, feature = "polygon-leg"))]
+mod swap_usdc_e2e_tests;
 #[cfg(test)]
 mod test_support;
 
