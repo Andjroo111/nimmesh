@@ -292,11 +292,19 @@ signing stay human-gated.)
       a NEW `swap_metrics_tests.rs` (shared intent builders made `pub(crate)`): one attributes seen=4 /
       matched=1 / each drop reason; one shows the throttle drop counter tracking a flood. 10/10 stable.
 
-- [ ] **G43 — Intent-driven swap resume after restart.** G33 snapshots/restores live coordinators, but a
+- [x] **G43 — Intent-driven swap resume after restart.** G33 snapshots/restores live coordinators, but a
       node that crashes mid-match-window loses its buffered candidates (and a node restarts with an empty
       standing intent). Decide + implement what survives a restart: re-arm the standing intent (so the node
       re-advertises after restore) and confirm an in-flight discovered swap (already a coordinator) still
       resumes its refund/settle tick. Sim/testnet; deterministic.
+      Done (verification): new `swap_resume_tests.rs` proves both — (1) a node built via the restore path
+      (`new_participant_restored`, empty snapshot) keeps its standing intent (it rides `NodeIdentity`) and
+      resumes re-advertising; (2) a swap DISCOVERED over the mesh, initiated + funded to SelfFunded, then
+      snapshotted → restored, comes back funds-locked and the restored node's tick refunds it past T_A.
+      Decision recorded in the module header: buffered (not-yet-matched) match-window CANDIDATES are
+      intentionally NOT persisted — they carry no funds/commitment and re-arrive via re-advertise (G37).
+      Gotcha: the restored node's observable phase mirror is empty until its first tick (rebuilt in
+      `sync_swap_phases`), so the test polls once after restore. 12/12 stable.
 - [ ] **G44 — Discovery completeness stress test.** A many-node harness (e.g. 6–10 participants, several
       complementary standing intents) over a LOSSY mesh: prove that, with re-advertise (G37) + best-rate
       windows (G39), every viable pair eventually discovers + settles (or cleanly refunds), and that no

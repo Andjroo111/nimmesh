@@ -105,7 +105,7 @@ fn flood_intent(node: &crate::node::MeshNode, intent: &SwapIntent, ts: u64) {
 }
 
 /// How many `SwapIntent` packets a spy radio was asked to send (decode each frame, filter by type).
-fn count_swap_intent_frames(radio: &crate::test_support::SpyRadio) -> usize {
+pub(crate) fn count_swap_intent_frames(radio: &crate::test_support::SpyRadio) -> usize {
     radio
         .frames()
         .iter()
