@@ -436,6 +436,27 @@ signing stay human-gated.)
       (screenshot-verified). `tests/swap_demo_http_tests.rs` marker-asserts both JSON bodies (no serde, no
       sockets). nq lint still 0 errors. RUN-DEMO.md updated. The truly-live source (real intents/metrics)
       stays OG-1-blocked.
-- [ ] **G55 — Discovery health self-check.** A read-only `IntentMetrics`-derived health summary (e.g.
+- [x] **G55 — Discovery health self-check.** A read-only `IntentMetrics`-derived health summary (e.g.
       match-rate, drop-mix, whether re-advertise is exhausted) the node can surface for diagnostics, plus a
       test. Pure observability; no behaviour change; sim/testnet.
+      Done: `swap_health_tests.rs` — `IntentMetricsSnapshot::health() -> DiscoveryHealth` (an inherent
+      impl in the test module, since the snapshot is `cfg(test)`): `total_dropped`, `match_rate_pct`
+      (matched over resolved = matched + dropped), `dominant_drop` (Expiry/Rate/Throttle/Signature/None,
+      ties broken toward the abuse reasons), and a `status` classifier (Idle / NoCounterpartiesYet /
+      PossiblyUnderAttack [drops dominated by forged-signature or throttle] / Healthy). Tests: pure
+      classifier over constructed snapshots (every status + match-rate + tie-break) and an end-to-end one
+      driving a real node fed a forged flood → PossiblyUnderAttack. 8/8 stable. (Lifts to a non-test
+      accessor over the live `IntentMetrics` if ever surfaced in production — see G57.)
+
+- [ ] **G56 — Owner-gated ledger doc-lint.** A `cargo test` that parses `docs/swap/OWNER-GATED.md`,
+      extracts the code seams it cites (file paths + function/trait names), and asserts each still EXISTS
+      in the tree — so the ledger can't rot when a seam is renamed (the docs analogue of G49). Read-only;
+      deterministic; std-only. Sim/testnet.
+- [ ] **G57 — Surface discovery health in the demo + a non-test accessor.** Lift the G55 `DiscoveryHealth`
+      to a real (non-cfg-test) derivation over the live `IntentMetrics` (so it's an actual diagnostic, not
+      just a test), expose it via a `MeshNode` accessor + a `GET /api/health` fixture endpoint (like G54),
+      and show a small read-only health line/pill on `intents.html` (fixture-fed; `nq lint` 0 errors +
+      screenshot). Pure observability; sim/testnet.
+- [ ] **G58 — Discovery architecture doc.** A `docs/swap/DISCOVERY.md` tying the G34–G55 layer together
+      (the discovery analogue of `MESH-INTEGRATION.md`): the intent lifecycle, each gate in order, the wire
+      format, the security properties, and pointers to the per-goal code + tests. Docs only.
