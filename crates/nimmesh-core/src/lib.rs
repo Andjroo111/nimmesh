@@ -53,6 +53,12 @@ pub mod swap_messages;
 // Two coordinators exchanging envelopes drive a full swap with no hand orchestration.
 pub mod swap_coordinator;
 
+// Mesh swap: the node-side router. `swap_session::SwapSession` owns one `SwapCoordinator` per
+// in-flight `swap_id`, routes each incoming swap packet to the right one (spinning up a responder on
+// a fresh `Propose`), and returns the outgoing envelopes to flood — the glue between a `MeshNode`'s
+// packet receipt and the coordinators. Pure routing: no keys, no bitcoin.
+pub mod swap_session;
+
 // Mesh swap (F3): the swap state machine + the `Δ_safe` timelock-safety gate. `swap` owns the
 // clock-free, height-anchored lifecycle (propose → accept → fund → reveal → settle, with a refund
 // exit in every funded phase) and `assess_ladder` — the gate that REFUSES to fund a swap whose

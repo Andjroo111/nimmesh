@@ -50,6 +50,23 @@ disk (this file + the off-repo log + the commits), so the loop survives context 
       `toast-notification` "Performing swap X/5" info state (hexagon spinner); clear on done/refund.
 - [x] **G12 — Setup amount validation.** The Swap Currencies screen disables Confirm + shows an
       inline message on invalid amounts (zero / over balance / below a min), like the real swap UI.
-- [ ] **G13 — SwapSession router.** A node-side `swap_session` that routes incoming swap packets by
+- [x] **G13 — SwapSession router.** A node-side `swap_session` that routes incoming swap packets by
       `swap_id` to the right `SwapCoordinator` and collects its outgoing envelopes — the glue between
       `MeshNode` packet receipt and the coordinator. Tested by feeding it packets directly.
+
+When the ladder is exhausted again, re-scan and append. (Re-scan after G13: the coordinator + router
+now exist but nothing wires them to the actual `MeshNode` packet loop, and the router has no expiry
+for abandoned half-negotiated swaps. The next-highest-value work is closing that integration gap and
+hardening the router against a hostile/lossy mesh.)
+
+- [ ] **G14 — MeshNode swap hook.** Wire `SwapSession` into the `MeshNode` receive path: on a swap
+      `MessageType`, hand the packet to the session and flood the returned envelopes back over the
+      radio. Tested over the `MockRadio`/`MeshHarness` — a swap message injected at one node produces
+      the right flooded reply, end to end through the real node loop (not the session in isolation).
+- [ ] **G15 — Router robustness over a hostile mesh.** Harden `SwapSession.on_message`: a replayed
+      `Propose` for a live `swap_id` must not clobber the in-flight coordinator, a malformed payload
+      is dropped (never panics, never half-creates a coordinator), and an `Abort`/settle frees the
+      slot. Proptest: arbitrary packet streams never panic and never strand a coordinator mid-state.
+- [ ] **G16 — Session expiry / GC.** Give `SwapSession` a `tick(head)` that drops coordinators whose
+      swaps are terminal (Settled/Refunded) or whose negotiation stalled past a deadline, so a node
+      can't be memory-exhausted by half-opened swaps. Tested by advancing head past the timeouts.
