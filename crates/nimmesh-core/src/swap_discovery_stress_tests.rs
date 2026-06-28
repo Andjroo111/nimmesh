@@ -1,19 +1,24 @@
-//! # swap_discovery_stress_tests — the whole discovery stack, together (G44, cfg(test))
+//! # swap_discovery_stress_tests — the whole discovery stack, together (G44 + G47, cfg(test))
 //!
-//! Two many-node proofs that G34–G43 hold up as a system, not just per-goal:
+//! Many-node proofs that G34–G43 hold up as a system, not just per-goal:
 //!  1. Several complementary pairs sharing one ether all DISCOVER (re-advertise G37 → best-rate window
 //!     G39) and SETTLE — concurrently, with no cross-talk.
 //!  2. A matcher fed a mix of forged (G41), expired (G35), and mis-sized (G40) intents matches NONE of
 //!     them, and the observability counters (G42) attribute each drop.
+//!  3. (G47) Deterministic recovery under loss via PARTITION/HEAL: a cut pair doesn't discover; healed
+//!     within the bounded re-advertise budget it then discovers + settles — and a partition that
+//!     OUTLASTS the budget leaves the pair silent (the by-design limit of G37's bounded re-advertise).
 //!
 //! Deterministic by construction: no probabilistic loss (the per-packet timing of a lossy ether makes
 //! "eventually settles within a fixed budget" flaky); discovery is driven by polling every node's
-//! maintenance tick and the no-loss ether delivers every flood. Each pair is its own link, so a
+//! maintenance tick, and partition/heal is a hard, RNG-free cut. Each pair is its own link, so a
 //! BTC-giver's re-advertised intent only reaches its partner — no accidental cross-pair matches.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use crate::mock_radio::MeshHarness;
+use crate::node::MeshNode;
 use crate::swap::{LadderParams, SwapPhase};
 use crate::swap_discovery_tests::{
     btc_giver_intent_at, intent_for, intent_frame, signed, with_band, FRESH,
@@ -172,6 +177,103 @@ fn bad_intents_never_produce_a_swap_in_the_mix() {
     assert!(
         m.dropped_rate >= 1,
         "the mis-sized intent is a rate/amount drop"
+    );
+
+    h.shutdown();
+}
+
+/// Build a complementary NIM-giver / BTC-giver pair on one harness — the BTC-giver SIGNS its standing
+/// intent so it can re-advertise authentically — connect their link, and return `(nim, btc, swap_id)`.
+fn complementary_pair(
+    h: &mut MeshHarness,
+    nim_tag: u8,
+    btc_tag: u8,
+) -> (Arc<MeshNode>, Arc<MeshNode>, [u8; 16]) {
+    let mut nim_id = mk_identity(nim_tag);
+    let mut btc_id = mk_identity(btc_tag);
+    let nim_intent = intent_for(&nim_id, Asset::Nim, 200_000, 50_000, FRESH);
+    let btc_intent = signed(
+        intent_for(&btc_id, Asset::Btc, 180_000, 50_000, FRESH),
+        btc_tag,
+    );
+    let swap_id = derive_swap_id(&nim_intent, &btc_intent);
+    nim_id.standing_intent = Some(nim_intent);
+    btc_id.standing_intent = Some(btc_intent);
+    let nim = h.add_participant("nim", &[nim_tag], nim_id, LadderParams::default());
+    let btc = h.add_participant("btc", &[btc_tag], btc_id, LadderParams::default());
+    h.connect("nim", "btc");
+    (nim, btc, swap_id)
+}
+
+/// Tick both nodes one round (drives re-advertise + the match window + the swap), with a beat for the
+/// ether to deliver.
+fn tick_round(nim: &Arc<MeshNode>, btc: &Arc<MeshNode>) {
+    nim.poll_sync();
+    btc.poll_sync();
+    std::thread::sleep(Duration::from_millis(5));
+}
+
+#[test]
+fn a_partitioned_pair_discovers_after_the_link_heals_within_budget() {
+    // G47: PARTITION a complementary pair — the BTC-giver re-advertises (G37) but the cut blocks every
+    // flood, so nothing discovers. HEAL within the bounded re-advertise budget and the next flood
+    // crosses → the pair discovers + settles. Deterministic recovery, no probabilistic loss.
+    let mut h = MeshHarness::new();
+    let (nim, btc, swap_id) = complementary_pair(&mut h, 0x60, 0x61);
+    h.ether().partition("nim", "btc");
+
+    // Partitioned: a few rounds burn some (blocked) re-advertises; no flood crosses → no discovery.
+    for _ in 0..4 {
+        tick_round(&nim, &btc);
+    }
+    std::thread::sleep(Duration::from_millis(20));
+    assert!(
+        nim.swap_phase(swap_id).is_none(),
+        "a partitioned pair must not discover"
+    );
+
+    // Heal while the BTC-giver still has re-advertise budget left → the next flood crosses → settle.
+    h.ether().heal("nim", "btc");
+    let settled = || {
+        nim.swap_phase(swap_id) == Some(SwapPhase::Settled)
+            && btc.swap_phase(swap_id) == Some(SwapPhase::Settled)
+    };
+    let mut ok = false;
+    for _ in 0..60 {
+        tick_round(&nim, &btc);
+        if settled() {
+            ok = true;
+            break;
+        }
+    }
+    assert!(ok, "the healed pair should discover and settle");
+
+    h.shutdown();
+}
+
+#[test]
+fn a_partition_outlasting_the_re_advertise_budget_leaves_the_pair_silent() {
+    // G47: the BY-DESIGN limit of G37's BOUNDED re-advertise. If the partition outlives the 5 retries
+    // (ticks ~1/3/6/11/20), the BTC-giver spends its whole budget while cut off and goes silent — so
+    // healing too late never recovers. (A future goal could reset/resume re-advertise on reconnect.)
+    let mut h = MeshHarness::new();
+    let (nim, btc, swap_id) = complementary_pair(&mut h, 0x62, 0x63);
+    h.ether().partition("nim", "btc");
+
+    // Tick well past the 5th re-advertise (tick 20) while partitioned → the budget is fully spent.
+    for _ in 0..26 {
+        tick_round(&nim, &btc);
+    }
+    h.ether().heal("nim", "btc");
+
+    // Budget exhausted → the BTC-giver re-advertises no more → nim never discovers it.
+    for _ in 0..30 {
+        tick_round(&nim, &btc);
+    }
+    std::thread::sleep(Duration::from_millis(30));
+    assert!(
+        nim.swap_phase(swap_id).is_none(),
+        "a partition past the re-advertise budget leaves the pair silent"
     );
 
     h.shutdown();

@@ -342,9 +342,34 @@ signing stay human-gated.)
       seam alongside `loadIntents`, both BLOCKED on the native WebView↔Rust bridge. `nq lint` 0 errors;
       screenshot-verified at 390px (branding-cli playwright) — consistent with the existing list cards.
       RUN-DEMO.md updated. No Rust changed.
-- [ ] **G47 — Discovery recovery under SEEDED loss.** G44 proved completeness on a no-loss ether (a
+- [x] **G47 — Discovery recovery under SEEDED loss.** G44 proved completeness on a no-loss ether (a
       probabilistic ether is too flaky for a fixed-budget gate). Add a DETERMINISTIC loss proof instead:
       either (a) drive the `MockEther` loss from a fixed seed so the drop pattern is reproducible, or (b)
       use partition/heal (a hard, deterministic cut) — partition a pair, confirm no discovery, heal within
       the re-advertise budget, and prove they THEN discover + settle. Document the re-advertise
       budget-exhaustion limit (a long partition outlives the 5 bounded retries). Sim/testnet; never flaky.
+      Done (path b, partition/heal — a hard RNG-free cut; `set_loss` is checked but the per-packet timing
+      is what makes loss flaky, so we avoid it): extended `swap_discovery_stress_tests.rs` — (1) a
+      partitioned pair doesn't discover (every re-advertise flood is blocked), and healed WITHIN the
+      bounded budget it then discovers + settles; (2) a partition that OUTLASTS the 5 re-advertises (ticks
+      ~1/3/6/11/20) spends the budget while cut off and leaves the pair silent — the documented by-design
+      limit of G37's bounded re-advertise (a future goal: reset/resume re-advertise on reconnect → see
+      G51). 2 tests, 20/20 stable.
+
+- [ ] **G48 — Intent-codec fuzz / property test.** A `proptest` over arbitrary `SwapIntent`s + arbitrary
+      byte slices: `decode_intent` never panics on any input; `encode∘decode` round-trips; `verify_authentic`
+      never panics and only ever returns true for a correctly-signed intent. Hardens the discovery wire
+      against hostile floods. Pure; deterministic seed; ≤800 lines (new `tests/` proptest file).
+- [ ] **G49 — Swap-demo server end-to-end smoke.** A `cargo test` that boots the `swap_demo_server`
+      example on an ephemeral port, GETs `/swap/intents.html` + `/swap/intents.css` + the iqons sprite,
+      and asserts 200 + the expected content-type / a known marker string — so the G38/G46 demo can't
+      silently rot. No browser; std-only HTTP client. Sim/testnet.
+- [ ] **G50 — Owner-gated tracking ledger.** Collect every BLOCKED money-path / native-bridge item the
+      swap loop has surfaced (live WebView↔Rust bridge for the demos, commit-reveal addressing + mixing
+      from G45, real NIM/BTC signer drop-in, mainnet) into one `docs/swap/OWNER-GATED.md` checklist with
+      the exact seam each plugs into — so the human-decision backlog is explicit, not scattered in commit
+      messages. Docs only; no code.
+- [ ] **G51 — Re-advertise resume on reconnect.** Lift the G47 budget-exhaustion limit: when a node's
+      peer set changes (a new link after a partition heal), reset the standing-intent re-advertise budget
+      so a long-partitioned advertiser starts advertising again on reconnect. Add a test: partition past
+      the budget, heal, and (with the reset) prove the pair NOW discovers + settles. Sim/testnet; never flaky.
