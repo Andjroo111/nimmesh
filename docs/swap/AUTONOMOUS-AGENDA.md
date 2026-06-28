@@ -356,10 +356,17 @@ signing stay human-gated.)
       limit of G37's bounded re-advertise (a future goal: reset/resume re-advertise on reconnect → see
       G51). 2 tests, 20/20 stable.
 
-- [ ] **G48 — Intent-codec fuzz / property test.** A `proptest` over arbitrary `SwapIntent`s + arbitrary
+- [x] **G48 — Intent-codec fuzz / property test.** A `proptest` over arbitrary `SwapIntent`s + arbitrary
       byte slices: `decode_intent` never panics on any input; `encode∘decode` round-trips; `verify_authentic`
       never panics and only ever returns true for a correctly-signed intent. Hardens the discovery wire
       against hostile floods. Pure; deterministic seed; ≤800 lines (new `tests/` proptest file).
+      Done: `crates/nimmesh-core/tests/swap_intent_proptests.rs` (mirrors the swap_wire proptest style,
+      proptest 1.11) — 4 properties: `decode_intent` never panics on ≤2 KiB of arbitrary bytes; an
+      arbitrary well-formed intent (every field prop-generated, incl. the [u8;33]/[u8;64] arrays via
+      const-generic `any`) round-trips byte-for-byte + re-encode is stable; `verify_authentic` never
+      panics on arbitrary input; a `sign_intent`-ed intent always verifies (and survives the wire
+      round-trip) while tampering the content / the claimed address / the signature each breaks it. All
+      properties universally true → non-flaky (8/8 reruns, no regressions file written).
 - [ ] **G49 — Swap-demo server end-to-end smoke.** A `cargo test` that boots the `swap_demo_server`
       example on an ephemeral port, GETs `/swap/intents.html` + `/swap/intents.css` + the iqons sprite,
       and asserts 200 + the expected content-type / a known marker string — so the G38/G46 demo can't
