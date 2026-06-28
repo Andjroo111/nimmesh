@@ -46,7 +46,7 @@ more hardening, perf) and append goals — keep building.
 
 Self-paced via `ScheduleWakeup` with the `<<autonomous-loop-dynamic>>` sentinel. Durable state is on
 disk (this file + the off-repo log + the commits), so the loop survives context compaction.
-- [ ] **G11 — Swap-in-progress toast.** When a running swap is minimized, surface it as the real
+- [x] **G11 — Swap-in-progress toast.** When a running swap is minimized, surface it as the real
       `toast-notification` "Performing swap X/5" info state (hexagon spinner); clear on done/refund.
 - [ ] **G12 — Setup amount validation.** The Swap Currencies screen disables Confirm + shows an
       inline message on invalid amounts (zero / over balance / below a min), like the real swap UI.

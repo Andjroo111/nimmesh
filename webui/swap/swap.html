@@ -279,6 +279,23 @@
 
   </div>
 
+  <!-- minimized swap: the real toast-notification "Performing swap X/5" info state -->
+  <div class="swap-toast-min hidden" id="swap-toast-min">
+    <button class="nq-toast" type="button" id="swap-toast-btn">
+      <div class="icon">
+        <svg height="48" width="54" viewBox="0 0 54 48" color="inherit" class="loading-spinner">
+          <path class="big-hex" d="M51.9,21.9L41.3,3.6c-0.8-1.3-2.2-2.1-3.7-2.1H16.4c-1.5,0-2.9,0.8-3.7,2.1L2.1,21.9c-0.8,1.3-0.8,2.9,0,4.2 l10.6,18.3c0.8,1.3,2.2,2.1,3.7,2.1h21.3c1.5,0,2.9-0.8,3.7-2.1l10.6-18.3C52.7,24.8,52.7,23.2,51.9,21.9z" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.4" stroke-dasharray="92.5 60"/>
+          <path class="small-hex" d="M51.9,21.9L41.3,3.6c-0.8-1.3-2.2-2.1-3.7-2.1H16.4c-1.5,0-2.9,0.8-3.7,2.1L2.1,21.9c-0.8,1.3-0.8,2.9,0,4.2 l10.6,18.3c0.8,1.3,2.2,2.1,3.7,2.1h21.3c1.5,0,2.9-0.8,3.7-2.1l10.6-18.3C52.7,24.8,52.7,23.2,51.9,21.9z" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-dasharray="47.5 105"/>
+        </svg>
+      </div>
+      <div class="content">
+        <div class="status" id="swap-toast-status">Performing swap</div>
+        <span class="closing-notice nq-orange">Don't close the app!</span>
+      </div>
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="10.5" width="8" height="1.5" rx=".75" fill="currentColor"/><path d="M1.23 5.96l.07-5 5 .07M2.1 1.72l4.87 5.01" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </div>
+
   <!-- tiny floating phase stepper (demo only) -->
   <div class="stepper">
     <button id="prev" aria-label="Previous">‹</button>
@@ -358,10 +375,19 @@
   //     server (cargo run --example swap_demo_server). The setup/confirm screens are unchanged;
   //     "Confirm & sign" starts the engine, and each Next advances one real engine action. ---
   const engineMode = new URLSearchParams(location.search).get('engine') === '1';
-  let engineActive = false;
+  let engineActive = false, minimized = false, lastSnap = null;
   const api = path => fetch(path, { method: 'POST' }).then(r => r.json());
+  const getState = () => fetch('/api/state').then(r => r.json());
 
   function applyEngineSnap(snap) {
+    lastSnap = snap;
+    // minimized + still running: keep the swap in the background, just update the toast.
+    if (minimized && !snap.done && !snap.refunded) {
+      $('#swap-toast-status').textContent = `Performing swap ${snap.step}/${snap.total}`;
+      return;
+    }
+    minimized = false;
+    $('#swap-toast-min').classList.add('hidden');
     const show = snap.refunded ? 'refunded' : snap.done ? 'done' : 'progress';
     for (const [k, el] of Object.entries(screens)) el.classList.toggle('hidden', k !== show);
     walletBg.style.display = 'none'; scrim.style.display = 'none';
@@ -395,6 +421,16 @@
   const engineNext = async () => { stopAuto(); applyEngineSnap(await api('/api/advance')); };
   const engineRefund = async () => { stopAuto(); applyEngineSnap(await api('/api/refund')); }; // stall → refund
 
+  // minimize a running swap to the toast (it keeps auto-advancing in the background).
+  function minimizeSwap() {
+    minimized = true;
+    for (const el of Object.values(screens)) el.classList.add('hidden');
+    walletBg.style.display = ''; scrim.style.display = 'none'; // reveal the wallet behind
+    if (lastSnap) $('#swap-toast-status').textContent = `Performing swap ${lastSnap.step}/${lastSnap.total}`;
+    $('#swap-toast-min').classList.remove('hidden');
+  }
+  const maximizeSwap = () => { minimized = false; $('#swap-toast-min').classList.add('hidden'); getState().then(applyEngineSnap); };
+
   // perspective toggle (demo): initiator gives NIM (↑) / gets BTC (↓); responder is the mirror.
   let asResponder = false;
   const setPerspective = () => {
@@ -408,7 +444,9 @@
   $('#next').onclick = () => { if (engineMode && engineActive) engineNext(); else go(phase + 1); };
   $('#prev').onclick = () => { if (engineMode && engineActive) { stopAuto(); engineActive = false; go(1); } else go(phase - 1); };
   $('.back').onclick = () => go(0);        // confirm → setup
-  document.querySelectorAll('.close, .minimize').forEach(b => b.onclick = () => { stopAuto(); engineActive = false; go(0); });
+  $('.close').onclick = () => { stopAuto(); engineActive = false; minimized = false; $('#swap-toast-min').classList.add('hidden'); go(0); };
+  $('.minimize').onclick = () => { if (engineMode && engineActive) minimizeSwap(); else { stopAuto(); engineActive = false; go(0); } };
+  $('#swap-toast-btn').onclick = maximizeSwap;
   addEventListener('keydown', e => {
     if (e.key === 'ArrowRight') { if (engineMode && engineActive) engineNext(); else go(phase + 1); }
     else if (e.key === 'ArrowLeft') { if (engineMode && engineActive) { stopAuto(); engineActive = false; go(1); } else go(phase - 1); }

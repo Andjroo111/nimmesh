@@ -214,6 +214,10 @@ body {
 .swap-toast { position: absolute; left: 18px; right: 18px; bottom: 22px; z-index: 12; }
 .swap-toast .nq-toast { position: static; width: 100%; box-sizing: border-box; }
 
+/* minimized-swap toast: the real toast-notification at the phone bottom, over the wallet */
+.swap-toast-min { position: absolute; left: 16px; right: 16px; bottom: 22px; z-index: 45; }
+.swap-toast-min .nq-toast { position: static; width: 100%; box-sizing: border-box; cursor: pointer; }
+
 /* ---- tiny floating phase stepper (demo only; hidden in captures via .no-demo) ---- */
 .stepper {
   position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 60;
