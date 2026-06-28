@@ -175,7 +175,7 @@ crash recovery is proven at the session level but not yet wired into the `MeshNo
 swap still assumes you already KNOW your counterparty (no over-mesh discovery). Native bridge + real
 signing stay human-gated.)
 
-- [ ] **G32 — Snapshot byte codec.** Give `CoordinatorSnapshot` (and the session snapshot) a compact
+- [x] **G32 — Snapshot byte codec.** Give `CoordinatorSnapshot` (and the session snapshot) a compact
       byte `encode`/`decode` so a node can persist recovery state to disk, with a round-trip proptest
       (any snapshot survives encode → decode) and panic-free decode of arbitrary bytes. Completes the
       G31 persistence story (structs → bytes). Mind the secret stays opaque, never logged.
