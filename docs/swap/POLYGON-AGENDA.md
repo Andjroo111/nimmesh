@@ -86,10 +86,22 @@ leg was validated vs `bitcoinjs-lib`; the EVM leg vs known keccak/ABI vectors + 
       polygon_amoy` hard-codes Amoy testnet chainId 80002; mainnet 137 is never emitted. Wires P3
       `evm_abi` calldata as `data` (proven with a `refund(swapId)` tx → long-list form). KEY-FREE — no
       secp256k1, no key, no RPC, no broadcast. Gate green ×3, clippy clean ×3, `evm.rs` still 87 lines.
-- [ ] **P4b — EVM secp256k1 signing seam (GATED).** Sign the P4a `signing_hash` behind a key seam
-      (like `btc::BtcEnclaveKey`) + assemble the signed tx RLP (v = chainId·2+35/36 + recovery, r, s);
-      testnet (Amoy) only, mainnet + broadcast = needs:owner. Validate the signed tx vs a known
-      test-key vector. (No RPC — broadcast stays a separate gated step.)
+- [x] **P4b — EIP-155 signed-tx RLP assembly + the `EvmSigner` seam (KEY-FREE).** Done: `evm_rlp`
+      extended with `rlp_int` (RLP integer = leading-zero-stripped big-endian, for `r`/`s`), `eip155_v`
+      (`recovery_id + chainId*2 + 35`), the `EvmSigner` SEAM trait (`sign_hash(hash) -> (r,s,recovery)`,
+      analogous to `btc::BtcEnclaveKey` — NO real signer here), and `LegacyTx::signed_tx_rlp` /
+      `sign_with` building `rlp([nonce,gasPrice,gasLimit,to,value,data,v,r,s])`. **Validated vs the
+      published EIP-155 spec SIGNED vector**: feeding the spec's `(r=0x28ef61…6276, s=0x67cbe9…6d83,
+      recovery=0)` for the canonical tx (privkey 0x4646…46, chainId 1) into `signed_tx_rlp` yields the
+      exact raw tx `f86c098504a817c800…a3b6d83` byte-for-byte with `v=37` (0x25); the same result is
+      reproduced through the `EvmSigner` seam (a test-only `VectorSigner`). Also `eip155_v` (0/1 ×
+      chainId 1 + Amoy 80002) + `rlp_int` strip cases. KEY-FREE — no secp256k1, no key, no RPC, no
+      broadcast. Gate green ×3, clippy clean ×3, `evm_rlp.rs` 361 lines, `sha3` absent from default tree.
+- [ ] **P4c — real secp256k1 `EvmSigner` (GATED).** A real RFC-6979/secp256k1 implementation of
+      `EvmSigner` behind a key seam (seed/key never crosses FFI, like `btc::BtcEnclaveKey`) producing
+      `(r,s,recovery)` for the `signing_hash`; validate end-to-end by signing the canonical tx with the
+      test key 0x4646…46 and matching the published raw tx. Testnet/Amoy only; **real signing key +
+      mainnet + broadcast = needs:owner**. Likely reuses the secp256k1 the `bitcoin` crate bundles.
 - [ ] **P5 — Discovery for USDC.** Extend `SwapIntent`'s `Asset` to include `Usdc` so NIM⇄USDC pairs
       discover over the mesh exactly like NIM⇄BTC; tests.
 
