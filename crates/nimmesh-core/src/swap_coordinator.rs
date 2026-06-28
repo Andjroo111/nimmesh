@@ -121,6 +121,16 @@ impl SwapCoordinator {
         self.peer_btc_pubkey
     }
 
+    /// Whether this swap is **stale** at `head` and safe to forget: it is neither terminal nor
+    /// holding any of this node's funds, and `head` has passed its longer (`T_A`) timelock — so the
+    /// negotiation can never complete (a swap whose timelock has passed can no longer be funded or
+    /// claimed). A swap with funds locked is NEVER stale; its refund path must stay tracked until it
+    /// reaches a terminal phase. The swap's own timelock is the deadline — no wall clock needed.
+    pub fn is_stale(&self, head: u64) -> bool {
+        let phase = self.swap.phase;
+        !phase.is_terminal() && !phase.has_funds_locked() && head > self.ctx.terms.nim_timeout
+    }
+
     /// (Responder) handle the initiator's `Propose`: learn its claimant pubkey, accept, return the
     /// `Accept` envelope to flood back.
     pub fn recv_propose(

@@ -70,15 +70,30 @@ pub(crate) fn flood_swap_reply(
     }
 }
 
-/// Refresh the node's observable swap-phase mirror from the session, so the FFI side can read a
-/// swap's progress without reaching into the worker-thread-local session.
+/// Refresh the node's observable swap-phase mirror to exactly the session's live set, so the FFI
+/// side can read a swap's progress without reaching into the worker-thread-local session. Rebuilt
+/// (not merged) so a swap the GC tick dropped vanishes from the mirror too.
 pub(crate) fn sync_swap_phases(ctx: &WorkerCtx, st: &WorkerState) {
+    let mut map = ctx.swaps.lock().unwrap();
+    map.clear();
     if let Some(session) = st.swap.as_ref() {
-        let mut map = ctx.swaps.lock().unwrap();
         for (id, phase) in session.phases() {
             map.insert(id, phase);
         }
     }
+}
+
+/// G16: GC tick — drop terminal/stale swaps (so a long-lived node sheds abandoned half-opened
+/// swaps) and refresh the phase mirror. Driven off the worker's maintenance tick.
+pub(crate) fn gc_tick(ctx: &WorkerCtx, st: &mut WorkerState) {
+    if st.swap.is_none() {
+        return;
+    }
+    let head = ctx.cached_head().map(u64::from).unwrap_or(0);
+    if let Some(session) = st.swap.as_mut() {
+        session.tick(head);
+    }
+    sync_swap_phases(ctx, st);
 }
 
 /// This node's current phase for a swap it participates in (test/observability hook).

@@ -445,6 +445,60 @@ fn two_participant_nodes_negotiate_propose_and_accept_over_the_real_mesh() {
 }
 
 #[test]
+fn the_worker_gc_tick_sheds_a_stale_swap_once_the_head_passes_its_timelock() {
+    // G16: a participant node accepts a swap, then the negotiation stalls (never funds). Once the
+    // node hears a head beacon putting the chain head past the swap's T_A timelock (10_000 in the
+    // fixtures), the worker's maintenance/GC tick drops the dead swap — proving the session expiry
+    // is wired into the real MeshNode worker, not just callable on the session in isolation.
+    use crate::mock_radio::MeshHarness;
+    use crate::swap::{LadderParams, SwapPhase};
+    use crate::swap_coordinator::SwapCoordinator;
+    use crate::swap_wire::encode_swap;
+    use crate::test_support::{make_beacon_packet, wait_until, SETTLE};
+
+    let (swap_id, _alice_id, bob_id, alice_ctx) = participant_fixtures();
+    let mut h = MeshHarness::new();
+    let bob = h.add_participant("bob", &[2], bob_id, LadderParams::default());
+
+    // Bob accepts a proposed swap (no funds ever locked) — it sits in the session.
+    let (_alice, propose) =
+        SwapCoordinator::new_initiator(alice_ctx, [42u8; 32], LadderParams::default());
+    let mut packet = crate::packet::Packet::new(
+        crate::packet::MessageType::SwapPropose,
+        [9u8; 8],
+        encode_swap(&propose).unwrap(),
+    );
+    packet.recipient_id = Some(crate::packet::BROADCAST_RECIPIENT);
+    bob.on_packet_received_from("alice".to_string(), crate::codec::encode(&packet).unwrap());
+    assert!(
+        wait_until(
+            || bob.swap_phase(swap_id) == Some(SwapPhase::Accepted),
+            SETTLE
+        ),
+        "bob never accepted the proposed swap"
+    );
+
+    // Bob hears a head beacon putting the chain head at 10_001 — past the swap's T_A (10_000).
+    bob.on_packet_received_from(
+        "gw".to_string(),
+        make_beacon_packet([7; 8], 10_001, 5, 7, 1),
+    );
+    assert!(
+        wait_until(|| bob.cached_head_height() == Some(10_001), SETTLE),
+        "bob never cached the head beacon"
+    );
+
+    // The maintenance/GC tick now sheds the dead swap.
+    bob.poll_sync();
+    assert!(
+        wait_until(|| bob.swap_phase(swap_id).is_none(), SETTLE),
+        "the stale swap was not GC'd by the worker tick"
+    );
+
+    h.shutdown();
+}
+
+#[test]
 fn a_full_swap_is_negotiated_and_settled_via_wire_messages() {
     // G5: a complete swap expressed as the wire message SEQUENCE — Propose → Accept → FundingProof
     // (NIM) → FundingProof (BTC) → PreimageReveal — each message built by `swap_messages`, wrapped

@@ -183,6 +183,18 @@ impl SwapSession {
     pub fn remove(&mut self, swap_id: &[u8; SWAP_ID_LEN]) -> bool {
         self.coordinators.remove(swap_id).is_some()
     }
+
+    /// GC tick: drop every coordinator that is terminal (Settled/Aborted/Refunded) or **stale** at
+    /// `head` — a non-funded negotiation whose timelock has passed — so a long-lived node can't be
+    /// memory-exhausted by half-opened or abandoned swaps. A swap holding this node's funds is kept
+    /// until it reaches a terminal phase, so its refund path stays tracked. Returns how many were
+    /// dropped. The node drives this off its worker maintenance tick.
+    pub fn tick(&mut self, head: u64) -> usize {
+        let before = self.coordinators.len();
+        self.coordinators
+            .retain(|_, c| !c.phase().is_terminal() && !c.is_stale(head));
+        before - self.coordinators.len()
+    }
 }
 
 #[cfg(test)]
@@ -285,6 +297,10 @@ mod tests {
             alice.coordinator(&swap_id).unwrap().phase(),
             SwapPhase::BothFunded
         );
+        // A funds-locked swap is NEVER GC'd, even with the head far past its timelock — its refund
+        // path must stay tracked until it settles or refunds.
+        assert_eq!(alice.tick(9_999_999), 0);
+        assert_eq!(alice.len(), 1);
 
         // Alice claims BTC (reveals S) → PreimageReveal → Bob's session routes it; Bob's node
         // extracts S and drives the NIM claim via the coordinator.
@@ -444,5 +460,41 @@ mod tests {
             .on_message(SwapKind::Abort, &abort, 0)
             .unwrap()
             .is_empty());
+    }
+
+    // --- G16: session expiry / GC tick ------------------------------------------------
+
+    #[test]
+    fn tick_drops_a_stale_unfunded_negotiation_past_its_deadline() {
+        // A swap that accepted but never funded is dead once the head passes its T_A timelock
+        // (nim_timeout = 10_000 in the fixtures) — it can no longer be funded or claimed.
+        let mut bob = SwapSession::new(identity(0x22), LadderParams::default());
+        let swap_id = [0x77; SWAP_ID_LEN];
+        only(
+            bob.on_message(SwapKind::Propose, &propose_bytes(swap_id), 0)
+                .unwrap(),
+        );
+        assert_eq!(
+            bob.coordinator(&swap_id).unwrap().phase(),
+            SwapPhase::Accepted
+        );
+
+        // At/under the deadline it is kept; once the head passes T_A it is GC'd.
+        assert_eq!(bob.tick(10_000), 0);
+        assert_eq!(bob.len(), 1);
+        assert_eq!(bob.tick(10_001), 1);
+        assert!(bob.is_empty());
+    }
+
+    #[test]
+    fn tick_keeps_a_fresh_negotiation_before_its_deadline() {
+        let mut bob = SwapSession::new(identity(0x22), LadderParams::default());
+        let swap_id = [0x78; SWAP_ID_LEN];
+        only(
+            bob.on_message(SwapKind::Propose, &propose_bytes(swap_id), 0)
+                .unwrap(),
+        );
+        assert_eq!(bob.tick(0), 0);
+        assert_eq!(bob.len(), 1);
     }
 }

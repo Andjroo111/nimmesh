@@ -130,6 +130,8 @@ fn run_worker(
             Job::SyncTick => {
                 let _ = catch_unwind(AssertUnwindSafe(|| {
                     maintenance_tick(&ctx, &mut st);
+                    // G16: shed terminal/stale swaps on the same maintenance cadence.
+                    crate::swap_node::gc_tick(&ctx, &mut st);
                 }));
             }
             Job::BeaconTick => {

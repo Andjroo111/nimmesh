@@ -67,6 +67,24 @@ hardening the router against a hostile/lossy mesh.)
       `Propose` for a live `swap_id` must not clobber the in-flight coordinator, a malformed payload
       is dropped (never panics, never half-creates a coordinator), and an `Abort`/settle frees the
       slot. Proptest: arbitrary packet streams never panic and never strand a coordinator mid-state.
-- [ ] **G16 — Session expiry / GC.** Give `SwapSession` a `tick(head)` that drops coordinators whose
+- [x] **G16 — Session expiry / GC.** Give `SwapSession` a `tick(head)` that drops coordinators whose
       swaps are terminal (Settled/Refunded) or whose negotiation stalled past a deadline, so a node
       can't be memory-exhausted by half-opened swaps. Tested by advancing head past the timeouts.
+
+When the ladder is exhausted again, re-scan and append. (Re-scan after G16: the protocol negotiation
+now runs end to end through the node loop, but the node still can't *drive its own chain legs* —
+fund/claim/refund are manual coordinator calls, no FundingProof/Reveal/Abort is emitted from a phase
+change, and nothing drives the safety refund at the node level. The next-highest-value work closes
+that node-side driver gap, all sim/stand-in tx bytes — real tx signing stays money-path-gated.)
+
+- [ ] **G17 — Full swap lifecycle over the real mesh node loop.** Extend G14: a node-side driver
+      that reacts to phase changes — fund its own leg + flood the `FundingProof`, and on `BothFunded`
+      the initiator claims + floods the `PreimageReveal` (responder extracts `S`, claims its leg) —
+      using sim / stand-in tx bytes (no real signing). Two participant nodes drive a whole swap to
+      `Settled` purely through the node receive/flood loop; assert no one-sided settlement.
+- [ ] **G18 — Node-level refund tick (the safety exit over the mesh).** For a funds-locked swap whose
+      own timelock has passed, the worker tick drives `refund_after_timeout` (sim) → `Refunded`, then
+      GC reaps it — proving "worst case is a refund" holds at the node level, not just in the model.
+- [ ] **G19 — Abort emission + symmetric teardown.** When a node locally cancels an un-funded swap
+      (or GCs a stale proposal it originated), it floods a `SwapAbort` so the counterparty frees its
+      slot too. Tested: an abort from one participant clears the swap on the other over the mesh.
