@@ -24,6 +24,8 @@ fn btc_giver_intent(pubkey_tag: u8) -> SwapIntent {
         nim_amount: 180_000,
         btc_amount: 50_000,
         expiry_height: FRESH,
+        min_nim: 0,
+        max_nim: u64::MAX,
         nim_address: [0xC3; NIM_ADDRESS_LEN],
         btc_pubkey,
         btc_address: b"tb1qflood".to_vec(),
@@ -40,13 +42,23 @@ fn btc_giver_intent_at(pubkey_tag: u8, nim_amount: u64, btc_amount: u64) -> Swap
     i
 }
 
-/// Build a `SwapIntent` mirroring an identity's addresses, valid through `expiry_height`.
+/// Set a node's acceptable NIM trade-size band (G40).
+fn with_band(mut i: SwapIntent, min_nim: u64, max_nim: u64) -> SwapIntent {
+    i.min_nim = min_nim;
+    i.max_nim = max_nim;
+    i
+}
+
+/// Build a `SwapIntent` mirroring an identity's addresses, valid through `expiry_height`, with a
+/// wide-open trade-size band by default (G40 tests narrow it via [`with_band`]).
 fn intent_for(id: &NodeIdentity, gives: Asset, nim: u64, btc: u64, expiry: u64) -> SwapIntent {
     SwapIntent {
         gives,
         nim_amount: nim,
         btc_amount: btc,
         expiry_height: expiry,
+        min_nim: 0,
+        max_nim: u64::MAX,
         nim_address: id.nim_address,
         btc_pubkey: id.btc_pubkey,
         btc_address: id.btc_address.clone(),
@@ -559,6 +571,83 @@ fn a_rate_tie_in_a_window_breaks_deterministically() {
     assert!(
         alice.swap_phase(loser).is_none(),
         "only one candidate wins a tie"
+    );
+
+    h.shutdown();
+}
+
+#[test]
+fn a_band_compatible_counterparty_matches() {
+    // G40: alice will trade NIM sizes in [50k, 500k] and offers a 200k-NIM swap. A counterparty
+    // wanting 180k NIM at a crossing rate is within the band, so the swap initiates.
+    use crate::mock_radio::MeshHarness;
+    use crate::swap::LadderParams;
+    use crate::swap_node::derive_swap_id;
+    use crate::test_support::{wait_until, SETTLE};
+
+    let (_swap_id, alice_id, _bob_id, _ctx) = participant_fixtures();
+    let alice_intent = with_band(
+        intent_for(&alice_id, Asset::Nim, 200_000, 50_000, FRESH),
+        50_000,
+        500_000,
+    );
+    let mut alice_id = alice_id;
+    alice_id.standing_intent = Some(alice_intent.clone());
+
+    let mut h = MeshHarness::new();
+    let alice = h.add_participant("alice", &[1], alice_id, LadderParams::default());
+
+    let bob = btc_giver_intent_at(0x40, 180_000, 50_000); // 180k ∈ [50k, 500k], rate 3.6 crosses
+    let swap_id = derive_swap_id(&alice_intent, &bob);
+    alice.on_packet_received_from("a".to_string(), intent_frame(&bob, [0xB0; 8], 1));
+    for _ in 0..4 {
+        alice.poll_sync();
+    }
+    assert!(
+        wait_until(|| alice.swap_phase(swap_id).is_some(), SETTLE),
+        "a band-compatible counterparty should match"
+    );
+
+    h.shutdown();
+}
+
+#[test]
+fn a_mis_sized_counterparty_does_not_match_even_at_a_crossing_rate() {
+    // G40: alice trades NIM sizes in [50k, 500k]. A whale wanting a 5M-NIM swap and a dust 40-NIM
+    // swap both cross on rate (4.0) yet must NOT match — the amount band, not the rate, rejects them.
+    use crate::mock_radio::MeshHarness;
+    use crate::swap::LadderParams;
+    use crate::swap_node::derive_swap_id;
+
+    let (_swap_id, alice_id, _bob_id, _ctx) = participant_fixtures();
+    let alice_intent = with_band(
+        intent_for(&alice_id, Asset::Nim, 200_000, 50_000, FRESH),
+        50_000,
+        500_000,
+    );
+    let mut alice_id = alice_id;
+    alice_id.standing_intent = Some(alice_intent.clone());
+
+    let mut h = MeshHarness::new();
+    let alice = h.add_participant("alice", &[1], alice_id, LadderParams::default());
+
+    let whale = btc_giver_intent_at(0x50, 5_000_000, 1_250_000); // 5M > 500k, rate 4.0 crosses
+    let dust = btc_giver_intent_at(0x51, 40, 10); // 40 < 50k, rate 4.0 crosses
+    let whale_id = derive_swap_id(&alice_intent, &whale);
+    let dust_id = derive_swap_id(&alice_intent, &dust);
+    alice.on_packet_received_from("a".to_string(), intent_frame(&whale, [0xB0; 8], 1));
+    alice.on_packet_received_from("a".to_string(), intent_frame(&dust, [0xB1; 8], 2));
+    for _ in 0..4 {
+        alice.poll_sync();
+    }
+    std::thread::sleep(std::time::Duration::from_millis(30));
+    assert!(
+        alice.swap_phase(whale_id).is_none(),
+        "a too-large counterparty must not match"
+    );
+    assert!(
+        alice.swap_phase(dust_id).is_none(),
+        "a too-small counterparty must not match"
     );
 
     h.shutdown();

@@ -256,10 +256,17 @@ signing stay human-gated.)
       deterministically (smaller swap_id, order-independent); the G34 single-intent path still settles
       (now window-driven); the flooder test reframed (one swap per window, later sender still matches).
       11/11 discovery tests, 12/12 stable.
-- [ ] **G40 — Amount tolerance in matching.** `would_initiate_against` crosses on rate but the initiator
+- [x] **G40 — Amount tolerance in matching.** `would_initiate_against` crosses on rate but the initiator
       always uses ITS own standing amounts; a 100k-NIM intent shouldn't match a counterparty that wants a
       5M-NIM trade. Add a min/max acceptable trade-size band to the intent + an amount-compatibility check,
       so wildly mismatched sizes don't match. Deterministic; sim/testnet.
+      Done: `SwapIntent` gained `min_nim`/`max_nim` (the NIM trade-size band, `[0, u64::MAX]` = any) on
+      the wire codec, plus `amount_compatible(incoming)` — a SYMMETRIC check: the initiator's NIM size
+      must fall in the counterparty's band AND the counterparty's advertised size in the initiator's,
+      called alongside `would_initiate_against` in `handle_intent`. Tests: a band-compatible counterparty
+      matches; a whale (5M) and a dust (40) both cross on rate yet do NOT match; round-trip + symmetric
+      unit test. Existing G34/G39 tests use a wide-open default band (unaffected). 13/13 discovery, 10/10
+      stable.
 - [ ] **G41 — Intent authenticity signature.** An intent carries addresses but isn't authenticated — a
       node could forge an intent "from" someone else's addresses to grief a matcher. Add a signature over
       the intent metadata (advertiser's key) + verify-on-match, so a matcher only acts on an authentic

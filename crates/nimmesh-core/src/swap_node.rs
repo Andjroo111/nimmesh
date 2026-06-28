@@ -401,6 +401,7 @@ fn handle_intent(st: &mut WorkerState, sender: [u8; PEER_ID_LEN], payload: &[u8]
             return;
         };
         if !standing.would_initiate_against(&incoming)
+            || !standing.amount_compatible(&incoming)
             || session.len() >= session.identity.max_concurrent_swaps
         {
             return;
