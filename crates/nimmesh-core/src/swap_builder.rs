@@ -244,9 +244,13 @@ impl LegBuilder for NimiqLeg {
     }
 }
 
-/// The Bitcoin leg — a documented **gated stub**. The real P2WSH-HTLC signer + a BTC node and
-/// real funds are **`needs:owner`**; the loop ships the seam so the swap engine compiles against
-/// a real second leg, and Andjroo drops in the implementation behind this same trait.
+/// The Bitcoin leg under the **NIM-shaped [`LegBuilder`] trait** — a documented stub that always
+/// returns [`LegBuildError::Gated`]. The **real** BTC leg is [`crate::swap_btc_leg::BtcSwapLeg`]
+/// (behind the `bitcoin-leg` feature): it is built + byte-validated + live-proven, but it does **not**
+/// implement this trait because BTC's UTXO model doesn't fit it (no `validity_start_height` to
+/// anchor; funding is a wallet payment to a P2WSH, not a leg-built creation tx). The engine drives
+/// the BTC leg through `BtcSwapLeg`'s chain-natural interface; this stub remains only as the abstract
+/// `LegBuilder` placeholder for the NIM-shaped seam.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct BitcoinLeg;
 

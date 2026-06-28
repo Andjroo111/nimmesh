@@ -75,6 +75,13 @@ pub mod btc;
 #[cfg(feature = "bitcoin-leg")]
 pub use bitcoin;
 
+// Mesh swap: the REAL Bitcoin swap leg (behind `bitcoin-leg`) — the BTC-native analog of
+// `swap_builder::NimiqLeg`. Wraps `btc::BtcHtlcParams` + signs through the `btc::BtcEnclaveKey`
+// seam, exposing `htlc_address` / `build_claim` / `build_refund`. Supersedes the BTC half of the
+// `swap_builder::BitcoinLeg` gated stub (BTC's UTXO model doesn't fit the NIM-shaped `LegBuilder`).
+#[cfg(feature = "bitcoin-leg")]
+pub mod swap_btc_leg;
+
 // Mesh swap (B2): the BTC gateway — broadcast + confirmation over a public signet indexer
 // (mempool.space), behind the `bitcoin-gateway` feature (adds `ureq`/`serde_json`). The one online
 // hop for the BTC leg; signet-only (mainnet base refused). See docs/swap/BTC-LEG.md.

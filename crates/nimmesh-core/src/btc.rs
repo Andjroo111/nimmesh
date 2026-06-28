@@ -296,6 +296,8 @@ pub enum BtcError {
     Sighash,
     /// The key seam returned a signature that is not parseable DER (corrupt / wrong-length digest).
     BadSignature,
+    /// The fee is greater than the funded value — the spend would have a negative/dust output.
+    FeeExceedsValue,
 }
 
 impl std::fmt::Display for BtcError {
@@ -305,6 +307,7 @@ impl std::fmt::Display for BtcError {
             BtcError::BadLocktime => write!(f, "CLTV locktime does not fit a u32"),
             BtcError::Sighash => write!(f, "could not compute the BIP143 sighash"),
             BtcError::BadSignature => write!(f, "key seam returned an unparseable signature"),
+            BtcError::FeeExceedsValue => write!(f, "fee exceeds the funded value"),
         }
     }
 }
