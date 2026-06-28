@@ -578,3 +578,75 @@ fn a_full_swap_rides_a_multi_hop_relay_line_end_to_end() {
 
     h.shutdown();
 }
+
+#[test]
+fn a_swap_partitioned_mid_flight_recovers_after_the_heal() {
+    // G24: a transient outage that strikes DURING the swap. We pace the start with per-hop latency so
+    // we can catch alice in a stable funds-locked state (SelfFunded — her NIM leg funded), then cut
+    // the alice↔bob link. While partitioned the swap is stuck mid-flight and — crucially — alice's
+    // funded leg does NOT refund (the head stays 0, so no timeout fires). After the heal the G20
+    // retransmit carries the stalled messages through and the swap completes on both sides. Proves
+    // resilience to an outage during the swap, not just before it.
+    use crate::mock_radio::MeshHarness;
+    use crate::swap::{LadderParams, SwapPhase};
+    use crate::swap_coordinator::SwapCoordinator;
+    use crate::test_support::{wait_until, SETTLE};
+    use std::time::Duration;
+
+    let (swap_id, alice_id, bob_id, alice_ctx) = participant_fixtures();
+    let mut h = MeshHarness::new();
+    let alice = h.add_participant("alice", &[1], alice_id, LadderParams::default());
+    let bob = h.add_participant("bob", &[2], bob_id, LadderParams::default());
+    h.connect("alice", "bob");
+    // Pace the opening so SelfFunded is a wide, catchable window (~100ms) before bob's funding proof
+    // would advance alice further.
+    h.ether().set_latency(Duration::from_millis(50));
+
+    let (coordinator, propose) =
+        SwapCoordinator::new_initiator(alice_ctx, [42u8; 32], LadderParams::default());
+    alice.start_swap(swap_id, coordinator, propose);
+
+    // Catch alice with her NIM leg funded (mid-flight), then cut the link and drop the pacing.
+    assert!(
+        wait_until(
+            || alice.swap_phase(swap_id) == Some(SwapPhase::SelfFunded),
+            SETTLE
+        ),
+        "alice never funded her leg (the swap never reached the mid-flight state)"
+    );
+    h.ether().partition("alice", "bob");
+    h.ether().set_latency(Duration::ZERO);
+
+    // While partitioned: drive the tick; the swap stays stuck and alice's funded leg stays LOCKED —
+    // it must not refund (head is 0, so no timeout has passed). Bob can make no progress.
+    for _ in 0..15 {
+        alice.poll_sync();
+        bob.poll_sync();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(
+        alice
+            .swap_phase(swap_id)
+            .is_some_and(|p| p.has_funds_locked()),
+        "alice's funded leg should stay locked across the partition (no premature refund, no settle)"
+    );
+
+    // Heal: the retransmit carries the stalled messages through and the swap completes both sides.
+    h.ether().heal("alice", "bob");
+    let mut done = false;
+    for _ in 0..200 {
+        alice.poll_sync();
+        bob.poll_sync();
+        std::thread::sleep(Duration::from_millis(20));
+        if alice.swap_phase(swap_id).is_none() && bob.swap_phase(swap_id).is_none() {
+            done = true;
+            break;
+        }
+    }
+    assert!(
+        done,
+        "the swap did not recover + settle on both sides after the partition healed"
+    );
+
+    h.shutdown();
+}

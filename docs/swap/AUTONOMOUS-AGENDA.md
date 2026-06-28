@@ -117,7 +117,7 @@ reviewer has a guide. Still sim/testnet, money-path gated.)
 - [x] **G23 — Full swap over a multi-hop mesh.** Two participants separated by N blind relay hops
       (a line topology) drive a whole swap to `Settled` — proving swaps ride a *deep* mesh end to end,
       not just a direct link or a single relay. Assert no one-sided settlement.
-- [ ] **G24 — Mid-swap partition + heal.** A swap that is mid-flight (e.g. one leg funded) when the
+- [x] **G24 — Mid-swap partition + heal.** A swap that is mid-flight (e.g. one leg funded) when the
       mesh partitions recovers and completes after the heal, via retransmit + store-and-forward —
       proving resilience to a transient outage that strikes during the swap, not just before it.
 - [ ] **G25 — Node-integration architecture docs.** Write `docs/swap/MESH-INTEGRATION.md` mapping the
