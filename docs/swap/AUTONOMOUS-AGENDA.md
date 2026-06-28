@@ -12,7 +12,7 @@ green, log one line, and schedule the next iteration. No human prompt between go
       ending in "Refunded — your funds are safe" (real `refund_after_timeout`).
 - [x] **G3 — swap_wire proptest hardening.** Fuzz `decode_swap` (panic-free on arbitrary bytes) and
       round-trip any valid envelope incl. the new `btc_pubkey`.
-- [ ] **G4 — Mesh swap message builder.** Build `Propose`/`Accept`/`FundingProof`/`PreimageReveal`
+- [x] **G4 — Mesh swap message builder.** Build `Propose`/`Accept`/`FundingProof`/`PreimageReveal`
       envelopes from engine state (the engine↔wire bridge), with tests.
 - [ ] **G5 — Full swap negotiated over the mock mesh.** Drive a complete swap between two MockRadio
       nodes (Propose→Accept→fund→reveal) — swaps actually working over the transport.

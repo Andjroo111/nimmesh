@@ -42,6 +42,11 @@ pub mod packet;
 // docs/swap/SWAP.md; the build contract is docs/swap/SWAP-LOOP.md.
 pub mod swap_wire;
 
+// Mesh swap: the engine↔wire bridge. `swap_messages` builds the `swap_wire` envelopes from swap
+// state (initiator `SwapProposal` → Propose; responder `SwapAcceptance` → Accept; a funded leg /
+// revealing claim → `tx_envelope`) and parses them back — so a swap can be negotiated over the mesh.
+pub mod swap_messages;
+
 // Mesh swap (F3): the swap state machine + the `Δ_safe` timelock-safety gate. `swap` owns the
 // clock-free, height-anchored lifecycle (propose → accept → fund → reveal → settle, with a refund
 // exit in every funded phase) and `assess_ladder` — the gate that REFUSES to fund a swap whose
