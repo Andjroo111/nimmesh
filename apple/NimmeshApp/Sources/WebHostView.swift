@@ -109,6 +109,12 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         backupUrgency: function (s) { return call('backupUrgency', s || {}); },
         // C1: this device's wallet address (derived from the Keychain key — no seed crosses).
         walletAddress: function () { return call('walletAddress'); },
+        // C1e: recovery-phrase wallet lifecycle (create / import / back up). The 24-word phrase
+        // is shown only inside the app for backup; it never crosses to Rust, the mesh, or a log.
+        walletExists: function () { return call('walletExists'); },
+        createWallet: function () { return call('createWallet'); },
+        importWallet: function (m) { return call('importWallet', { mnemonic: m }); },
+        recoveryPhrase: function () { return call('recoveryPhrase'); },
         // Mainnet toggle (gated; default testnet). The app never auto-sends real funds.
         currentNetwork: function () { return call('currentNetwork'); },
         setNetwork: function (m) { return call('setNetwork', { mainnet: !!m }); },
@@ -181,12 +187,13 @@ final class Bridge: NSObject, WKScriptMessageHandler {
                 return (false, "missing recipient")
             }
             let amount = (a["amountLuna"] as? NSNumber)?.uint64Value ?? 0
+            guard let signer = Wallet.signer else { return (false, "no wallet — create or import one first") }
             do {
                 let head = try await NimiqRpc.headHeight()
                 let intent = TransferIntent(
                     recipient: recipient, value: amount, validityStartHeight: head, network: NimiqRpc.network
                 )
-                let signed = try Wallet.signer.signTransfer(intent: intent) // Keychain key signs
+                let signed = try signer.signTransfer(intent: intent) // Keychain-derived key signs
                 let hash = try await NimiqRpc.sendRawTransaction(signed.rawHex)
                 return (true, ["txHash": hash])
             } catch {
@@ -229,6 +236,26 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             // C1: the wallet's NQ address, derived from the Keychain Ed25519 public key. The
             // seed stays in the Keychain — only the public address leaves.
             return (true, ["address": Wallet.address() ?? ""])
+        case "walletExists":
+            // C1e: whether onboarding is done (a recovery-phrase wallet is stored).
+            return (true, ["exists": Wallet.hasWallet()])
+        case "createWallet":
+            // C1e: generate a new 24-word wallet; return the phrase so the UI can show it for
+            // backup (phrase stays in-app; never to Rust/mesh/log) + the derived address.
+            guard let phrase = Wallet.createNew() else { return (false, "could not create wallet") }
+            return (true, ["mnemonic": phrase, "address": Wallet.address() ?? ""])
+        case "importWallet":
+            // C1e: import an existing wallet from its recovery phrase. The derived address is
+            // returned so the user can confirm it matches their real wallet before funding.
+            let a = args as? [String: Any] ?? [:]
+            guard Wallet.importMnemonic((a["mnemonic"] as? String) ?? "") else {
+                return (false, "invalid recovery phrase")
+            }
+            return (true, ["address": Wallet.address() ?? ""])
+        case "recoveryPhrase":
+            // C1e: the stored phrase, for the in-app backup screen.
+            guard let phrase = Wallet.recoveryPhrase() else { return (false, "no wallet") }
+            return (true, ["mnemonic": phrase])
         case "currentNetwork":
             // The selected network (default testnet). Mainnet is the gated real-funds toggle.
             return (true, ["mainnet": NimiqRpc.isMainnet, "name": NimiqRpc.isMainnet ? "mainnet" : "testnet"])

@@ -5,11 +5,11 @@ import Security
 
 /// C1: a Keychain-backed Ed25519 key that implements the Rust `EnclaveKey` foreign trait.
 ///
-/// The 32-byte seed lives in the iOS **Keychain** (hardware-encrypted at rest,
-/// `ThisDeviceOnly`); only the **public key** (32 B, to derive the address) and a **detached
-/// signature** (64 B) ever cross the FFI boundary into the Rust core — the seed never does.
-/// CryptoKit's `Curve25519.Signing` is RFC-8032 Ed25519, byte-compatible with the core's
-/// `ed25519-dalek` verifier (proven by `Wallet.selfTest()`).
+/// The signing key is derived from the wallet's BIP39 recovery phrase (see `Wallet`); only the
+/// **public key** (32 B, to derive the address) and a **detached signature** (64 B) ever cross
+/// the FFI boundary into the Rust core — the phrase/seed never does. CryptoKit's
+/// `Curve25519.Signing` is RFC-8032 Ed25519, byte-compatible with the core's `ed25519-dalek`
+/// verifier (proven by `Wallet.selfTest()`).
 final class KeychainEnclaveKey: EnclaveKey {
     private let privateKey: Curve25519.Signing.PrivateKey
 
@@ -18,27 +18,75 @@ final class KeychainEnclaveKey: EnclaveKey {
     func publicKey() -> Data { privateKey.publicKey.rawRepresentation }
 
     func signContent(content: Data) -> Data {
-        // CryptoKit Ed25519 signatures are deterministic (RFC 8032), 64 bytes.
+        // CryptoKit Ed25519 signatures are valid RFC-8032 (accepted by dalek verify_strict).
         (try? privateKey.signature(for: content)) ?? Data()
     }
 }
 
-/// The app's wallet: loads (or creates on first launch) the Keychain key and exposes a Rust
-/// `AppSigner` over it. Testnet only. Receive/Send read the address + sign through this.
+/// The app's wallet (C1e): a Nimiq-standard 24-word recovery phrase, stored in the iOS
+/// Keychain. The signing key is derived from the phrase (`m/44'/242'/0'/0'`, BIP39 + SLIP-0010,
+/// see `Mnemonic.swift`). The phrase/seed never crosses the Rust FFI — only the public key +
+/// signature do. There is no silent auto-create: the UI runs onboarding (create or import)
+/// first, so the user always owns a backed-up phrase.
 enum Wallet {
     private static let service = "com.nimmesh.wallet"
-    private static let account = "testnet-ed25519-seed"
+    private static let account = "testnet-bip39-mnemonic"
 
-    /// The shared signer for this device's wallet (created once, then loaded from the Keychain).
-    static let signer: AppSigner = AppSigner(enclaveKey: KeychainEnclaveKey(privateKey: loadOrCreateKey()))
+    /// Cache the derived signer for the loaded phrase (PBKDF2 is cheap but not free); rebuilt
+    /// when the stored phrase changes (after create/import).
+    private static var cache: (mnemonic: String, signer: AppSigner)?
 
-    /// The wallet's user-friendly `NQ…` testnet address, or `nil` if it can't be derived.
-    static func address() -> String? { try? signer.address() }
+    // MARK: Wallet lifecycle
 
-    /// Prove the native signer interoperates with the Rust verifier: sign a fixed testnet
-    /// transfer with the Keychain key and confirm the core accepts the signature. Returns
-    /// `true` iff CryptoKit ↔ ed25519-dalek round-trips byte-for-byte.
+    /// Whether a wallet exists yet (drives onboarding vs the home).
+    static func hasWallet() -> Bool { readMnemonic() != nil }
+
+    /// Create a brand-new wallet: generate a 24-word phrase, persist it, and return the words
+    /// so the UI can show them for backup. `nil` if the wordlist/Keychain is unavailable.
+    @discardableResult
+    static func createNew() -> String? {
+        guard let bip39 = bip39() else { return nil }
+        let phrase = bip39.generate()
+        guard storeMnemonic(phrase) else { return nil }
+        cache = nil
+        return phrase
+    }
+
+    /// Import an existing wallet from a recovery phrase. Returns `false` if the phrase is not a
+    /// valid BIP39 mnemonic (so the caller can show "check your words").
+    static func importMnemonic(_ phrase: String) -> Bool {
+        let normalized = phrase.lowercased().split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        guard let bip39 = bip39(), bip39.isValid(normalized) else { return false }
+        guard storeMnemonic(normalized) else { return false }
+        cache = nil
+        return true
+    }
+
+    /// The recovery phrase, for the backup screen (`nil` if no wallet).
+    static func recoveryPhrase() -> String? { readMnemonic() }
+
+    // MARK: Signing
+
+    /// The signer for the current wallet, or `nil` if none exists yet (onboarding not done).
+    static var signer: AppSigner? {
+        guard let phrase = readMnemonic() else { return nil }
+        if let c = cache, c.mnemonic == phrase { return c.signer }
+        guard let bip39 = bip39(),
+              let keyData = NimiqHD.privateKey(mnemonic: phrase, bip39: bip39), keyData.count == 32,
+              let ck = try? Curve25519.Signing.PrivateKey(rawRepresentation: keyData)
+        else { return nil }
+        let signer = AppSigner(enclaveKey: KeychainEnclaveKey(privateKey: ck))
+        cache = (phrase, signer)
+        return signer
+    }
+
+    /// The wallet's user-friendly `NQ…` address, or `nil` if no wallet / can't derive.
+    static func address() -> String? { try? signer?.address() }
+
+    /// Prove the native signer interoperates with the Rust verifier (CryptoKit ↔ ed25519-dalek):
+    /// sign a fixed transfer and confirm the core accepts it. `false` if there's no wallet yet.
     static func selfTest() -> Bool {
+        guard let signer = signer else { return false }
         let intent = TransferIntent(
             recipient: "NQ95 ARU6 CQ8U 38N8 B8D6 ESVQ R12V 0RAY V8D6",
             value: 100_000,
@@ -49,18 +97,14 @@ enum Wallet {
         return verifySignedTxHex(rawHex: signed.rawHex)
     }
 
-    // --- Keychain-backed key persistence -------------------------------------------------
+    // MARK: Wordlist + Keychain
 
-    private static func loadOrCreateKey() -> Curve25519.Signing.PrivateKey {
-        if let seed = readSeed(), let key = try? Curve25519.Signing.PrivateKey(rawRepresentation: seed) {
-            return key
-        }
-        let key = Curve25519.Signing.PrivateKey()
-        storeSeed(key.rawRepresentation)
-        return key
+    private static func bip39() -> Bip39? {
+        guard let path = Bundle.main.path(forResource: "bip39-english", ofType: "txt") else { return nil }
+        return Bip39(wordlistAt: path)
     }
 
-    private static func readSeed() -> Data? {
+    private static func readMnemonic() -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -69,19 +113,22 @@ enum Wallet {
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
         var item: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess else { return nil }
-        return item as? Data
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+              let data = item as? Data, let phrase = String(data: data, encoding: .utf8)
+        else { return nil }
+        return phrase
     }
 
-    private static func storeSeed(_ seed: Data) {
+    @discardableResult
+    private static func storeMnemonic(_ phrase: String) -> Bool {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
-            kSecValueData as String: seed,
+            kSecValueData as String: Data(phrase.utf8),
             kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
         ]
         SecItemDelete(query as CFDictionary) // replace any prior entry
-        SecItemAdd(query as CFDictionary, nil)
+        return SecItemAdd(query as CFDictionary, nil) == errSecSuccess
     }
 }

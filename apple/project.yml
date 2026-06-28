@@ -14,6 +14,10 @@ targets:
     platform: iOS
     sources:
       - NimmeshApp/Sources
+      # C1e: the official BIP39 English wordlist (2048 words), bundled flat so
+      # Bundle.main.path(forResource:"bip39-english", ofType:"txt") resolves it.
+      - path: NimmeshApp/Resources/bip39-english.txt
+        buildPhase: resources
       # The UI is the real nimiq-ui WEB layer (webui/), hosted in a WKWebView (A1).
       # A folder reference preserves webui/'s subdir structure (nimiq/legacy, the
       # component dirs) so index.html's relative hrefs resolve from the app bundle.
@@ -60,8 +64,11 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "5.9"
-        # Simulator builds need no signing (keeps headless CI/build clean); a
-        # real-device build must sign, so scope the "off" to the simulator SDK
-        # only and let Xcode automatic signing handle device builds.
+        # Device builds sign automatically with the owner's free "Personal Team" (the Team ID
+        # is an identifier, not a secret). Simulator builds need no signing (keeps headless
+        # CI/build clean), so scope the "off" to the simulator SDK only. This means a real
+        # device build just works after `xcodegen generate` — no manual signing setup.
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: "78572SM3V4"
         CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]: "NO"
         CODE_SIGNING_REQUIRED[sdk=iphonesimulator*]: "NO"

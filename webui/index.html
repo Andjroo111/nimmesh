@@ -69,6 +69,50 @@
   .backup-banner.words .alert-text { margin-left: 1rem; flex: 1 1 auto; min-width: 0;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .backup-banner.words .nq-button-pill { flex: 0 0 auto; }
+  /* C1e: wallet onboarding + backup overlays (create / import / view recovery phrase). */
+  .onboard { position: fixed; inset: 0; z-index: 50; background: #f8f8f8; overflow-y: auto;
+    display: flex; justify-content: center; padding: env(safe-area-inset-top,0) 0 0; }
+  /* author display:flex would otherwise defeat the [hidden] attribute — restore it explicitly
+     (high enough specificity to beat .onboard / .onboard .ob-screen). */
+  .onboard[hidden], .onboard .ob-screen[hidden] { display: none !important; }
+  .onboard .ob-screen { width: 100%; max-width: 480px; box-sizing: border-box; padding: 28px 24px 40px;
+    display: flex; flex-direction: column; gap: 16px; min-height: 100%; }
+  .ob-hero { text-align: center; margin: 24px 0 auto; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .ob-hero svg { width: 64px; height: auto; }
+  .ob-title { font-size: 26px; font-weight: 700; color: #1f2348; margin: 4px 0 0; text-wrap: balance; }
+  .ob-sub { font-size: 15px; line-height: 1.45; color: rgba(31,35,72,.7); margin: 0; }
+  .ob-actions { margin-top: auto; display: flex; flex-direction: column; gap: 12px; align-items: center; padding-top: 24px; }
+  .ob-primary { width: 100%; border: none; cursor: pointer; height: 56px; border-radius: 500px;
+    font-family: inherit; font-weight: 700; font-size: 16px; color: #fff;
+    background-image: radial-gradient(100% 100% at 100% 100%, #265dd7 0%, #0582ca 100%);
+    box-shadow: 0 8px 24px rgba(0,0,0,.15); transition: transform .2s cubic-bezier(.25,0,0,1), box-shadow .2s; }
+  .ob-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 16px 40px rgba(0,0,0,.2); }
+  .ob-primary:disabled { opacity: .45; cursor: default; }
+  .ob-link { background: none; border: none; cursor: pointer; font-family: inherit; font-weight: 700;
+    font-size: 15px; color: #1f2348; padding: 8px; }
+  .ob-back { align-self: flex-start; background: none; border: none; cursor: pointer; font-family: inherit;
+    font-weight: 700; font-size: 15px; color: rgba(31,35,72,.7); padding: 4px 0; }
+  .ob-words { list-style: none; padding: 0; margin: 4px 0; display: grid; grid-template-columns: 1fr 1fr;
+    gap: 8px 12px; counter-reset: w; }
+  .ob-words li { counter-increment: w; display: flex; align-items: baseline; gap: 8px; padding: 9px 10px;
+    background: #fff; box-shadow: inset 0 0 0 1.5px rgba(31,35,72,.1); border-radius: 8px;
+    font-family: 'Fira Mono', monospace; font-size: 14px; color: #1f2348; }
+  .ob-words li::before { content: counter(w); color: rgba(31,35,72,.4); font-size: 11px; min-width: 18px; text-align: right; }
+  .ob-copy { align-self: center; background: none; border: none; cursor: pointer; font-family: inherit;
+    font-weight: 700; font-size: 14px; color: #0582ca; padding: 6px; }
+  .ob-check { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; color: rgba(31,35,72,.8);
+    line-height: 1.4; cursor: pointer; margin-top: 4px; }
+  .ob-check input { margin-top: 1px; width: 18px; height: 18px; flex: 0 0 auto; accent-color: #0582ca; }
+  .ob-input { width: 100%; box-sizing: border-box; border: none; box-shadow: inset 0 0 0 1.5px rgba(31,35,72,.15);
+    border-radius: 12px; padding: 14px; font-family: 'Fira Mono', monospace; font-size: 15px; line-height: 1.5;
+    color: #1f2348; resize: none; }
+  .ob-input:focus { outline: none; box-shadow: inset 0 0 0 2px #0582ca; }
+  .ob-error { color: #d94432; font-size: 14px; font-weight: 600; }
+  .ob-addr { font-family: 'Fira Mono', monospace; font-size: 17px; line-height: 1.7;
+    color: #1f2348; background: #fff; box-shadow: inset 0 0 0 1.5px rgba(31,35,72,.1); border-radius: 12px;
+    padding: 16px; text-align: center; word-spacing: 4px; }
+  .ob-warn { background-image: radial-gradient(100% 100% at 100% 100%, #fc8702 0%, #e09400 100%); color: #fff;
+    border-radius: 12px; padding: 13px 15px; font-size: 14px; font-weight: 600; line-height: 1.45; }
 
   /* account-header re-scaled for the 390px phone (A2). */
   .account-header {
@@ -236,7 +280,7 @@
   <div id="backup-wrap" style="padding:12px 10px 0;">
     <div class="backup-banner words nq-orange" id="backup-banner">
       <span class="alert-text"><svg class="alert-icon" width="17" height="16" viewBox="0 0 17 16" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M15.913 13.333L9.68 1.433a1.333 1.333 0 0 0-2.362 0l-6.232 11.9a1.333 1.333 0 0 0 1.182 1.952H14.73a1.333 1.333 0 0 0 1.182-1.952zm-8.08-7.718a.667.667 0 0 1 1.334 0v4a.667.667 0 1 1-1.334 0v-4zm.682 7.674h.018a.983.983 0 0 0 .967-1.022 1.018 1.018 0 0 0-1.016-.978h-.019a.984.984 0 0 0-.965 1.02c.02.546.468.978 1.015.98z" fill="currentColor"/></svg> <span id="backup-msg">There is no &lsquo;forgot password&rsquo;</span></span>
-      <button class="nq-button-pill orange">Backup<svg class="nq-icon" width="16" height="12" viewBox="0 0 16 12" xmlns="http://www.w3.org/2000/svg"><path d="M10,1l5,5l-5,5" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="14" y1="6" x2="1" y2="6" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <button class="nq-button-pill orange" id="backup-open">Backup<svg class="nq-icon" width="16" height="12" viewBox="0 0 16 12" xmlns="http://www.w3.org/2000/svg"><path d="M10,1l5,5l-5,5" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="14" y1="6" x2="1" y2="6" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     </div>
   </div>
 
@@ -339,6 +383,65 @@
 
 <!-- A3: shared backdrop + the two bottom sheets -->
 <div class="backdrop" id="backdrop"></div>
+
+<!-- C1e: wallet onboarding (shown when no wallet exists yet) — create or import. -->
+<div class="onboard" id="onboard" hidden>
+  <!-- welcome -->
+  <section class="ob-screen" id="ob-welcome">
+    <div class="ob-hero">
+      <svg viewBox="0 0 20 18" role="img" aria-label="nimmesh"><g fill="none"><path fill="url(#ob-hex-grad)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="ob-hex-grad" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></g></svg>
+      <h1 class="ob-title">Your offline wallet</h1>
+      <p class="ob-sub">Pay with NIM even when there is no internet. First, set up the wallet on this phone.</p>
+    </div>
+    <div class="ob-actions">
+      <button class="ob-primary" id="ob-create">Create a new wallet</button>
+      <button class="ob-link" id="ob-import-start">Import an existing wallet</button>
+    </div>
+  </section>
+
+  <!-- create: show the recovery phrase -->
+  <section class="ob-screen" id="ob-create-screen" hidden>
+    <button class="ob-back" data-ob-back>← Back</button>
+    <h1 class="ob-title">Your recovery phrase</h1>
+    <p class="ob-sub">Write these 24 words down in order and keep them somewhere safe. Anyone with them controls your funds, and nimmesh cannot recover them for you.</p>
+    <ol class="ob-words" id="ob-words"></ol>
+    <button class="ob-copy" id="ob-copy">Copy words</button>
+    <label class="ob-check"><input type="checkbox" id="ob-saved"> I have written down my 24 words and stored them safely</label>
+    <button class="ob-primary" id="ob-create-done" disabled>Continue</button>
+  </section>
+
+  <!-- import: enter an existing phrase -->
+  <section class="ob-screen" id="ob-import-screen" hidden>
+    <button class="ob-back" data-ob-back>← Back</button>
+    <h1 class="ob-title">Import your wallet</h1>
+    <p class="ob-sub">Enter your 24-word recovery phrase, separated by spaces.</p>
+    <textarea class="ob-input" id="ob-import-input" rows="4" placeholder="word1 word2 word3 …" autocapitalize="none" autocorrect="off" spellcheck="false"></textarea>
+    <div class="ob-error" id="ob-import-error" hidden></div>
+    <button class="ob-primary" id="ob-import-do">Import wallet</button>
+  </section>
+
+  <!-- confirm the imported address before funding -->
+  <section class="ob-screen" id="ob-confirm-screen" hidden>
+    <h1 class="ob-title">Confirm your address</h1>
+    <p class="ob-sub">This is the address nimmesh derived from your phrase.</p>
+    <div class="ob-addr" id="ob-confirm-addr"></div>
+    <div class="ob-warn">Check this matches your existing wallet exactly before you send any funds to it.</div>
+    <div class="ob-spacer"></div>
+    <button class="ob-primary" id="ob-confirm-done">This is my wallet</button>
+    <button class="ob-link" data-ob-restart>That is not right, try again</button>
+  </section>
+</div>
+
+<!-- C1e: view the recovery phrase again (from the backup banner). -->
+<div class="onboard" id="backup-view" hidden>
+  <section class="ob-screen">
+    <button class="ob-back" id="backup-close">← Back</button>
+    <h1 class="ob-title">Your recovery phrase</h1>
+    <p class="ob-sub">Write these down and keep them safe. Anyone with these words controls your funds.</p>
+    <ol class="ob-words" id="backup-words"></ol>
+    <button class="ob-copy" id="backup-copy">Copy words</button>
+  </section>
+</div>
 
 <!-- Receive NIM sheet -->
 <section class="sheet" id="receive-sheet" aria-label="Receive NIM">
@@ -615,9 +718,83 @@
     }
   }
 
+  // C1e: wallet onboarding (create / import) + the "view recovery phrase" backup screen.
+  // The 24-word phrase is shown only inside the app (for backup); it never crosses to Rust,
+  // the mesh, or a log. After create/import we reload so the home reprobes with the wallet.
+  function obWords(id, mnemonic) {
+    const ol = document.getElementById(id);
+    if (ol) ol.innerHTML = (mnemonic || '').trim().split(/\s+/).map((w) => `<li>${w}</li>`).join('');
+  }
+  function obShow(id) {
+    ['ob-welcome', 'ob-create-screen', 'ob-import-screen', 'ob-confirm-screen'].forEach((s) => {
+      const el = document.getElementById(s); if (el) el.hidden = (s !== id);
+    });
+    const ob = document.getElementById('onboard'); if (ob) ob.hidden = false;
+  }
+  function copyText(text, btnId) {
+    try {
+      navigator.clipboard.writeText(text);
+      const b = document.getElementById(btnId);
+      if (b) { const t = b.textContent; b.textContent = 'Copied'; setTimeout(() => { b.textContent = t; }, 1200); }
+    } catch (e) { /* clipboard unavailable */ }
+  }
+  function wordsOf(listId) {
+    return [...document.querySelectorAll(`#${listId} li`)].map((li) => li.textContent).join(' ');
+  }
+  (function wireWalletUI() {
+    if (!document.getElementById('onboard')) return;
+    document.querySelectorAll('[data-ob-back]').forEach((b) => b.addEventListener('click', () => obShow('ob-welcome')));
+    document.querySelectorAll('[data-ob-restart]').forEach((b) => b.addEventListener('click', () => obShow('ob-import-screen')));
+    document.getElementById('ob-create').addEventListener('click', async () => {
+      try {
+        const r = await nimmesh.createWallet();
+        obWords('ob-words', r.mnemonic);
+        document.getElementById('ob-saved').checked = false;
+        document.getElementById('ob-create-done').disabled = true;
+        obShow('ob-create-screen');
+      } catch (e) { alert('Could not create wallet: ' + (e && e.message ? e.message : e)); }
+    });
+    document.getElementById('ob-saved').addEventListener('change', (e) => {
+      document.getElementById('ob-create-done').disabled = !e.target.checked;
+    });
+    document.getElementById('ob-create-done').addEventListener('click', () => location.reload());
+    document.getElementById('ob-copy').addEventListener('click', () => copyText(wordsOf('ob-words'), 'ob-copy'));
+    document.getElementById('ob-import-start').addEventListener('click', () => obShow('ob-import-screen'));
+    document.getElementById('ob-import-do').addEventListener('click', async () => {
+      const phrase = document.getElementById('ob-import-input').value.trim();
+      const err = document.getElementById('ob-import-error');
+      err.hidden = true;
+      try {
+        const r = await nimmesh.importWallet(phrase);
+        document.getElementById('ob-confirm-addr').textContent = r.address;
+        obShow('ob-confirm-screen');
+      } catch (e) {
+        err.textContent = 'That is not a valid 24-word recovery phrase. Check the words and the spacing.';
+        err.hidden = false;
+      }
+    });
+    document.getElementById('ob-confirm-done').addEventListener('click', () => location.reload());
+    // Backup view (from the banner's Backup button).
+    const open = document.getElementById('backup-open');
+    if (open) open.addEventListener('click', async () => {
+      if (!(window.nimmesh && nimmesh.recoveryPhrase)) return;
+      try { const r = await nimmesh.recoveryPhrase(); obWords('backup-words', r.mnemonic); document.getElementById('backup-view').hidden = false; }
+      catch (e) { /* no wallet */ }
+    });
+    document.getElementById('backup-close').addEventListener('click', () => { document.getElementById('backup-view').hidden = true; });
+    document.getElementById('backup-copy').addEventListener('click', () => copyText(wordsOf('backup-words'), 'backup-copy'));
+  })();
+
   // A1/A4: the mesh status line is always visible (the obvious "this is the offline mesh"
   // differentiator). On device the bridge enriches it with live peers/network/core.
   if (window.nimmesh) {
+    // C1e: no wallet yet -> run onboarding (create/import) before showing the home.
+    try {
+      if (nimmesh.walletExists) {
+        const w = await nimmesh.walletExists();
+        if (!w.exists) obShow('ob-welcome');
+      }
+    } catch (e) { /* assume wallet exists if the probe fails */ }
     // Reflect the selected network (default testnet) in the toggle + the mesh bar.
     let netName = 'testnet';
     try { const net = await nimmesh.currentNetwork(); netName = net.name; applyNetwork(net.mainnet); } catch (e) {}

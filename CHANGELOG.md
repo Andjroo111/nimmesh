@@ -2,6 +2,33 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.28.0] — 2026-06-27
+
+### Added — recovery-phrase wallet: create / import / back up (C1e)
+
+The wallet is now a real, recoverable wallet instead of a silently-generated key. Onboarding
+(create or import) runs before the home, and the key is derived from a Nimiq-standard 24-word
+recovery phrase. This is the prerequisite for real funds: you import a wallet you've already
+backed up, or create one and write the words down.
+
+- `apple/.../Mnemonic.swift` (new): BIP39 (official 2048-word English list, bundled as a
+  resource) + SLIP-0010 ed25519 derivation at Nimiq's path `m/44'/242'/0'/0'`. **All secret
+  material stays native** (Swift + Keychain); the phrase/seed never crosses the Rust FFI.
+  Verified byte-exact against the official BIP39 (Trezor) and SLIP-0010 ed25519 test vectors by
+  `apple/scripts/verify-mnemonic-main.swift`.
+- `apple/.../Wallet.swift`: stores the 24-word phrase in the Keychain (ThisDeviceOnly); derives
+  the signing key from it (cached). `hasWallet` / `createNew` / `importMnemonic` /
+  `recoveryPhrase`; no silent auto-create.
+- `apple/.../WebHostView.swift`: bridge methods `walletExists`, `createWallet`,
+  `importWallet`, `recoveryPhrase` (the phrase is shown only in-app for backup; never to Rust,
+  the mesh, or a log).
+- `webui/index.html`: onboarding overlay (welcome → create-with-24-word-grid + confirm, or
+  import) and a "view recovery phrase" backup screen wired to the backup banner. The import flow
+  shows the derived address with a **"check this matches your existing wallet before funding"**
+  gate — the bulletproof correctness check for real funds.
+- `apple/project.yml`: bundle the wordlist resource; bake in automatic signing + the owner's
+  Personal Team so real-device builds work after `xcodegen generate` with no manual setup.
+
 ## [0.27.0] — 2026-06-27
 
 ### Fixed — the home shows REAL balance + REAL transaction history (no more mock numbers)
