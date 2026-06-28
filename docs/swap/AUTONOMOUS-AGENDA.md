@@ -154,7 +154,7 @@ non-gated, is **protocol completeness + safety hardening**: the responder accept
 and an in-flight swap lives only in memory, so a crash with funds locked loses the refund path. These
 close real gaps a real deployment needs, none needing a human decision.)
 
-- [ ] **G29 — Swap-rate acceptance policy.** A responder should not blindly accept any `give/take`
+- [x] **G29 — Swap-rate acceptance policy.** A responder should not blindly accept any `give/take`
       amounts: give `SwapCoordinator`/`recv_propose` an acceptance policy (a min acceptable rate /
       tolerance band) and reject a lopsided proposal before accepting. Node-level test: a fair-rate
       proposal is accepted, a bad-rate one is rejected (no coordinator created), both over the loop.

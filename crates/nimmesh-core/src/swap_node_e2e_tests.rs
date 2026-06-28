@@ -1,4 +1,4 @@
-//! # swap_node_e2e_tests — whole swaps driven over the REAL MeshNode loop (G14–G20, cfg(test))
+//! # swap_node_e2e_tests — whole swaps driven over the REAL MeshNode loop (G14–G29, cfg(test))
 //!
 //! Where [`crate::swap_e2e_tests`] proves the swap *protocol* (state machines + escrows + the wire
 //! codec), this drives complete swaps through two or more [`crate::node::MeshNode`] worker loops over
@@ -254,6 +254,7 @@ fn a_gc_abort_tears_down_the_swap_on_the_counterparty_over_the_mesh() {
             k[0] = 0x02;
             k
         },
+        rate_policy: crate::swap_session::RatePolicy::accept_all(),
     };
     let mut h = MeshHarness::new();
     let bob = h.add_participant("bob", &[2], bob_id, LadderParams::default());
@@ -666,6 +667,83 @@ fn a_full_swap_drives_through_a_pluggable_signer() {
             SETTLE
         ),
         "bob never settled (the pluggable signer's claim must still carry S for the responder)"
+    );
+
+    h.shutdown();
+}
+
+#[test]
+fn a_responder_declines_a_below_rate_proposal_over_the_mesh() {
+    // G29: bob's NodeIdentity carries a rate floor of >= 2.5 NIM per BTC. A lopsided Propose (2.0
+    // NIM/BTC) is declined at the node — no coordinator, no phase, no Accept — while a fair Propose
+    // (3.0) is accepted. Proves the responder's rate policy gates over the real node loop.
+    use crate::codec::encode;
+    use crate::mock_radio::MeshHarness;
+    use crate::packet::{MessageType, Packet, BROADCAST_RECIPIENT};
+    use crate::swap::{LadderParams, SwapPhase, SwapTerms};
+    use crate::swap_leg::sha256;
+    use crate::swap_messages::SwapProposal;
+    use crate::swap_session::{NodeIdentity, RatePolicy};
+    use crate::swap_wire::encode_swap;
+    use crate::test_support::{wait_until, SETTLE};
+
+    let bob_id = NodeIdentity {
+        nim_address: [0xB2; 20],
+        btc_address: b"tb1qbob".to_vec(),
+        btc_pubkey: {
+            let mut k = [0x22; 33];
+            k[0] = 0x02;
+            k
+        },
+        rate_policy: RatePolicy::min_rate(5, 2), // >= 2.5 NIM per BTC
+    };
+    let mut h = MeshHarness::new();
+    let bob = h.add_participant("bob", &[2], bob_id, LadderParams::default());
+
+    // `ts` keeps each injected Propose's relay-key distinct (type+sender+timestamp).
+    let propose = |swap_id: [u8; 16], give: u64, take: u64, ts: u64| {
+        let mut pk = [0x11; 33];
+        pk[0] = 0x02;
+        let env = SwapProposal {
+            swap_id,
+            hashlock: sha256(&[42u8; 32]),
+            give_amount: give,
+            take_amount: take,
+            terms: SwapTerms {
+                nim_timeout: 10_000,
+                counterparty_timeout: 5_000,
+            },
+            nim_address: [0xA1; 20],
+            btc_address: b"tb1qalice".to_vec(),
+            btc_pubkey: pk,
+            network_id: 5,
+        }
+        .to_envelope();
+        let mut pkt = Packet::new(
+            MessageType::SwapPropose,
+            [9u8; 8],
+            encode_swap(&env).unwrap(),
+        );
+        pkt.recipient_id = Some(BROADCAST_RECIPIENT);
+        pkt.timestamp_ms = ts;
+        bob.on_packet_received_from("alice".to_string(), encode(&pkt).unwrap());
+    };
+
+    propose([0xD1; 16], 100_000, 50_000, 1); // 2.0 NIM/BTC — below the floor
+    propose([0xD2; 16], 150_000, 50_000, 2); // 3.0 NIM/BTC — fair
+
+    // The fair proposal is accepted...
+    assert!(
+        wait_until(
+            || bob.swap_phase([0xD2; 16]) == Some(SwapPhase::Accepted),
+            SETTLE
+        ),
+        "the fair-rate proposal should be accepted"
+    );
+    // ...and the below-rate one created no coordinator at all.
+    assert!(
+        bob.swap_phase([0xD1; 16]).is_none(),
+        "the below-rate proposal must be declined (no coordinator)"
     );
 
     h.shutdown();

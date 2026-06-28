@@ -25,6 +25,7 @@ fn node_identity() -> NodeIdentity {
         nim_address: [0xB2; NIM_ADDRESS_LEN],
         btc_address: b"tb1qnode".to_vec(),
         btc_pubkey: pk,
+        rate_policy: nimmesh_core::swap_session::RatePolicy::accept_all(),
     }
 }
 

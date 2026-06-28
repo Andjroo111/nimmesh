@@ -200,11 +200,13 @@ pub(crate) fn participant_fixtures() -> (
         nim_address: [0xA1; 20],
         btc_address: b"tb1qalice".to_vec(),
         btc_pubkey: pk(0x11),
+        rate_policy: crate::swap_session::RatePolicy::accept_all(),
     };
     let bob_id = NodeIdentity {
         nim_address: [0xB2; 20],
         btc_address: b"tb1qbob".to_vec(),
         btc_pubkey: pk(0x22),
+        rate_policy: crate::swap_session::RatePolicy::accept_all(),
     };
     let alice_ctx = SwapContext {
         swap_id,

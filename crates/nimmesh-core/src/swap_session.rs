@@ -19,7 +19,10 @@ use crate::swap_wire::{
     NIM_ADDRESS_LEN, SWAP_ID_LEN,
 };
 
-/// This node's fixed identity (everything a coordinator needs that isn't learned from the peer).
+pub use crate::swap_rate::RatePolicy;
+
+/// This node's fixed identity (everything a coordinator needs that isn't learned from the peer),
+/// plus the responder rate policy this node brings to a swap.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NodeIdentity {
     /// This node's NIM address (20 raw bytes).
@@ -28,6 +31,8 @@ pub struct NodeIdentity {
     pub btc_address: Vec<u8>,
     /// This node's BTC pubkey (33 bytes).
     pub btc_pubkey: [u8; BTC_PUBKEY_LEN],
+    /// The minimum exchange rate this node accepts as a responder (default: [`RatePolicy::accept_all`]).
+    pub rate_policy: RatePolicy,
 }
 
 /// A routing failure.
@@ -143,6 +148,16 @@ impl SwapSession {
                     return Ok(Vec::new());
                 }
                 let p = SwapProposal::from_envelope(&env).ok_or(SessionError::BadPropose)?;
+                // Rate gate: decline a lopsided proposal before spinning up a responder. We get
+                // `give_amount` NIM for the `take_amount` BTC we'd lock; if that rate is below our
+                // floor, drop it silently (no coordinator, no Accept).
+                if !self
+                    .identity
+                    .rate_policy
+                    .accepts(p.give_amount, p.take_amount)
+                {
+                    return Ok(Vec::new());
+                }
                 let ctx = SwapContext {
                     swap_id,
                     terms: p.terms,
@@ -316,6 +331,7 @@ mod tests {
             nim_address: [seed; NIM_ADDRESS_LEN],
             btc_address: b"tb1qnode".to_vec(),
             btc_pubkey: pk,
+            rate_policy: RatePolicy::accept_all(),
         }
     }
 

@@ -69,6 +69,11 @@ pub mod swap_node;
 // stand-in every participant holds today, with the real NIM/BTC signer dropping in via the same trait.
 pub mod swap_signer;
 
+// Mesh swap: the responder's exchange-rate acceptance policy. `swap_rate::RatePolicy` is the minimum
+// NIM-per-BTC a responder will accept; it rides the `NodeIdentity` and gates `SwapSession::on_message`
+// so a lopsided proposal is declined before a coordinator is created.
+pub mod swap_rate;
+
 // Mesh swap (F3): the swap state machine + the `Δ_safe` timelock-safety gate. `swap` owns the
 // clock-free, height-anchored lifecycle (propose → accept → fund → reveal → settle, with a refund
 // exit in every funded phase) and `assess_ladder` — the gate that REFUSES to fund a swap whose
