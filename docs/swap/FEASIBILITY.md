@@ -5,6 +5,12 @@
 > **The verdict:** *Yes — as long as you're precise about what "over Bluetooth" means.* The
 > second opinion is **half right**, and the half it's right about is the half nobody is
 > proposing to do.
+>
+> **Update (2026-06-28):** no longer just a verdict — it's **built end to end** on `feat/mesh-swap`.
+> Both HTLC legs (byte-validated + live-confirmed on testnet), the `SwapEngine` + FFI, the swap-wire
+> protocol (incl. pubkey exchange), a full swap negotiated + settled over the wire message sequence,
+> and a browser demo driven by the real engine against a sim chain. See [SWAP.md](./SWAP.md) §Shipped.
+> Mainnet + real funds stay gated.
 
 ## The one distinction that resolves it
 

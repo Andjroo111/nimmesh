@@ -17,10 +17,18 @@ green, log one line, and schedule the next iteration. No human prompt between go
 - [x] **G5 — Full swap negotiated over the mock mesh.** Drive a complete swap between two MockRadio
       nodes (Propose→Accept→fund→reveal) — swaps actually working over the transport.
 - [x] **G6 — Demo polish.** Engine-driven auto-advance + a responder-perspective toggle.
-- [ ] **G7 — Docs sweep.** Refresh SWAP / FEASIBILITY / BTC-LEG to match the shipped engine+UI+demo.
+- [x] **G7 — Docs sweep.** Refresh SWAP / FEASIBILITY / BTC-LEG to match the shipped engine+UI+demo.
+- [ ] **G8 — Swap coordinator (message handler).** A pure `SwapCoordinator` that consumes an incoming
+      swap envelope, advances the local swap state, and produces the next outgoing envelope(s) — the
+      brain a mesh node runs. Test: drive a full swap between two coordinators exchanging envelopes
+      (no hand orchestration).
+- [ ] **G9 — Adversarial wire/sim paths.** Robustness over a lossy mesh: a wrong-preimage reveal is
+      rejected, out-of-order / duplicate messages are idempotent, an unsafe ladder refuses to fund.
+- [ ] **G10 — Swap fees tooltip (UI).** Port the wallet's real `SwapFeesTooltip` into the Confirm
+      screen (fee breakdown) — actual component, no approximation.
 
-When the ladder is exhausted, re-scan for the next-highest-value work (mesh integration depth, more
-hardening, perf) and append goals — keep building.
+When the ladder is exhausted again, re-scan for the next-highest-value work (mesh integration depth,
+more hardening, perf) and append goals — keep building.
 
 ## Guardrails (hard)
 

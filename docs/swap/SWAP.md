@@ -15,6 +15,30 @@ transactions ride the mesh and each leg settles **on its own chain at the first 
 hop**. No exchange, no custodian, no internet between them. If either side walks away, the
 hash-timelocks refund both — nobody can be cheated.
 
+## Shipped so far (2026-06-28, `feat/mesh-swap`)
+
+The protocol below is built and proven end to end (sim/testnet; mainnet + real funds stay gated):
+
+- **Both HTLC legs** — NIM (`nimiq::htlc`) + BTC (`btc` + `swap_btc_leg`), byte-validated against
+  `@nimiq/core` + `bitcoinjs-lib` and live-confirmed on testnet. On-device key seams for both chains
+  (`nimiq::signer::EnclaveKey` / `btc::BtcEnclaveKey` — the seed never crosses FFI). See
+  [BTC-LEG.md](./BTC-LEG.md), [BTC-KEY-SEAM.md](./BTC-KEY-SEAM.md).
+- **Engine** — the `swap::Swap` state machine + `Δ_safe` ladder, folded into `swap_engine::SwapEngine`
+  (drives both legs; the responder reads `S` off the on-chain BTC claim). See
+  [SWAP-ENGINE.md](./SWAP-ENGINE.md).
+- **FFI** — `swap_ffi::SwapEngineHandle` (UniFFI), with real Swift + Kotlin bindings generated.
+- **Protocol over the wire** — `swap_wire` (TLV) now also exchanges the raw BTC pubkeys a live HTLC
+  needs (a BTC address is `hash160(pubkey)`, not reversible); `swap_messages` builds
+  Propose/Accept/FundingProof/PreimageReveal from swap state; a test drives a **full swap negotiated +
+  settled via the wire message sequence** through the real packet codec.
+- **UI + demo** — the full swap flow on real Nimiq components + the wallet's actual `SwapAnimation`
+  (`webui/swap/`), driven by the **real engine** via a local server against an in-memory sim chain
+  (`swap_sim` + `examples/swap_demo_server.rs`, [RUN-DEMO.md](./RUN-DEMO.md)), including the
+  timeout-refund safety screen.
+
+Atomicity is proven (`swap_e2e_tests`: no one-sided settlement, every adversarial path). The
+remaining gates are on-device (the native WebView↔Rust bridge) and mainnet / real funds.
+
 ## Why this is a natural fit for nimmesh (not a bolt-on)
 
 nimmesh already ships the entire transport this needs:

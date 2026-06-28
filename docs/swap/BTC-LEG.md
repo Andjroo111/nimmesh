@@ -1,5 +1,11 @@
 # Bitcoin leg — the cross-chain counterparty (signet) — B0 spike + plan
 
+> **Status (2026-06-28): B0–B4 all DONE + live on-chain.** The BTC leg ships in `btc` (script +
+> P2WSH + BIP143 claim/refund, byte-exact vs `bitcoinjs-lib`) and `swap_btc_leg` (the swap-leg
+> wrapper), signs through the `btc::BtcEnclaveKey` on-device seam, and is folded into
+> `swap_engine::SwapEngine`. The full NIM⇄BTC atomic swap is live-confirmed on testnet (BTC tx
+> `e6a3422d…`). The ladder below is the historical plan. See [SWAP.md](./SWAP.md) §Shipped.
+>
 > The NIM leg is live-proven (`docs/swap/F0-HTLC-FINDINGS.md`). This is the BTC side of a real
 > NIM⇄BTC atomic swap, on **Bitcoin signet** (Andjroo's pick — stable block times + reliable
 > faucet). Testnet/play-money; **mainnet stays gated**. Network = `rust-bitcoin` `Network::Signet`
