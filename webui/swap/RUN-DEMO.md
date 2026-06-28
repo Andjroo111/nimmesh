@@ -47,9 +47,12 @@ Below the list it also shows a **discovery-stats strip** (G46): the node's G42 `
 intents `seen` / `matched` / `re-advertised`, and dropped-by-reason (`expired` G35 / `rate` G40 /
 `forged` G41 / `throttled` G36) — so the otherwise-invisible gate activity is legible at a glance.
 
-- **Now:** the rows AND the stats are **fixture data** (canned), so the page is a self-contained
-  static demo.
-- **BLOCKED (human-gated):** the live wiring — streaming the intents this node has actually seen and
-  its live `IntentMetrics` counters from the running Rust core into the page — needs the native
-  WebView↔Rust bridge, the same gate as the rest of the live wallet. The page marks where that data
-  plugs in (`loadIntents` + `loadStats` seam in the inline module).
+- **Now:** the rows AND the stats are **fixture data**. Opened as a static file the page renders its
+  inline fixtures; opened behind the server (above) the page's `loadIntents`/`loadStats` seam upgrades
+  them LIVE from `GET /api/intents` + `GET /api/stats` (G54), which return the fixtures as JSON
+  (`demo_http::intents_fixture_json` / `stats_fixture_json`). Either way the visible data is identical;
+  the fetch just proves the data-driven seam end to end. A fetch failure falls back to the inline
+  fixtures, so `nq lint` / `file://` render unchanged.
+- **BLOCKED (human-gated):** the truly-live wiring — having `/api/intents` + `/api/stats` (or the
+  native bridge) return the node's REAL `SwapSession` intents + `IntentMetrics` instead of fixtures —
+  needs the native WebView↔Rust bridge (OG-1 in `docs/swap/OWNER-GATED.md`).

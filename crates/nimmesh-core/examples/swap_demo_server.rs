@@ -108,6 +108,18 @@ fn route(
                 snap_json(&s.snapshot()).into_bytes(),
             )
         }
+        // G54: the discovery view's fixture data (a step toward OG-1; the live app streams the node's
+        // real intents + IntentMetrics over the native bridge instead).
+        ("GET", "/api/intents") => (
+            "200 OK",
+            "application/json",
+            nimmesh_core::demo_http::intents_fixture_json().into_bytes(),
+        ),
+        ("GET", "/api/stats") => (
+            "200 OK",
+            "application/json",
+            nimmesh_core::demo_http::stats_fixture_json().into_bytes(),
+        ),
         ("GET", _) => serve_static(path, webui_root),
         _ => ("404 Not Found", "text/plain", b"not found".to_vec()),
     }

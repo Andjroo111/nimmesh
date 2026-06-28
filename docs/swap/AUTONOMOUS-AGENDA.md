@@ -423,11 +423,19 @@ signing stay human-gated.)
       bucket is rate-limited (`rate_limited` counter climbs), while a DIFFERENT neighbour's intent (its own
       full bucket) still discovers a swap — per-link, not global. 1 test, 12/12 stable. (Documented in the
       test module header; left as the canonical place since it's a property of the existing limiter.)
-- [ ] **G54 — Live `/api/intents` fixture endpoint.** Wire a real read-only `GET /api/intents` +
+- [x] **G54 — Live `/api/intents` fixture endpoint.** Wire a real read-only `GET /api/intents` +
       `GET /api/stats` into `swap_demo_server` returning the fixture intents/metrics as JSON, have
       `intents.html`'s `loadIntents`/`loadStats` seam fetch it (falling back to inline fixtures), and add a
       `demo_http`-style test asserting the JSON shape — one concrete step toward the OG-1 live wiring, still
       a fixture (no real Rust-core stream, no native bridge). Sim/testnet.
+      Done: `demo_http::intents_fixture_json()` + `stats_fixture_json()` (pure-std, hand-built JSON,
+      mirror the page's 4 intents + the G46 stats); `swap_demo_server` serves them at `GET /api/intents`
+      + `GET /api/stats`. The page's inline module now has real `loadIntents`/`loadStats`: behind the
+      server they re-render the list + update the stat numbers LIVE from the endpoints; offline (file://,
+      nq lint) the fetch fails → no-op → the static fixtures stay, so the rendered page is byte-identical
+      (screenshot-verified). `tests/swap_demo_http_tests.rs` marker-asserts both JSON bodies (no serde, no
+      sockets). nq lint still 0 errors. RUN-DEMO.md updated. The truly-live source (real intents/metrics)
+      stays OG-1-blocked.
 - [ ] **G55 — Discovery health self-check.** A read-only `IntentMetrics`-derived health summary (e.g.
       match-rate, drop-mix, whether re-advertise is exhausted) the node can surface for diagnostics, plus a
       test. Pure observability; no behaviour change; sim/testnet.

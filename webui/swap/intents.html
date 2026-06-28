@@ -108,15 +108,15 @@
       <div class="stats">
         <p class="stats-title">Discovery this session</p>
         <div class="stats-top">
-          <div class="stat"><span class="stat-num">128</span><span class="stat-lbl">seen</span></div>
-          <div class="stat"><span class="stat-num green">12</span><span class="stat-lbl">matched</span></div>
-          <div class="stat"><span class="stat-num">34</span><span class="stat-lbl">re-advertised</span></div>
+          <div class="stat"><span class="stat-num" data-stat="seen">128</span><span class="stat-lbl">seen</span></div>
+          <div class="stat"><span class="stat-num green" data-stat="matched">12</span><span class="stat-lbl">matched</span></div>
+          <div class="stat"><span class="stat-num" data-stat="readvertised">34</span><span class="stat-lbl">re-advertised</span></div>
         </div>
         <div class="stats-drops">
-          <div class="drop"><span class="drop-num">9</span><span class="drop-lbl">expired</span></div>
-          <div class="drop"><span class="drop-num">18</span><span class="drop-lbl">rate</span></div>
-          <div class="drop"><span class="drop-num">5</span><span class="drop-lbl">forged</span></div>
-          <div class="drop"><span class="drop-num">7</span><span class="drop-lbl">throttled</span></div>
+          <div class="drop"><span class="drop-num" data-stat="expired">9</span><span class="drop-lbl">expired</span></div>
+          <div class="drop"><span class="drop-num" data-stat="rate">18</span><span class="drop-lbl">rate</span></div>
+          <div class="drop"><span class="drop-num" data-stat="forged">5</span><span class="drop-lbl">forged</span></div>
+          <div class="drop"><span class="drop-num" data-stat="throttled">7</span><span class="drop-lbl">throttled</span></div>
         </div>
       </div>
 
@@ -126,13 +126,13 @@
 </div>
 
 <script type="module">
-  // FIXTURE VIEW: the rows above AND the discovery-stats strip are canned. In the live app each row is
-  // one SwapIntent this node has seen flooded over the mesh (G34) and the stats are the node's G42
-  // counters (IntentMetrics: seen / matched / dropped-by-reason / re-advertised) — both streamed from
-  // the Rust core across the native WebView/Rust bridge (a loadIntents + loadStats seam). That hookup
-  // is human-gated (the bridge), so the demo renders fixtures. Freshness (the Fresh / Expired state)
-  // mirrors the G35 rule: an intent is fresh while the head is at or below its expiry height. See
-  // docs/swap/DEMO-LOOP.md.
+  // The rows above AND the discovery-stats strip render from fixtures by default. When the demo runs
+  // behind swap_demo_server (G54), `loadIntents`/`loadStats` upgrade them LIVE from GET /api/intents +
+  // GET /api/stats; offline (file://, nq lint) the fetch fails and the static fixtures stay. In the
+  // shipping app those same two seams stream the node's real SwapSession intents + G42 IntentMetrics
+  // across the native WebView/Rust bridge (human-gated — see OG-1 in docs/swap/OWNER-GATED.md).
+  // Freshness (Fresh / Expired) mirrors the G35 rule: an intent is fresh while the head is at or below
+  // its expiry height.
   import Iqons from 'https://cdn.jsdelivr.net/npm/@nimiq/iqons@1.6.0/dist/iqons.min.js';
   // The REAL @nimiq/iqons@1.6.0 sprite is vendored locally; the CDN copy is only a file:// fallback.
   const localSprite = '../nimiq/assets/img/iqons.min.svg';
@@ -141,13 +141,58 @@
     .then((r) => (r.ok ? localSprite : cdnSprite))
     .catch(() => cdnSprite);
 
-  for (const el of document.querySelectorAll('.identicon[data-address]')) {
-    try {
-      el.querySelector('img').src = await Iqons.toDataUrl(el.dataset.address);
-    } catch (e) {
-      /* keep the placeholder hexagon if the sprite is unreachable */
+  const PLACEHOLDER = document.querySelector('.identicon img').getAttribute('src');
+  const ARROW = '<svg class="arrow" width="16" height="12" viewBox="0 0 16 12" fill="none"><path d="M1 6h13M10 1l4 5-4 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  async function upgradeIdenticons(root) {
+    for (const el of root.querySelectorAll('.identicon[data-address]')) {
+      try {
+        el.querySelector('img').src = await Iqons.toDataUrl(el.dataset.address);
+      } catch (e) {
+        /* keep the placeholder hexagon if the sprite is unreachable */
+      }
     }
   }
+
+  function intentRow(it) {
+    const give = `<span><span class="num">${esc(it.giveAmount)}</span> <span class="tk ${it.gives.toLowerCase()}">${esc(it.gives)}</span></span>`;
+    const take = `<span><span class="num">${esc(it.takeAmount)}</span> <span class="tk ${it.takeAsset.toLowerCase()}">${esc(it.takeAsset)}</span></span>`;
+    return `<li class="intent ${it.fresh ? 'fresh' : 'expired'}">`
+      + `<div class="identicon" data-address="${esc(it.peer)}"><img src='${PLACEHOLDER}' alt="Peer identicon"></div>`
+      + `<div class="intent-trade"><div class="intent-pair">${give}${ARROW}${take}</div>`
+      + `<div class="intent-rate">${esc(it.rate)}</div></div>`
+      + `<div class="intent-meta"><span class="freshness">${it.fresh ? 'Fresh' : 'Expired'}</span>`
+      + `<span class="expiry">${esc(it.expiry)}</span></div></li>`;
+  }
+
+  async function loadIntents() {
+    try {
+      const data = await fetch('/api/intents').then((r) => r.json());
+      const list = document.getElementById('intent-list');
+      list.innerHTML = data.intents.map(intentRow).join('');
+      await upgradeIdenticons(list); // live: re-render from the endpoint, then draw identicons
+    } catch (e) {
+      /* offline / file:// / nq lint: keep the static fixture rows */
+    }
+  }
+
+  function loadStats() {
+    fetch('/api/stats')
+      .then((r) => r.json())
+      .then((s) => {
+        for (const el of document.querySelectorAll('[data-stat]')) {
+          if (el.dataset.stat in s) el.textContent = s[el.dataset.stat];
+        }
+      })
+      .catch(() => {
+        /* offline: keep the static fixture numbers */
+      });
+  }
+
+  await upgradeIdenticons(document); // draw the static rows' identicons first
+  loadStats();
+  await loadIntents();
 </script>
 </body>
 </html>

@@ -44,3 +44,23 @@ pub fn content_type(p: &Path) -> &'static str {
         _ => "application/octet-stream",
     }
 }
+
+/// G54: the demo's "open intents on the mesh" fixture, as JSON — the SAME four advertisements
+/// `webui/swap/intents.html` renders. A fixture step toward OG-1: the live app streams the node's real
+/// `SwapSession` intents across the native bridge, replacing this canned body. Hand-built, no serde.
+pub fn intents_fixture_json() -> String {
+    r#"{"head":4500000,"intents":[
+{"gives":"NIM","giveAmount":"12 500","takeAsset":"BTC","takeAmount":"0.05","rate":"1 BTC = 250 000 NIM","fresh":true,"expiry":"in 3 000 blocks","peer":"NQ34 248J PA4S 8VK2 SS54 9N0B M89U HE5L AB48"},
+{"gives":"BTC","giveAmount":"0.02","takeAsset":"NIM","takeAmount":"5 200","rate":"1 BTC = 260 000 NIM","fresh":true,"expiry":"in 2 200 blocks","peer":"NQ91 8E7L K0ST 3FM2 9R6D 7B1V XQH4 5N2P GJ0A"},
+{"gives":"NIM","giveAmount":"40 000","takeAsset":"BTC","takeAmount":"0.16","rate":"1 BTC = 250 000 NIM","fresh":false,"expiry":"at block 4 499 000","peer":"NQ05 6RT2 9LMD 0KX7 V3B8 EH4N PS1Q 7J6F 2A0C"},
+{"gives":"BTC","giveAmount":"0.1","takeAsset":"NIM","takeAmount":"26 000","rate":"1 BTC = 260 000 NIM","fresh":true,"expiry":"in 12 000 blocks","peer":"NQ77 1KD9 4VR0 8XPS 2M5H 6T3B EL9N 0AQ7 J84U"}
+]}"#
+    .to_string()
+}
+
+/// G54: the demo's discovery-stats fixture (the G42 `IntentMetrics` counters), as JSON — the SAME
+/// numbers the intents view's "Discovery this session" strip shows. Live app: the node's real counters.
+pub fn stats_fixture_json() -> String {
+    r#"{"seen":128,"matched":12,"readvertised":34,"expired":9,"rate":18,"forged":5,"throttled":7}"#
+        .to_string()
+}
