@@ -69,6 +69,10 @@
   .backup-banner.words .alert-text { margin-left: 1rem; flex: 1 1 auto; min-width: 0;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .backup-banner.words .nq-button-pill { flex: 0 0 auto; }
+  /* C1f: the launch splash (gold hex on the page background) over the static mock content. */
+  #app-splash { position: fixed; inset: 0; z-index: 60; background: #f8f8f8; display: flex; align-items: center; justify-content: center; }
+  #app-splash[hidden] { display: none; }
+  #app-splash svg { width: 72px; height: auto; }
   /* C1e: wallet onboarding + backup — matched to the real Nimiq Wallet + Keyguard references. */
   .onboard { position: fixed; inset: 0; z-index: 50; background: #f8f8f8; overflow-y: auto;
     display: flex; justify-content: center; padding-top: env(safe-area-inset-top,0); }
@@ -81,7 +85,7 @@
   .ob-top .ob-logo svg { width: 22px; height: auto; }
   .ob-back { background: none; border: none; cursor: pointer; font-family: inherit; font-weight: 600; font-size: 14px; color: rgba(31,35,72,.5); padding: 4px; }
   /* welcome: big title up top, choice cards at the bottom (matches welcome-mobile). */
-  .ob-welcome-body { flex: 1 1 auto; display: flex; flex-direction: column; padding: 0 24px 28px; }
+  .ob-welcome-body { flex: 1 1 auto; display: flex; flex-direction: column; padding: 0 24px calc(28px + env(safe-area-inset-bottom,0)); }
   .ob-welcome-hero { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; text-align: center; }
   .ob-welcome-hero h1 { font-size: 32px; line-height: 1.15; font-weight: 700; color: #1f2348; margin: 0 0 14px; text-wrap: balance; }
   .ob-welcome-hero p { font-size: 15px; line-height: 1.5; color: rgba(31,35,72,.65); margin: 0 auto; max-width: 300px; }
@@ -98,7 +102,9 @@
   .ob-choice.row .ic { background: rgba(31,35,72,.08); } .ob-choice.row .ic svg { color: rgba(31,35,72,.5); } .ob-choice.row .tx span { color: rgba(31,35,72,.5); }
   /* recovery-words screen: a navy gradient sheet with a 3-col numbered grid (Keyguard). */
   .ob-words-body { flex: 1 1 auto; display: flex; flex-direction: column; }
-  .ob-words-sheet { margin-top: auto; background-image: var(--nimiq-blue-bg, radial-gradient(100% 100% at bottom right, #260133, #1f2348));
+  /* the navy sheet fills the space below the logo chrome so the grid + button use the full
+     height (no bottom-cramming / overflow on tall phones); the foot anchors to the bottom. */
+  .ob-words-sheet { flex: 1 1 auto; display: flex; flex-direction: column; background-image: var(--nimiq-blue-bg, radial-gradient(100% 100% at bottom right, #260133, #1f2348));
     border-radius: 24px 24px 0 0; padding: 22px 20px calc(26px + env(safe-area-inset-bottom,0)); color: #fff; }
   .ob-words-sheet .h { display: flex; align-items: center; justify-content: center; position: relative; margin-bottom: 6px; }
   .ob-words-sheet .h .ob-back { position: absolute; left: 0; color: rgba(255,255,255,.85); }
@@ -110,7 +116,7 @@
   .words-cell .n { flex: 0 0 auto; color: rgba(255,255,255,.4); font-family: 'Fira Mono', monospace; font-size: 12px; min-width: 15px; text-align: right; }
   .words-cell .w { color: #fff; font-family: 'Fira Mono', monospace; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .words-cell input { background: none; border: none; outline: none; color: #fff; font-family: 'Fira Mono', monospace; font-size: 13px; width: 100%; min-width: 0; padding: 0; }
-  .ob-words-foot { display: flex; flex-direction: column; gap: 12px; align-items: center; margin-top: 18px; }
+  .ob-words-foot { display: flex; flex-direction: column; gap: 12px; align-items: center; margin-top: auto; padding-top: 18px; }
   /* shared primary pill (Nimiq blue) + links */
   .ob-primary { width: 100%; max-width: 320px; border: none; cursor: pointer; height: 54px; border-radius: 500px; font-family: inherit; font-weight: 700; font-size: 16px; color: #fff;
     background-image: radial-gradient(100% 100% at 100% 100%, #265dd7 0%, #0582ca 100%); box-shadow: 0 8px 24px rgba(0,0,0,.18); transition: transform .2s cubic-bezier(.25,0,0,1), box-shadow .2s; }
@@ -278,6 +284,12 @@
 </style>
 </head>
 <body>
+<!-- C1f: load splash — covers the static mock home until the bridge resolves the wallet state
+     (onboarding or real data), so the design-mock 752 NIM home never flashes on launch. -->
+<div id="app-splash" aria-hidden="true">
+  <svg viewBox="0 0 20 18" aria-label="nimmesh"><path fill="url(#splash-grad)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="splash-grad" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg>
+</div>
+
 <div class="app">
 
   <div class="topbar">
@@ -863,6 +875,11 @@
     document.getElementById('backup-copy').addEventListener('click', () => copyText(wordsOf('backup-words'), 'backup-copy'));
   })();
 
+  // C1f: hide the launch splash once the wallet state is known + real data is in. The 5s
+  // fallback covers a plain browser / unavailable bridge so the splash never sticks.
+  const hideSplash = () => { const s = document.getElementById('app-splash'); if (s) s.hidden = true; };
+  setTimeout(hideSplash, 5000);
+
   // A1/A4: the mesh status line is always visible (the obvious "this is the offline mesh"
   // differentiator). On device the bridge enriches it with live peers/network/core.
   if (window.nimmesh) {
@@ -870,7 +887,7 @@
     try {
       if (nimmesh.walletExists) {
         const w = await nimmesh.walletExists();
-        if (!w.exists) obShow('ob-welcome');
+        if (!w.exists) { obShow('ob-welcome'); hideSplash(); }
       }
     } catch (e) { /* assume wallet exists if the probe fails */ }
     // Reflect the selected network (default testnet) in the toggle + the mesh bar.
@@ -939,6 +956,7 @@
       const u = await nimmesh.backupUrgency({ backedUp: false, balanceLuna, daysSinceFirstFunds: 0 });
       applyBackupNudge(u.urgency);
     } catch (e) { /* leave the default words banner if the policy call fails */ }
+    hideSplash(); // real home + real data are ready — reveal it (no mock flash)
   }
 
   // A4: fleet chrome — the global language pill + connect-wallet pill (shared nimiq-app-shell).

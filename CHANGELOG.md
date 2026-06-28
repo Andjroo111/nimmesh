@@ -2,6 +2,21 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.30.0] — 2026-06-27
+
+### Fixed — onboarding fit + no more mock-data flash (on-device feedback)
+
+First device run surfaced two issues:
+- **The design-mock home flashed** (static `752 NIM` + demo rows) before the bridge swapped in
+  the real wallet. Added a **launch splash** (`#app-splash`, gold hex on the page background)
+  that covers the static content until the bridge resolves the wallet state (onboarding, or real
+  balance + history loaded), then reveals. 5s fallback so it never sticks (plain browser).
+- **Onboarding was bottom-heavy / overflowed** (buttons crammed at the bottom, the 24-word grid
+  didn't fit without zooming). The navy recovery-words sheet now **fills the height** below the
+  logo chrome (grid at top, Continue anchored at the bottom via `margin-top:auto`), and the
+  welcome/sheet get `env(safe-area-inset-bottom)` padding. Verified at 390px (taller phones get
+  more room).
+
 ## [0.29.0] — 2026-06-27
 
 ### Changed — onboarding rebuilt to match the real Nimiq Wallet + Keyguard
