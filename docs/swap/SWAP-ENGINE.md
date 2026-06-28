@@ -59,3 +59,33 @@ byte-validated vs `@nimiq/core` + `bitcoinjs-lib` and live-confirmed on both cha
 
 > The `live_cross_chain_swap` example remains the **live network harness** (faucet + broadcast +
 > watch). The engine is the reusable core it (and the UI / mesh) orchestrate through.
+
+## FFI surface (`swap_ffi`) — how the UI/mesh call it
+
+`swap_ffi::SwapEngineHandle` is a `#[uniffi::export]` object (like `nimiq::signer::AppSigner`) that
+wraps the engine behind a `Mutex` so the WebView UI and the native mesh shim can drive a swap. The
+pure `SwapEngine` stays uniffi-free; the facade handles interior mutability + the bitcoin-type↔FFI
+conversions (txids/addresses as strings, network as an enum, `EngineError` flattened to
+`SwapEngineError`). The two keys cross as the same `with_foreign` traits the signer uses
+(`EnclaveKey` / `BtcEnclaveKey`) — **seeds never cross FFI**, the native enclave signs.
+
+Verified: `uniffi-bindgen generate --library <dylib built with --features bitcoin-leg>` emits valid
+**Swift + Kotlin** with `class SwapEngineHandle` (`newInitiator`/`newResponder`/`fund`/
+`revealAndClaimBtc`/`claimNimFromBtcClaim`/`refund`/…), the `FfiSwapPhase`/`FfiSwapEffect`/
+`FfiSwapParams` types, and `protocol BtcEnclaveKey` for the native secp256k1 enclave to implement.
+
+**Packaging caveat:** because the facade is behind `bitcoin-leg`, the binding/xcframework build must
+pass `--features bitcoin-leg` for `SwapEngineHandle` to appear in the generated Swift/Kotlin
+(consistent with the rest of the BTC leg). The default (feature-off) build is unaffected.
+
+## A typical UI flow (initiator)
+
+```
+let h = SwapEngineHandle.newInitiator(params, nimKey, btcKey, secret)  // nimKey/btcKey = native enclaves
+try h.accept(headMs, ladder)
+let eff = try h.fund(headMs, ladder, vsh)        // → .broadcast(.nim, tx)  → app broadcasts it
+// … app watches the BTC HTLC address (h.btcHtlcAddress()) for funding …
+try h.observeBtcFunded(txid, vout, valueSat)
+let claim = try h.revealAndClaimBtc()            // → .broadcast(.counterparty, tx) → app broadcasts
+try h.observeSettled()
+```

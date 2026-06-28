@@ -90,6 +90,14 @@ pub mod swap_btc_leg;
 #[cfg(feature = "bitcoin-leg")]
 pub mod swap_engine;
 
+// Mesh swap: the UniFFI facade over `swap_engine::SwapEngine` (behind `bitcoin-leg`). `swap_ffi`
+// exposes a `SwapEngineHandle` UniFFI object (like `nimiq::signer::AppSigner`) so the WebView UI +
+// the native mesh shim can drive a NIM⇄BTC swap. The pure engine stays uniffi-free; the facade owns
+// interior mutability + the bitcoin-type↔FFI conversions. Keys cross as the `with_foreign` EnclaveKey
+// / BtcEnclaveKey traits (seeds never cross FFI). Testnet/signet only; mainnet not offered.
+#[cfg(feature = "bitcoin-leg")]
+pub mod swap_ffi;
+
 // Mesh swap (B2): the BTC gateway — broadcast + confirmation over a public signet indexer
 // (mempool.space), behind the `bitcoin-gateway` feature (adds `ureq`/`serde_json`). The one online
 // hop for the BTC leg; signet-only (mainnet base refused). See docs/swap/BTC-LEG.md.
