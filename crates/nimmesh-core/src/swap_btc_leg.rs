@@ -236,4 +236,80 @@ mod tests {
             Err(BtcError::FeeExceedsValue)
         );
     }
+
+    // The protocol gap, closed: both sides build the SAME BTC HTLC from pubkeys exchanged over the
+    // swap wire (Propose carries the initiator's claimant pubkey; Accept the responder's funder
+    // pubkey). A BTC address can't yield a pubkey, so this exchange is what makes a mesh swap possible.
+    #[test]
+    fn both_sides_build_the_same_htlc_from_wire_exchanged_pubkeys() {
+        use crate::swap_wire::{
+            decode_swap, encode_swap, SwapEnvelope, SwapKind, BTC_PUBKEY_LEN, NIM_ADDRESS_LEN,
+            SWAP_ID_LEN,
+        };
+        let initiator_key = InMemoryBtcEnclaveKey::from_secret(&[0x11u8; 32]).unwrap();
+        let responder_key = InMemoryBtcEnclaveKey::from_secret(&[0x22u8; 32]).unwrap();
+        let init_pk: [u8; BTC_PUBKEY_LEN] = initiator_key.public_key().try_into().unwrap();
+        let resp_pk: [u8; BTC_PUBKEY_LEN] = responder_key.public_key().try_into().unwrap();
+
+        // Initiator → Propose (its claimant pubkey crosses the wire); the responder decodes it.
+        let propose = SwapEnvelope {
+            swap_id: [0x01; SWAP_ID_LEN],
+            hashlock: Some([0x7E; 32]),
+            give_amount: Some(1),
+            take_amount: Some(1),
+            nim_timeout: Some(2),
+            counterparty_timeout: Some(1),
+            nim_address: Some([0; NIM_ADDRESS_LEN]),
+            counterparty_address: Some(b"tb1qinit".to_vec()),
+            network_id: Some(1),
+            btc_pubkey: Some(init_pk),
+            ..Default::default()
+        };
+        let init_pk_seen = decode_swap(SwapKind::Propose, &encode_swap(&propose).unwrap())
+            .unwrap()
+            .btc_pubkey
+            .unwrap();
+
+        // Responder → Accept (its funder pubkey crosses the wire); the initiator decodes it.
+        let accept = SwapEnvelope {
+            swap_id: [0x01; SWAP_ID_LEN],
+            nim_address: Some([0; NIM_ADDRESS_LEN]),
+            counterparty_address: Some(b"tb1qresp".to_vec()),
+            btc_pubkey: Some(resp_pk),
+            ..Default::default()
+        };
+        let resp_pk_seen = decode_swap(SwapKind::Accept, &encode_swap(&accept).unwrap())
+            .unwrap()
+            .btc_pubkey
+            .unwrap();
+
+        let hashlock = h32(HASHLOCK);
+        // Responder builds the HTLC from (decoded initiator claimant, its own funder key).
+        let responder_leg = BtcSwapLeg::new(
+            hashlock,
+            init_pk_seen,
+            resp_pk,
+            CLTV,
+            Network::Signet,
+            Arc::new(InMemoryBtcEnclaveKey::from_secret(&[0x22u8; 32]).unwrap()),
+            dest_spk(),
+            500,
+        );
+        // Initiator builds the HTLC from (its own claimant key, decoded responder funder).
+        let initiator_leg = BtcSwapLeg::new(
+            hashlock,
+            init_pk,
+            resp_pk_seen,
+            CLTV,
+            Network::Signet,
+            Arc::new(InMemoryBtcEnclaveKey::from_secret(&[0x11u8; 32]).unwrap()),
+            dest_spk(),
+            500,
+        );
+
+        // The whole point: both independently derive the SAME P2WSH, so the swap can proceed.
+        assert_eq!(initiator_leg.htlc_address(), responder_leg.htlc_address());
+        assert_eq!(init_pk_seen, init_pk);
+        assert_eq!(resp_pk_seen, resp_pk);
+    }
 }

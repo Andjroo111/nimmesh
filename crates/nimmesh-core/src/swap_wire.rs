@@ -28,6 +28,9 @@ pub const SWAP_ID_LEN: usize = 16;
 pub const HASH_LEN: usize = 32;
 /// Length of a raw Nimiq address in bytes.
 pub const NIM_ADDRESS_LEN: usize = 20;
+/// Length of a compressed secp256k1 public key (the BTC HTLC redeem script bakes these in, and a
+/// BTC address is `hash160(pubkey)` — not reversible — so the raw pubkey must cross the wire).
+pub const BTC_PUBKEY_LEN: usize = 33;
 /// Maximum length of any single TLV value (the `len` field is one byte).
 pub const MAX_TLV_VALUE_LEN: usize = u8::MAX as usize;
 
@@ -45,6 +48,7 @@ const T_TX_WIRE: u8 = 0x0A;
 const T_TX_ID: u8 = 0x0B;
 const T_NETWORK_ID: u8 = 0x0C;
 const T_REASON: u8 = 0x0D;
+const T_BTC_PUBKEY: u8 = 0x0E;
 
 /// Which chain a leg / message refers to. The swap state machine and the mesh stay
 /// chain-agnostic; this byte is the only place the pair is named on the wire.
@@ -142,6 +146,9 @@ pub struct SwapEnvelope {
     pub network_id: Option<u8>,
     /// `0x0D` — a 1-byte abort reason code (abort).
     pub reason: Option<u8>,
+    /// `0x0E` — the **sender's** 33-byte compressed BTC pubkey (propose = initiator's claimant key;
+    /// accept = responder's funder key). Both are needed to build the shared BTC HTLC redeem script.
+    pub btc_pubkey: Option<[u8; BTC_PUBKEY_LEN]>,
 }
 
 impl SwapEnvelope {
@@ -168,9 +175,10 @@ pub fn required_fields(kind: SwapKind) -> &'static [u8] {
             T_NIM_ADDRESS,
             T_COUNTERPARTY_ADDRESS,
             T_NETWORK_ID,
+            T_BTC_PUBKEY, // the initiator's BTC claimant pubkey (to build the shared HTLC)
         ],
-        // The responder supplies the addresses its side will use.
-        SwapKind::Accept => &[T_NIM_ADDRESS, T_COUNTERPARTY_ADDRESS],
+        // The responder supplies the addresses its side will use + its BTC funder pubkey.
+        SwapKind::Accept => &[T_NIM_ADDRESS, T_COUNTERPARTY_ADDRESS, T_BTC_PUBKEY],
         SwapKind::FundingProof => &[T_LEG, T_TX_WIRE, T_TX_ID],
         SwapKind::PreimageReveal => &[T_LEG, T_TX_WIRE, T_TX_ID],
         SwapKind::Abort => &[T_REASON],
@@ -292,6 +300,9 @@ pub fn encode_swap(env: &SwapEnvelope) -> Result<Vec<u8>, SwapWireError> {
     if let Some(r) = env.reason {
         push_tlv(&mut buf, T_REASON, &[r])?;
     }
+    if let Some(pk) = &env.btc_pubkey {
+        push_tlv(&mut buf, T_BTC_PUBKEY, pk)?;
+    }
     Ok(buf)
 }
 
@@ -392,6 +403,13 @@ pub fn decode_swap(kind: SwapKind, bytes: &[u8]) -> Result<SwapEnvelope, SwapWir
                 }
                 env.reason = Some(value[0]);
             }
+            T_BTC_PUBKEY => {
+                env.btc_pubkey = Some(
+                    value
+                        .try_into()
+                        .map_err(|_| SwapWireError::BadFieldLength { tlv_type, len })?,
+                );
+            }
             // Unknown TLV type: skip its value for forward-compatibility.
             _ => {}
         }
@@ -417,6 +435,8 @@ mod tests {
     use super::*;
 
     fn propose() -> SwapEnvelope {
+        let mut btc_pubkey = [0x11u8; BTC_PUBKEY_LEN];
+        btc_pubkey[0] = 0x02; // a plausible compressed-pubkey prefix
         SwapEnvelope {
             swap_id: [0xA1; SWAP_ID_LEN],
             hashlock: Some([0x7E; HASH_LEN]),
@@ -427,6 +447,7 @@ mod tests {
             nim_address: Some([0x4D; NIM_ADDRESS_LEN]),
             counterparty_address: Some(b"bc1qexampleaddress".to_vec()),
             network_id: Some(5),
+            btc_pubkey: Some(btc_pubkey),
             ..Default::default()
         }
     }
@@ -461,7 +482,58 @@ mod tests {
     fn propose_round_trips() {
         let env = propose();
         let bytes = encode_swap(&env).unwrap();
-        assert_eq!(decode_swap(SwapKind::Propose, &bytes).unwrap(), env);
+        let decoded = decode_swap(SwapKind::Propose, &bytes).unwrap();
+        assert_eq!(decoded, env);
+        // The initiator's BTC pubkey survives the wire (needed to build the shared HTLC).
+        assert_eq!(decoded.btc_pubkey.unwrap().len(), BTC_PUBKEY_LEN);
+    }
+
+    #[test]
+    fn propose_and_accept_require_the_btc_pubkey() {
+        // A BTC HTLC can't be built without each side's raw pubkey, so the wire enforces it.
+        let mut p = propose();
+        p.btc_pubkey = None;
+        let bytes = encode_swap(&p).unwrap();
+        assert_eq!(
+            decode_swap(SwapKind::Propose, &bytes).unwrap_err(),
+            SwapWireError::MissingRequiredField {
+                tlv_type: T_BTC_PUBKEY
+            }
+        );
+
+        // Accept also requires it (the responder's funder pubkey).
+        let accept = SwapEnvelope {
+            swap_id: [0x44; SWAP_ID_LEN],
+            nim_address: Some([0x4D; NIM_ADDRESS_LEN]),
+            counterparty_address: Some(b"tb1qresponder".to_vec()),
+            btc_pubkey: Some([0x03; BTC_PUBKEY_LEN]),
+            ..Default::default()
+        };
+        let bytes = encode_swap(&accept).unwrap();
+        assert_eq!(decode_swap(SwapKind::Accept, &bytes).unwrap(), accept);
+        let mut no_pk = accept.clone();
+        no_pk.btc_pubkey = None;
+        let bytes = encode_swap(&no_pk).unwrap();
+        assert_eq!(
+            decode_swap(SwapKind::Accept, &bytes).unwrap_err(),
+            SwapWireError::MissingRequiredField {
+                tlv_type: T_BTC_PUBKEY
+            }
+        );
+    }
+
+    #[test]
+    fn btc_pubkey_wrong_length_is_rejected() {
+        let mut bytes = Vec::new();
+        push_tlv(&mut bytes, T_SWAP_ID, &[0u8; SWAP_ID_LEN]).unwrap();
+        push_tlv(&mut bytes, T_BTC_PUBKEY, &[0u8; 32]).unwrap(); // 32, not 33
+        assert_eq!(
+            decode_swap(SwapKind::Abort, &bytes).unwrap_err(),
+            SwapWireError::BadFieldLength {
+                tlv_type: T_BTC_PUBKEY,
+                len: 32
+            }
+        );
     }
 
     #[test]
