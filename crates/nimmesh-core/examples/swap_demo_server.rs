@@ -90,6 +90,15 @@ fn route(
                 snap_json(&s.snapshot()).into_bytes(),
             )
         }
+        ("POST", "/api/refund") => {
+            // The safety net: stall the swap and reclaim both legs via the timeout refund.
+            let mut s = sim.lock().unwrap();
+            let body = match s.stall_and_refund() {
+                Ok(snap) => snap_json(&snap),
+                Err(e) => format!("{{\"error\":\"{}\"}}", escape(&e.to_string())),
+            };
+            ("200 OK", "application/json", body.into_bytes())
+        }
         ("GET", "/api/state") => {
             let s = sim.lock().unwrap();
             (
@@ -141,7 +150,7 @@ fn snap_json(s: &SwapSnapshot) -> String {
         None => "null".to_string(),
     };
     format!(
-        "{{\"step\":{},\"total\":{},\"label\":\"{}\",\"initiatorPhase\":\"{}\",\"responderPhase\":\"{}\",\"nimLocked\":{},\"btcLocked\":{},\"secretRevealed\":{},\"lastTxId\":{},\"btcHtlcAddress\":\"{}\",\"done\":{}}}",
+        "{{\"step\":{},\"total\":{},\"label\":\"{}\",\"initiatorPhase\":\"{}\",\"responderPhase\":\"{}\",\"nimLocked\":{},\"btcLocked\":{},\"secretRevealed\":{},\"refunded\":{},\"lastTxId\":{},\"btcHtlcAddress\":\"{}\",\"done\":{}}}",
         s.step,
         s.total,
         escape(&s.label),
@@ -150,6 +159,7 @@ fn snap_json(s: &SwapSnapshot) -> String {
         s.nim_locked,
         s.btc_locked,
         s.secret_revealed,
+        s.refunded,
         tx,
         escape(&s.btc_htlc_address),
         s.done,

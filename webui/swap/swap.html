@@ -251,6 +251,19 @@
       </div>
     </div>
 
+    <!-- ============ SCREEN 4 — Refunded (timeout safety net) ============ -->
+    <div id="refunded" class="status-screen hidden">
+      <div class="wrapper warning nq-orange-bg">
+        <div class="spacer"></div>
+        <div class="icon-row">
+          <svg class="nq-icon" width="74" height="74" viewBox="0 0 74 74" xmlns="http://www.w3.org/2000/svg"><path d="M71.12 1.84a4.5 4.5 0 0 0-6.28 1.04l-42.1 58.74L8.68 47.54a4.5 4.5 0 1 0-6.36 6.37l17.8 17.81a4.57 4.57 0 0 0 6.84-.56l45.2-63.03a4.5 4.5 0 0 0-1.04-6.29z" fill="currentColor" stroke="currentColor" stroke-width=".8"/></svg>
+          <h1 class="title nq-h1">Refunded</h1>
+        </div>
+        <p class="message nq-text">The swap didn't complete, so it timed out and your NIM came back. No funds were lost.</p>
+        <div class="spacer"></div>
+      </div>
+    </div>
+
   </div>
 
   <!-- tiny floating phase stepper (demo only) -->
@@ -293,7 +306,7 @@
   const $ = s => document.querySelector(s);
   const screens = {
     setup: $('#screen-setup'), confirm: $('#screen-confirm'),
-    progress: $('#screen-progress'), done: $('#success'),
+    progress: $('#screen-progress'), done: $('#success'), refunded: $('#refunded'),
   };
   const walletBg = $('#wallet-bg'), scrim = $('#scrim');
   const pieceNim = $('#piece-nim'), pieceBtc = $('#piece-btc'), errToast = $('#err-toast');
@@ -336,11 +349,11 @@
   const api = path => fetch(path, { method: 'POST' }).then(r => r.json());
 
   function applyEngineSnap(snap) {
-    const show = snap.done ? 'done' : 'progress';
+    const show = snap.refunded ? 'refunded' : snap.done ? 'done' : 'progress';
     for (const [k, el] of Object.entries(screens)) el.classList.toggle('hidden', k !== show);
     walletBg.style.display = 'none'; scrim.style.display = 'none';
-    $('#phase-name').textContent = snap.done ? 'Done' : snap.label;
-    if (snap.done) return;
+    $('#phase-name').textContent = snap.refunded ? 'Refunded' : snap.done ? 'Done' : snap.label;
+    if (snap.done || snap.refunded) return;
     $('#step-count').textContent = `${snap.step}/${snap.total}`;
     $('#step-label').textContent = snap.label;
     pieceNim.classList.toggle('locked', snap.nimLocked); // gold = real NIM HTLC locked on-chain(sim)
@@ -355,6 +368,7 @@
   }
   const engineStart = async () => { await api('/api/reset'); applyEngineSnap(await api('/api/advance')); };
   const engineNext = async () => applyEngineSnap(await api('/api/advance'));
+  const engineRefund = async () => applyEngineSnap(await api('/api/refund')); // stall → timeout refund
 
   $('#start-swap').onclick = () => go(1);  // setup → confirm
   $('#authorize').onclick = () => { if (engineMode) { engineActive = true; engineStart(); } else go(2); };
@@ -365,6 +379,7 @@
   addEventListener('keydown', e => {
     if (e.key === 'ArrowRight') { if (engineMode && engineActive) engineNext(); else go(phase + 1); }
     else if (e.key === 'ArrowLeft') { if (engineMode && engineActive) { engineActive = false; go(1); } else go(phase - 1); }
+    else if (e.key === 'r' && engineMode && engineActive) engineRefund(); // demo: stall → refund
     else if (e.key === 'e' && !engineActive && PHASES[phase].screen === 'progress') { errored = !errored; render(); }
   });
   render();

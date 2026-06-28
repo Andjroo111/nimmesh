@@ -195,8 +195,9 @@ body {
 .phases i.done { background: var(--green); }
 .warn { color: #fc8702; font-weight: 700; font-size: 15px; text-align: center; margin: 16px 0 0; min-height: 20px; }
 
-/* success overlay (status-screen) */
-#success.status-screen { position: absolute; inset: 0; z-index: 10; overflow: hidden; }
+/* success / refunded overlays (status-screen) */
+#success.status-screen, #refunded.status-screen { position: absolute; inset: 0; z-index: 10; overflow: hidden; }
+#refunded .message { padding: 0 28px; }
 
 /* error toast pinned to the bottom of the navy screen (matches IMG_6740) */
 .swap-toast { position: absolute; left: 18px; right: 18px; bottom: 22px; z-index: 12; }
