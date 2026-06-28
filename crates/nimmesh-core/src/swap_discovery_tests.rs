@@ -7,10 +7,29 @@
 
 use crate::swap_intent::{Asset, SwapIntent};
 use crate::swap_session::NodeIdentity;
+use crate::swap_wire::{BTC_PUBKEY_LEN, NIM_ADDRESS_LEN};
 use crate::test_support::participant_fixtures;
 
 /// A far-future expiry, so a fresh intent stays fresh at the tests' default head of 0.
 const FRESH: u64 = 1_000_000;
+
+/// A fresh BTC-giver intent that crosses alice's 4.0 offer (asks 3.6), with `pubkey_tag` varying the
+/// claimant pubkey so each one derives a DISTINCT `swap_id` — i.e. an independent match attempt.
+fn btc_giver_intent(pubkey_tag: u8) -> SwapIntent {
+    let mut btc_pubkey = [0x33; BTC_PUBKEY_LEN];
+    btc_pubkey[0] = 0x02;
+    btc_pubkey[1] = pubkey_tag;
+    SwapIntent {
+        gives: Asset::Btc,
+        nim_amount: 180_000,
+        btc_amount: 50_000,
+        expiry_height: FRESH,
+        nim_address: [0xC3; NIM_ADDRESS_LEN],
+        btc_pubkey,
+        btc_address: b"tb1qflood".to_vec(),
+        network_id: 5,
+    }
+}
 
 /// Build a `SwapIntent` mirroring an identity's addresses, valid through `expiry_height`.
 fn intent_for(id: &NodeIdentity, gives: Asset, nim: u64, btc: u64, expiry: u64) -> SwapIntent {
@@ -207,4 +226,87 @@ fn a_relay_forwards_a_fresh_intent_but_drops_an_expired_one() {
     );
 
     node.shutdown();
+}
+
+#[test]
+fn the_intent_throttle_caps_each_sender_independently() {
+    // G36 (pure): a sender is admitted up to the per-sender cap, then dropped; a different sender has
+    // its own independent budget.
+    use crate::swap_node::{IntentThrottle, DEFAULT_INTENT_MATCH_CAP_PER_SENDER};
+
+    let mut t = IntentThrottle::new();
+    let a = [1u8; 8];
+    let b = [2u8; 8];
+    for _ in 0..DEFAULT_INTENT_MATCH_CAP_PER_SENDER {
+        assert!(t.admit(a), "a sender should be admitted up to its cap");
+    }
+    assert!(!t.admit(a), "a sender over its cap must be dropped");
+    assert!(!t.admit(a), "and stays dropped");
+    assert!(t.admit(b), "a different sender keeps its own budget");
+}
+
+#[test]
+fn one_flooder_cannot_exhaust_the_matcher_but_another_sender_still_matches() {
+    // G36: a hostile node floods many distinct rate-crossing intents (distinct pubkey → distinct
+    // swap_id, each a fresh match attempt). The per-sender throttle caps how many alice acts on, so
+    // the flooder can't fill all her swap slots — and a legit intent from a DIFFERENT sender still
+    // matches. (The concurrency cap is 16, far above the per-sender cap, so the throttle is what
+    // bounds this, not the slot count.)
+    use crate::mock_radio::MeshHarness;
+    use crate::swap::LadderParams;
+    use crate::swap_node::{derive_swap_id, DEFAULT_INTENT_MATCH_CAP_PER_SENDER};
+    use crate::test_support::{wait_until, SETTLE};
+
+    let (_swap_id, alice_id, _bob_id, _ctx) = participant_fixtures();
+    let alice_intent = intent_for(&alice_id, Asset::Nim, 200_000, 50_000, FRESH);
+    let mut alice_id = alice_id;
+    alice_id.standing_intent = Some(alice_intent.clone());
+
+    let mut h = MeshHarness::new();
+    let alice = h.add_participant("alice", &[1], alice_id, LadderParams::default());
+
+    let cap = DEFAULT_INTENT_MATCH_CAP_PER_SENDER as usize;
+    let flood = cap + 6; // well over one sender's budget, still under the 16-slot concurrency cap
+
+    // One hostile sender floods `flood` distinct matching intents.
+    let flooder = [0xF1; 8];
+    let swap_ids: Vec<_> = (0..flood)
+        .map(|i| {
+            let intent = btc_giver_intent(i as u8 + 1);
+            let id = derive_swap_id(&alice_intent, &intent);
+            alice.on_packet_received_from(
+                "link".to_string(),
+                intent_frame(&intent, flooder, 100 + i as u64),
+            );
+            id
+        })
+        .collect();
+
+    let admitted = || {
+        swap_ids
+            .iter()
+            .filter(|id| alice.swap_phase(**id).is_some())
+            .count()
+    };
+    assert!(
+        wait_until(|| admitted() >= cap, SETTLE),
+        "alice should admit up to the per-sender cap"
+    );
+    std::thread::sleep(std::time::Duration::from_millis(30));
+    assert_eq!(
+        admitted(),
+        cap,
+        "a single flooder must not exceed its per-sender match budget"
+    );
+
+    // A legit intent from a DIFFERENT sender still gets through (its own budget).
+    let other = btc_giver_intent(0xC8);
+    let other_id = derive_swap_id(&alice_intent, &other);
+    alice.on_packet_received_from("link2".to_string(), intent_frame(&other, [0xB0; 8], 9_000));
+    assert!(
+        wait_until(|| alice.swap_phase(other_id).is_some(), SETTLE),
+        "a different sender must still match through the throttle"
+    );
+
+    h.shutdown();
 }

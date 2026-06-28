@@ -358,10 +358,8 @@ impl WorkerCtx {
     }
 }
 
-/// The worker thread's persistent per-node state (single-threaded; no locks on the hot
-/// path): the dedup caches, the G6 relay [`RelayPolicy`] (degree-adaptive decision +
-/// injectable jitter/RNG), the fragment [`Reassembler`], and a monotonic clock used as
-/// the reassembler's logical time.
+/// The worker thread's persistent per-node state (single-threaded; no hot-path locks): dedup caches,
+/// the G6 relay [`RelayPolicy`], the [`Reassembler`] on a logical clock, and the swap session/throttle.
 pub(crate) struct WorkerState {
     pub(crate) relay_seen: DedupCache<RelayKey>,
     gateway_seen: DedupCache<TxId>,
@@ -382,11 +380,12 @@ pub(crate) struct WorkerState {
     /// G12: txIds we have seen a gateway receipt (ACK) for — stop re-carrying a landed tx.
     acked: DedupCache<TxId>,
     start: Instant,
-    /// G14: present iff this node is a swap **participant** (not a blind relay). When set, the node
-    /// decodes its own `swap_id` off the otherwise-opaque swap stream and floods replies.
+    /// G14: `Some` iff a swap **participant** (decodes its own `swap_id` + floods replies; relay = `None`).
     pub(crate) swap: Option<SwapSession>,
     /// G26: a participant's signer seam (`MockSigner` today; the money-path signer drops in here). `Some` iff `swap`.
     pub(crate) signer: Option<Box<dyn crate::swap_signer::SwapSigner>>,
+    /// G36: per-sender cap on intent-driven match attempts (anti-spam for the discovery layer).
+    pub(crate) intent_throttle: crate::swap_node::IntentThrottle,
 }
 
 impl WorkerState {
@@ -410,6 +409,7 @@ impl WorkerState {
             start: Instant::now(),
             swap,
             signer,
+            intent_throttle: crate::swap_node::IntentThrottle::new(),
         }
     }
 

@@ -10,11 +10,67 @@
 //! [`WorkerState`] — additionally decodes its own `swap_id` off that otherwise-opaque stream to
 //! advance its coordinator and flood a reply. A pure relay does neither.
 
+use std::collections::{HashMap, VecDeque};
+
 use crate::codec::encode;
 use crate::engine::{relay_key, relay_onward, remember, WorkerCtx, WorkerState};
-use crate::packet::{MessageType, Packet};
+use crate::packet::{MessageType, Packet, PEER_ID_LEN};
 use crate::swap::{SwapPhase, SwapRole};
 use crate::swap_wire::{decode_swap, encode_swap, SwapEnvelope, SwapKind, SwapLegId, SWAP_ID_LEN};
+
+/// G36: how many swap intents a single sender may turn into match attempts (coordinator spin-ups)
+/// before we start dropping them. Well below [`crate::swap_session::DEFAULT_MAX_CONCURRENT_SWAPS`]
+/// so one flooder can never consume more than a small slice of a matcher's swap slots.
+pub(crate) const DEFAULT_INTENT_MATCH_CAP_PER_SENDER: u32 = 4;
+/// G36: how many distinct senders the throttle tracks before evicting the oldest (memory bound).
+const MAX_TRACKED_INTENT_SENDERS: usize = 256;
+
+/// G36: a per-sender cap on how many flooded [`crate::swap_intent::SwapIntent`]s we will turn into
+/// match attempts. The concurrency cap bounds how many live coordinators a node holds, but not WHO
+/// fills them: without this, one node could flood thousands of distinct (rate-crossing) intents and
+/// consume every swap slot, starving real counterparties (RISKS.md #4, the intent-layer analogue of
+/// the relay [`crate::dedup::DedupCache`] / per-peer rate limiter). This caps each sender at
+/// `cap_per_sender` admitted match attempts and bounds the sender table with oldest-sender eviction
+/// — purely count-based, so it is deterministic with no clock. Eviction is the only recovery path,
+/// which is sufficient for sim; production would age the budget on a window.
+pub(crate) struct IntentThrottle {
+    counts: HashMap<[u8; PEER_ID_LEN], u32>,
+    order: VecDeque<[u8; PEER_ID_LEN]>,
+    cap_per_sender: u32,
+    max_senders: usize,
+}
+
+impl IntentThrottle {
+    pub(crate) fn new() -> Self {
+        IntentThrottle {
+            counts: HashMap::new(),
+            order: VecDeque::new(),
+            cap_per_sender: DEFAULT_INTENT_MATCH_CAP_PER_SENDER,
+            max_senders: MAX_TRACKED_INTENT_SENDERS,
+        }
+    }
+
+    /// Admit one match attempt from `sender`: `true` (act on it) while the sender is under its cap,
+    /// `false` (drop) once the budget is spent. A first-seen sender starts tracking, evicting the
+    /// oldest sender if the table is full.
+    pub(crate) fn admit(&mut self, sender: [u8; PEER_ID_LEN]) -> bool {
+        if let Some(count) = self.counts.get_mut(&sender) {
+            if *count >= self.cap_per_sender {
+                return false;
+            }
+            *count += 1;
+            return true;
+        }
+        if self.order.len() >= self.max_senders {
+            if let Some(old) = self.order.pop_front() {
+                self.counts.remove(&old);
+            }
+        }
+        self.order.push_back(sender);
+        self.counts.insert(sender, 1);
+        true
+    }
+}
 
 /// A swap packet (`0x40`–`0x44`). Blind-relay it onward like any flooded packet, and — if this node
 /// is a participant — route it to our own [`crate::swap_session::SwapSession`] and flood whatever
@@ -50,7 +106,9 @@ pub(crate) fn handle_swap_packet(
     if st.swap.is_some() {
         if packet.msg_type == MessageType::SwapIntent {
             // G34: discovery — match the intent against our standing one and maybe initiate a swap.
-            let replies = handle_intent(st, &packet.payload);
+            // G36: keyed by the flood's origin (`sender_id`) so the per-sender throttle can cap a
+            // hostile flooder without penalising a different advertiser.
+            let replies = handle_intent(st, packet.sender_id, &packet.payload);
             sync_swap_phases(ctx, st);
             for (mt, payload) in replies {
                 flood_swap_reply(ctx, mt, payload, st);
@@ -185,7 +243,11 @@ fn coordinator<'a>(
 /// rate (so it is the NIM-giver / initiator) and is under its concurrency cap, build an initiator
 /// coordinator and return its `Propose` to flood — turning discovery into a real swap. A BTC-giver
 /// (or no standing intent) returns nothing and just waits for a Propose.
-fn handle_intent(st: &mut WorkerState, payload: &[u8]) -> Vec<(MessageType, Vec<u8>)> {
+fn handle_intent(
+    st: &mut WorkerState,
+    sender: [u8; PEER_ID_LEN],
+    payload: &[u8],
+) -> Vec<(MessageType, Vec<u8>)> {
     let Ok(incoming) = crate::swap_intent::decode_intent(payload) else {
         return Vec::new();
     };
@@ -208,6 +270,13 @@ fn handle_intent(st: &mut WorkerState, payload: &[u8]) -> Vec<(MessageType, Vec<
         }
         (standing, session.ladder, swap_id)
     };
+
+    // G36: this is a genuinely-new matching intent (it crossed on rate, is under the concurrency cap,
+    // and isn't a swap we're already initiating). Charge it against the sender's match budget — once
+    // a flooder has spent its budget, drop further attempts so it can't monopolise our swap slots.
+    if !st.intent_throttle.admit(sender) {
+        return Vec::new();
+    }
 
     let secret = sim_secret(&swap_id);
     let ctx = crate::swap_coordinator::SwapContext {

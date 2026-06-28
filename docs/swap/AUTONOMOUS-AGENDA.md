@@ -206,11 +206,18 @@ signing stay human-gated.)
       relay). Tests: `is_fresh` boundary + round-trip; an expired-but-rate-crossing intent does not match
       (head pushed past expiry via a beacon); a relay forwards a fresh intent but drops an expired one
       (SpyRadio). 6 unit + 4 node tests, 8/8 stable.
-- [ ] **G36 — Intent anti-spam throttle.** A node can flood thousands of distinct intents to DoS matchers
+- [x] **G36 — Intent anti-spam throttle.** A node can flood thousands of distinct intents to DoS matchers
       into spinning up coordinators (the concurrency cap protects swaps, not the match step). Add a
       per-sender intent rate/dedup gate (bounded recent-intent set keyed by sender, drop on overflow)
       so a hostile flooder can't exhaust a matcher. Mirror the existing relay-cache discipline; prove a
       flood of N intents yields at most the cap's worth of match attempts.
+      Done: `IntentThrottle` in `swap_node` (per-sender admitted-match-attempt counter, cap
+      `DEFAULT_INTENT_MATCH_CAP_PER_SENDER = 4` ≪ the 16-slot concurrency cap, with oldest-sender
+      eviction bounding the table — purely count-based, no clock). `handle_intent` charges the
+      flood's `sender_id` only for a genuinely-new matching intent (after the rate/dedup/cap checks),
+      dropping once the budget is spent. Tests: pure throttle caps per sender independently; one
+      flooder fills at most the cap while a DIFFERENT sender still matches. 8/10 discovery/intent
+      tests green (added pure + node flood test), 10/10 stable.
 - [ ] **G37 — Intent re-advertise on no-match.** When a node floods an intent and nobody bites within a
       window, it should re-advertise (bounded retries, backoff) rather than going silent — the dead-zone
       case where the counterparty arrives later. Add a driver hook that re-emits the standing intent on a
