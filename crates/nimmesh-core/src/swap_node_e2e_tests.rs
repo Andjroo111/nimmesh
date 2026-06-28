@@ -528,3 +528,53 @@ fn a_rejoining_participant_catches_up_a_swap_via_store_and_forward() {
 
     h.shutdown();
 }
+
+#[test]
+fn a_full_swap_rides_a_multi_hop_relay_line_end_to_end() {
+    // G23: alice and bob are separated by FOUR blind relays in a line —
+    // alice — r1 — r2 — r3 — r4 — bob — so every swap message rides a 5-hop path through nodes with
+    // no stake in the swap. In a sparse line every relay forwards deterministically (degree 2 < the
+    // high-degree threshold), and 5 hops sits inside the 7-hop TTL budget (a message arrives at the
+    // far end with TTL 3), so the whole swap drives to Settled on both ends with no loss and no
+    // polling. Proves swaps ride a DEEP mesh, not just a direct link or a single relay.
+    use crate::mock_radio::MeshHarness;
+    use crate::swap::{LadderParams, SwapPhase};
+    use crate::swap_coordinator::SwapCoordinator;
+    use crate::test_support::{wait_until, SETTLE};
+
+    let (swap_id, alice_id, bob_id, alice_ctx) = participant_fixtures();
+    let mut h = MeshHarness::new();
+    let alice = h.add_participant("alice", &[1], alice_id, LadderParams::default());
+    let bob = h.add_participant("bob", &[2], bob_id, LadderParams::default());
+    for (i, name) in ["r1", "r2", "r3", "r4"].iter().enumerate() {
+        h.add_node(name, &[11 + i as u8]);
+    }
+    h.connect("alice", "r1");
+    h.connect("r1", "r2");
+    h.connect("r2", "r3");
+    h.connect("r3", "r4");
+    h.connect("r4", "bob");
+
+    let (coordinator, propose) =
+        SwapCoordinator::new_initiator(alice_ctx, [42u8; 32], LadderParams::default());
+    alice.start_swap(swap_id, coordinator, propose);
+
+    // The swap drives end to end across the line; with no maintenance tick to reap them, both ends
+    // stay Settled for the assertion. Neither leg is left one-sided.
+    assert!(
+        wait_until(
+            || bob.swap_phase(swap_id) == Some(SwapPhase::Settled),
+            SETTLE
+        ),
+        "bob never settled the swap across the relay line"
+    );
+    assert!(
+        wait_until(
+            || alice.swap_phase(swap_id) == Some(SwapPhase::Settled),
+            SETTLE
+        ),
+        "alice never settled the swap across the relay line"
+    );
+
+    h.shutdown();
+}

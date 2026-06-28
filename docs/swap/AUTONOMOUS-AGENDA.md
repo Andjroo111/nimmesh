@@ -114,7 +114,7 @@ mid-flight resilience + a written map**: prove a swap over many relay hops, prov
 partition that strikes *mid-swap*, and document the G8–G22 node-integration architecture so the human
 reviewer has a guide. Still sim/testnet, money-path gated.)
 
-- [ ] **G23 — Full swap over a multi-hop mesh.** Two participants separated by N blind relay hops
+- [x] **G23 — Full swap over a multi-hop mesh.** Two participants separated by N blind relay hops
       (a line topology) drive a whole swap to `Settled` — proving swaps ride a *deep* mesh end to end,
       not just a direct link or a single relay. Assert no one-sided settlement.
 - [ ] **G24 — Mid-swap partition + heal.** A swap that is mid-flight (e.g. one leg funded) when the
