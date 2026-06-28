@@ -74,6 +74,11 @@ pub mod swap_signer;
 // so a lopsided proposal is declined before a coordinator is created.
 pub mod swap_rate;
 
+// Mesh swap: crash recovery. `swap_recovery` adds `SwapSession::snapshot`/`restore` (+ the
+// `CoordinatorSnapshot` it persists) so a node that restarts with funds locked rebuilds its
+// coordinators and resumes the refund tick — "worst case is a refund" survives a crash.
+pub mod swap_recovery;
+
 // Mesh swap (F3): the swap state machine + the `Δ_safe` timelock-safety gate. `swap` owns the
 // clock-free, height-anchored lifecycle (propose → accept → fund → reveal → settle, with a refund
 // exit in every funded phase) and `assess_ladder` — the gate that REFUSES to fund a swap whose

@@ -69,6 +69,24 @@ pub struct SwapCoordinator {
     ladder: LadderParams,
 }
 
+/// G31: a serializable capture of a coordinator's essential state for crash recovery. The node
+/// persists it and rebuilds the coordinator on restart so a funds-locked swap can still refund.
+/// **Holds the initiator secret** — store it as securely as a key; deliberately NO `Debug` so it is
+/// never logged. The pending retransmit buffer is not part of it (a restarted node re-derives that).
+#[derive(Clone, PartialEq, Eq)]
+pub struct CoordinatorSnapshot {
+    /// This node's role.
+    pub role: SwapRole,
+    /// The lifecycle phase at snapshot time.
+    pub phase: SwapPhase,
+    /// The full swap context (terms, hashlock, addresses, amounts, network).
+    pub ctx: SwapContext,
+    /// The initiator's secret `S` (`None` for a responder). Sensitive.
+    pub secret: Option<[u8; HASH_LEN]>,
+    /// The peer's BTC pubkey, once it has been learned.
+    pub peer_btc_pubkey: Option<[u8; BTC_PUBKEY_LEN]>,
+}
+
 impl SwapCoordinator {
     /// The **initiator**: returns the coordinator + the `Propose` envelope to flood.
     pub fn new_initiator(
@@ -132,6 +150,34 @@ impl SwapCoordinator {
     /// responder has no secret, so this is `None` for it.
     pub(crate) fn secret(&self) -> Option<[u8; HASH_LEN]> {
         self.secret
+    }
+
+    /// G31: capture this coordinator's state for crash recovery (the node persists the snapshot and
+    /// rebuilds the coordinator on restart so a funds-locked swap can still refund).
+    pub fn to_snapshot(&self) -> CoordinatorSnapshot {
+        CoordinatorSnapshot {
+            role: self.swap.role,
+            phase: self.swap.phase,
+            ctx: self.ctx.clone(),
+            secret: self.secret,
+            peer_btc_pubkey: self.peer_btc_pubkey,
+        }
+    }
+
+    /// G31: rebuild a coordinator from a snapshot + the node's ladder, at the captured phase, so its
+    /// refund/claim re-arms exactly where the crash left it.
+    pub fn from_snapshot(snapshot: CoordinatorSnapshot, ladder: LadderParams) -> Self {
+        SwapCoordinator {
+            swap: Swap {
+                role: snapshot.role,
+                terms: snapshot.ctx.terms,
+                phase: snapshot.phase,
+            },
+            ctx: snapshot.ctx,
+            secret: snapshot.secret,
+            peer_btc_pubkey: snapshot.peer_btc_pubkey,
+            ladder,
+        }
     }
 
     /// Refund this node's own funded leg once its timeout has elapsed (`head > own timeout`) — the

@@ -162,8 +162,29 @@ close real gaps a real deployment needs, none needing a human decision.)
       hold, dropping new `Propose`s beyond the cap so a Propose-spammer cannot exhaust memory faster
       than the GC reaps. Test: past the cap, a fresh `Propose` is dropped (no new coordinator); a slot
       freed by GC/teardown lets a later one in again.
-- [ ] **G31 — Crash recovery of in-flight swaps (refund safety across restart).** `SwapSession` gains
+- [x] **G31 — Crash recovery of in-flight swaps (refund safety across restart).** `SwapSession` gains
       a `snapshot()` / `restore()` of its coordinators' essential state (swap_id, role, terms, phase,
       hashlock, initiator secret) so a node that restarts with funds locked can resume the refund
       tick. Test: snapshot a funds-locked swap, restore into a fresh session, and the refund tick
       still fires past the timeout — proving "worst case is a refund" survives a crash.
+
+When the ladder is exhausted again, re-scan and append. (Re-scan after G31: the swap stack is built,
+hardened, resilient, documented, rate/DoS/crash-safe — over the SIM mesh. The remaining sim/testnet,
+non-gated work: G31's snapshot is in-memory structs (a node needs a BYTE codec to persist to disk);
+crash recovery is proven at the session level but not yet wired into the `MeshNode` worker; and a
+swap still assumes you already KNOW your counterparty (no over-mesh discovery). Native bridge + real
+signing stay human-gated.)
+
+- [ ] **G32 — Snapshot byte codec.** Give `CoordinatorSnapshot` (and the session snapshot) a compact
+      byte `encode`/`decode` so a node can persist recovery state to disk, with a round-trip proptest
+      (any snapshot survives encode → decode) and panic-free decode of arbitrary bytes. Completes the
+      G31 persistence story (structs → bytes). Mind the secret stays opaque, never logged.
+- [ ] **G33 — Node-level crash recovery.** Wire snapshot/restore into the `MeshNode` worker: a way to
+      snapshot a participant's live session and a constructor that restores a participant from a
+      snapshot. Node e2e: a participant funds a leg, is snapshotted, "restarts" from the snapshot, and
+      its worker refund tick fires past the timeout — G31 proven over the real node loop, not just the
+      session.
+- [ ] **G34 — Swap intent broadcast + match (discovery).** Today a swap assumes you already know your
+      counterparty. Add a swap-intent message a node floods (give/take/rate it wants) and a matcher
+      that, on a compatible complementary intent, kicks off a `Propose` — so two strangers in a dead
+      zone can FIND each other before swapping. Sim/testnet; respects the rate policy + concurrency cap.

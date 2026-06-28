@@ -86,7 +86,7 @@ struct PendingAction {
 pub struct SwapSession {
     identity: NodeIdentity,
     ladder: LadderParams,
-    coordinators: HashMap<[u8; SWAP_ID_LEN], SwapCoordinator>,
+    pub(crate) coordinators: HashMap<[u8; SWAP_ID_LEN], SwapCoordinator>,
     /// G20: per-swap last-emitted action, re-flooded each tick (TTL-bounded) to recover a message
     /// dropped over a lossy mesh.
     pending: HashMap<[u8; SWAP_ID_LEN], PendingAction>,
