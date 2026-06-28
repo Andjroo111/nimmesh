@@ -233,3 +233,19 @@ signing stay human-gated.)
       "open intents seen on the mesh" view to the demo (drive the real nimiq-ui registry components, vendor
       real assets per the branding rules) listing each peer's give/take/rate + freshness — no new money
       path, just a window onto what G34–G37 already flood. UI-gated only if it needs the native bridge.
+- [ ] **G39 — Best-rate intent selection.** Today a NIM-giver initiates on the FIRST crossing BTC-giver
+      intent it sees. When several complementary intents are live, it should instead pick the one with the
+      best rate for itself (most BTC per NIM), with a deterministic tie-break, rather than first-come.
+      Collect candidates over a short bounded tick window, then initiate against the best. Sim/testnet.
+- [ ] **G40 — Amount tolerance in matching.** `would_initiate_against` crosses on rate but the initiator
+      always uses ITS own standing amounts; a 100k-NIM intent shouldn't match a counterparty that wants a
+      5M-NIM trade. Add a min/max acceptable trade-size band to the intent + an amount-compatibility check,
+      so wildly mismatched sizes don't match. Deterministic; sim/testnet.
+- [ ] **G41 — Intent authenticity signature.** An intent carries addresses but isn't authenticated — a
+      node could forge an intent "from" someone else's addresses to grief a matcher. Add a signature over
+      the intent metadata (advertiser's key) + verify-on-match, so a matcher only acts on an authentic
+      intent. Sign is over discovery metadata, NOT funds (sim key fine; money-path stays gated). Testnet.
+- [ ] **G42 — Discovery-layer observability counters.** The intent layer is unmeasurable. Count intents
+      seen / matched / dropped-by-rate / dropped-by-throttle / dropped-by-expiry / re-advertised, exposed
+      through the existing worker counters (like `rate_limited` / `recent_stored`). Read-only; no behaviour
+      change; sim/testnet.
