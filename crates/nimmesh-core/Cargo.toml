@@ -67,7 +67,7 @@ bitcoin-gateway = ["bitcoin-leg", "dep:ureq", "dep:serde_json", "dep:getrandom"]
 # P1 (mesh swap): the USDC-on-Polygon counterparty leg — EVM HTLC contract calls + tx signing. `sha3`
 # gives Keccak-256 (EVM addresses + ABI selectors). OFF by default so the pure-protocol core stays
 # lean/WASM-friendly; ON for the Polygon leg. TESTNET/Amoy-guarded (mainnet + real funds gated).
-polygon-leg = ["dep:sha3"]
+polygon-leg = ["dep:sha3", "dep:k256"]
 
 # Pure proc-macro mode (uniffi::setup_scaffolding!) — no UDL file, no build.rs.
 [dependencies]
@@ -90,6 +90,12 @@ bitcoin = { version = "0.32", optional = true }
 # P1: Keccak-256 for the USDC-on-Polygon (EVM) leg — EVM addresses + ABI function selectors. Note the
 # EVM uses Keccak-256 (`Keccak256`), NOT NIST SHA3-256. Pulled in only by `polygon-leg`. Pure Rust.
 sha3 = { version = "0.10", optional = true }
+
+# P4c: the EVM secp256k1 signer (mesh swap). `k256` (RustCrypto, PURE RUST → WASM-friendly, unlike
+# the C `secp256k1` the BTC leg uses) provides RFC-6979 deterministic ECDSA with recoverable
+# signatures + low-s normalization (EIP-2). OPTIONAL, pulled in ONLY by `polygon-leg` so the core
+# stays lean. TESTNET only; signing a mainnet tx / a real funded key is owner-gated.
+k256 = { version = "0.13", optional = true, features = ["ecdsa"] }
 
 # G11: optional encrypted memo / 1:1 chat. `snow` is the Noise Protocol implementation
 # driving the `Noise_XX_25519_ChaChaPoly_SHA256` mutual-auth, identity-hiding handshake;

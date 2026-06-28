@@ -97,11 +97,22 @@ leg was validated vs `bitcoinjs-lib`; the EVM leg vs known keccak/ABI vectors + 
       reproduced through the `EvmSigner` seam (a test-only `VectorSigner`). Also `eip155_v` (0/1 ×
       chainId 1 + Amoy 80002) + `rlp_int` strip cases. KEY-FREE — no secp256k1, no key, no RPC, no
       broadcast. Gate green ×3, clippy clean ×3, `evm_rlp.rs` 361 lines, `sha3` absent from default tree.
-- [ ] **P4c — real secp256k1 `EvmSigner` (GATED).** A real RFC-6979/secp256k1 implementation of
-      `EvmSigner` behind a key seam (seed/key never crosses FFI, like `btc::BtcEnclaveKey`) producing
-      `(r,s,recovery)` for the `signing_hash`; validate end-to-end by signing the canonical tx with the
-      test key 0x4646…46 and matching the published raw tx. Testnet/Amoy only; **real signing key +
-      mainnet + broadcast = needs:owner**. Likely reuses the secp256k1 the `bitcoin` crate bundles.
+- [x] **P4c — real secp256k1 `EvmSigner`.** Done: `evm_signer::LocalEvmKey` implements the P4b
+      `EvmSigner` trait with **RFC-6979 deterministic** ECDSA + **EIP-2 low-s** via `k256` (RustCrypto,
+      PURE RUST → WASM-friendly, OFF by default — verified `k256` is absent from the default `cargo
+      tree`, present only under `polygon-leg`). The 32-byte secret lives behind the seam (EVM mirror of
+      `btc::InMemoryBtcEnclaveKey`; secret-bearing ctor not FFI-exported). **Validated end to end vs the
+      published EIP-155 spec vector**: signing the canonical tx hash with the PUBLIC test key 0x4646…46
+      yields exactly r=0x28ef61…6276, s=0x67cbe9…6d83, recovery=0; `LegacyTx::sign_with(&key)`
+      reproduces the published raw tx f86c09…a3b6d83 byte-for-byte; and `key.address()` =
+      `0x9d8a62f656a8d1615c1294fd71e9cfb3e4855a4f` (known address for that key). RFC-6979 → deterministic
+      (not flaky); zero-secret rejected. Testnet/Amoy only — **real funded key + mainnet + broadcast =
+      needs:owner** (no RPC/broadcast here). Gate green ×3, clippy clean ×3, `evm_signer.rs` 166 lines.
+
+**P4 (EVM tx + signing) is COMPLETE** — P4a (RLP + EIP-155 signing-hash), P4b (signed-tx assembly +
+`EvmSigner` seam), P4c (real `k256` signer), all validated vs published EIP-155 vectors. The signing
+stack can produce a byte-exact signed Polygon tx; what stays owner-gated is a real funded key, mainnet,
+and the actual broadcast (an RPC client).
 - [ ] **P5 — Discovery for USDC.** Extend `SwapIntent`'s `Asset` to include `Usdc` so NIM⇄USDC pairs
       discover over the mesh exactly like NIM⇄BTC; tests.
 

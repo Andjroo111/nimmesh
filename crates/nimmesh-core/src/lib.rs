@@ -153,6 +153,13 @@ pub mod evm_abi;
 #[cfg(feature = "polygon-leg")]
 pub mod evm_rlp;
 
+// Mesh swap (P4c): the real secp256k1 `EvmSigner`, behind `polygon-leg`. `evm_signer::LocalEvmKey`
+// signs the P4a/P4b EIP-155 hash with RFC-6979 deterministic ECDSA + EIP-2 low-s (via `k256`, pure
+// Rust), the EVM mirror of `btc::BtcEnclaveKey` — the secret never leaves the seam. Validated vs the
+// published EIP-155 test-key vector. Testnet/Amoy only; real funded key + mainnet + broadcast gated.
+#[cfg(feature = "polygon-leg")]
+pub mod evm_signer;
+
 // Mesh swap: the REAL Bitcoin swap leg (behind `bitcoin-leg`) — the BTC-native analog of
 // `swap_builder::NimiqLeg`. Wraps `btc::BtcHtlcParams` + signs through the `btc::BtcEnclaveKey`
 // seam, exposing `htlc_address` / `build_claim` / `build_refund`. Supersedes the BTC half of the
