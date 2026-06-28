@@ -162,3 +162,60 @@ impl BleRadio for SpyRadio {
         self.stopped.store(true, Ordering::SeqCst);
     }
 }
+
+// --- Mesh-swap participant fixtures (shared by the swap node e2e + adversarial suites) -----------
+
+/// Luna the initiator gives on the NIM leg.
+pub(crate) const GIVE_NIM: u64 = 100_000;
+/// Sats the responder gives on the BTC leg.
+pub(crate) const TAKE_BTC: u64 = 50_000;
+const T_A: u64 = 10_000; // NIM-leg timeout (longer)
+const T_B: u64 = 5_000; // counterparty-leg timeout (shorter)
+
+/// The proven-safe ladder used across the swap node tests.
+pub(crate) fn terms() -> crate::swap::SwapTerms {
+    crate::swap::SwapTerms {
+        nim_timeout: T_A,
+        counterparty_timeout: T_B,
+    }
+}
+
+/// A `(swap_id, alice identity, bob identity, alice's initiator context)` tuple for a node-level
+/// swap (alice gives NIM + wants BTC; hashlock = SHA-256 of the `[42; 32]` secret the tests use).
+pub(crate) fn participant_fixtures() -> (
+    [u8; 16],
+    crate::swap_session::NodeIdentity,
+    crate::swap_session::NodeIdentity,
+    crate::swap_coordinator::SwapContext,
+) {
+    use crate::swap_coordinator::SwapContext;
+    use crate::swap_session::NodeIdentity;
+    let swap_id = [0x7A; 16];
+    let pk = |b: u8| {
+        let mut k = [b; 33];
+        k[0] = 0x02;
+        k
+    };
+    let alice_id = NodeIdentity {
+        nim_address: [0xA1; 20],
+        btc_address: b"tb1qalice".to_vec(),
+        btc_pubkey: pk(0x11),
+    };
+    let bob_id = NodeIdentity {
+        nim_address: [0xB2; 20],
+        btc_address: b"tb1qbob".to_vec(),
+        btc_pubkey: pk(0x22),
+    };
+    let alice_ctx = SwapContext {
+        swap_id,
+        terms: terms(),
+        hashlock: crate::swap_leg::sha256(&[42u8; 32]),
+        nim_address: alice_id.nim_address,
+        btc_address: alice_id.btc_address.clone(),
+        btc_pubkey: alice_id.btc_pubkey,
+        give_amount: GIVE_NIM,
+        take_amount: TAKE_BTC,
+        network_id: 5,
+    };
+    (swap_id, alice_id, bob_id, alice_ctx)
+}

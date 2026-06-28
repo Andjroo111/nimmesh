@@ -280,6 +280,8 @@ mod hardening_e2e_tests;
 #[cfg(test)]
 mod send_e2e_tests;
 #[cfg(test)]
+mod swap_adversarial_tests;
+#[cfg(test)]
 mod swap_e2e_tests;
 #[cfg(test)]
 mod swap_node_e2e_tests;

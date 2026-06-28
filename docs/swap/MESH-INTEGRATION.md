@@ -132,9 +132,11 @@ prematurely.
 
 ## Resilience properties and where they are proven
 
-All node-level proofs live in `crates/nimmesh-core/src/swap_node_e2e_tests.rs`, driving real
-`MeshNode` worker loops over the `mock_radio` virtual mesh. Hostile-input + retransmit-budget unit
-proofs live in `swap_session.rs`; a fuzz proof lives in `tests/swap_session_proptests.rs`.
+Node-level proofs live in `crates/nimmesh-core/src/swap_node_e2e_tests.rs` (and the hostile-relay
+ones in `swap_adversarial_tests.rs`), driving real `MeshNode` worker loops over the `mock_radio`
+virtual mesh; shared fixtures (`participant_fixtures` / `terms`) are in `test_support.rs`.
+Hostile-input + retransmit-budget unit proofs live in `swap_session.rs`; a fuzz proof lives in
+`tests/swap_session_proptests.rs`; the signer-contract unit proof in `swap_signer.rs`.
 
 | Property | Proving test (`swap_node_e2e_tests.rs`) |
 |----------|------------------------------------------|
@@ -149,6 +151,8 @@ proofs live in `swap_session.rs`; a fuzz proof lives in `tests/swap_session_prop
 | Depth: a whole swap over a 5-hop blind relay line | `a_full_swap_rides_a_multi_hop_relay_line_end_to_end` |
 | Mid-swap outage: partition while funds-locked, recover after heal | `a_swap_partitioned_mid_flight_recovers_after_the_heal` |
 | Signer seam is pluggable: a different `SwapSigner` drives a full swap | `a_full_swap_drives_through_a_pluggable_signer` |
+| Hostile relay can't learn the swap / extract S (`swap_adversarial_tests.rs`) | `a_blind_relay_carries_a_swap_without_learning_it` |
+| Hostile relay can't forge a settlement: wrong-secret reveal rejected (`swap_adversarial_tests.rs`) | `a_forged_reveal_with_the_wrong_secret_cannot_settle_a_participant` |
 
 The recurring no-one-sided check: with no head beacon the head stays 0, so a coordinator can only
 leave the session via `Settled → reap` (never stale, never refund). So "both sides go empty" proves

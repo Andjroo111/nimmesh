@@ -138,7 +138,7 @@ human-gated.)
       node calls to turn a swap action into signed funding/claim `tx_wire` bytes (today `drive_swap`
       inlines stand-ins), and drive a full swap through a deterministic **mock** signer so the seam is
       proven the right shape for the real NIM/BTC signer to drop into later. No real keys, no broadcast.
-- [ ] **G27 — Adversarial blind relay cannot break a swap.** A node-level proof that a relay carrying
+- [x] **G27 — Adversarial blind relay cannot break a swap.** A node-level proof that a relay carrying
       every swap packet (it sees the whole flooded stream) still cannot extract `S` before the reveal,
       cannot forge a `FundingProof`/settlement the participants accept, and cannot force a one-sided
       loss by selectively dropping (the timeout refund + retransmit protect). Builds on the protocol
