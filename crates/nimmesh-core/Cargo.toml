@@ -36,6 +36,11 @@ required-features = ["gateway-rpc"]
 name = "live_signet_btc_htlc"
 required-features = ["bitcoin-gateway"]
 
+# Mesh swap B4: the full atomic NIM<->BTC swap live on two chains (one secret unlocks both legs).
+[[example]]
+name = "live_cross_chain_swap"
+required-features = ["gateway-rpc", "bitcoin-gateway"]
+
 [features]
 # G8: the real blocking HTTP JSON-RPC gateway client (`ureq` + `serde_json`) + the
 # keypair-entropy source for the live example. OFF by default so the pure-protocol core

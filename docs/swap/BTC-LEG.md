@@ -67,7 +67,7 @@ Both legs use a **time-based** timeout (the NIM-leg fix carries over):
 | **B1** | `BitcoinLeg` (Rust, `bitcoin-leg`): HTLC redeem script + P2WSH + claim/refund txs (secp256k1) | no | ✅ done — **byte-exact vs `bitcoinjs-lib`** (script, address, AND the full signed claim+refund txs) |
 | **B2** | BTC **gateway** — broadcast + confirmation via `mempool.space/signet/api` (no node) | no | ✅ done (`btc_gateway`, `bitcoin-gateway` feature; mainnet base refused) |
 | **B3** | **LIVE signet HTLC proof** — fund P2WSH → claim-with-preimage | **needs:owner** (faucet) | 🟡 example built + ready (`examples/live_signet_btc_htlc`); live run needs a faucet tap |
-| **B4** | **Full cross-chain swap, LIVE** — one `H`: NIM HTLC + BTC HTLC, claim-reveals-`S`, `S`-claims-the-other | **needs:owner** (faucet) | todo (orchestration; live run needs the BTC faucet tap) |
+| **B4** | **Full cross-chain swap, LIVE** — one `H`: NIM HTLC + BTC HTLC, claim-reveals-`S`, `S`-claims-the-other | no | ✅ **DONE — live on-chain**: NIM block 4535808 + BTC tx `e6a3422d…`, one secret, both wallets paid |
 
 ## ⚠️ The one gate: signet funding (`needs:owner`)
 

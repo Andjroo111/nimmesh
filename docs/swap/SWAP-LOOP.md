@@ -183,3 +183,12 @@ and `main` is at a clean point — proposed to Andjroo, not taken by the loop.
   **The one gate left = signet funding** (`needs:owner`): every signet faucet is human-gated
   (captcha/token), so the live B3 + B4 cross-chain runs need a one-time faucet tap. The autonomous
   BTC build is complete; the bytes are validated against the reference impl. Hand-off in BTC-LEG.md.
+- **2026-06-27** — **✅✅ B4 DONE — full atomic NIM⇄BTC swap, LIVE on two chains.** New
+  `examples/live_cross_chain_swap.rs` (gateway-rpc + bitcoin-gateway): one secret `S`, one hashlock
+  `H = SHA-256(S)` locking BOTH legs. Auto-funded Alice (NIM faucet) → NIM HTLC to Bob (conf. block
+  4535318); BTC HTLC funded from a recycled wallet (no faucet) → Alice claimed the BTC revealing `S`
+  (`e6a3422d…`, 113799 sat to her wallet) → Bob claimed the NIM with the SAME `S` (conf. block
+  4535808, 2 NIM to his wallet). Verified on-chain: the BTC witness preimage == the NIM claim secret
+  == `S`, and `SHA256(S)` == the `H` that locked both legs. **The mesh-swap feature is end-to-end
+  proven: protocol + atomicity + both legs byte-validated vs reference libs AND live-confirmed on
+  both chains + a real cross-chain swap.** Gated remainder: on-device BLE shim + mainnet.
