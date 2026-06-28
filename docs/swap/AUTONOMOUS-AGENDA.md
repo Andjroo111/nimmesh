@@ -407,10 +407,16 @@ signing stay human-gated.)
       `ether.partition` (peers stay connected, count unchanged → no reset, stays silent), so an actual
       reconnect resets while a delivery-only outage keeps the limit. G37/G47 tests unchanged. 20/20 stable.
 
-- [ ] **G52 — UniFFI discovery-binding smoke test.** The native apps reach discovery through UniFFI; add
-      a smoke check that the generated Swift/Kotlin (or the `swap_ffi` UDL surface) still exposes the
-      discovery entry points and that the bindings generate without error. If real binding generation needs
-      cargo-swift / the native toolchain (not present headless) → run what's available and log the rest BLOCKED.
+- [~] **G52 — UniFFI discovery-binding smoke test — BLOCKED (owner-gated, OG-6).** Triaged: blocked on
+      TWO gates. (1) The discovery API (`swap_intent` / `swap_node`) is NOT `#[uniffi::export]`ed — it has
+      no FFI surface at all (only `swap_ffi::SwapEngineHandle`, `node`, `radio`, etc. are exported), so
+      there are no discovery binding entry points to smoke-test; exposing discovery over UniFFI is an
+      owner/architecture decision tied to the native bridge (OG-1) — what discovery API to hand to native.
+      (2) Generating + compiling the native bindings needs the toolchain workflow (cargo-swift is present
+      but needs a Swift toolchain to compile its output; no `uniffi-bindgen` binary) — not a deterministic
+      headless gate. The only headless-checkable part — that `uniffi::setup_scaffolding!` + the existing
+      `SwapEngineHandle` surface compile — is already covered by `cargo build`. Recorded as OG-6 in
+      `docs/swap/OWNER-GATED.md`. Not faking a binding test.
 - [x] **G53 — Per-link (src) intent rate limit.** G36 throttles by the intent's ORIGIN `sender_id`; add a
       second gate by the IMMEDIATE link the flood arrived on (`src`), so a single hostile NEIGHBOUR relaying
       a spoofed-origin flood is also bounded. Mirror the G36 structure; prove a neighbour spraying distinct
@@ -448,10 +454,17 @@ signing stay human-gated.)
       driving a real node fed a forged flood → PossiblyUnderAttack. 8/8 stable. (Lifts to a non-test
       accessor over the live `IntentMetrics` if ever surfaced in production — see G57.)
 
-- [ ] **G56 — Owner-gated ledger doc-lint.** A `cargo test` that parses `docs/swap/OWNER-GATED.md`,
+- [x] **G56 — Owner-gated ledger doc-lint.** A `cargo test` that parses `docs/swap/OWNER-GATED.md`,
       extracts the code seams it cites (file paths + function/trait names), and asserts each still EXISTS
       in the tree — so the ledger can't rot when a seam is renamed (the docs analogue of G49). Read-only;
       deterministic; std-only. Sim/testnet.
+      Done: `tests/owner_gated_doclint.rs` (std-only, CWD-independent via `CARGO_MANIFEST_DIR`) — (1) a
+      curated allow-list of 15 cited seams (`SwapSigner`, `MockSigner`, `build_funding`/`build_claim`,
+      `sim_secret`, `sign_intent_ephemeral`, `NimiqLeg`, `BtcEnclaveKey`, `BitcoinLeg`, `LegBuildError`,
+      `SwapEngineHandle`, `IntentMetrics`, `handle_intent`, `initiate_from_intent`, `setup_scaffolding`)
+      each asserted present in BOTH the ledger AND the concatenated crate `src/` text (so a rename that
+      misses the doc fails the gate); (2) the cited file paths exist + their basenames are cited.
+      Curated (not every backtick) to stay false-positive-free. 2 tests, 5/5 stable.
 - [ ] **G57 — Surface discovery health in the demo + a non-test accessor.** Lift the G55 `DiscoveryHealth`
       to a real (non-cfg-test) derivation over the live `IntentMetrics` (so it's an actual diagnostic, not
       just a test), expose it via a `MeshNode` accessor + a `GET /api/health` fixture endpoint (like G54),

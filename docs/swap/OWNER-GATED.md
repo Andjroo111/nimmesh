@@ -13,6 +13,7 @@ asides. Each item names the EXACT code seam the gated work plugs into.
 | OG-3 | Real swap secret `S` from a CSPRNG (replace `sim_secret`) | money-path | G34 |
 | OG-4 | Mainnet / real funds / live broadcast | mainnet / real-funds | whole money-path |
 | OG-5 | Deeper discovery privacy (commit-reveal addressing, amount mixing) | money-path + match-handshake | G45 |
+| OG-6 | Expose discovery over UniFFI + generate native bindings | native-bridge / toolchain | G52 |
 
 ---
 
@@ -77,3 +78,22 @@ them to the matched counterparty on `Propose`) changes the `SwapIntent` wire (`s
 the match→propose handshake (`swap_node::handle_intent` → `initiate_from_intent`) AND the money-path
 address wiring; amount bucketing/mixing is a further step. **Why gated:** it touches the gated
 money-path and the negotiation handshake, so it's an architecture decision, not autonomous work.
+
+## OG-6 — Expose discovery over UniFFI + generate native bindings
+
+**State:** the native apps reach the swap **engine** through UniFFI (`swap_ffi::SwapEngineHandle`,
+plus `node`, `radio`, `nimiq::signer`), but the **discovery** layer (`swap_intent`, `swap_node`) has
+**no `#[uniffi::export]` surface at all** — native code can't see intents, matching, or the
+`IntentMetrics`. So there are no discovery binding entry points to smoke-test, and a "discovery
+UniFFI" test (G52) has nothing to assert.
+
+**Seam to wire (gated):** decide and add the discovery FFI surface — what a native app needs (advertise
+an intent, read the open-intents list, read the discovery metrics/health) — as `#[uniffi::export]`
+functions/objects over `swap_node` / `swap_intent`, then generate + compile the Swift/Kotlin bindings.
+
+**Why gated:** (1) *which* discovery API to expose is an architecture decision tied to the native
+WebView↔Rust bridge (OG-1) and the live demo wiring; (2) generating + compiling native bindings needs
+the toolchain workflow (`cargo-swift` is present, but compiling its output needs a Swift toolchain;
+no `uniffi-bindgen` binary headless) — not a deterministic CI gate. The only headless-checkable part —
+that `uniffi::setup_scaffolding!` and the existing exported surface compile — is already covered by
+`cargo build`.
