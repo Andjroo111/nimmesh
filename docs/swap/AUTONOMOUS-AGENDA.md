@@ -14,7 +14,7 @@ green, log one line, and schedule the next iteration. No human prompt between go
       round-trip any valid envelope incl. the new `btc_pubkey`.
 - [x] **G4 — Mesh swap message builder.** Build `Propose`/`Accept`/`FundingProof`/`PreimageReveal`
       envelopes from engine state (the engine↔wire bridge), with tests.
-- [ ] **G5 — Full swap negotiated over the mock mesh.** Drive a complete swap between two MockRadio
+- [x] **G5 — Full swap negotiated over the mock mesh.** Drive a complete swap between two MockRadio
       nodes (Propose→Accept→fund→reveal) — swaps actually working over the transport.
 - [ ] **G6 — Demo polish.** Engine-driven auto-advance + a responder-perspective toggle.
 - [ ] **G7 — Docs sweep.** Refresh SWAP / FEASIBILITY / BTC-LEG to match the shipped engine+UI+demo.

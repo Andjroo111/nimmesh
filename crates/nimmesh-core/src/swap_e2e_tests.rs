@@ -311,3 +311,142 @@ fn a_swap_funding_proof_rides_the_multi_hop_mesh_blindly() {
         "the swap packet never reached the destination node"
     );
 }
+
+#[test]
+fn a_full_swap_is_negotiated_and_settled_via_wire_messages() {
+    // G5: a complete swap expressed as the wire message SEQUENCE — Propose → Accept → FundingProof
+    // (NIM) → FundingProof (BTC) → PreimageReveal — each message built by `swap_messages`, wrapped
+    // in its packet and round-tripped through the REAL packet codec (sender → wire → receiver),
+    // driving both state machines + escrows to a settled, atomic swap. Proves the swap is fully
+    // negotiable over the mesh, not just modeled.
+    use crate::codec::{decode, encode};
+    use crate::packet::{MessageType, Packet, BROADCAST_RECIPIENT};
+    use crate::swap_leg::HtlcParams;
+    use crate::swap_messages::{tx_envelope, SwapAcceptance, SwapProposal};
+    use crate::swap_wire::{decode_swap, encode_swap, SwapEnvelope, SwapKind, SWAP_ID_LEN};
+
+    // Carry an envelope over the wire: build its packet, encode, decode, decode the swap payload.
+    let over_wire = |mt: MessageType, env: &SwapEnvelope| -> SwapEnvelope {
+        let mut pkt = Packet::new(mt, [0u8; 8], encode_swap(env).unwrap());
+        pkt.recipient_id = Some(BROADCAST_RECIPIENT);
+        let back = decode(&encode(&pkt).unwrap()).unwrap();
+        decode_swap(SwapKind::from_message_type(mt).unwrap(), &back.payload).unwrap()
+    };
+
+    let p = LadderParams::default();
+    let (secret, head) = ([42u8; 32], 0);
+    let hashlock = sha256(&secret);
+    let swap_id = [0x7A; SWAP_ID_LEN];
+    let alice_btc_pk = {
+        let mut k = [0x11; 33];
+        k[0] = 0x02;
+        k
+    };
+    let bob_btc_pk = {
+        let mut k = [0x22; 33];
+        k[0] = 0x03;
+        k
+    };
+
+    let mut alice = Swap::new(SwapRole::Initiator, terms());
+    let mut bob = Swap::new(SwapRole::Responder, terms());
+    let mut nim_leg = MockLeg::new();
+    let mut btc_leg = MockLeg::new();
+
+    // 1) Propose (alice → bob): bob learns the terms + alice's BTC claimant pubkey.
+    let proposal = SwapProposal {
+        swap_id,
+        hashlock,
+        give_amount: GIVE_NIM,
+        take_amount: TAKE_BTC,
+        terms: terms(),
+        nim_address: [0xA1; 20],
+        btc_address: b"tb1qalice".to_vec(),
+        btc_pubkey: alice_btc_pk,
+        network_id: 5,
+    };
+    let bob_sees = SwapProposal::from_envelope(&over_wire(
+        MessageType::SwapPropose,
+        &proposal.to_envelope(),
+    ))
+    .unwrap();
+    assert_eq!(bob_sees.hashlock, hashlock);
+    assert_eq!(bob_sees.btc_pubkey, alice_btc_pk);
+    bob.accept(head, &p).unwrap();
+
+    // 2) Accept (bob → alice): alice learns bob's BTC funder pubkey. Both now hold both pubkeys.
+    let acceptance = SwapAcceptance {
+        swap_id,
+        nim_address: [0xB2; 20],
+        btc_address: b"tb1qbob".to_vec(),
+        btc_pubkey: bob_btc_pk,
+    };
+    let alice_sees = SwapAcceptance::from_envelope(&over_wire(
+        MessageType::SwapAccept,
+        &acceptance.to_envelope(),
+    ))
+    .unwrap();
+    assert_eq!(alice_sees.btc_pubkey, bob_btc_pk);
+    alice.accept(head, &p).unwrap();
+
+    // 3) Alice funds the NIM leg → FundingProof(Nim) over the wire → bob observes it.
+    alice.fund(head, &p).unwrap();
+    nim_leg
+        .fund(HtlcParams {
+            hashlock,
+            amount: GIVE_NIM,
+            timeout: T_A,
+        })
+        .unwrap();
+    let _ = over_wire(
+        MessageType::SwapFundingProof,
+        &tx_envelope(swap_id, SwapLegId::Nim, vec![0x11; 248], [0xC1; 32]),
+    );
+    bob.observe_initiator_funded().unwrap();
+
+    // 4) Bob funds the BTC leg → FundingProof(Counterparty) over the wire → both reach BothFunded.
+    bob.fund(head, &p).unwrap();
+    btc_leg
+        .fund(HtlcParams {
+            hashlock,
+            amount: TAKE_BTC,
+            timeout: T_B,
+        })
+        .unwrap();
+    let _ = over_wire(
+        MessageType::SwapFundingProof,
+        &tx_envelope(
+            swap_id,
+            SwapLegId::Counterparty,
+            vec![0x22; 120],
+            [0xC2; 32],
+        ),
+    );
+    alice.observe_counterparty_funded().unwrap();
+    bob.observe_counterparty_funded().unwrap();
+
+    // 5) Alice claims BTC (reveals S) → PreimageReveal carries the claim (with S) over the wire.
+    alice.reveal_and_claim().unwrap();
+    btc_leg.claim(secret, head).unwrap();
+    let reveal = over_wire(
+        MessageType::SwapPreimageReveal,
+        &tx_envelope(
+            swap_id,
+            SwapLegId::Counterparty,
+            secret.to_vec(),
+            [0xC3; 32],
+        ),
+    );
+    let revealed: [u8; 32] = reveal.tx_wire.unwrap()[..32].try_into().unwrap(); // bob reads S off it
+
+    // 6) Bob claims NIM with the revealed S; both settle. Atomic, end to end over the wire.
+    assert_eq!(revealed, secret);
+    bob.observe_secret().unwrap();
+    nim_leg.claim(revealed, head).unwrap();
+    alice.observe_settled().unwrap();
+    bob.observe_settled().unwrap();
+
+    assert_eq!(alice.phase, SwapPhase::Settled);
+    assert_eq!(bob.phase, SwapPhase::Settled);
+    assert_no_one_sided(&nim_leg, &btc_leg);
+}
