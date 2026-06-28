@@ -1,4 +1,4 @@
-//! # swap_discovery_stress_tests — the whole discovery stack, together (G44 + G47, cfg(test))
+//! # swap_discovery_stress_tests — the whole discovery stack, together (G44 + G47 + G51, cfg(test))
 //!
 //! Many-node proofs that G34–G43 hold up as a system, not just per-goal:
 //!  1. Several complementary pairs sharing one ether all DISCOVER (re-advertise G37 → best-rate window
@@ -8,6 +8,8 @@
 //!  3. (G47) Deterministic recovery under loss via PARTITION/HEAL: a cut pair doesn't discover; healed
 //!     within the bounded re-advertise budget it then discovers + settles — and a partition that
 //!     OUTLASTS the budget leaves the pair silent (the by-design limit of G37's bounded re-advertise).
+//!  4. (G51) An ACTUAL reconnect (peers disconnect, then `on_peer_connected` again) RESETS the
+//!     re-advertise budget, so a pair that exhausted it while cut off discovers + settles on reconnect.
 //!
 //! Deterministic by construction: no probabilistic loss (the per-packet timing of a lossy ether makes
 //! "eventually settles within a fixed budget" flaky); discovery is driven by polling every node's
@@ -274,6 +276,54 @@ fn a_partition_outlasting_the_re_advertise_budget_leaves_the_pair_silent() {
     assert!(
         nim.swap_phase(swap_id).is_none(),
         "a partition past the re-advertise budget leaves the pair silent"
+    );
+
+    h.shutdown();
+}
+
+#[test]
+fn a_reconnected_peer_resets_the_re_advertise_budget_and_the_pair_settles() {
+    // G51: lift the G47 limit for an ACTUAL reconnect. The pair connects, then the link DROPS (the
+    // peers disconnect); the BTC-giver spends its whole re-advertise budget while cut off, so nothing
+    // discovers. On RECONNECT the peer set grows, which resets the budget — so the pair now discovers +
+    // settles. (Contrast the G47 budget-exhaustion test: `ether.partition` never drops the peer, so the
+    // count is unchanged and it stays silent — delivery-loss-without-disconnect keeps the limit.)
+    let mut h = MeshHarness::new();
+    let (nim, btc, swap_id) = complementary_pair(&mut h, 0x64, 0x65);
+
+    // The link drops.
+    nim.on_peer_disconnected("btc".to_string());
+    btc.on_peer_disconnected("nim".to_string());
+
+    // The BTC-giver burns its whole re-advertise budget while cut off — nothing reaches nim.
+    for _ in 0..26 {
+        btc.poll_sync();
+        std::thread::sleep(Duration::from_millis(3));
+    }
+    std::thread::sleep(Duration::from_millis(20));
+    assert!(
+        nim.swap_phase(swap_id).is_none(),
+        "a disconnected pair must not discover"
+    );
+
+    // The link comes back → the peer set grows → the re-advertise budget resets → discover + settle.
+    nim.on_peer_connected("btc".to_string());
+    btc.on_peer_connected("nim".to_string());
+    let settled = || {
+        nim.swap_phase(swap_id) == Some(SwapPhase::Settled)
+            && btc.swap_phase(swap_id) == Some(SwapPhase::Settled)
+    };
+    let mut ok = false;
+    for _ in 0..60 {
+        tick_round(&nim, &btc);
+        if settled() {
+            ok = true;
+            break;
+        }
+    }
+    assert!(
+        ok,
+        "after reconnect the reset re-advertise budget should discover + settle"
     );
 
     h.shutdown();

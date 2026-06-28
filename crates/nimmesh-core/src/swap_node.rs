@@ -210,6 +210,9 @@ pub(crate) struct IntentState {
     pub(crate) throttle: IntentThrottle,
     pub(crate) advertiser: IntentAdvertiser,
     pub(crate) matcher: IntentMatcher,
+    /// G51: the peer count at the last maintenance tick — a growth signals a (re)connected link, which
+    /// resets the re-advertise budget so a node that went silent while cut off advertises again.
+    pub(crate) last_peer_count: usize,
 }
 
 impl IntentState {
@@ -218,6 +221,7 @@ impl IntentState {
             throttle: IntentThrottle::new(),
             advertiser: IntentAdvertiser::new(),
             matcher: IntentMatcher::new(),
+            last_peer_count: 0,
         }
     }
 }
@@ -686,6 +690,16 @@ pub(crate) fn gc_tick(ctx: &WorkerCtx, st: &mut WorkerState) {
 /// standing intent on the [`IntentAdvertiser`]'s bounded backing-off schedule, so a counterparty that
 /// only later comes into range can still find it. Once a swap forms we stop and reset the budget.
 fn readvertise_intent(ctx: &WorkerCtx, st: &mut WorkerState, head: u64) {
+    // G51: a node whose peer set GREW since the last tick just (re)connected a link — reset the
+    // re-advertise budget so an advertiser that exhausted it while cut off starts advertising again.
+    // (A delivery-only outage that never drops the peer, e.g. `ether.partition`, leaves the count
+    // unchanged and so keeps the G37 budget limit — see the G47 budget-exhaustion test.)
+    let peers = ctx.peer_degree();
+    if peers > st.intents.last_peer_count {
+        st.intents.advertiser.reset();
+    }
+    st.intents.last_peer_count = peers;
+
     let intent = {
         let Some(session) = st.swap.as_ref() else {
             return;

@@ -394,7 +394,32 @@ signing stay human-gated.)
       funds/live broadcast; OG-5 deeper privacy commit-reveal + mixing from DISCOVERY-PRIVACY.md) — each
       with id, why-gated, the exact file+fn/trait seam, and source goals; grepped from the real code, not
       invented. Cross-linked from the agenda header. Docs only; Rust gate re-run to confirm no drift.
-- [ ] **G51 — Re-advertise resume on reconnect.** Lift the G47 budget-exhaustion limit: when a node's
+- [x] **G51 — Re-advertise resume on reconnect.** Lift the G47 budget-exhaustion limit: when a node's
       peer set changes (a new link after a partition heal), reset the standing-intent re-advertise budget
       so a long-partitioned advertiser starts advertising again on reconnect. Add a test: partition past
       the budget, heal, and (with the reset) prove the pair NOW discovers + settles. Sim/testnet; never flaky.
+      Done: `IntentState.last_peer_count` + a peer-growth check at the top of `readvertise_intent` —
+      `peer_degree() > last → advertiser.reset()` (used `peer_degree`, the prod accessor, NOT the
+      cfg(test)-only `peer_count`; the full `cargo test` lib build caught that). New stress test: the
+      pair connects, the link DROPS (`on_peer_disconnected`), the BTC-giver spends its whole budget while
+      cut off (no discovery), then RECONNECTS (`on_peer_connected`) → the peer set grows → the budget
+      resets → discover + settle. Distinction preserved: the G47 budget-exhaustion test uses
+      `ether.partition` (peers stay connected, count unchanged → no reset, stays silent), so an actual
+      reconnect resets while a delivery-only outage keeps the limit. G37/G47 tests unchanged. 20/20 stable.
+
+- [ ] **G52 — UniFFI discovery-binding smoke test.** The native apps reach discovery through UniFFI; add
+      a smoke check that the generated Swift/Kotlin (or the `swap_ffi` UDL surface) still exposes the
+      discovery entry points and that the bindings generate without error. If real binding generation needs
+      cargo-swift / the native toolchain (not present headless) → run what's available and log the rest BLOCKED.
+- [ ] **G53 — Per-link (src) intent rate limit.** G36 throttles by the intent's ORIGIN `sender_id`; add a
+      second gate by the IMMEDIATE link the flood arrived on (`src`), so a single hostile NEIGHBOUR relaying
+      a spoofed-origin flood is also bounded. Mirror the G36 structure; prove a neighbour spraying distinct
+      origins is capped. Sim/testnet; deterministic.
+- [ ] **G54 — Live `/api/intents` fixture endpoint.** Wire a real read-only `GET /api/intents` +
+      `GET /api/stats` into `swap_demo_server` returning the fixture intents/metrics as JSON, have
+      `intents.html`'s `loadIntents`/`loadStats` seam fetch it (falling back to inline fixtures), and add a
+      `demo_http`-style test asserting the JSON shape — one concrete step toward the OG-1 live wiring, still
+      a fixture (no real Rust-core stream, no native bridge). Sim/testnet.
+- [ ] **G55 — Discovery health self-check.** A read-only `IntentMetrics`-derived health summary (e.g.
+      match-rate, drop-mix, whether re-advertise is exhausted) the node can surface for diagnostics, plus a
+      test. Pure observability; no behaviour change; sim/testnet.
