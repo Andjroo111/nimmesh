@@ -2,6 +2,25 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.31.0] — 2026-06-27
+
+### Added — TestFlight build + upload pipeline (remote / over-the-air delivery)
+
+For working on the app while away from the Mini's network (USB/Wi-Fi dev installs can't reach a
+phone on a different network, and free-signing expires in 7 days). TestFlight delivers builds
+over the internet from anywhere and they last 90 days.
+
+- `apple/scripts/build-testflight.sh`: headless archive → export → validate → upload via an App
+  Store Connect API key (no Xcode GUI, no 2FA prompts). Marketing version from `Cargo.toml`,
+  build number = timestamp (always unique). Flags: `--skip-rust`, `--no-upload`.
+- `apple/project.yml`: `ITSAppUsesNonExemptEncryption = false` (only exempt crypto: Ed25519
+  signatures + TLS) so TestFlight skips the per-build export-compliance question.
+- `docs/TESTFLIGHT.md`: the one-time setup ($99 enroll → App Store Connect API key → app record)
+  and the run loop.
+
+Pending the owner's paid Team ID + API key before the first upload; dev builds (USB/Wi-Fi, free
+team) keep working in the meantime.
+
 ## [0.30.0] — 2026-06-27
 
 ### Fixed — onboarding fit + no more mock-data flash (on-device feedback)

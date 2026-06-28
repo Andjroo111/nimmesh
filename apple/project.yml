@@ -30,6 +30,10 @@ targets:
       path: NimmeshApp/Info.plist
       properties:
         CFBundleDisplayName: nimmesh
+        # Export compliance: the app uses only EXEMPT cryptography (Ed25519 signatures for
+        # authentication + standard TLS), so it declares no non-exempt encryption. This skips
+        # the per-build TestFlight encryption question. (Confirm this classification suits you.)
+        ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
