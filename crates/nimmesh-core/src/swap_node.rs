@@ -31,6 +31,19 @@ pub(crate) fn handle_swap_packet(
     }
     remember(ctx, st, &packet);
 
+    // G35: a swap intent dies at every node — participant or pure relay — once the chain head passes
+    // its `expiry_height`. We decode only to read that field; a stale ad is neither matched nor
+    // relayed onward, so it stops propagating instead of lingering on the mesh forever. (A malformed
+    // intent falls through to the blind relay, exactly as before — relay never inspects payloads.)
+    if packet.msg_type == MessageType::SwapIntent {
+        let head = ctx.cached_head().map(u64::from).unwrap_or(0);
+        if let Ok(intent) = crate::swap_intent::decode_intent(&packet.payload) {
+            if !intent.is_fresh(head) {
+                return;
+            }
+        }
+    }
+
     // Participant path: route the packet to our own session and flood whatever it produces. A pure
     // relay (no session) skips this entirely. The `on_message` borrow of `st` is dropped before we
     // flood (which re-borrows `st` for dedup/remember), so the replies are collected first.

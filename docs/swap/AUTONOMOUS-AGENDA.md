@@ -194,11 +194,18 @@ signing stay human-gated.)
       `swap_discovery_tests` proving a complementary intent settles a swap while an incompatible-rate
       intent starts nothing. 5 unit + 2 node tests, 5/5 stable.
 
-- [ ] **G35 — Intent expiry / freshness.** A flooded `SwapIntent` lives forever today — a stale ad keeps
+- [x] **G35 — Intent expiry / freshness.** A flooded `SwapIntent` lives forever today — a stale ad keeps
       matching long after the advertiser went offline or repriced. Add an `expiry_ms` (or `valid_for`)
       to the intent wire + a freshness check in `handle_intent` so an expired intent is decoded but NOT
       matched, and dropped from relay. Deterministic clock (pass the time in, like the chain-time grace
       seam) — never wall-clock in a test. Sim/testnet.
+      Done: `SwapIntent.expiry_height: u64` (a chain height, the same deterministic clock the timelocks
+      use via `ctx.cached_head()`) + `is_fresh(head)` + wire codec field. A freshness gate at the top of
+      `handle_swap_packet` decodes a `SwapIntent` only to read its expiry — if `head > expiry_height` it
+      returns before matching AND before relay, so a stale ad dies at every node (participant or pure
+      relay). Tests: `is_fresh` boundary + round-trip; an expired-but-rate-crossing intent does not match
+      (head pushed past expiry via a beacon); a relay forwards a fresh intent but drops an expired one
+      (SpyRadio). 6 unit + 4 node tests, 8/8 stable.
 - [ ] **G36 — Intent anti-spam throttle.** A node can flood thousands of distinct intents to DoS matchers
       into spinning up coordinators (the concurrency cap protects swaps, not the match step). Add a
       per-sender intent rate/dedup gate (bounded recent-intent set keyed by sender, drop on overflow)

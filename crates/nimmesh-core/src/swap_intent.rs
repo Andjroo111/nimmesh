@@ -32,6 +32,10 @@ pub struct SwapIntent {
     pub nim_amount: u64,
     /// BTC in the trade, in satoshis.
     pub btc_amount: u64,
+    /// The last chain height at which this advertisement is still valid. Once the head passes it the
+    /// intent is **expired** — a matcher won't act on it and a relay won't carry it onward (G35). An
+    /// advertiser sets this to its current head plus a freshness window.
+    pub expiry_height: u64,
     /// The advertiser's NIM address (20 raw bytes).
     pub nim_address: [u8; NIM_ADDRESS_LEN],
     /// The advertiser's BTC claimant pubkey (33 bytes).
@@ -58,6 +62,14 @@ impl SwapIntent {
             && (self.nim_amount as u128) * (incoming.btc_amount as u128)
                 >= (incoming.nim_amount as u128) * (self.btc_amount as u128)
     }
+
+    /// Whether this intent is still valid at chain height `head`. It expires once the head passes
+    /// `expiry_height`, so a stale ad stops matching (and stops being relayed) instead of lingering on
+    /// the mesh forever (G35). `head == 0` (no beacon heard yet) treats every non-degenerate intent as
+    /// fresh, matching how the swap timelocks already read an unknown head as 0.
+    pub fn is_fresh(&self, head: u64) -> bool {
+        head <= self.expiry_height
+    }
 }
 
 /// A decode failure (carries no payload).
@@ -78,6 +90,7 @@ pub fn encode_intent(intent: &SwapIntent) -> Vec<u8> {
     });
     out.extend_from_slice(&intent.nim_amount.to_be_bytes());
     out.extend_from_slice(&intent.btc_amount.to_be_bytes());
+    out.extend_from_slice(&intent.expiry_height.to_be_bytes());
     out.extend_from_slice(&intent.nim_address);
     out.extend_from_slice(&intent.btc_pubkey);
     out.push(intent.network_id);
@@ -103,6 +116,7 @@ pub fn decode_intent(bytes: &[u8]) -> Result<SwapIntent, IntentError> {
     };
     let nim_amount = u64::from_be_bytes(take(8).ok_or(t)?.try_into().unwrap());
     let btc_amount = u64::from_be_bytes(take(8).ok_or(t)?.try_into().unwrap());
+    let expiry_height = u64::from_be_bytes(take(8).ok_or(t)?.try_into().unwrap());
     let nim_address: [u8; NIM_ADDRESS_LEN] = take(NIM_ADDRESS_LEN).ok_or(t)?.try_into().unwrap();
     let btc_pubkey: [u8; BTC_PUBKEY_LEN] = take(BTC_PUBKEY_LEN).ok_or(t)?.try_into().unwrap();
     let network_id = take(1).ok_or(t)?[0];
@@ -112,6 +126,7 @@ pub fn decode_intent(bytes: &[u8]) -> Result<SwapIntent, IntentError> {
         gives,
         nim_amount,
         btc_amount,
+        expiry_height,
         nim_address,
         btc_pubkey,
         network_id,
@@ -128,6 +143,7 @@ mod tests {
             gives,
             nim_amount: nim,
             btc_amount: btc,
+            expiry_height: 1_000_000,
             nim_address: [0xA1; NIM_ADDRESS_LEN],
             btc_pubkey: {
                 let mut k = [0x11; BTC_PUBKEY_LEN];
@@ -192,8 +208,20 @@ mod tests {
     }
 
     #[test]
+    fn an_intent_expires_once_the_head_passes_its_expiry_height() {
+        // G35: fresh up to and including the expiry height, expired after.
+        let mut i = intent(Asset::Nim, 200_000, 50_000);
+        i.expiry_height = 1_000;
+        assert!(i.is_fresh(0)); // no beacon heard yet
+        assert!(i.is_fresh(999));
+        assert!(i.is_fresh(1_000)); // valid through the expiry height inclusive
+        assert!(!i.is_fresh(1_001)); // head moved past it → stale
+    }
+
+    #[test]
     fn intent_round_trips_through_the_codec() {
-        let i = intent(Asset::Btc, 123_456, 7_890);
+        let mut i = intent(Asset::Btc, 123_456, 7_890);
+        i.expiry_height = 4_242; // exercise the new field through the codec
         assert_eq!(decode_intent(&encode_intent(&i)), Ok(i));
     }
 
