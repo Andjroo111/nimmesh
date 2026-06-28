@@ -75,8 +75,21 @@ leg was validated vs `bitcoinjs-lib`; the EVM leg vs known keccak/ABI vectors + 
       per-arg offsets; `bytes32` verbatim, not re-padded). Byte-builder only — no signing/broadcast
       (P4, gated). Gate green default + bitcoin-leg + polygon-leg, clippy clean ×3, `evm.rs` untouched
       at 87 lines, `sha3` still absent from the default tree.
-- [ ] **P4 — EVM tx + signing (GATED).** EIP-155 legacy/1559 tx RLP + secp256k1 signing behind a key
-      seam (like `btc::BtcEnclaveKey`); testnet (Amoy) only, mainnet gated, no broadcast.
+- [x] **P4a — EVM RLP + EIP-155 unsigned signing-hash (KEY-FREE).** The deterministic, key-free half
+      of P4. Done: `evm_rlp` — a minimal RLP encoder (`rlp_bytes`/`rlp_list`/`rlp_u64`, minimal
+      big-endian ints, short + length-of-length forms) validated vs canonical RLP vectors ("dog",
+      empty, single bytes, `["cat","dog"]`, 1024, a 56-byte long string); a `LegacyTx` EIP-155 legacy
+      assembler producing `rlp([nonce,gasPrice,gasLimit,to,value,data,chainId,0,0])` + the
+      `signing_hash` = keccak256(that). **Validated vs the canonical EIP-155 spec vector**: the
+      signing data RLP matches `ec0985…8080` byte-for-byte, and the signing hash is its keccak256 (and
+      keccak is itself pinned to external vectors — empty `c5d2…` + "abc" `4e03657…`). `LegacyTx::
+      polygon_amoy` hard-codes Amoy testnet chainId 80002; mainnet 137 is never emitted. Wires P3
+      `evm_abi` calldata as `data` (proven with a `refund(swapId)` tx → long-list form). KEY-FREE — no
+      secp256k1, no key, no RPC, no broadcast. Gate green ×3, clippy clean ×3, `evm.rs` still 87 lines.
+- [ ] **P4b — EVM secp256k1 signing seam (GATED).** Sign the P4a `signing_hash` behind a key seam
+      (like `btc::BtcEnclaveKey`) + assemble the signed tx RLP (v = chainId·2+35/36 + recovery, r, s);
+      testnet (Amoy) only, mainnet + broadcast = needs:owner. Validate the signed tx vs a known
+      test-key vector. (No RPC — broadcast stays a separate gated step.)
 - [ ] **P5 — Discovery for USDC.** Extend `SwapIntent`'s `Asset` to include `Usdc` so NIM⇄USDC pairs
       discover over the mesh exactly like NIM⇄BTC; tests.
 

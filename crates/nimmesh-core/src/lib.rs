@@ -146,6 +146,13 @@ pub mod swap_usdc_leg;
 #[cfg(feature = "polygon-leg")]
 pub mod evm_abi;
 
+// Mesh swap (P4a): EVM RLP + the EIP-155 legacy tx signing-hash, behind `polygon-leg`. `evm_rlp`
+// turns the P3 `evm_abi` calldata + tx fields into the exact keccak256 signing hash a wallet signs —
+// KEY-FREE (no secp256k1, no key, no RPC, no broadcast; that's P4b, gated). Amoy testnet chainId
+// 80002 only (mainnet 137 never emitted). Validated vs the canonical EIP-155 spec vector.
+#[cfg(feature = "polygon-leg")]
+pub mod evm_rlp;
+
 // Mesh swap: the REAL Bitcoin swap leg (behind `bitcoin-leg`) — the BTC-native analog of
 // `swap_builder::NimiqLeg`. Wraps `btc::BtcHtlcParams` + signs through the `btc::BtcEnclaveKey`
 // seam, exposing `htlc_address` / `build_claim` / `build_refund`. Supersedes the BTC half of the
