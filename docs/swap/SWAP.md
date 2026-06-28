@@ -35,9 +35,20 @@ The protocol below is built and proven end to end (sim/testnet; mainnet + real f
   (`webui/swap/`), driven by the **real engine** via a local server against an in-memory sim chain
   (`swap_sim` + `examples/swap_demo_server.rs`, [RUN-DEMO.md](./RUN-DEMO.md)), including the
   timeout-refund safety screen.
+- **Node integration (G8–G27)** — the swap now runs over the **real `MeshNode` BLE-flood loop**, not
+  just the wire model: `swap_coordinator::SwapCoordinator` (the protocol brain, one side of one swap)
+  → `swap_session::SwapSession` (the per-`swap_id` router a node runs) → the `swap_node` hook + driver
+  (a participant decodes its own swaps off the otherwise blind-relayed stream and drives
+  fund/claim/settle) → the `swap_signer::SwapSigner` seam (the gated money-path; a `MockSigner`
+  stand-in today) → the maintenance tick (retransmit · refund safety exit · GC · abort teardown).
+  Proven over the mesh: the full lifecycle, hostile-input robustness, a 30%-loss mesh, many concurrent
+  swaps, store-and-forward catch-up, a deep multi-hop relay line, a mid-swap partition + heal, and a
+  hostile relay that can neither read `S` nor forge a settlement.
+  **The map for this layer is [MESH-INTEGRATION.md](./MESH-INTEGRATION.md).**
 
-Atomicity is proven (`swap_e2e_tests`: no one-sided settlement, every adversarial path). The
-remaining gates are on-device (the native WebView↔Rust bridge) and mainnet / real funds.
+Atomicity is proven (`swap_e2e_tests`: no one-sided settlement, every adversarial path) at the
+protocol level, and again over the real node loop (`swap_node_e2e_tests` / `swap_adversarial_tests`).
+The remaining gates are on-device (the native WebView↔Rust bridge) and mainnet / real funds.
 
 ## Why this is a natural fit for nimmesh (not a bolt-on)
 

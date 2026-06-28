@@ -89,3 +89,18 @@ try h.observeBtcFunded(txid, vout, valueSat)
 let claim = try h.revealAndClaimBtc()            // → .broadcast(.counterparty, tx) → app broadcasts
 try h.observeSettled()
 ```
+
+## Relationship to the mesh node integration (G8–G27)
+
+`SwapEngine` is the **single-node, real-legs** view: it owns one node's `Swap` + `NimiqLeg` +
+`BtcSwapLeg` and turns each `SwapAction` into a `SwapEffect` (tx bytes to broadcast), behind the
+`bitcoin-leg` feature, for the on-device app to drive over the internet at the gateway.
+
+A separate, default-build stack drives a swap over the **BLE flood loop** between two phones:
+`swap_coordinator::SwapCoordinator` (the protocol brain) → `swap_session::SwapSession` (the
+per-`swap_id` router a `MeshNode` runs) → the `swap_node` hook + driver → the
+`swap_signer::SwapSigner` seam. That seam is exactly where this engine's leg builders belong: the
+node driver asks its `SwapSigner` for each funding/claim `tx_wire`, and today a `MockSigner` returns
+sim stand-ins — the real NIM/BTC tx-building those legs do is the money-path signer that drops in
+there (gated). So `SwapEngine` = how a node builds + settles its legs; the node stack = how two nodes
+negotiate, transport, and drive that swap over the mesh. Full map: [MESH-INTEGRATION.md](./MESH-INTEGRATION.md).

@@ -11,6 +11,13 @@
 > protocol (incl. pubkey exchange), a full swap negotiated + settled over the wire message sequence,
 > and a browser demo driven by the real engine against a sim chain. See [SWAP.md](./SWAP.md) §Shipped.
 > Mainnet + real funds stay gated.
+>
+> **And it runs over the real mesh node loop, not just the model:** the `SwapCoordinator` →
+> `SwapSession` → `swap_node` driver stack negotiates, funds, claims, settles, refunds, retransmits,
+> GCs and tears swaps down over the actual `MeshNode` BLE-flood path — proven resilient to packet
+> loss, concurrency, offline rejoin, deep multi-hop, mid-swap partitions, and a hostile relay. The
+> exact "transport + coordinate over Bluetooth, settle on-chain" model this verdict describes is now
+> the working node integration. Map: [MESH-INTEGRATION.md](./MESH-INTEGRATION.md).
 
 ## The one distinction that resolves it
 

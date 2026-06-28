@@ -143,6 +143,27 @@ human-gated.)
       cannot forge a `FundingProof`/settlement the participants accept, and cannot force a one-sided
       loss by selectively dropping (the timeout refund + retransmit protect). Builds on the protocol
       `a_relay_with_the_wrong_secret_cannot_steal_a_leg`, raised to the node loop.
-- [ ] **G28 — Older swap docs sweep.** Fold the G8–G24 node-integration reality into `SWAP.md` /
+- [x] **G28 — Older swap docs sweep.** Fold the G8–G24 node-integration reality into `SWAP.md` /
       `FEASIBILITY.md` / `SWAP-ENGINE.md` (status blocks + a link to `MESH-INTEGRATION.md`) so the doc
       set is internally consistent and no longer describes only the pre-node-loop protocol. Docs only.
+
+When the ladder is exhausted again, re-scan and append. (Re-scan after G28: the swap stack is built,
+hardened, resilient, documented, and the docs are consistent. What's left, all sim/testnet and
+non-gated, is **protocol completeness + safety hardening**: the responder accepts ANY amounts today
+(no rate check); a participant has no cap on concurrent swaps (a Propose-spam DoS could outrun GC);
+and an in-flight swap lives only in memory, so a crash with funds locked loses the refund path. These
+close real gaps a real deployment needs, none needing a human decision.)
+
+- [ ] **G29 — Swap-rate acceptance policy.** A responder should not blindly accept any `give/take`
+      amounts: give `SwapCoordinator`/`recv_propose` an acceptance policy (a min acceptable rate /
+      tolerance band) and reject a lopsided proposal before accepting. Node-level test: a fair-rate
+      proposal is accepted, a bad-rate one is rejected (no coordinator created), both over the loop.
+- [ ] **G30 — Concurrent-swap cap (anti-DoS).** A participant caps how many in-flight swaps it will
+      hold, dropping new `Propose`s beyond the cap so a Propose-spammer cannot exhaust memory faster
+      than the GC reaps. Test: past the cap, a fresh `Propose` is dropped (no new coordinator); a slot
+      freed by GC/teardown lets a later one in again.
+- [ ] **G31 — Crash recovery of in-flight swaps (refund safety across restart).** `SwapSession` gains
+      a `snapshot()` / `restore()` of its coordinators' essential state (swap_id, role, terms, phase,
+      hashlock, initiator secret) so a node that restarts with funds locked can resume the refund
+      tick. Test: snapshot a funds-locked swap, restore into a fresh session, and the refund tick
+      still fires past the timeout — proving "worst case is a refund" survives a crash.
