@@ -52,6 +52,18 @@ fn rand32() -> Result<[u8; 32], Box<dyn Error>> {
     getrandom::getrandom(&mut b)?;
     Ok(b)
 }
+
+/// A persistent seed from `env` (32-byte hex) for a **reusable** wallet, or fresh entropy. Reuse the
+/// saved wallets (`~/secrets/nimmesh-swap-wallets.env`) so swapped funds land in known wallets
+/// and cycle back instead of stranding.
+fn env_seed(var: &str) -> Result<[u8; 32], Box<dyn Error>> {
+    match std::env::var(var) {
+        Ok(h) if !h.trim().is_empty() => Ok(nimmesh_core::nimiq::hex::hex_to_bytes(h.trim())?
+            .try_into()
+            .map_err(|_| "seed must be 32 bytes")?),
+        _ => rand32(),
+    }
+}
 fn now_secs() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs()
 }
@@ -67,11 +79,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("== nimiq.nimmesh — LIVE atomic NIM<->BTC swap (one secret, two chains) ==");
     let secp = Secp256k1::new();
 
-    // --- keys: Alice (NIM funder + BTC receiver), Bob (BTC funder + NIM receiver) ---
-    let alice_nim = InMemoryEnclaveKey::from_secret(&rand32()?);
-    let bob_nim = InMemoryEnclaveKey::from_secret(&rand32()?);
-    let alice_btc_sk = rand32()?;
-    let bob_btc_sk = rand32()?;
+    // --- keys: persistent (reusable, recoverable) from env, else fresh. The swapped funds land in
+    // the NIM + BTC wallets these derive, so they cycle back instead of stranding. ---
+    let nim_seed = env_seed("NIMMESH_NIM_SEED")?;
+    let btc_seed = env_seed("NIMMESH_BTC_SEED")?;
+    let alice_nim = InMemoryEnclaveKey::from_secret(&nim_seed);
+    let bob_nim = InMemoryEnclaveKey::from_secret(&nim_seed); // self NIM HTLC → NIM returns to the wallet
+    let alice_btc_sk = btc_seed; // BTC claimant → BTC returns to the wallet
+    let bob_btc_sk = btc_seed; // BTC refunder (same treasury)
     let alice_btc_pk = PublicKey::from_secret_key(&secp, &SecretKey::from_slice(&alice_btc_sk)?);
     let bob_btc_pk = PublicKey::from_secret_key(&secp, &SecretKey::from_slice(&bob_btc_sk)?);
 
