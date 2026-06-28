@@ -113,6 +113,11 @@ body {
 }
 .amount-row .ticker { font-weight: 700; font-size: 15px; }
 .amount-row .fiat { color: var(--ink-40); font-size: 17px; font-weight: 600; }
+.amount-field { border: 0; background: transparent; font: inherit; font-weight: 700; font-size: 21px; color: var(--navy); width: 78px; padding: 0; outline: none; }
+.amount-field::-webkit-outer-spin-button, .amount-field::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.amount-field:focus { color: #0582ca; }
+.amount-validation { text-align: center; color: #d94432; font-weight: 700; font-size: 13px; margin: -8px 0 0; min-height: 16px; visibility: hidden; } /* red = error only */
+.confirm-btn:disabled { opacity: 0.4; pointer-events: none; box-shadow: none; }
 
 .confirm-btn { align-self: stretch; margin-top: 2px; }
 .terms { text-align: center; color: var(--ink-40); font-size: 13px; line-height: 1.5; margin: 0; }

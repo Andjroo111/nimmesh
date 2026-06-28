@@ -96,7 +96,7 @@
 
       <div class="amount-row">
         <div class="side left">
-          <span class="box">2 800 <span class="ticker">NIM</span></span>
+          <span class="box"><input id="nim-amount" class="amount-field" value="2 800" inputmode="decimal" aria-label="NIM amount to swap"> <span class="ticker">NIM</span></span>
           <span class="fiat">1.72 $</span>
         </div>
         <div class="side right">
@@ -104,6 +104,7 @@
           <span class="fiat">1.82 $</span>
         </div>
       </div>
+      <p class="amount-validation" id="nim-validation"></p>
 
       <button class="nq-button light-blue confirm-btn" id="start-swap">Confirm</button>
       <p class="terms">Settled by a cross-chain HTLC. <b>Worst case is a refund, never a loss.</b></p>
@@ -454,6 +455,21 @@
     else if (e.key === 'v') { asResponder = !asResponder; setPerspective(); } // demo: flip perspective
     else if (e.key === 'e' && !engineActive && PHASES[phase].screen === 'progress') { errored = !errored; render(); }
   });
+
+  // setup amount validation: disable Confirm + show an inline message on an invalid give amount.
+  function validateAmount() {
+    const balance = 2800, min = 1; // My Address holds 2 800 NIM
+    const v = parseFloat($('#nim-amount').value.replace(/[^0-9.]/g, '')) || 0;
+    let msg = '';
+    if (v <= 0) msg = 'Enter an amount to swap';
+    else if (v > balance) msg = 'Insufficient balance';
+    else if (v < min) msg = 'Amount is below the minimum';
+    $('#nim-validation').textContent = msg;
+    $('#nim-validation').style.visibility = msg ? 'visible' : 'hidden';
+    $('#start-swap').disabled = !!msg;
+  }
+  $('#nim-amount').oninput = validateAmount;
+  validateAmount();
   render();
 </script>
 </body>
