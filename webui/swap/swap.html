@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="../components/swap-balance-bar/swap-balance-bar.css">
 <link rel="stylesheet" href="../components/status-screen/status-screen.css">
 <link rel="stylesheet" href="../components/toast-notification/toast-notification.css">
+<link rel="stylesheet" href="../tooltip/tooltip.css">
 <link rel="stylesheet" href="swap.css">
 </head>
 <body>
@@ -114,7 +115,19 @@
         <button class="back" aria-label="Back">&larr;</button>
         <h2>Confirm Swap</h2>
       </div>
-      <p class="fees">0.10 $ fees</p>
+      <div class="fees">0.10 $ fees<span class="tooltip position-top-center" tabindex="0">
+        <a href="javascript:void(0);" tabindex="0" class="trigger">
+          <svg class="nq-icon" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><line x1="8" y1="7.833" x2="8" y2="11.333" stroke="currentColor" fill="none" stroke-linecap="round"/><circle cx="8" cy="4.75" r="0.5" fill="currentColor" stroke="currentColor" stroke-width="0.5"/><circle cx="8" cy="8" r="7.5" stroke="currentColor" fill="none"/></svg>
+        </a>
+        <div class="tooltip-box fee-box" style="top: -150px; left: -98px; width: 240px;">
+          <div class="price-breakdown"><label>NIM network fee</label><span>0.00 $</span></div>
+          <div class="price-breakdown"><label>BTC network fee</label><span>0.10 $</span></div>
+          <p class="explainer">Atomic swaps require two BTC transactions.</p>
+          <hr>
+          <div class="price-breakdown total-fees"><label>Total fees</label><span>0.10 $</span></div>
+          <p class="explainer">No service fee. This swap is peer to peer.</p>
+        </div>
+      </span></div>
 
       <div class="confirm-accounts">
         <div class="acct">

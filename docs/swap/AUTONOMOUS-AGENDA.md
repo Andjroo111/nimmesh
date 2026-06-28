@@ -24,7 +24,7 @@ green, log one line, and schedule the next iteration. No human prompt between go
       (no hand orchestration).
 - [x] **G9 — Adversarial wire/sim paths.** Robustness over a lossy mesh: a wrong-preimage reveal is
       rejected, out-of-order / duplicate messages are idempotent, an unsafe ladder refuses to fund.
-- [ ] **G10 — Swap fees tooltip (UI).** Port the wallet's real `SwapFeesTooltip` into the Confirm
+- [x] **G10 — Swap fees tooltip (UI).** Port the wallet's real `SwapFeesTooltip` into the Confirm
       screen (fee breakdown) — actual component, no approximation.
 
 When the ladder is exhausted again, re-scan for the next-highest-value work (mesh integration depth,
@@ -46,3 +46,10 @@ more hardening, perf) and append goals — keep building.
 
 Self-paced via `ScheduleWakeup` with the `<<autonomous-loop-dynamic>>` sentinel. Durable state is on
 disk (this file + the off-repo log + the commits), so the loop survives context compaction.
+- [ ] **G11 — Swap-in-progress toast.** When a running swap is minimized, surface it as the real
+      `toast-notification` "Performing swap X/5" info state (hexagon spinner); clear on done/refund.
+- [ ] **G12 — Setup amount validation.** The Swap Currencies screen disables Confirm + shows an
+      inline message on invalid amounts (zero / over balance / below a min), like the real swap UI.
+- [ ] **G13 — SwapSession router.** A node-side `swap_session` that routes incoming swap packets by
+      `swap_id` to the right `SwapCoordinator` and collects its outgoing envelopes — the glue between
+      `MeshNode` packet receipt and the coordinator. Tested by feeding it packets directly.

@@ -125,6 +125,17 @@ body {
   background: rgba(31, 35, 72, 0.06); color: var(--ink-50); font-size: 18px; line-height: 1;
 }
 .fees { text-align: center; color: var(--ink-40); font-size: 16px; font-weight: 600; margin: -6px 0 0; }
+/* swap fees tooltip: the vendored `tooltip` component + the real SwapFeesTooltip breakdown,
+   hover/focus-activated (the component is "shown"-class driven; here it's interactive). */
+.fees .tooltip { margin-left: 5px; }
+.fees .tooltip .trigger { color: var(--ink-40); }
+.fees .tooltip-box { text-align: left; background-image: var(--blue-bg); color: #fff; } /* tooltip.css's --nimiq-blue-bg isn't defined here */
+.fees .tooltip:hover .tooltip-box, .fees .tooltip:focus-within .tooltip-box { opacity: 1 !important; visibility: visible !important; }
+.fee-box .price-breakdown { display: flex; justify-content: space-between; gap: 12px; margin: 3px 0; }
+.fee-box .price-breakdown label { opacity: 0.85; }
+.fee-box .total-fees { font-weight: 700; }
+.fee-box .explainer { opacity: 0.6; font-size: 12px; line-height: 1.4; margin: 5px 0 0; }
+.fee-box hr { margin: 9px -6px 7px; border: 0; border-top: 1px solid currentColor; opacity: 0.2; }
 
 .confirm-accounts { display: flex; justify-content: space-between; align-items: center; }
 .confirm-accounts .acct { display: flex; align-items: center; gap: 12px; }
