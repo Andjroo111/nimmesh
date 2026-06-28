@@ -125,6 +125,12 @@ pub mod btc;
 #[cfg(feature = "bitcoin-leg")]
 pub use bitcoin;
 
+// Mesh swap (P1): EVM (Polygon) primitives for the USDC counterparty leg, behind `polygon-leg`
+// (OFF by default → core stays lean/WASM-friendly). `evm` owns Keccak-256, EVM address derivation,
+// and ABI function selectors; the USDC HTLC leg builds on it. The swap hashlock stays SHA-256.
+#[cfg(feature = "polygon-leg")]
+pub mod evm;
+
 // Mesh swap: the REAL Bitcoin swap leg (behind `bitcoin-leg`) — the BTC-native analog of
 // `swap_builder::NimiqLeg`. Wraps `btc::BtcHtlcParams` + signs through the `btc::BtcEnclaveKey`
 // seam, exposing `htlc_address` / `build_claim` / `build_refund`. Supersedes the BTC half of the

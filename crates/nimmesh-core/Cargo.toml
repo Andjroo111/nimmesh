@@ -64,6 +64,11 @@ bitcoin-leg = ["dep:bitcoin"]
 # `gateway-rpc`). The on-device tx-building (`bitcoin-leg`) needs no HTTP; only a gateway node does.
 bitcoin-gateway = ["bitcoin-leg", "dep:ureq", "dep:serde_json", "dep:getrandom"]
 
+# P1 (mesh swap): the USDC-on-Polygon counterparty leg — EVM HTLC contract calls + tx signing. `sha3`
+# gives Keccak-256 (EVM addresses + ABI selectors). OFF by default so the pure-protocol core stays
+# lean/WASM-friendly; ON for the Polygon leg. TESTNET/Amoy-guarded (mainnet + real funds gated).
+polygon-leg = ["dep:sha3"]
+
 # Pure proc-macro mode (uniffi::setup_scaffolding!) — no UDL file, no build.rs.
 [dependencies]
 uniffi = { workspace = true, features = ["cli"] }
@@ -81,6 +86,10 @@ getrandom = { version = "0.2", optional = true }
 # address, BIP143 segwit sighash, and secp256k1 signing — it bundles `secp256k1`. OPTIONAL, pulled
 # in only by the `bitcoin-leg` feature so the core stays dependency-light + WASM-friendly when off.
 bitcoin = { version = "0.32", optional = true }
+
+# P1: Keccak-256 for the USDC-on-Polygon (EVM) leg — EVM addresses + ABI function selectors. Note the
+# EVM uses Keccak-256 (`Keccak256`), NOT NIST SHA3-256. Pulled in only by `polygon-leg`. Pure Rust.
+sha3 = { version = "0.10", optional = true }
 
 # G11: optional encrypted memo / 1:1 chat. `snow` is the Noise Protocol implementation
 # driving the `Noise_XX_25519_ChaChaPoly_SHA256` mutual-auth, identity-hiding handshake;
