@@ -261,6 +261,7 @@ mod tests {
             btc_pubkey: pk,
             rate_policy: RatePolicy::accept_all(),
             max_concurrent_swaps: DEFAULT_MAX_CONCURRENT_SWAPS,
+            standing_intent: None,
         }
     }
 

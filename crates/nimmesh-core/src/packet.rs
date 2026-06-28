@@ -105,6 +105,10 @@ pub enum MessageType {
     /// `0x44` — a **swap abort** (F2): a pre-funding courtesy cancel. 1:1. The timelock refund is
     /// the real guarantee; this just lets a peer release state early.
     SwapAbort = 0x44,
+    /// `0x45` — a **swap intent** (G34): a discovery advertisement ("I want to give NIM for BTC at
+    /// rate R"). Flooded + blind-relayed like the rest; a node holding a complementary intent kicks
+    /// off a `SwapPropose`. Carries amounts/rate + the advertiser's addresses, no keys, no secret.
+    SwapIntent = 0x45,
 }
 
 impl MessageType {
@@ -132,6 +136,7 @@ impl MessageType {
             0x42 => Some(MessageType::SwapFundingProof),
             0x43 => Some(MessageType::SwapPreimageReveal),
             0x44 => Some(MessageType::SwapAbort),
+            0x45 => Some(MessageType::SwapIntent),
             _ => None,
         }
     }

@@ -1,0 +1,206 @@
+//! # swap_intent — counterparty discovery over the mesh (G34)
+//!
+//! A swap needs two parties; today they have to already know each other. A [`SwapIntent`] is a
+//! lightweight **advertisement** a node floods ("I want to give NIM for BTC at rate R", with my
+//! addresses) — no hashlock, no secret, no commitment. A node holding the **complementary** intent
+//! (it wants the mirror trade at a crossing rate) reacts by kicking off a real `SwapPropose`: the
+//! intent is the discovery layer, the existing swap protocol is the settlement layer.
+//!
+//! By convention the **NIM-giver is the initiator** (it generates `S` and proposes; it claims the
+//! BTC leg, revealing `S`). So matching is one-sided: a node whose standing intent gives NIM, on
+//! seeing a BTC-giver intent that crosses on rate, initiates; a BTC-giver just waits for the Propose
+//! (its [`crate::swap_rate::RatePolicy`] then governs acceptance). The intent rides the mesh as
+//! opaque blind-relayed bytes like every other swap packet.
+
+use crate::swap_wire::{BTC_PUBKEY_LEN, NIM_ADDRESS_LEN};
+
+/// Which asset the advertiser **funds** in the trade.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Asset {
+    /// The advertiser gives NIM (so it is the would-be initiator).
+    Nim,
+    /// The advertiser gives BTC (so it is the would-be responder).
+    Btc,
+}
+
+/// A discovery advertisement: the trade a node wants, plus the addresses a matcher needs to propose.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SwapIntent {
+    /// Which side the advertiser funds.
+    pub gives: Asset,
+    /// NIM in the trade, in luna.
+    pub nim_amount: u64,
+    /// BTC in the trade, in satoshis.
+    pub btc_amount: u64,
+    /// The advertiser's NIM address (20 raw bytes).
+    pub nim_address: [u8; NIM_ADDRESS_LEN],
+    /// The advertiser's BTC claimant pubkey (33 bytes).
+    pub btc_pubkey: [u8; BTC_PUBKEY_LEN],
+    /// The advertiser's BTC payout address bytes.
+    pub btc_address: Vec<u8>,
+    /// The Albatross network id (a swap only forms within one network).
+    pub network_id: u8,
+}
+
+impl SwapIntent {
+    /// Whether **this** node (holding `self` as its standing intent) should INITIATE a swap in
+    /// response to `incoming`. True only when: `self` gives NIM and `incoming` gives BTC (so this
+    /// node is the NIM-giver / initiator), the networks match, both amounts are non-zero, and the
+    /// rates cross — `self`'s NIM-per-BTC is at least what `incoming` asks, i.e.
+    /// `self.nim/self.btc >= incoming.nim/incoming.btc`, cross-multiplied to avoid float / overflow.
+    /// A BTC-giver never initiates (it waits for the Propose), so this is one-sided by design.
+    pub fn would_initiate_against(&self, incoming: &SwapIntent) -> bool {
+        self.gives == Asset::Nim
+            && incoming.gives == Asset::Btc
+            && self.network_id == incoming.network_id
+            && self.btc_amount > 0
+            && incoming.btc_amount > 0
+            && (self.nim_amount as u128) * (incoming.btc_amount as u128)
+                >= (incoming.nim_amount as u128) * (self.btc_amount as u128)
+    }
+}
+
+/// A decode failure (carries no payload).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IntentError {
+    /// The bytes ended early.
+    Truncated,
+    /// A field was outside its domain (bad asset tag).
+    Malformed,
+}
+
+/// Encode an intent to bytes (flooded as a `SwapIntent` packet payload).
+pub fn encode_intent(intent: &SwapIntent) -> Vec<u8> {
+    let mut out = Vec::new();
+    out.push(match intent.gives {
+        Asset::Nim => 0,
+        Asset::Btc => 1,
+    });
+    out.extend_from_slice(&intent.nim_amount.to_be_bytes());
+    out.extend_from_slice(&intent.btc_amount.to_be_bytes());
+    out.extend_from_slice(&intent.nim_address);
+    out.extend_from_slice(&intent.btc_pubkey);
+    out.push(intent.network_id);
+    out.extend_from_slice(&(intent.btc_address.len() as u16).to_be_bytes());
+    out.extend_from_slice(&intent.btc_address);
+    out
+}
+
+/// Decode an intent from bytes — panic-free on arbitrary input (every read is bounds-checked).
+pub fn decode_intent(bytes: &[u8]) -> Result<SwapIntent, IntentError> {
+    let mut pos = 0usize;
+    let mut take = |n: usize| -> Option<&[u8]> {
+        let end = pos.checked_add(n)?;
+        let s = bytes.get(pos..end)?;
+        pos = end;
+        Some(s)
+    };
+    let t = IntentError::Truncated;
+    let gives = match take(1).ok_or(t)?[0] {
+        0 => Asset::Nim,
+        1 => Asset::Btc,
+        _ => return Err(IntentError::Malformed),
+    };
+    let nim_amount = u64::from_be_bytes(take(8).ok_or(t)?.try_into().unwrap());
+    let btc_amount = u64::from_be_bytes(take(8).ok_or(t)?.try_into().unwrap());
+    let nim_address: [u8; NIM_ADDRESS_LEN] = take(NIM_ADDRESS_LEN).ok_or(t)?.try_into().unwrap();
+    let btc_pubkey: [u8; BTC_PUBKEY_LEN] = take(BTC_PUBKEY_LEN).ok_or(t)?.try_into().unwrap();
+    let network_id = take(1).ok_or(t)?[0];
+    let addr_len = u16::from_be_bytes(take(2).ok_or(t)?.try_into().unwrap()) as usize;
+    let btc_address = take(addr_len).ok_or(t)?.to_vec();
+    Ok(SwapIntent {
+        gives,
+        nim_amount,
+        btc_amount,
+        nim_address,
+        btc_pubkey,
+        network_id,
+        btc_address,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn intent(gives: Asset, nim: u64, btc: u64) -> SwapIntent {
+        SwapIntent {
+            gives,
+            nim_amount: nim,
+            btc_amount: btc,
+            nim_address: [0xA1; NIM_ADDRESS_LEN],
+            btc_pubkey: {
+                let mut k = [0x11; BTC_PUBKEY_LEN];
+                k[0] = 0x02;
+                k
+            },
+            btc_address: b"tb1qalice".to_vec(),
+            network_id: 5,
+        }
+    }
+
+    #[test]
+    fn a_nim_giver_initiates_against_a_crossing_btc_giver() {
+        // I give 200_000 NIM for 50_000 BTC (4.0 NIM/BTC). A BTC-giver asking 3.0 (150_000/50_000)
+        // crosses → I initiate. One asking 5.0 (250_000/50_000) does not.
+        let me = intent(Asset::Nim, 200_000, 50_000);
+        assert!(me.would_initiate_against(&intent(Asset::Btc, 150_000, 50_000)));
+        assert!(me.would_initiate_against(&intent(Asset::Btc, 200_000, 50_000))); // exact cross
+        assert!(!me.would_initiate_against(&intent(Asset::Btc, 250_000, 50_000)));
+    }
+
+    #[test]
+    fn a_btc_giver_never_initiates_and_same_side_never_matches() {
+        // A BTC-giver waits for the Propose; it never initiates.
+        assert!(
+            !intent(Asset::Btc, 200_000, 50_000).would_initiate_against(&intent(
+                Asset::Nim,
+                150_000,
+                50_000
+            ))
+        );
+        // Two NIM-givers (or two BTC-givers) are not counterparties.
+        assert!(
+            !intent(Asset::Nim, 200_000, 50_000).would_initiate_against(&intent(
+                Asset::Nim,
+                150_000,
+                50_000
+            ))
+        );
+    }
+
+    #[test]
+    fn a_cross_network_or_zero_amount_intent_never_matches() {
+        let mut other = intent(Asset::Btc, 150_000, 50_000);
+        other.network_id = 6; // different network
+        assert!(!intent(Asset::Nim, 200_000, 50_000).would_initiate_against(&other));
+        // Zero amounts form no rate.
+        assert!(
+            !intent(Asset::Nim, 200_000, 0).would_initiate_against(&intent(
+                Asset::Btc,
+                150_000,
+                50_000
+            ))
+        );
+        assert!(
+            !intent(Asset::Nim, 200_000, 50_000).would_initiate_against(&intent(
+                Asset::Btc,
+                150_000,
+                0
+            ))
+        );
+    }
+
+    #[test]
+    fn intent_round_trips_through_the_codec() {
+        let i = intent(Asset::Btc, 123_456, 7_890);
+        assert_eq!(decode_intent(&encode_intent(&i)), Ok(i));
+    }
+
+    #[test]
+    fn decode_rejects_short_and_bad_bytes_without_panicking() {
+        assert_eq!(decode_intent(&[]), Err(IntentError::Truncated));
+        assert_eq!(decode_intent(&[0xFF]), Err(IntentError::Malformed)); // bad asset tag
+        assert_eq!(decode_intent(&[0x00, 0x01]), Err(IntentError::Truncated)); // ends mid-record
+    }
+}

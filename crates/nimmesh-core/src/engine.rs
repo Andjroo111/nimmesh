@@ -59,10 +59,9 @@ const GATEWAY_CACHE_CAP: usize = 1024;
 /// A `nimiqTxReceipt` payload is exactly `txId(32) | status(1)`.
 const RECEIPT_PAYLOAD_LEN: usize = 33;
 
-/// The **blind** relay dedup key: `(type, senderID, timestamp)` — all packet-header
-/// fields, never the opaque payload (PROTOCOL.md dedup intent). For a flooded `nimiqTx`
-/// this header tuple is the packet's identity; the endpoints separately correlate
-/// receipts by the envelope `txId`.
+/// The **blind** relay dedup key: `(type, senderID, timestamp)` — all packet-header fields, never
+/// the opaque payload (PROTOCOL.md dedup intent). For a flooded `nimiqTx` this header tuple is the
+/// packet's identity; the endpoints separately correlate receipts by the envelope `txId`.
 pub(crate) type RelayKey = (u8, [u8; PEER_ID_LEN], u64);
 
 pub(crate) fn relay_key(p: &Packet) -> RelayKey {
@@ -553,7 +552,8 @@ fn dispatch_packet(ctx: &WorkerCtx, packet: Packet, src: Option<&str>, st: &mut 
         | MessageType::SwapAccept
         | MessageType::SwapFundingProof
         | MessageType::SwapPreimageReveal
-        | MessageType::SwapAbort => crate::swap_node::handle_swap_packet(ctx, packet, src, st),
+        | MessageType::SwapAbort
+        | MessageType::SwapIntent => crate::swap_node::handle_swap_packet(ctx, packet, src, st),
         // G11 `noiseEncrypted` (0x11) and any other relayable type: blind dedup + remember
         // + adaptive TTL relay. A `noiseEncrypted` blob is **opaque** to
         // the relay (transport-privacy) — only its two endpoints decrypt it via a Noise

@@ -202,6 +202,7 @@ pub(crate) fn participant_fixtures() -> (
         btc_pubkey: pk(0x11),
         rate_policy: crate::swap_session::RatePolicy::accept_all(),
         max_concurrent_swaps: crate::swap_session::DEFAULT_MAX_CONCURRENT_SWAPS,
+        standing_intent: None,
     };
     let bob_id = NodeIdentity {
         nim_address: [0xB2; 20],
@@ -209,6 +210,7 @@ pub(crate) fn participant_fixtures() -> (
         btc_pubkey: pk(0x22),
         rate_policy: crate::swap_session::RatePolicy::accept_all(),
         max_concurrent_swaps: crate::swap_session::DEFAULT_MAX_CONCURRENT_SWAPS,
+        standing_intent: None,
     };
     let alice_ctx = SwapContext {
         swap_id,

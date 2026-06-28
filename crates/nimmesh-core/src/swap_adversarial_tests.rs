@@ -182,6 +182,7 @@ fn bob_identity(cap: usize) -> crate::swap_session::NodeIdentity {
         btc_pubkey: pk,
         rate_policy: crate::swap_session::RatePolicy::accept_all(),
         max_concurrent_swaps: cap,
+        standing_intent: None,
     }
 }
 

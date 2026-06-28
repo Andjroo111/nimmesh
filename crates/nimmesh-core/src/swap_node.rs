@@ -35,7 +35,14 @@ pub(crate) fn handle_swap_packet(
     // relay (no session) skips this entirely. The `on_message` borrow of `st` is dropped before we
     // flood (which re-borrows `st` for dedup/remember), so the replies are collected first.
     if st.swap.is_some() {
-        if let Some(kind) = SwapKind::from_message_type(packet.msg_type) {
+        if packet.msg_type == MessageType::SwapIntent {
+            // G34: discovery — match the intent against our standing one and maybe initiate a swap.
+            let replies = handle_intent(st, &packet.payload);
+            sync_swap_phases(ctx, st);
+            for (mt, payload) in replies {
+                flood_swap_reply(ctx, mt, payload, st);
+            }
+        } else if let Some(kind) = SwapKind::from_message_type(packet.msg_type) {
             let head = ctx.cached_head().map(u64::from).unwrap_or(0);
             let mut replies = match st.swap.as_mut() {
                 Some(session) => session
@@ -159,6 +166,84 @@ fn coordinator<'a>(
     swap_id: &[u8; SWAP_ID_LEN],
 ) -> Option<&'a mut crate::swap_coordinator::SwapCoordinator> {
     st.swap.as_mut().and_then(|s| s.coordinator(swap_id))
+}
+
+/// G34: a received swap intent. If this node holds a complementary standing intent that crosses on
+/// rate (so it is the NIM-giver / initiator) and is under its concurrency cap, build an initiator
+/// coordinator and return its `Propose` to flood — turning discovery into a real swap. A BTC-giver
+/// (or no standing intent) returns nothing and just waits for a Propose.
+fn handle_intent(st: &mut WorkerState, payload: &[u8]) -> Vec<(MessageType, Vec<u8>)> {
+    let Ok(incoming) = crate::swap_intent::decode_intent(payload) else {
+        return Vec::new();
+    };
+    // Read everything we need under one immutable borrow, then build + insert under a fresh one.
+    let (standing, ladder, swap_id) = {
+        let Some(session) = st.swap.as_ref() else {
+            return Vec::new();
+        };
+        let Some(standing) = session.identity.standing_intent.clone() else {
+            return Vec::new();
+        };
+        if !standing.would_initiate_against(&incoming)
+            || session.len() >= session.identity.max_concurrent_swaps
+        {
+            return Vec::new();
+        }
+        let swap_id = derive_swap_id(&standing, &incoming);
+        if session.coordinators.contains_key(&swap_id) {
+            return Vec::new(); // already initiating this exact swap
+        }
+        (standing, session.ladder, swap_id)
+    };
+
+    let secret = sim_secret(&swap_id);
+    let ctx = crate::swap_coordinator::SwapContext {
+        swap_id,
+        // Sim timelocks (T_A / T_B). Production derives these from the live head + the Δ_safe ladder
+        // (money-path gated); the fixed values here are safe at head 0, as the swap tests rely on.
+        terms: crate::swap::SwapTerms {
+            nim_timeout: 10_000,
+            counterparty_timeout: 5_000,
+        },
+        hashlock: crate::swap_leg::sha256(&secret),
+        nim_address: standing.nim_address,
+        btc_address: standing.btc_address.clone(),
+        btc_pubkey: standing.btc_pubkey,
+        give_amount: standing.nim_amount,
+        take_amount: standing.btc_amount,
+        network_id: standing.network_id,
+    };
+    let (coord, propose) =
+        crate::swap_coordinator::SwapCoordinator::new_initiator(ctx, secret, ladder);
+    if let Some(session) = st.swap.as_mut() {
+        session.add_initiator(swap_id, coord);
+    }
+    match encode_swap(&propose) {
+        Ok(bytes) => vec![(MessageType::SwapPropose, bytes)],
+        Err(_) => Vec::new(),
+    }
+}
+
+/// A deterministic swap_id for an intent-initiated swap (unique per advertiser/counterparty pair).
+pub(crate) fn derive_swap_id(
+    standing: &crate::swap_intent::SwapIntent,
+    incoming: &crate::swap_intent::SwapIntent,
+) -> [u8; SWAP_ID_LEN] {
+    let mut buf = Vec::new();
+    buf.extend_from_slice(&standing.nim_address);
+    buf.extend_from_slice(&standing.btc_pubkey);
+    buf.extend_from_slice(&incoming.btc_pubkey);
+    let h = crate::swap_leg::sha256(&buf);
+    h[..SWAP_ID_LEN].try_into().unwrap()
+}
+
+/// A SIM stand-in for the swap secret `S`. **GATED:** production MUST draw `S` from a CSPRNG — a
+/// predictable secret lets an attacker pre-claim the BTC leg. This deterministic placeholder exists
+/// only so the no-RNG sim/test is reproducible; it is never used on a real-fund path.
+fn sim_secret(swap_id: &[u8; SWAP_ID_LEN]) -> [u8; 32] {
+    let mut buf = b"NIMMESH-SIM-INTENT-SECRET-DO-NOT-USE-IN-PROD".to_vec();
+    buf.extend_from_slice(swap_id);
+    crate::swap_leg::sha256(&buf)
 }
 
 /// Ask this node's signer to build the funding tx for `leg` (money-path seam).

@@ -79,6 +79,11 @@ pub mod swap_rate;
 // coordinators and resumes the refund tick — "worst case is a refund" survives a crash.
 pub mod swap_recovery;
 
+// Mesh swap: counterparty discovery. `swap_intent::SwapIntent` is a flooded advertisement of the
+// trade a node wants; a node holding the complementary intent (mirror trade, crossing rate) kicks
+// off a `SwapPropose`. The discovery layer over the existing swap settlement protocol.
+pub mod swap_intent;
+
 // Mesh swap (F3): the swap state machine + the `Δ_safe` timelock-safety gate. `swap` owns the
 // clock-free, height-anchored lifecycle (propose → accept → fund → reveal → settle, with a refund
 // exit in every funded phase) and `assess_ladder` — the gate that REFUSES to fund a swap whose
@@ -291,6 +296,8 @@ mod hardening_e2e_tests;
 mod send_e2e_tests;
 #[cfg(test)]
 mod swap_adversarial_tests;
+#[cfg(test)]
+mod swap_discovery_tests;
 #[cfg(test)]
 mod swap_e2e_tests;
 #[cfg(test)]

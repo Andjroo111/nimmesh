@@ -184,7 +184,31 @@ signing stay human-gated.)
       snapshot. Node e2e: a participant funds a leg, is snapshotted, "restarts" from the snapshot, and
       its worker refund tick fires past the timeout — G31 proven over the real node loop, not just the
       session.
-- [ ] **G34 — Swap intent broadcast + match (discovery).** Today a swap assumes you already know your
+- [x] **G34 — Swap intent broadcast + match (discovery).** Today a swap assumes you already know your
       counterparty. Add a swap-intent message a node floods (give/take/rate it wants) and a matcher
       that, on a compatible complementary intent, kicks off a `Propose` — so two strangers in a dead
       zone can FIND each other before swapping. Sim/testnet; respects the rate policy + concurrency cap.
+      Done: `swap_intent` module (`Asset`/`SwapIntent`/`would_initiate_against` one-sided NIM-giver
+      rule + bounds-checked codec), `MessageType::SwapIntent = 0x45` blind-relayed, `handle_intent`
+      in `swap_node` (decode → match standing intent → derive swap_id → initiate `Propose`), and
+      `swap_discovery_tests` proving a complementary intent settles a swap while an incompatible-rate
+      intent starts nothing. 5 unit + 2 node tests, 5/5 stable.
+
+- [ ] **G35 — Intent expiry / freshness.** A flooded `SwapIntent` lives forever today — a stale ad keeps
+      matching long after the advertiser went offline or repriced. Add an `expiry_ms` (or `valid_for`)
+      to the intent wire + a freshness check in `handle_intent` so an expired intent is decoded but NOT
+      matched, and dropped from relay. Deterministic clock (pass the time in, like the chain-time grace
+      seam) — never wall-clock in a test. Sim/testnet.
+- [ ] **G36 — Intent anti-spam throttle.** A node can flood thousands of distinct intents to DoS matchers
+      into spinning up coordinators (the concurrency cap protects swaps, not the match step). Add a
+      per-sender intent rate/dedup gate (bounded recent-intent set keyed by sender, drop on overflow)
+      so a hostile flooder can't exhaust a matcher. Mirror the existing relay-cache discipline; prove a
+      flood of N intents yields at most the cap's worth of match attempts.
+- [ ] **G37 — Intent re-advertise on no-match.** When a node floods an intent and nobody bites within a
+      window, it should re-advertise (bounded retries, backoff) rather than going silent — the dead-zone
+      case where the counterparty arrives later. Add a driver hook that re-emits the standing intent on a
+      tick if still unmatched and not expired; cap the retransmits. Deterministic; sim/testnet.
+- [ ] **G38 — Surface live intents in the demo UI.** The discovery layer is invisible. Add a read-only
+      "open intents seen on the mesh" view to the demo (drive the real nimiq-ui registry components, vendor
+      real assets per the branding rules) listing each peer's give/take/rate + freshness — no new money
+      path, just a window onto what G34–G37 already flood. UI-gated only if it needs the native bridge.

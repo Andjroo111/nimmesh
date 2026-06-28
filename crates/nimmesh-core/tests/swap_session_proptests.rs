@@ -27,6 +27,7 @@ fn node_identity() -> NodeIdentity {
         btc_pubkey: pk,
         rate_policy: nimmesh_core::swap_session::RatePolicy::accept_all(),
         max_concurrent_swaps: nimmesh_core::swap_session::DEFAULT_MAX_CONCURRENT_SWAPS,
+        standing_intent: None,
     }
 }
 

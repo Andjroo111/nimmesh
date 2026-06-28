@@ -256,6 +256,7 @@ fn a_gc_abort_tears_down_the_swap_on_the_counterparty_over_the_mesh() {
         },
         rate_policy: crate::swap_session::RatePolicy::accept_all(),
         max_concurrent_swaps: crate::swap_session::DEFAULT_MAX_CONCURRENT_SWAPS,
+        standing_intent: None,
     };
     let mut h = MeshHarness::new();
     let bob = h.add_participant("bob", &[2], bob_id, LadderParams::default());
@@ -698,6 +699,7 @@ fn a_responder_declines_a_below_rate_proposal_over_the_mesh() {
         },
         rate_policy: RatePolicy::min_rate(5, 2), // >= 2.5 NIM per BTC
         max_concurrent_swaps: crate::swap_session::DEFAULT_MAX_CONCURRENT_SWAPS,
+        standing_intent: None,
     };
     let mut h = MeshHarness::new();
     let bob = h.add_participant("bob", &[2], bob_id, LadderParams::default());

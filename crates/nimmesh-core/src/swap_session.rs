@@ -41,6 +41,9 @@ pub struct NodeIdentity {
     /// Max swaps this node will hold at once; a fresh `Propose` past it is dropped (anti-DoS,
     /// default [`DEFAULT_MAX_CONCURRENT_SWAPS`]). Own swaps via `add_initiator` are uncapped.
     pub max_concurrent_swaps: usize,
+    /// G34: this node's standing discovery intent (the trade it wants). When set and a complementary
+    /// intent crosses on rate, the node initiates a swap. `None` = not advertising for a counterparty.
+    pub standing_intent: Option<crate::swap_intent::SwapIntent>,
 }
 
 /// A routing failure.
@@ -84,8 +87,8 @@ struct PendingAction {
 
 /// One node's view of all its in-flight swaps.
 pub struct SwapSession {
-    identity: NodeIdentity,
-    ladder: LadderParams,
+    pub(crate) identity: NodeIdentity,
+    pub(crate) ladder: LadderParams,
     pub(crate) coordinators: HashMap<[u8; SWAP_ID_LEN], SwapCoordinator>,
     /// G20: per-swap last-emitted action, re-flooded each tick (TTL-bounded) to recover a message
     /// dropped over a lossy mesh.
@@ -347,6 +350,7 @@ mod tests {
             btc_pubkey: pk,
             rate_policy: RatePolicy::accept_all(),
             max_concurrent_swaps: DEFAULT_MAX_CONCURRENT_SWAPS,
+            standing_intent: None,
         }
     }
 
