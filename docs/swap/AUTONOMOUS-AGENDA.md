@@ -179,7 +179,7 @@ signing stay human-gated.)
       byte `encode`/`decode` so a node can persist recovery state to disk, with a round-trip proptest
       (any snapshot survives encode → decode) and panic-free decode of arbitrary bytes. Completes the
       G31 persistence story (structs → bytes). Mind the secret stays opaque, never logged.
-- [ ] **G33 — Node-level crash recovery.** Wire snapshot/restore into the `MeshNode` worker: a way to
+- [x] **G33 — Node-level crash recovery.** Wire snapshot/restore into the `MeshNode` worker: a way to
       snapshot a participant's live session and a constructor that restores a participant from a
       snapshot. Node e2e: a participant funds a leg, is snapshotted, "restarts" from the snapshot, and
       its worker refund tick fires past the timeout — G31 proven over the real node loop, not just the

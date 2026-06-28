@@ -365,6 +365,29 @@ impl MeshHarness {
         self.attach(peer_id, node, radio)
     }
 
+    /// G33 (test): add a participant node restored from a crash-recovery snapshot (the bytes from
+    /// another node's [`crate::node::MeshNode::swap_snapshot`]).
+    #[cfg(test)]
+    pub fn add_participant_restored(
+        &mut self,
+        peer_id: &str,
+        sender_id: &[u8],
+        identity: crate::swap_session::NodeIdentity,
+        ladder: crate::swap::LadderParams,
+        snapshot: Vec<u8>,
+    ) -> Arc<MeshNode> {
+        let radio = MockRadio::new(peer_id, self.ether.clone());
+        let node = MeshNode::new_participant_restored(
+            sender_id.to_vec(),
+            radio.clone(),
+            RelayPolicy::deterministic(),
+            identity,
+            ladder,
+            snapshot,
+        );
+        self.attach(peer_id, node, radio)
+    }
+
     /// G26 (test): add a participant node with a caller-supplied signer (the seam under test).
     #[cfg(test)]
     pub fn add_participant_with_signer(

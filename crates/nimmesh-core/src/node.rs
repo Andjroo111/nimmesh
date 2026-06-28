@@ -66,6 +66,10 @@ enum Job {
         coordinator: Box<crate::swap_coordinator::SwapCoordinator>,
         propose: Box<crate::swap_wire::SwapEnvelope>,
     },
+    /// G33 (test): encode the participant's live swap session to bytes and send them back (the
+    /// on-demand crash-recovery snapshot — the session lives on the worker thread).
+    #[cfg(test)]
+    SnapshotSwaps(Sender<Vec<u8>>),
     /// Drain and exit (teardown).
     Shutdown,
 }
@@ -154,6 +158,15 @@ fn run_worker(
                 let _ = catch_unwind(AssertUnwindSafe(|| {
                     crate::swap_node::start_swap(&ctx, swap_id, *coordinator, *propose, &mut st);
                 }));
+            }
+            #[cfg(test)]
+            Job::SnapshotSwaps(reply) => {
+                let bytes = st
+                    .swap
+                    .as_ref()
+                    .map(|s| s.encode_snapshot())
+                    .unwrap_or_default();
+                let _ = reply.send(bytes);
             }
         }
     }
@@ -500,6 +513,31 @@ impl MeshNode {
         )
     }
 
+    /// G33 (test): a participant node restored from a crash-recovery snapshot (G31/G32) — its swap
+    /// session is rebuilt from `snapshot` bytes so a funds-locked swap resumes its refund tick. A
+    /// corrupt blob falls back to an empty session (the node starts clean rather than crashing).
+    #[cfg(test)]
+    pub(crate) fn new_participant_restored(
+        sender_id: Vec<u8>,
+        radio: Arc<dyn BleRadio>,
+        policy: RelayPolicy,
+        identity: crate::swap_session::NodeIdentity,
+        ladder: crate::swap::LadderParams,
+        snapshot: Vec<u8>,
+    ) -> Arc<Self> {
+        let session = SwapSession::restore_bytes(identity.clone(), ladder, &snapshot)
+            .unwrap_or_else(|_| SwapSession::new(identity, ladder));
+        Self::build(
+            sender_id,
+            radio,
+            None,
+            policy,
+            false,
+            Some(session),
+            Some(Box::new(crate::swap_signer::MockSigner)),
+        )
+    }
+
     /// Build a gateway node with a caller-chosen relay policy (deterministic in tests).
     pub(crate) fn new_gateway_with_policy(
         sender_id: Vec<u8>,
@@ -564,6 +602,19 @@ impl MeshNode {
         swap_id: [u8; crate::swap_wire::SWAP_ID_LEN],
     ) -> Option<crate::swap::SwapPhase> {
         crate::swap_node::swap_phase(&self.ctx, swap_id)
+    }
+
+    /// G33 (test): the participant's live swap session encoded to recovery bytes (asks the worker;
+    /// returns empty if the node isn't a participant or the worker is gone).
+    #[cfg(test)]
+    pub(crate) fn swap_snapshot(&self) -> Vec<u8> {
+        let (tx, rx) = channel();
+        if let Some(job_tx) = self.job_tx.lock().unwrap().as_ref() {
+            if job_tx.send(Job::SnapshotSwaps(tx)).is_ok() {
+                return rx.recv_timeout(Duration::from_secs(3)).unwrap_or_default();
+            }
+        }
+        Vec::new()
     }
 
     /// How many packets this node has relayed onward (test/observability hook).

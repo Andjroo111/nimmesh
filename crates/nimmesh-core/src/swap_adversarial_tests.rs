@@ -287,3 +287,90 @@ fn a_participant_caps_concurrent_swaps_over_the_mesh() {
 
     h.shutdown();
 }
+
+// --- G33: node-level crash recovery -------------------------------------------------------------
+
+#[test]
+fn a_node_restored_from_a_snapshot_still_refunds_a_funds_locked_swap() {
+    // G33: a participant funds its NIM leg, its live session is snapshotted to bytes, and a NEW node
+    // is built restored from those bytes (the original "crashes"). The restored node's worker refund
+    // tick still fires past the timeout — G31/G32 proven over the real MeshNode loop.
+    use crate::codec::encode;
+    use crate::mock_radio::MeshHarness;
+    use crate::packet::{MessageType, Packet, BROADCAST_RECIPIENT};
+    use crate::swap::{LadderParams, SwapPhase};
+    use crate::swap_coordinator::SwapCoordinator;
+    use crate::swap_messages::SwapAcceptance;
+    use crate::swap_wire::encode_swap;
+    use crate::test_support::{make_beacon_packet, wait_until, SETTLE};
+
+    let (swap_id, alice_id, _bob_id, alice_ctx) = participant_fixtures();
+    let mut h = MeshHarness::new();
+    let alice = h.add_participant("alice", &[1], alice_id.clone(), LadderParams::default());
+
+    // Alice originates + an Accept arrives → she funds her NIM leg → SelfFunded (funds locked).
+    let (coordinator, propose) =
+        SwapCoordinator::new_initiator(alice_ctx, [42u8; 32], LadderParams::default());
+    alice.start_swap(swap_id, coordinator, propose);
+    let accept = SwapAcceptance {
+        swap_id,
+        nim_address: [0xB2; 20],
+        btc_address: b"tb1qbob".to_vec(),
+        btc_pubkey: {
+            let mut k = [0x22; 33];
+            k[0] = 0x03;
+            k
+        },
+    }
+    .to_envelope();
+    let mut pkt = Packet::new(
+        MessageType::SwapAccept,
+        [9u8; 8],
+        encode_swap(&accept).unwrap(),
+    );
+    pkt.recipient_id = Some(BROADCAST_RECIPIENT);
+    alice.on_packet_received_from("bob".to_string(), encode(&pkt).unwrap());
+    assert!(
+        wait_until(
+            || alice.swap_phase(swap_id) == Some(SwapPhase::SelfFunded),
+            SETTLE
+        ),
+        "alice never funded her leg"
+    );
+
+    // Snapshot alice's live session to the on-disk recovery blob.
+    let snapshot = alice.swap_snapshot();
+    assert!(
+        snapshot.len() > 2,
+        "the snapshot should hold the funds-locked swap"
+    );
+
+    // "Restart": a NEW node restored from the snapshot bytes; the funds-locked swap comes back.
+    let revived =
+        h.add_participant_restored("revived", &[3], alice_id, LadderParams::default(), snapshot);
+    revived.poll_sync(); // populate the restored node's phase mirror
+    assert!(
+        wait_until(
+            || revived.swap_phase(swap_id) == Some(SwapPhase::SelfFunded),
+            SETTLE
+        ),
+        "the restored node did not recover the funds-locked swap"
+    );
+
+    // It hears a beacon past T_A and its worker refund tick fires → Refunded + reaped.
+    revived.on_packet_received_from(
+        "gw".to_string(),
+        make_beacon_packet([7; 8], 10_001, 5, 7, 1),
+    );
+    assert!(
+        wait_until(|| revived.cached_head_height() == Some(10_001), SETTLE),
+        "the restored node never cached the head beacon"
+    );
+    revived.poll_sync();
+    assert!(
+        wait_until(|| revived.swap_phase(swap_id).is_none(), SETTLE),
+        "the restored node's worker refund tick did not fire"
+    );
+
+    h.shutdown();
+}
