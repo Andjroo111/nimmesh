@@ -15,9 +15,10 @@
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Mutex;
 
+use nimmesh_core::demo_http::serve_static; // G49: the static-serving + traversal sandbox live in the lib now
 use nimmesh_core::swap_sim::{SwapSim, SwapSnapshot};
 
 fn main() {
@@ -109,38 +110,6 @@ fn route(
         }
         ("GET", _) => serve_static(path, webui_root),
         _ => ("404 Not Found", "text/plain", b"not found".to_vec()),
-    }
-}
-
-/// Serve a file from `webui_root`, sandboxed (no path traversal). `/` → the swap page.
-fn serve_static(path: &str, webui_root: &Path) -> (&'static str, &'static str, Vec<u8>) {
-    let rel = if path == "/" {
-        "swap/swap.html"
-    } else {
-        path.trim_start_matches('/')
-    };
-    if rel.split('/').any(|seg| seg == "..") {
-        return ("403 Forbidden", "text/plain", b"forbidden".to_vec());
-    }
-    let full: PathBuf = webui_root.join(rel);
-    match std::fs::canonicalize(&full) {
-        Ok(p) if p.starts_with(webui_root) => match std::fs::read(&p) {
-            Ok(bytes) => ("200 OK", content_type(&p), bytes),
-            Err(_) => ("404 Not Found", "text/plain", b"not found".to_vec()),
-        },
-        _ => ("404 Not Found", "text/plain", b"not found".to_vec()),
-    }
-}
-
-fn content_type(p: &Path) -> &'static str {
-    match p.extension().and_then(|e| e.to_str()) {
-        Some("html") => "text/html; charset=utf-8",
-        Some("css") => "text/css; charset=utf-8",
-        Some("js") | Some("mjs") => "text/javascript; charset=utf-8",
-        Some("svg") => "image/svg+xml",
-        Some("png") => "image/png",
-        Some("json") => "application/json",
-        _ => "application/octet-stream",
     }
 }
 

@@ -34,6 +34,10 @@ pub mod codec;
 pub mod envelope;
 pub mod packet;
 
+// G49: the static-file serving behind the swap browser demo (webui/ tree, path-traversal sandbox),
+// extracted from the `swap_demo_server` example so it's covered by a deterministic test. Pure std.
+pub mod demo_http;
+
 // Mesh swap (F2, feat/mesh-swap): the swap wire messages (`0x40`–`0x44`) + their TLV envelope,
 // layered on the same codec/relay/store-forward/gateway stack as `nimiqTx`. `swap_wire` is the
 // type-length-value codec for propose / accept / funding-proof / preimage-reveal / abort —

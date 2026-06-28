@@ -367,10 +367,18 @@ signing stay human-gated.)
       panics on arbitrary input; a `sign_intent`-ed intent always verifies (and survives the wire
       round-trip) while tampering the content / the claimed address / the signature each breaks it. All
       properties universally true → non-flaky (8/8 reruns, no regressions file written).
-- [ ] **G49 — Swap-demo server end-to-end smoke.** A `cargo test` that boots the `swap_demo_server`
+- [x] **G49 — Swap-demo server end-to-end smoke.** A `cargo test` that boots the `swap_demo_server`
       example on an ephemeral port, GETs `/swap/intents.html` + `/swap/intents.css` + the iqons sprite,
       and asserts 200 + the expected content-type / a known marker string — so the G38/G46 demo can't
       silently rot. No browser; std-only HTTP client. Sim/testnet.
+      Done (preferred refactor path): extracted the example's static-serving + path-traversal sandbox
+      into a pure-std lib module `demo_http` (`serve_static` + `content_type`, builds WITHOUT
+      bitcoin-leg so the DEFAULT test run covers it); the example now calls it. `tests/swap_demo_http_tests.rs`
+      (no port, no sockets → deterministic): `/swap/intents.html` → 200 + text/html + contains "Open
+      intents" AND the G46 "Discovery this session" marker; intents.css → 200 + text/css; swap.html + `/`
+      + the iqons sprite all 200 with the right content-type; an unknown path → 404 and every `..`
+      traversal → not-200 (sandbox holds). webui root resolved from `CARGO_MANIFEST_DIR` (CWD-independent).
+      2 tests; 11 test binaries now.
 - [ ] **G50 — Owner-gated tracking ledger.** Collect every BLOCKED money-path / native-bridge item the
       swap loop has surfaced (live WebView↔Rust bridge for the demos, commit-reveal addressing + mixing
       from G45, real NIM/BTC signer drop-in, mainnet) into one `docs/swap/OWNER-GATED.md` checklist with
