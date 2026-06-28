@@ -72,6 +72,61 @@ impl IntentThrottle {
     }
 }
 
+/// G37: how many times a node re-floods its standing intent while it stays unmatched.
+pub(crate) const DEFAULT_MAX_INTENT_READVERTS: u32 = 5;
+/// G37: the re-advertise gap is capped here (ticks), so the exponential backoff doesn't go silent.
+const MAX_INTENT_READVERT_INTERVAL: u32 = 8;
+
+/// G37: a bounded, exponentially-backing-off re-advertise schedule for a node's standing intent. A
+/// node that floods an intent and gets no taker would otherwise go silent — but in a dead zone the
+/// counterparty may only come into range later. So while still unmatched it re-floods on a schedule
+/// that backs off (1, 2, 4, 8, 8, … ticks apart) and stops after `max_sends`. Purely tick-counted, so
+/// it is deterministic with no clock. The schedule resets once a swap forms, giving the next idle
+/// spell a fresh budget.
+pub(crate) struct IntentAdvertiser {
+    sent: u32,
+    cooldown: u32,
+    interval: u32,
+    max_sends: u32,
+}
+
+impl IntentAdvertiser {
+    pub(crate) fn new() -> Self {
+        IntentAdvertiser {
+            sent: 0,
+            cooldown: 0,
+            interval: 1,
+            max_sends: DEFAULT_MAX_INTENT_READVERTS,
+        }
+    }
+
+    /// Reset to the initial budget — called once a swap forms, so a later idle spell re-advertises.
+    pub(crate) fn reset(&mut self) {
+        self.sent = 0;
+        self.cooldown = 0;
+        self.interval = 1;
+    }
+
+    /// Advance one maintenance tick; `true` on a tick that should re-advertise. Fires at most
+    /// `max_sends` times, the gap doubling each time (capped at [`MAX_INTENT_READVERT_INTERVAL`]).
+    pub(crate) fn on_tick(&mut self) -> bool {
+        if self.sent >= self.max_sends {
+            return false;
+        }
+        if self.cooldown > 0 {
+            self.cooldown -= 1;
+            return false;
+        }
+        self.sent += 1;
+        self.cooldown = self.interval;
+        self.interval = self
+            .interval
+            .saturating_mul(2)
+            .min(MAX_INTENT_READVERT_INTERVAL);
+        true
+    }
+}
+
 /// A swap packet (`0x40`–`0x44`). Blind-relay it onward like any flooded packet, and — if this node
 /// is a participant — route it to our own [`crate::swap_session::SwapSession`] and flood whatever
 /// reply it produces (a `Propose` → an `Accept`, etc.).
@@ -411,7 +466,33 @@ pub(crate) fn gc_tick(ctx: &WorkerCtx, st: &mut WorkerState) {
             flood_swap_reply(ctx, MessageType::SwapAbort, payload, st);
         }
     }
+    readvertise_intent(ctx, st, head);
     sync_swap_phases(ctx, st);
+}
+
+/// G37: re-advertise this node's standing swap intent on the maintenance tick. While the node is
+/// still **unmatched** (holds no coordinator) and its intent is **fresh** (G35), re-flood the
+/// standing intent on the [`IntentAdvertiser`]'s bounded backing-off schedule, so a counterparty that
+/// only later comes into range can still find it. Once a swap forms we stop and reset the budget.
+fn readvertise_intent(ctx: &WorkerCtx, st: &mut WorkerState, head: u64) {
+    let intent = {
+        let Some(session) = st.swap.as_ref() else {
+            return;
+        };
+        if !session.coordinators.is_empty() {
+            // A swap formed → stop advertising; reset so a later idle spell starts a fresh campaign.
+            st.intent_advertiser.reset();
+            return;
+        }
+        match &session.identity.standing_intent {
+            Some(i) if i.is_fresh(head) => i.clone(),
+            _ => return, // no standing intent, or it has expired (G35) → nothing to re-advertise
+        }
+    };
+    if st.intent_advertiser.on_tick() {
+        let bytes = crate::swap_intent::encode_intent(&intent);
+        flood_swap_reply(ctx, MessageType::SwapIntent, bytes, st);
+    }
 }
 
 /// This node's current phase for a swap it participates in (test/observability hook).

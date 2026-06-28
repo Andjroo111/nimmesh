@@ -119,6 +119,7 @@ pub(crate) fn make_beacon_packet(
 /// assert exactly which peers a packet was (or was not) relayed to.
 pub(crate) struct SpyRadio {
     sends: Mutex<Vec<(String, ThreadId)>>,
+    frames: Mutex<Vec<Vec<u8>>>,
     stopped: AtomicBool,
 }
 
@@ -126,11 +127,17 @@ impl SpyRadio {
     pub(crate) fn new() -> std::sync::Arc<Self> {
         std::sync::Arc::new(SpyRadio {
             sends: Mutex::new(Vec::new()),
+            frames: Mutex::new(Vec::new()),
             stopped: AtomicBool::new(false),
         })
     }
     pub(crate) fn send_count(&self) -> usize {
         self.sends.lock().unwrap().len()
+    }
+    /// Every raw frame this radio was asked to send — so a test can decode them and count a specific
+    /// message type (e.g. how many `SwapIntent` re-advertisements went out).
+    pub(crate) fn frames(&self) -> Vec<Vec<u8>> {
+        self.frames.lock().unwrap().clone()
     }
     pub(crate) fn send_threads(&self) -> Vec<ThreadId> {
         self.sends.lock().unwrap().iter().map(|(_, t)| *t).collect()
@@ -148,10 +155,11 @@ impl SpyRadio {
 impl BleRadio for SpyRadio {
     fn start_advertising(&self) {}
     fn start_scanning(&self) {}
-    fn send(&self, peer_id: String, _bytes: Vec<u8>) {
+    fn send(&self, peer_id: String, bytes: Vec<u8>) {
         if self.stopped.load(Ordering::SeqCst) {
             return;
         }
+        self.frames.lock().unwrap().push(bytes);
         self.sends
             .lock()
             .unwrap()

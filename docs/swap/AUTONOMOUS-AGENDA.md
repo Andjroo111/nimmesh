@@ -218,10 +218,17 @@ signing stay human-gated.)
       dropping once the budget is spent. Tests: pure throttle caps per sender independently; one
       flooder fills at most the cap while a DIFFERENT sender still matches. 8/10 discovery/intent
       tests green (added pure + node flood test), 10/10 stable.
-- [ ] **G37 — Intent re-advertise on no-match.** When a node floods an intent and nobody bites within a
+- [x] **G37 — Intent re-advertise on no-match.** When a node floods an intent and nobody bites within a
       window, it should re-advertise (bounded retries, backoff) rather than going silent — the dead-zone
       case where the counterparty arrives later. Add a driver hook that re-emits the standing intent on a
       tick if still unmatched and not expired; cap the retransmits. Deterministic; sim/testnet.
+      Done: `IntentAdvertiser` in `swap_node` (bounded exponentially-backing-off schedule — re-floods
+      at ticks ~1/3/6/11/20, `DEFAULT_MAX_INTENT_READVERTS = 5`, gap capped, purely tick-counted so no
+      clock). `readvertise_intent` in `gc_tick` re-floods the standing intent only while the node is
+      unmatched (no coordinator) AND the intent is fresh (G35), resetting the budget once a swap forms.
+      Tests (drive the real worker maintenance tick over `poll_sync`, count `SwapIntent` frames via a
+      bytes-capturing `SpyRadio`): an unmatched node re-advertises exactly the cap then stops; a node
+      in a swap re-advertises 0×; an expired standing intent re-advertises 0×. 12/12 stable.
 - [ ] **G38 — Surface live intents in the demo UI.** The discovery layer is invisible. Add a read-only
       "open intents seen on the mesh" view to the demo (drive the real nimiq-ui registry components, vendor
       real assets per the branding rules) listing each peer's give/take/rate + freshness — no new money

@@ -66,6 +66,16 @@ fn flood_intent(node: &crate::node::MeshNode, intent: &SwapIntent, ts: u64) {
     node.on_packet_received_from("peer".to_string(), intent_frame(intent, [9u8; 8], ts));
 }
 
+/// How many `SwapIntent` packets a spy radio was asked to send (decode each frame, filter by type).
+fn count_swap_intent_frames(radio: &crate::test_support::SpyRadio) -> usize {
+    radio
+        .frames()
+        .iter()
+        .filter_map(|f| crate::codec::decode(f).ok())
+        .filter(|p| p.msg_type == crate::packet::MessageType::SwapIntent)
+        .count()
+}
+
 #[test]
 fn a_complementary_intent_kicks_off_a_swap_that_settles() {
     // G34: alice holds a standing intent (give 200k NIM for 50k BTC, rate 4.0). Bob floods a
@@ -309,4 +319,142 @@ fn one_flooder_cannot_exhaust_the_matcher_but_another_sender_still_matches() {
     );
 
     h.shutdown();
+}
+
+#[test]
+fn an_unmatched_node_re_advertises_its_intent_a_bounded_number_of_times() {
+    // G37: a node holding a standing intent but with no taker yet re-floods it on the maintenance
+    // tick — bounded, with backoff — so a counterparty that only later comes into range can find it.
+    use crate::node::MeshNode;
+    use crate::relay::RelayPolicy;
+    use crate::swap::LadderParams;
+    use crate::swap_node::DEFAULT_MAX_INTENT_READVERTS;
+    use crate::test_support::{wait_until, SpyRadio, SETTLE};
+
+    let (_swap_id, alice_id, _bob_id, _ctx) = participant_fixtures();
+    let intent = intent_for(&alice_id, Asset::Nim, 200_000, 50_000, FRESH);
+    let mut alice_id = alice_id;
+    alice_id.standing_intent = Some(intent);
+
+    let radio = SpyRadio::new();
+    let node = MeshNode::new_participant(
+        vec![1],
+        radio.clone(),
+        RelayPolicy::deterministic(),
+        alice_id,
+        LadderParams::default(),
+    );
+    node.on_peer_connected("p".to_string());
+
+    let max = DEFAULT_MAX_INTENT_READVERTS as usize;
+    // Drive the maintenance tick well past the backoff schedule.
+    for _ in 0..40 {
+        node.poll_sync();
+    }
+    assert!(
+        wait_until(|| count_swap_intent_frames(&radio) >= max, SETTLE),
+        "an unmatched node should re-advertise up to its cap"
+    );
+    // The budget is spent — more ticks must not produce more re-advertisements.
+    for _ in 0..15 {
+        node.poll_sync();
+    }
+    std::thread::sleep(std::time::Duration::from_millis(30));
+    assert_eq!(
+        count_swap_intent_frames(&radio),
+        max,
+        "re-advertise must be bounded"
+    );
+
+    node.shutdown();
+}
+
+#[test]
+fn a_node_in_a_swap_stops_re_advertising() {
+    // G37: once a swap forms (a coordinator exists) the node has found its counterparty, so it must
+    // stop re-advertising the standing intent.
+    use crate::node::MeshNode;
+    use crate::relay::RelayPolicy;
+    use crate::swap::LadderParams;
+    use crate::swap_coordinator::SwapCoordinator;
+    use crate::test_support::{wait_until, SpyRadio, SETTLE};
+
+    let (swap_id, alice_id, _bob_id, alice_ctx) = participant_fixtures();
+    let intent = intent_for(&alice_id, Asset::Nim, 200_000, 50_000, FRESH);
+    let mut alice_id = alice_id;
+    alice_id.standing_intent = Some(intent);
+
+    let radio = SpyRadio::new();
+    let node = MeshNode::new_participant(
+        vec![1],
+        radio.clone(),
+        RelayPolicy::deterministic(),
+        alice_id,
+        LadderParams::default(),
+    );
+    node.on_peer_connected("p".to_string());
+
+    // The node has matched into a swap (a coordinator is registered).
+    let (coord, propose) =
+        SwapCoordinator::new_initiator(alice_ctx, [42u8; 32], LadderParams::default());
+    node.start_swap(swap_id, coord, propose);
+    assert!(
+        wait_until(|| node.swap_phase(swap_id).is_some(), SETTLE),
+        "the coordinator should register"
+    );
+
+    for _ in 0..40 {
+        node.poll_sync();
+    }
+    std::thread::sleep(std::time::Duration::from_millis(30));
+    assert_eq!(
+        count_swap_intent_frames(&radio),
+        0,
+        "a node already in a swap must not re-advertise its intent"
+    );
+
+    node.shutdown();
+}
+
+#[test]
+fn an_expired_standing_intent_is_not_re_advertised() {
+    // G37 × G35: an expired standing intent is never re-advertised — a stale ad must die, not loop.
+    use crate::node::MeshNode;
+    use crate::relay::RelayPolicy;
+    use crate::swap::LadderParams;
+    use crate::test_support::{make_beacon_packet, wait_until, SpyRadio, SETTLE};
+
+    let (_swap_id, alice_id, _bob_id, _ctx) = participant_fixtures();
+    let intent = intent_for(&alice_id, Asset::Nim, 200_000, 50_000, 1_000); // expires at height 1_000
+    let mut alice_id = alice_id;
+    alice_id.standing_intent = Some(intent);
+
+    let radio = SpyRadio::new();
+    let node = MeshNode::new_participant(
+        vec![1],
+        radio.clone(),
+        RelayPolicy::deterministic(),
+        alice_id,
+        LadderParams::default(),
+    );
+    node.on_peer_connected("p".to_string());
+
+    // Push the head past the intent's expiry.
+    node.on_packet_received_from("gw".to_string(), make_beacon_packet([7; 8], 6_000, 5, 7, 1));
+    assert!(
+        wait_until(|| node.cached_head_height() == Some(6_000), SETTLE),
+        "the head should cache"
+    );
+
+    for _ in 0..40 {
+        node.poll_sync();
+    }
+    std::thread::sleep(std::time::Duration::from_millis(30));
+    assert_eq!(
+        count_swap_intent_frames(&radio),
+        0,
+        "an expired intent must not be re-advertised"
+    );
+
+    node.shutdown();
 }

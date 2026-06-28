@@ -371,9 +371,7 @@ pub(crate) struct WorkerState {
     sync: SyncScheduler,
     /// G9: rate-limiter for the periodic gateway head-beacon emit (one per tick).
     pub(crate) beacon: BeaconScheduler,
-    /// G12: when set, drop a `nimiqTx` whose opaque blob is not a well-formed, correctly
-    /// signed Nimiq transfer before relaying/storing it (the free spam filter, RISKS.md #4).
-    /// Off in the headless test harness (which floods opaque stand-in bytes); on in production.
+    /// G12: drop a `nimiqTx` that isn't a well-formed signed transfer before relay (spam filter); off in tests.
     verify_before_relay: bool,
     /// G12: per-peer inbound rate limiter (anti-DoS — throttle a flooding peer).
     limiter: PeerRateLimiter,
@@ -384,8 +382,9 @@ pub(crate) struct WorkerState {
     pub(crate) swap: Option<SwapSession>,
     /// G26: a participant's signer seam (`MockSigner` today; the money-path signer drops in here). `Some` iff `swap`.
     pub(crate) signer: Option<Box<dyn crate::swap_signer::SwapSigner>>,
-    /// G36: per-sender cap on intent-driven match attempts (anti-spam for the discovery layer).
+    /// G36/G37: per-sender match-attempt cap (anti-spam) + bounded standing-intent re-advertise.
     pub(crate) intent_throttle: crate::swap_node::IntentThrottle,
+    pub(crate) intent_advertiser: crate::swap_node::IntentAdvertiser,
 }
 
 impl WorkerState {
@@ -410,6 +409,7 @@ impl WorkerState {
             swap,
             signer,
             intent_throttle: crate::swap_node::IntentThrottle::new(),
+            intent_advertiser: crate::swap_node::IntentAdvertiser::new(),
         }
     }
 
