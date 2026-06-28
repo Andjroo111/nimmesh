@@ -220,8 +220,8 @@
         </div>
       </div>
       <div class="anim-amounts">
-        <span class="amt"><span class="dir">&uarr;</span> 2 800 NIM</span>
-        <span class="amt"><span class="dir">&darr;</span> 0.0012 BTC</span>
+        <span class="amt" id="amt-nim"><span class="dir">&uarr;</span> 2 800 NIM</span>
+        <span class="amt" id="amt-btc"><span class="dir">&darr;</span> 0.0012 BTC</span>
       </div>
 
       <div class="step"><span class="count" id="step-count">1/5</span><span class="label" id="step-label">Proposing swap</span></div>
@@ -366,20 +366,41 @@
     }
     errToast.classList.add('hidden');
   }
-  const engineStart = async () => { await api('/api/reset'); applyEngineSnap(await api('/api/advance')); };
-  const engineNext = async () => applyEngineSnap(await api('/api/advance'));
-  const engineRefund = async () => applyEngineSnap(await api('/api/refund')); // stall → timeout refund
+  // auto-advance: once started, the swap plays itself out (each real engine action ~1.4s apart),
+  // like watching the atomic swap happen. Any manual step / refund / exit stops the autoplay.
+  let autoTimer = null;
+  const stopAuto = () => { clearTimeout(autoTimer); autoTimer = null; };
+  const autoPlay = () => {
+    stopAuto();
+    autoTimer = setTimeout(async () => {
+      const snap = await api('/api/advance');
+      applyEngineSnap(snap);
+      if (!snap.done && !snap.refunded) autoPlay();
+    }, 1400);
+  };
+  const engineStart = async () => { await api('/api/reset'); applyEngineSnap(await api('/api/advance')); autoPlay(); };
+  const engineNext = async () => { stopAuto(); applyEngineSnap(await api('/api/advance')); };
+  const engineRefund = async () => { stopAuto(); applyEngineSnap(await api('/api/refund')); }; // stall → refund
+
+  // perspective toggle (demo): initiator gives NIM (↑) / gets BTC (↓); responder is the mirror.
+  let asResponder = false;
+  const setPerspective = () => {
+    $('#amt-nim .dir').innerHTML = asResponder ? '&darr;' : '&uarr;';
+    $('#amt-btc .dir').innerHTML = asResponder ? '&uarr;' : '&darr;';
+  };
+  setPerspective();
 
   $('#start-swap').onclick = () => go(1);  // setup → confirm
   $('#authorize').onclick = () => { if (engineMode) { engineActive = true; engineStart(); } else go(2); };
   $('#next').onclick = () => { if (engineMode && engineActive) engineNext(); else go(phase + 1); };
-  $('#prev').onclick = () => { if (engineMode && engineActive) { engineActive = false; go(1); } else go(phase - 1); };
+  $('#prev').onclick = () => { if (engineMode && engineActive) { stopAuto(); engineActive = false; go(1); } else go(phase - 1); };
   $('.back').onclick = () => go(0);        // confirm → setup
-  document.querySelectorAll('.close, .minimize').forEach(b => b.onclick = () => { engineActive = false; go(0); });
+  document.querySelectorAll('.close, .minimize').forEach(b => b.onclick = () => { stopAuto(); engineActive = false; go(0); });
   addEventListener('keydown', e => {
     if (e.key === 'ArrowRight') { if (engineMode && engineActive) engineNext(); else go(phase + 1); }
-    else if (e.key === 'ArrowLeft') { if (engineMode && engineActive) { engineActive = false; go(1); } else go(phase - 1); }
+    else if (e.key === 'ArrowLeft') { if (engineMode && engineActive) { stopAuto(); engineActive = false; go(1); } else go(phase - 1); }
     else if (e.key === 'r' && engineMode && engineActive) engineRefund(); // demo: stall → refund
+    else if (e.key === 'v') { asResponder = !asResponder; setPerspective(); } // demo: flip perspective
     else if (e.key === 'e' && !engineActive && PHASES[phase].screen === 'progress') { errored = !errored; render(); }
   });
   render();

@@ -16,7 +16,7 @@ green, log one line, and schedule the next iteration. No human prompt between go
       envelopes from engine state (the engine↔wire bridge), with tests.
 - [x] **G5 — Full swap negotiated over the mock mesh.** Drive a complete swap between two MockRadio
       nodes (Propose→Accept→fund→reveal) — swaps actually working over the transport.
-- [ ] **G6 — Demo polish.** Engine-driven auto-advance + a responder-perspective toggle.
+- [x] **G6 — Demo polish.** Engine-driven auto-advance + a responder-perspective toggle.
 - [ ] **G7 — Docs sweep.** Refresh SWAP / FEASIBILITY / BTC-LEG to match the shipped engine+UI+demo.
 
 When the ladder is exhausted, re-scan for the next-highest-value work (mesh integration depth, more
