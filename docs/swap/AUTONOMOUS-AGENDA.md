@@ -100,7 +100,7 @@ money-path gated.)
       each swap's last-emitted action envelope and re-floods it on the maintenance tick while the
       swap is non-terminal and unadvanced, so a dropped `FundingProof`/`PreimageReveal`/`Accept` is
       recovered (idempotent — the coordinator's phase absorbs duplicates). Tested over a lossy mesh.
-- [ ] **G21 — Many concurrent swaps over a lossy mesh.** With retransmit in place, drive N
+- [x] **G21 — Many concurrent swaps over a lossy mesh.** With retransmit in place, drive N
       participant-pair swaps to `Settled` (or clean refund) through two+ `MeshNode` loops over a
       `MockEther` with loss + latency, asserting no one-sided settlement under adversarial conditions.
 - [ ] **G22 — Swap catch-up via store-and-forward on rejoin.** A participant that was out of range

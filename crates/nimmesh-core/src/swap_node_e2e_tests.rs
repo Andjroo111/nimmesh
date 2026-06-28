@@ -407,3 +407,71 @@ fn a_swap_survives_a_lossy_mesh_via_retransmits() {
 
     h.shutdown();
 }
+
+#[test]
+fn many_concurrent_swaps_all_settle_over_a_lossy_mesh() {
+    // G21: N independent swaps run at once between the same two participants over a mesh that drops
+    // a fifth of every flood and delays the rest — stressing the session's per-swap_id routing and
+    // the G20 retransmit under concurrency. Each swap has its own id + secret. With no head beacon
+    // the head stays 0, so a coordinator can ONLY leave the session by Settled → reap (never stale /
+    // refund) — so EVERY swap going empty on BOTH sides proves every swap settled with no one-sided
+    // leg left stuck. A swap that wedged half-done (e.g. a responder that never got its reveal)
+    // would linger forever and fail the assertion.
+    use crate::mock_radio::MeshHarness;
+    use crate::swap::LadderParams;
+    use crate::swap_coordinator::{SwapContext, SwapCoordinator};
+    use crate::swap_leg::sha256;
+    use crate::swap_wire::SWAP_ID_LEN;
+    use std::time::Duration;
+
+    const N: usize = 6;
+
+    let (_sid0, alice_id, bob_id, _ctx0) = participant_fixtures();
+    let mut h = MeshHarness::new();
+    let alice = h.add_participant("alice", &[1], alice_id.clone(), LadderParams::default());
+    let bob = h.add_participant("bob", &[2], bob_id, LadderParams::default());
+    h.connect("alice", "bob");
+    h.ether().set_loss(0.2);
+    h.ether().set_latency(Duration::from_micros(100));
+
+    // Start N independent swaps, each with a distinct swap_id and secret.
+    let swap_ids: Vec<[u8; SWAP_ID_LEN]> = (0..N).map(|i| [0xC0 + i as u8; SWAP_ID_LEN]).collect();
+    for (i, sid) in swap_ids.iter().enumerate() {
+        let secret = [i as u8 + 1; 32];
+        let ctx = SwapContext {
+            swap_id: *sid,
+            terms: terms(),
+            hashlock: sha256(&secret),
+            nim_address: alice_id.nim_address,
+            btc_address: alice_id.btc_address.clone(),
+            btc_pubkey: alice_id.btc_pubkey,
+            give_amount: GIVE_NIM,
+            take_amount: TAKE_BTC,
+            network_id: 5,
+        };
+        let (coord, propose) = SwapCoordinator::new_initiator(ctx, secret, LadderParams::default());
+        alice.start_swap(*sid, coord, propose);
+    }
+
+    // Drive the maintenance tick at a calm cadence until ALL swaps have settled + reaped on both
+    // sides. Retransmit carries every swap's messages through the loss independently.
+    let mut done = false;
+    for _ in 0..400 {
+        alice.poll_sync();
+        bob.poll_sync();
+        std::thread::sleep(Duration::from_millis(20));
+        if swap_ids
+            .iter()
+            .all(|sid| alice.swap_phase(*sid).is_none() && bob.swap_phase(*sid).is_none())
+        {
+            done = true;
+            break;
+        }
+    }
+    assert!(
+        done,
+        "not all {N} concurrent swaps settled on both sides over the lossy mesh"
+    );
+
+    h.shutdown();
+}
