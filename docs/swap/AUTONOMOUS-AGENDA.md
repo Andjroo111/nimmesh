@@ -10,7 +10,7 @@ green, log one line, and schedule the next iteration. No human prompt between go
       legs refunded past their timeout); a test proves "worst case is a refund, never a loss."
 - [x] **G2 — Refund path in the demo.** Surface G1 in the demo server + UI: a stall→refund flow
       ending in "Refunded — your funds are safe" (real `refund_after_timeout`).
-- [ ] **G3 — swap_wire proptest hardening.** Fuzz `decode_swap` (panic-free on arbitrary bytes) and
+- [x] **G3 — swap_wire proptest hardening.** Fuzz `decode_swap` (panic-free on arbitrary bytes) and
       round-trip any valid envelope incl. the new `btc_pubkey`.
 - [ ] **G4 — Mesh swap message builder.** Build `Propose`/`Accept`/`FundingProof`/`PreimageReveal`
       envelopes from engine state (the engine↔wire bridge), with tests.
