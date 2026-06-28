@@ -4,6 +4,9 @@ This is the standing agenda for the self-running swap loop. Each iteration: read
 log (`~/nimmesh-swap-loop/LOG.md`), pick the **next unchecked goal**, build it, gate it, commit on
 green, log one line, and schedule the next iteration. No human prompt between goals.
 
+> The human-decision backlog (every money-path / native-bridge / mainnet item the loop deliberately
+> left gated, with the exact code seam each plugs into) lives in [`OWNER-GATED.md`](OWNER-GATED.md).
+
 ## Goal ladder (do in order; each is one iteration-sized chunk)
 
 - [x] **G1 — Refund / timeout-safety in the sim.** `SwapSim` can drive the stall→refund path (both
@@ -379,11 +382,18 @@ signing stay human-gated.)
       + the iqons sprite all 200 with the right content-type; an unknown path → 404 and every `..`
       traversal → not-200 (sandbox holds). webui root resolved from `CARGO_MANIFEST_DIR` (CWD-independent).
       2 tests; 11 test binaries now.
-- [ ] **G50 — Owner-gated tracking ledger.** Collect every BLOCKED money-path / native-bridge item the
+- [x] **G50 — Owner-gated tracking ledger.** Collect every BLOCKED money-path / native-bridge item the
       swap loop has surfaced (live WebView↔Rust bridge for the demos, commit-reveal addressing + mixing
       from G45, real NIM/BTC signer drop-in, mainnet) into one `docs/swap/OWNER-GATED.md` checklist with
       the exact seam each plugs into — so the human-decision backlog is explicit, not scattered in commit
       messages. Docs only; no code.
+      Done: `docs/swap/OWNER-GATED.md` — a 5-item ledger (OG-1 live WebView↔Rust bridge via the
+      `loadIntents`/`loadStats` seam + UniFFI `SwapEngineHandle`; OG-2 real signer behind the
+      `SwapSigner` trait replacing `MockSigner`, incl. `NimiqLeg`/`swap_btc_leg`+`BtcEnclaveKey`/the
+      `BitcoinLeg` gated stub; OG-3 CSPRNG secret replacing `swap_node::sim_secret`; OG-4 mainnet/real
+      funds/live broadcast; OG-5 deeper privacy commit-reveal + mixing from DISCOVERY-PRIVACY.md) — each
+      with id, why-gated, the exact file+fn/trait seam, and source goals; grepped from the real code, not
+      invented. Cross-linked from the agenda header. Docs only; Rust gate re-run to confirm no drift.
 - [ ] **G51 — Re-advertise resume on reconnect.** Lift the G47 budget-exhaustion limit: when a node's
       peer set changes (a new link after a partition heal), reset the standing-intent re-advertise budget
       so a long-partitioned advertiser starts advertising again on reconnect. Add a test: partition past
