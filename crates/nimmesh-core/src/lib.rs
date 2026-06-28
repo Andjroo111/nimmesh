@@ -47,6 +47,12 @@ pub mod swap_wire;
 // revealing claim → `tx_envelope`) and parses them back — so a swap can be negotiated over the mesh.
 pub mod swap_messages;
 
+// Mesh swap: the protocol brain a node runs (one side of a swap). `swap_coordinator::SwapCoordinator`
+// turns the message protocol into method calls — feed it the peer's envelope (or report a local
+// funding/claim tx) and it advances the `Swap` state machine and returns the next outgoing envelope.
+// Two coordinators exchanging envelopes drive a full swap with no hand orchestration.
+pub mod swap_coordinator;
+
 // Mesh swap (F3): the swap state machine + the `Δ_safe` timelock-safety gate. `swap` owns the
 // clock-free, height-anchored lifecycle (propose → accept → fund → reveal → settle, with a refund
 // exit in every funded phase) and `assess_ladder` — the gate that REFUSES to fund a swap whose

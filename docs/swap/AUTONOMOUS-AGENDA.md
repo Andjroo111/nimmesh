@@ -18,7 +18,7 @@ green, log one line, and schedule the next iteration. No human prompt between go
       nodes (Propose→Accept→fund→reveal) — swaps actually working over the transport.
 - [x] **G6 — Demo polish.** Engine-driven auto-advance + a responder-perspective toggle.
 - [x] **G7 — Docs sweep.** Refresh SWAP / FEASIBILITY / BTC-LEG to match the shipped engine+UI+demo.
-- [ ] **G8 — Swap coordinator (message handler).** A pure `SwapCoordinator` that consumes an incoming
+- [x] **G8 — Swap coordinator (message handler).** A pure `SwapCoordinator` that consumes an incoming
       swap envelope, advances the local swap state, and produces the next outgoing envelope(s) — the
       brain a mesh node runs. Test: drive a full swap between two coordinators exchanging envelopes
       (no hand orchestration).
