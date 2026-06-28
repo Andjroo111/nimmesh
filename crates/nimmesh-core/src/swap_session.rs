@@ -184,12 +184,18 @@ impl SwapSession {
         self.coordinators.remove(swap_id).is_some()
     }
 
-    /// GC tick: drop every coordinator that is terminal (Settled/Aborted/Refunded) or **stale** at
-    /// `head` — a non-funded negotiation whose timelock has passed — so a long-lived node can't be
-    /// memory-exhausted by half-opened or abandoned swaps. A swap holding this node's funds is kept
-    /// until it reaches a terminal phase, so its refund path stays tracked. Returns how many were
-    /// dropped. The node drives this off its worker maintenance tick.
+    /// GC + safety-exit tick. First, any funds-locked swap whose own timeout has passed **refunds
+    /// itself** — the always-available safety exit when a swap stalls (worst case: you get your own
+    /// funds back). Then drop every coordinator that is terminal (Settled/Aborted/Refunded, incl.
+    /// the just-refunded) or **stale** — a non-funded negotiation whose timelock has passed — so a
+    /// long-lived node can't be memory-exhausted by half-opened or abandoned swaps. Returns how many
+    /// were dropped. The node drives this off its worker maintenance tick.
     pub fn tick(&mut self, head: u64) -> usize {
+        // Safety exit: a funds-locked swap past its timeout refunds itself (no-op for non-funded or
+        // not-yet-due swaps). In the sim the transition is the refund; production broadcasts the tx.
+        for c in self.coordinators.values_mut() {
+            let _ = c.refund_after_timeout(head);
+        }
         let before = self.coordinators.len();
         self.coordinators
             .retain(|_, c| !c.phase().is_terminal() && !c.is_stale(head));
@@ -297,9 +303,9 @@ mod tests {
             alice.coordinator(&swap_id).unwrap().phase(),
             SwapPhase::BothFunded
         );
-        // A funds-locked swap is NEVER GC'd, even with the head far past its timelock — its refund
-        // path must stay tracked until it settles or refunds.
-        assert_eq!(alice.tick(9_999_999), 0);
+        // Before its timeout a funds-locked swap is kept — the refund isn't due, and it's never
+        // "stale" while it holds funds, so the GC tick leaves it alone to finish settling.
+        assert_eq!(alice.tick(5_000), 0);
         assert_eq!(alice.len(), 1);
 
         // Alice claims BTC (reveals S) → PreimageReveal → Bob's session routes it; Bob's node
@@ -496,5 +502,45 @@ mod tests {
         );
         assert_eq!(bob.tick(0), 0);
         assert_eq!(bob.len(), 1);
+    }
+
+    #[test]
+    fn tick_refunds_then_reaps_a_funds_locked_swap_past_its_timeout() {
+        // G18: a swap stalls with this node's funds locked. The tick's safety exit refunds the leg
+        // once the head passes its timeout, then reaps it — "worst case is a refund", not a leak.
+        let mut alice = SwapSession::new(identity(0x11), LadderParams::default());
+        let swap_id = [0x99; SWAP_ID_LEN];
+        let (coord, _propose) =
+            SwapCoordinator::new_initiator(ctx(swap_id, 0x11), [42u8; 32], LadderParams::default());
+        alice.add_initiator(swap_id, coord);
+
+        // Drive alice to a funds-locked phase: accept (from a counterparty), then fund the NIM leg.
+        let accept = crate::swap_messages::SwapAcceptance {
+            swap_id,
+            nim_address: [0xB2; NIM_ADDRESS_LEN],
+            btc_address: b"tb1qbob".to_vec(),
+            btc_pubkey: [0x03; BTC_PUBKEY_LEN],
+        }
+        .to_envelope();
+        alice
+            .on_message(SwapKind::Accept, &encode_swap(&accept).unwrap(), 0)
+            .unwrap();
+        alice
+            .coordinator(&swap_id)
+            .unwrap()
+            .fund(0, vec![0x11; 248], [0xC1; 32])
+            .unwrap();
+        assert!(alice
+            .coordinator(&swap_id)
+            .unwrap()
+            .phase()
+            .has_funds_locked());
+
+        // The counterparty never funds. Before alice's T_A (10_000) the swap is kept; once the head
+        // passes it, the tick refunds her leg and reaps it.
+        assert_eq!(alice.tick(5_000), 0);
+        assert_eq!(alice.len(), 1);
+        assert_eq!(alice.tick(10_001), 1);
+        assert!(alice.is_empty());
     }
 }

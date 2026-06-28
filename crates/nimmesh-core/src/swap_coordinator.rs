@@ -139,6 +139,16 @@ impl SwapCoordinator {
         self.claim_and_reveal(secret.to_vec(), tx_id)
     }
 
+    /// Refund this node's own funded leg once its timeout has elapsed (`head > own timeout`) — the
+    /// always-available safety exit when a swap stalls: the worst case is getting your own funds
+    /// back. A no-op error (which the GC tick ignores) if the swap isn't funded or the timeout
+    /// hasn't passed yet. Production builds + broadcasts the refund tx off this same trigger; in the
+    /// sim the state transition *is* the refund.
+    pub fn refund_after_timeout(&mut self, head: u64) -> Result<(), CoordError> {
+        self.swap.refund_after_timeout(head)?;
+        Ok(())
+    }
+
     /// Whether this swap is **stale** at `head` and safe to forget: it is neither terminal nor
     /// holding any of this node's funds, and `head` has passed its longer (`T_A`) timelock — so the
     /// negotiation can never complete (a swap whose timelock has passed can no longer be funded or

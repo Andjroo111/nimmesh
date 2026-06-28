@@ -82,7 +82,7 @@ that node-side driver gap, all sim/stand-in tx bytes — real tx signing stays m
       the initiator claims + floods the `PreimageReveal` (responder extracts `S`, claims its leg) —
       using sim / stand-in tx bytes (no real signing). Two participant nodes drive a whole swap to
       `Settled` purely through the node receive/flood loop; assert no one-sided settlement.
-- [ ] **G18 — Node-level refund tick (the safety exit over the mesh).** For a funds-locked swap whose
+- [x] **G18 — Node-level refund tick (the safety exit over the mesh).** For a funds-locked swap whose
       own timelock has passed, the worker tick drives `refund_after_timeout` (sim) → `Refunded`, then
       GC reaps it — proving "worst case is a refund" holds at the node level, not just in the model.
 - [ ] **G19 — Abort emission + symmetric teardown.** When a node locally cancels an un-funded swap

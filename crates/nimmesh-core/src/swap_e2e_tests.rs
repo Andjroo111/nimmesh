@@ -501,6 +501,76 @@ fn the_worker_gc_tick_sheds_a_stale_swap_once_the_head_passes_its_timelock() {
 }
 
 #[test]
+fn a_stalled_funds_locked_swap_refunds_itself_via_the_worker_tick() {
+    // G18: the safety exit over the mesh. Alice funds her NIM leg, but the counterparty never funds
+    // (vanished). Once alice hears a head beacon past her T_A timeout, the worker refund/GC tick
+    // refunds her leg (sim) and reaps the swap — proving "worst case is a refund" at the node level,
+    // not just in the state-machine model.
+    use crate::codec::encode;
+    use crate::mock_radio::MeshHarness;
+    use crate::packet::{MessageType, Packet, BROADCAST_RECIPIENT};
+    use crate::swap::{LadderParams, SwapPhase};
+    use crate::swap_coordinator::SwapCoordinator;
+    use crate::swap_messages::SwapAcceptance;
+    use crate::swap_wire::encode_swap;
+    use crate::test_support::{make_beacon_packet, wait_until, SETTLE};
+
+    let (swap_id, alice_id, _bob_id, alice_ctx) = participant_fixtures();
+    let mut h = MeshHarness::new();
+    let alice = h.add_participant("alice", &[1], alice_id, LadderParams::default());
+
+    // Alice originates the swap, then an Accept arrives from an off-mesh counterparty → her driver
+    // funds the NIM leg → SelfFunded (funds locked).
+    let (coordinator, propose) =
+        SwapCoordinator::new_initiator(alice_ctx, [42u8; 32], LadderParams::default());
+    alice.start_swap(swap_id, coordinator, propose);
+    let accept = SwapAcceptance {
+        swap_id,
+        nim_address: [0xB2; 20],
+        btc_address: b"tb1qbob".to_vec(),
+        btc_pubkey: {
+            let mut k = [0x22; 33];
+            k[0] = 0x03;
+            k
+        },
+    }
+    .to_envelope();
+    let mut pkt = Packet::new(
+        MessageType::SwapAccept,
+        [9u8; 8],
+        encode_swap(&accept).unwrap(),
+    );
+    pkt.recipient_id = Some(BROADCAST_RECIPIENT);
+    alice.on_packet_received_from("bob".to_string(), encode(&pkt).unwrap());
+    assert!(
+        wait_until(
+            || alice.swap_phase(swap_id) == Some(SwapPhase::SelfFunded),
+            SETTLE
+        ),
+        "alice never funded her leg"
+    );
+
+    // The counterparty never funds. Alice hears a head beacon past her T_A timeout (10_000).
+    alice.on_packet_received_from(
+        "gw".to_string(),
+        make_beacon_packet([7; 8], 10_001, 5, 7, 1),
+    );
+    assert!(
+        wait_until(|| alice.cached_head_height() == Some(10_001), SETTLE),
+        "alice never cached the head beacon"
+    );
+
+    // The worker refund/GC tick refunds her stalled leg and reaps the swap.
+    alice.poll_sync();
+    assert!(
+        wait_until(|| alice.swap_phase(swap_id).is_none(), SETTLE),
+        "the stalled funds-locked swap was not refunded + GC'd by the worker tick"
+    );
+
+    h.shutdown();
+}
+
+#[test]
 fn a_full_swap_is_negotiated_and_settled_via_wire_messages() {
     // G5: a complete swap expressed as the wire message SEQUENCE — Propose → Accept → FundingProof
     // (NIM) → FundingProof (BTC) → PreimageReveal — each message built by `swap_messages`, wrapped
