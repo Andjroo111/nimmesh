@@ -411,10 +411,18 @@ signing stay human-gated.)
       a smoke check that the generated Swift/Kotlin (or the `swap_ffi` UDL surface) still exposes the
       discovery entry points and that the bindings generate without error. If real binding generation needs
       cargo-swift / the native toolchain (not present headless) → run what's available and log the rest BLOCKED.
-- [ ] **G53 — Per-link (src) intent rate limit.** G36 throttles by the intent's ORIGIN `sender_id`; add a
+- [x] **G53 — Per-link (src) intent rate limit.** G36 throttles by the intent's ORIGIN `sender_id`; add a
       second gate by the IMMEDIATE link the flood arrived on (`src`), so a single hostile NEIGHBOUR relaying
       a spoofed-origin flood is also bounded. Mirror the G36 structure; prove a neighbour spraying distinct
       origins is capped. Sim/testnet; deterministic.
+      Done (CASE A — already protected, no new prod code): investigation showed the G12 `PeerRateLimiter`
+      (`WorkerState.limiter`) is applied at the TOP of `process_inbound` BEFORE decode/dispatch, so it
+      gates EVERY inbound frame by `src` — `SwapIntent` (0x45) included. So per-link limiting already
+      bounds a discovery flood regardless of how many origins are spoofed. New `swap_discovery_ratelimit_tests.rs`
+      proves it: a neighbour spraying 1000 intents with distinct spoofed `sender_id`s past its 256-token
+      bucket is rate-limited (`rate_limited` counter climbs), while a DIFFERENT neighbour's intent (its own
+      full bucket) still discovers a swap — per-link, not global. 1 test, 12/12 stable. (Documented in the
+      test module header; left as the canonical place since it's a property of the existing limiter.)
 - [ ] **G54 — Live `/api/intents` fixture endpoint.** Wire a real read-only `GET /api/intents` +
       `GET /api/stats` into `swap_demo_server` returning the fixture intents/metrics as JSON, have
       `intents.html`'s `loadIntents`/`loadStats` seam fetch it (falling back to inline fixtures), and add a

@@ -301,6 +301,8 @@ mod send_e2e_tests;
 #[cfg(test)]
 mod swap_adversarial_tests;
 #[cfg(test)]
+mod swap_discovery_ratelimit_tests;
+#[cfg(test)]
 mod swap_discovery_stress_tests;
 #[cfg(test)]
 mod swap_discovery_tests;
