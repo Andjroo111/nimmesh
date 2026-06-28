@@ -139,6 +139,13 @@ pub mod evm;
 #[cfg(feature = "polygon-leg")]
 pub mod swap_usdc_leg;
 
+// Mesh swap (P3): hand-built EVM ABI calldata for the USDC HTLC + ERC-20 calls, behind `polygon-leg`.
+// `evm_abi` builds `approve`/`transferFrom` + `newSwap`/`withdraw`/`refund` calldata (selector ++
+// 32-byte ABI words) with no ethers/web3 dep — the bytes P4 will sign + broadcast (testnet, gated).
+// Byte-builder only: never signs or sends. Validated vs public ERC-20 selectors + a known approve.
+#[cfg(feature = "polygon-leg")]
+pub mod evm_abi;
+
 // Mesh swap: the REAL Bitcoin swap leg (behind `bitcoin-leg`) — the BTC-native analog of
 // `swap_builder::NimiqLeg`. Wraps `btc::BtcHtlcParams` + signs through the `btc::BtcEnclaveKey`
 // seam, exposing `htlc_address` / `build_claim` / `build_refund`. Supersedes the BTC half of the

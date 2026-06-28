@@ -63,8 +63,18 @@ leg was validated vs `bitcoinjs-lib`; the EVM leg vs known keccak/ABI vectors + 
       unwinds to a clean two-sided refund, no one-sided settlement. 12 new tests (6 unit + 6 e2e);
       gate green default + bitcoin-leg + polygon-leg, clippy clean ×3, `sha3` still absent from the
       default tree. Full design note lives in the `swap_usdc_leg` module docs.
-- [ ] **P3 — ABI calldata builders.** Hand-built ABI calldata for the HTLC lock/claim/refund + ERC-20
+- [x] **P3 — ABI calldata builders.** Hand-built ABI calldata for the HTLC lock/claim/refund + ERC-20
       `approve`/`transferFrom` (selector + 32-byte-padded args), validated vs known encodings.
+      Done: `evm_abi` (no ethers/web3 dep) — the standard ABI **head** encoder (`word_u256` big-endian
+      32-byte word, `word_address` left-padded; `bytes32` passthrough — distinct from the
+      `abi.encodePacked` layout `usdc_swap_id` uses) + six builders: `erc20_approve`/
+      `erc20_transfer_from` and `htlc_new_swap`/`htlc_withdraw`/`htlc_refund` (each = selector ++
+      32-byte words). 8 tests: the ERC-20 selectors pinned to their public constants (`approve` =
+      `095ea7b3`, `transferFrom` = `23b872dd`), `approve(UniV2-router, 1)` matched byte-for-byte vs a
+      hardcoded known calldata, and every builder's full word layout asserted in order (length +
+      per-arg offsets; `bytes32` verbatim, not re-padded). Byte-builder only — no signing/broadcast
+      (P4, gated). Gate green default + bitcoin-leg + polygon-leg, clippy clean ×3, `evm.rs` untouched
+      at 87 lines, `sha3` still absent from the default tree.
 - [ ] **P4 — EVM tx + signing (GATED).** EIP-155 legacy/1559 tx RLP + secp256k1 signing behind a key
       seam (like `btc::BtcEnclaveKey`); testnet (Amoy) only, mainnet gated, no broadcast.
 - [ ] **P5 — Discovery for USDC.** Extend `SwapIntent`'s `Asset` to include `Usdc` so NIM⇄USDC pairs
