@@ -332,9 +332,16 @@ signing stay human-gated.)
       discovers + settles end to end. Residual leaks (BTC-pubkey↔HTLC link, amount fingerprinting) +
       deeper mitigations (commit-reveal addressing, mixing) documented and logged **BLOCKED** (touch the
       gated money-path + match handshake → owner-gated). 2 tests, 12/12 stable.
-- [ ] **G46 — Surface the discovery metrics in the demo UI.** Extend the G38 intents view with a small
+- [x] **G46 — Surface the discovery metrics in the demo UI.** Extend the G38 intents view with a small
       read-only "discovery stats" strip (seen / matched / dropped-by-reason / re-advertised) driven by the
       real nimiq-ui, fixture-fed like G38. Live wiring stays BLOCKED on the native bridge. `nq lint` gate.
+      Done: `webui/swap/intents.html` + `intents.css` gained a "Discovery this session" strip — a top row
+      (seen / matched-in-green / re-advertised, big Fira-Mono) + a 4-up muted drops grid (expired / rate /
+      forged / throttled), styled on the swap demo's own tokens (inset hairline card, navy/green palette,
+      matched = the single calculated accent). Fixture-fed; the inline module documents the `loadStats`
+      seam alongside `loadIntents`, both BLOCKED on the native WebView↔Rust bridge. `nq lint` 0 errors;
+      screenshot-verified at 390px (branding-cli playwright) — consistent with the existing list cards.
+      RUN-DEMO.md updated. No Rust changed.
 - [ ] **G47 — Discovery recovery under SEEDED loss.** G44 proved completeness on a no-loss ether (a
       probabilistic ether is too flaky for a fixed-budget gate). Add a DETERMINISTIC loss proof instead:
       either (a) drive the `MockEther` loss from a fixed seed so the drop pattern is reproducible, or (b)

@@ -43,8 +43,13 @@ cargo run --example swap_demo_server --features bitcoin-leg
 # → open http://127.0.0.1:8090/swap/intents.html
 ```
 
-- **Now:** the rows are **fixture data** (canned), so the page is a self-contained static demo.
-- **BLOCKED (human-gated):** the live wiring — streaming the intents this node has actually seen from
-  the running Rust core (the `SwapSession` / discovery layer) into the page — needs the native
+Below the list it also shows a **discovery-stats strip** (G46): the node's G42 `IntentMetrics` —
+intents `seen` / `matched` / `re-advertised`, and dropped-by-reason (`expired` G35 / `rate` G40 /
+`forged` G41 / `throttled` G36) — so the otherwise-invisible gate activity is legible at a glance.
+
+- **Now:** the rows AND the stats are **fixture data** (canned), so the page is a self-contained
+  static demo.
+- **BLOCKED (human-gated):** the live wiring — streaming the intents this node has actually seen and
+  its live `IntentMetrics` counters from the running Rust core into the page — needs the native
   WebView↔Rust bridge, the same gate as the rest of the live wallet. The page marks where that data
-  plugs in (`loadIntents` seam in the inline module).
+  plugs in (`loadIntents` + `loadStats` seam in the inline module).

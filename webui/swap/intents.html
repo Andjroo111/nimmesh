@@ -105,17 +105,34 @@
 
       </ul>
 
+      <div class="stats">
+        <p class="stats-title">Discovery this session</p>
+        <div class="stats-top">
+          <div class="stat"><span class="stat-num">128</span><span class="stat-lbl">seen</span></div>
+          <div class="stat"><span class="stat-num green">12</span><span class="stat-lbl">matched</span></div>
+          <div class="stat"><span class="stat-num">34</span><span class="stat-lbl">re-advertised</span></div>
+        </div>
+        <div class="stats-drops">
+          <div class="drop"><span class="drop-num">9</span><span class="drop-lbl">expired</span></div>
+          <div class="drop"><span class="drop-num">18</span><span class="drop-lbl">rate</span></div>
+          <div class="drop"><span class="drop-num">5</span><span class="drop-lbl">forged</span></div>
+          <div class="drop"><span class="drop-num">7</span><span class="drop-lbl">throttled</span></div>
+        </div>
+      </div>
+
       <p class="intents-foot">Demo data, not live. In the app these intents stream in over the mesh as peers flood them</p>
     </section>
   </div>
 </div>
 
 <script type="module">
-  // FIXTURE VIEW: the rows above are canned. In the live app each row is one SwapIntent this node
-  // has seen flooded over the mesh (G34), streamed from the Rust core across the native WebView/Rust
-  // bridge. That hookup is human-gated (the bridge), so the demo renders fixtures. Freshness (the
-  // Fresh / Expired state) mirrors the G35 rule: an intent is fresh while the head is at or below its
-  // expiry height. See docs/swap/DEMO-LOOP.md.
+  // FIXTURE VIEW: the rows above AND the discovery-stats strip are canned. In the live app each row is
+  // one SwapIntent this node has seen flooded over the mesh (G34) and the stats are the node's G42
+  // counters (IntentMetrics: seen / matched / dropped-by-reason / re-advertised) — both streamed from
+  // the Rust core across the native WebView/Rust bridge (a loadIntents + loadStats seam). That hookup
+  // is human-gated (the bridge), so the demo renders fixtures. Freshness (the Fresh / Expired state)
+  // mirrors the G35 rule: an intent is fresh while the head is at or below its expiry height. See
+  // docs/swap/DEMO-LOOP.md.
   import Iqons from 'https://cdn.jsdelivr.net/npm/@nimiq/iqons@1.6.0/dist/iqons.min.js';
   // The REAL @nimiq/iqons@1.6.0 sprite is vendored locally; the CDN copy is only a file:// fallback.
   const localSprite = '../nimiq/assets/img/iqons.min.svg';
