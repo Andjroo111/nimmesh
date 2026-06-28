@@ -92,6 +92,11 @@ pub mod swap_recovery;
 // off a `SwapPropose`. The discovery layer over the existing swap settlement protocol.
 pub mod swap_intent;
 
+// Mesh swap (P6): the chain-agnostic leg-selection seam. `swap_leg_select::counterparty_leg_for` maps
+// a matched intent's `counter_asset` (BTC or USDC) to the counterparty leg the settlement layer builds
+// (`BtcSwapLeg` vs `UsdcLeg`). Pure core (no leg-feature dep) so the live engine + the sim agree.
+pub mod swap_leg_select;
+
 // Mesh swap (F3): the swap state machine + the `Δ_safe` timelock-safety gate. `swap` owns the
 // clock-free, height-anchored lifecycle (propose → accept → fund → reveal → settle, with a refund
 // exit in every funded phase) and `assess_ladder` — the gate that REFUSES to fund a swap whose
@@ -362,6 +367,9 @@ mod swap_resume_tests;
 // polygon-leg` gate pass.
 #[cfg(all(test, feature = "polygon-leg"))]
 mod swap_usdc_e2e_tests;
+// P6: a matched NIM⇄USDC discovery pair → UsdcLeg settlement (connects swap_intent + swap_usdc_leg).
+#[cfg(all(test, feature = "polygon-leg"))]
+mod swap_usdc_discovery_tests;
 #[cfg(test)]
 mod test_support;
 

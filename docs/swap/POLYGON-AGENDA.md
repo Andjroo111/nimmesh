@@ -132,9 +132,18 @@ atomicity proof (P2), ABI calldata (P3), the EIP-155 tx signing-hash + signed-tx
 money-path gated.
 
 Re-scan — next goals (append as they're built):
-- [ ] **P6 — discovery↔engine leg selection.** Map a matched `Asset::Usdc` intent to a `UsdcLeg`
-      counterparty in the swap engine/coordinator (today it assumes BTC), so a discovered NIM⇄USDC pair
-      drives the P2 leg end to end in SIM. Pure wiring + tests; no funds.
+- [x] **P6 — discovery↔settlement leg selection.** Done: a chain-agnostic core seam
+      `swap_leg_select::counterparty_leg_for(counter_asset) -> Option<CounterpartyLeg>` (`Btc`→Btc,
+      `Usdc`→Usdc, `Nim`→None) — no leg-feature dep, so the live engine + the sim agree on which leg a
+      matched intent settles on. A `polygon-leg` sim test (`swap_usdc_discovery_tests`) takes a matched
+      NIM-giver(wants USDC)+USDC-giver intent pair (confirmed via `would_initiate_against` +
+      `amount_compatible`), selects the leg via the seam (→ `Usdc`), derives `SwapTerms`/amounts the way
+      `swap_node::initiate_from_intent` does (initiator's amounts, fixed sim timelocks), and drives the
+      chain-agnostic `swap::Swap` state machine with a `UsdcLeg` counterparty through the happy path AND
+      a refund path — proving discovery selects the UsdcLeg and settles atomically (no one-sided
+      settlement). SIM only; EVM payout addresses are placeholders until P7. Gate green ×3, clippy clean
+      ×3, `swap_leg_select.rs` 47 lines. (`swap_engine` itself stays BTC-coupled — full engine
+      generalization is P6b if ever needed; the seam + sim proof cover the discovery→UsdcLeg path.)
 - [ ] **P7 — carry the EVM counterparty payout address.** The intent carries `btc_pubkey`/`btc_address`;
       a USDC counterparty's payout is a 20-byte `evm::evm_address`. Add a clean way to carry it for the
       USDC side (or generalise the payout field) + tests. (Was the optional P5b.)
