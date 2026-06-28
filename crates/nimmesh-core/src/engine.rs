@@ -141,6 +141,7 @@ pub struct WorkerCtx {
     stop_after_ack: AtomicUsize,
     /// G15: count of `nimiqBalanceResponse` frames this gateway has answered + flooded.
     pub(crate) balance_answered: AtomicUsize,
+    pub(crate) intent_metrics: crate::swap_node::IntentMetrics,
     /// G14: observable mirror of the worker-thread `SwapSession`'s per-swap phase, so the FFI side
     /// can read a swap's progress without reaching into the worker-thread-local session. Written +
     /// read in [`crate::swap_node`]. Empty on a pure relay (no session).
@@ -176,6 +177,7 @@ impl WorkerCtx {
             rate_limited: AtomicUsize::new(0),
             stop_after_ack: AtomicUsize::new(0),
             balance_answered: AtomicUsize::new(0),
+            intent_metrics: crate::swap_node::IntentMetrics::default(),
             swaps: Mutex::new(HashMap::new()),
         }
     }

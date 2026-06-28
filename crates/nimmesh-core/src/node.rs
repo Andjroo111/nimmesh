@@ -604,6 +604,12 @@ impl MeshNode {
         crate::swap_node::swap_phase(&self.ctx, swap_id)
     }
 
+    /// G42 (test/observability): a snapshot of this node's discovery-layer counters.
+    #[cfg(test)]
+    pub(crate) fn intent_metrics(&self) -> crate::swap_node::IntentMetricsSnapshot {
+        self.ctx.intent_metrics.snapshot()
+    }
+
     /// G33 (test): the participant's live swap session encoded to recovery bytes (asks the worker;
     /// returns empty if the node isn't a participant or the worker is gone).
     #[cfg(test)]

@@ -280,7 +280,33 @@ signing stay human-gated.)
       verifies; wrong-address/tampered-field/junk-sig all rejected) + node (an authentic intent matches,
       a tampered and an unsigned one do NOT, even at a crossing rate in band). Relay stays blind (no
       verify on relay — privacy + cheap; only a would-be matcher verifies). 14/14 discovery, 10/10 stable.
-- [ ] **G42 — Discovery-layer observability counters.** The intent layer is unmeasurable. Count intents
+- [x] **G42 — Discovery-layer observability counters.** The intent layer is unmeasurable. Count intents
       seen / matched / dropped-by-rate / dropped-by-throttle / dropped-by-expiry / re-advertised, exposed
       through the existing worker counters (like `rate_limited` / `recent_stored`). Read-only; no behaviour
       change; sim/testnet.
+      Done: one `IntentMetrics` struct (7 `AtomicUsize` counters + `note_*` bumps + a cfg(test)
+      `snapshot()`/`IntentMetricsSnapshot`) in `swap_node`, held as a SINGLE `WorkerCtx` field (engine.rs
+      stays at 800). Bumps wired at each gate: seen + dropped_expiry in the freshness gate, dropped_rate/
+      dropped_throttle/dropped_signature in `handle_intent`, matched at the `gc_tick` window-close,
+      re-advertised in `readvertise_intent`. `MeshNode::intent_metrics()` reads a snapshot. Tests live in
+      a NEW `swap_metrics_tests.rs` (shared intent builders made `pub(crate)`): one attributes seen=4 /
+      matched=1 / each drop reason; one shows the throttle drop counter tracking a flood. 10/10 stable.
+
+- [ ] **G43 — Intent-driven swap resume after restart.** G33 snapshots/restores live coordinators, but a
+      node that crashes mid-match-window loses its buffered candidates (and a node restarts with an empty
+      standing intent). Decide + implement what survives a restart: re-arm the standing intent (so the node
+      re-advertises after restore) and confirm an in-flight discovered swap (already a coordinator) still
+      resumes its refund/settle tick. Sim/testnet; deterministic.
+- [ ] **G44 — Discovery completeness stress test.** A many-node harness (e.g. 6–10 participants, several
+      complementary standing intents) over a LOSSY mesh: prove that, with re-advertise (G37) + best-rate
+      windows (G39), every viable pair eventually discovers + settles (or cleanly refunds), and that no
+      forged/expired/throttled intent ever produces a swap. A resilience proof for the whole G34–G42 stack.
+- [ ] **G45 — Intent privacy / unlinkability review.** A `SwapIntent` now carries a NIM pubkey + signature
+      + addresses in cleartext, flooded mesh-wide — that links an advertiser's NIM identity to every BTC
+      trade it wants. Audit what discovery leaks vs the privacy core value, and add the cheapest mitigation
+      that keeps matching working (e.g. ephemeral per-intent keys, or address commitments revealed only on
+      Propose). Document the threat model in docs/swap/. Design-heavy: log BLOCKED if it needs a money-path
+      or native-bridge decision.
+- [ ] **G46 — Surface the discovery metrics in the demo UI.** Extend the G38 intents view with a small
+      read-only "discovery stats" strip (seen / matched / dropped-by-reason / re-advertised) driven by the
+      real nimiq-ui, fixture-fed like G38. Live wiring stays BLOCKED on the native bridge. `nq lint` gate.

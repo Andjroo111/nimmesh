@@ -11,11 +11,11 @@ use crate::swap_wire::{BTC_PUBKEY_LEN, NIM_ADDRESS_LEN};
 use crate::test_support::participant_fixtures;
 
 /// A far-future expiry, so a fresh intent stays fresh at the tests' default head of 0.
-const FRESH: u64 = 1_000_000;
+pub(crate) const FRESH: u64 = 1_000_000;
 
 /// A fresh BTC-giver intent that crosses alice's 4.0 offer (asks 3.6), with `pubkey_tag` varying the
 /// claimant pubkey so each one derives a DISTINCT `swap_id` — i.e. an independent match attempt.
-fn btc_giver_intent(pubkey_tag: u8) -> SwapIntent {
+pub(crate) fn btc_giver_intent(pubkey_tag: u8) -> SwapIntent {
     let mut btc_pubkey = [0x33; BTC_PUBKEY_LEN];
     btc_pubkey[0] = 0x02;
     btc_pubkey[1] = pubkey_tag;
@@ -37,14 +37,14 @@ fn btc_giver_intent(pubkey_tag: u8) -> SwapIntent {
 
 /// Authenticate `intent` (G41) under the Ed25519 secret `[seed; 32]` — fills its pubkey, NIM address,
 /// and signature so it passes `verify_authentic`. Apply LAST, after any amount/band mutation.
-fn signed(mut intent: SwapIntent, seed: u8) -> SwapIntent {
+pub(crate) fn signed(mut intent: SwapIntent, seed: u8) -> SwapIntent {
     crate::swap_intent::sign_intent(&mut intent, &[seed; 32]);
     intent
 }
 
 /// A BTC-giver intent (distinct `pubkey_tag`) asking a specific rate: `nim_amount` NIM per
 /// `btc_amount` BTC. Lower NIM-per-BTC = a better rate for the NIM-giver (more BTC per NIM).
-fn btc_giver_intent_at(pubkey_tag: u8, nim_amount: u64, btc_amount: u64) -> SwapIntent {
+pub(crate) fn btc_giver_intent_at(pubkey_tag: u8, nim_amount: u64, btc_amount: u64) -> SwapIntent {
     let mut i = btc_giver_intent(pubkey_tag);
     i.nim_amount = nim_amount;
     i.btc_amount = btc_amount;
@@ -60,7 +60,13 @@ fn with_band(mut i: SwapIntent, min_nim: u64, max_nim: u64) -> SwapIntent {
 
 /// Build a `SwapIntent` mirroring an identity's addresses, valid through `expiry_height`, with a
 /// wide-open trade-size band by default (G40 tests narrow it via [`with_band`]).
-fn intent_for(id: &NodeIdentity, gives: Asset, nim: u64, btc: u64, expiry: u64) -> SwapIntent {
+pub(crate) fn intent_for(
+    id: &NodeIdentity,
+    gives: Asset,
+    nim: u64,
+    btc: u64,
+    expiry: u64,
+) -> SwapIntent {
     SwapIntent {
         gives,
         nim_amount: nim,
@@ -79,7 +85,7 @@ fn intent_for(id: &NodeIdentity, gives: Asset, nim: u64, btc: u64, expiry: u64) 
 
 /// A flooded `SwapIntent` wire frame from `sender`, stamped `ts` (distinct `ts`/sender → distinct
 /// relay_key, so multiple injected intents don't collide on the dedup cache).
-fn intent_frame(intent: &SwapIntent, sender: [u8; 8], ts: u64) -> Vec<u8> {
+pub(crate) fn intent_frame(intent: &SwapIntent, sender: [u8; 8], ts: u64) -> Vec<u8> {
     use crate::codec::encode;
     use crate::packet::{MessageType, Packet, BROADCAST_RECIPIENT};
     let mut pkt = Packet::new(

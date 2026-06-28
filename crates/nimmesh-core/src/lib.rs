@@ -301,6 +301,8 @@ mod swap_discovery_tests;
 #[cfg(test)]
 mod swap_e2e_tests;
 #[cfg(test)]
+mod swap_metrics_tests;
+#[cfg(test)]
 mod swap_node_e2e_tests;
 #[cfg(test)]
 mod test_support;

@@ -11,6 +11,7 @@
 //! advance its coordinator and flood a reply. A pure relay does neither.
 
 use std::collections::{HashMap, VecDeque};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::codec::encode;
 use crate::engine::{relay_key, relay_onward, remember, WorkerCtx, WorkerState};
@@ -221,6 +222,72 @@ impl IntentState {
     }
 }
 
+/// G42: read-only counters for the discovery layer — a pure-observability view of what the intent
+/// gates do. Monotonic and `Relaxed` (like the worker's other counters); a participant bumps them as
+/// intents are seen, matched, or dropped at each gate. No behaviour depends on them.
+#[derive(Default)]
+pub(crate) struct IntentMetrics {
+    seen: AtomicUsize,
+    matched: AtomicUsize,
+    dropped_rate: AtomicUsize,
+    dropped_expiry: AtomicUsize,
+    dropped_throttle: AtomicUsize,
+    dropped_signature: AtomicUsize,
+    readvertised: AtomicUsize,
+}
+
+/// A point-in-time read of [`IntentMetrics`] (G42, test/observability).
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) struct IntentMetricsSnapshot {
+    pub(crate) seen: usize,
+    pub(crate) matched: usize,
+    pub(crate) dropped_rate: usize,
+    pub(crate) dropped_expiry: usize,
+    pub(crate) dropped_throttle: usize,
+    pub(crate) dropped_signature: usize,
+    pub(crate) readvertised: usize,
+}
+
+impl IntentMetrics {
+    pub(crate) fn note_seen(&self) {
+        self.seen.fetch_add(1, Ordering::Relaxed);
+    }
+    pub(crate) fn note_matched(&self) {
+        self.matched.fetch_add(1, Ordering::Relaxed);
+    }
+    pub(crate) fn note_dropped_rate(&self) {
+        self.dropped_rate.fetch_add(1, Ordering::Relaxed);
+    }
+    pub(crate) fn note_dropped_expiry(&self) {
+        self.dropped_expiry.fetch_add(1, Ordering::Relaxed);
+    }
+    pub(crate) fn note_dropped_throttle(&self) {
+        self.dropped_throttle.fetch_add(1, Ordering::Relaxed);
+    }
+    pub(crate) fn note_dropped_signature(&self) {
+        self.dropped_signature.fetch_add(1, Ordering::Relaxed);
+    }
+    pub(crate) fn note_readvertised(&self) {
+        self.readvertised.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// A consistent read of all counters (G42).
+    #[cfg(test)]
+    pub(crate) fn snapshot(&self) -> IntentMetricsSnapshot {
+        let g = |c: &AtomicUsize| c.load(Ordering::Relaxed);
+        IntentMetricsSnapshot {
+            seen: g(&self.seen),
+            matched: g(&self.matched),
+            dropped_rate: g(&self.dropped_rate),
+            dropped_expiry: g(&self.dropped_expiry),
+            dropped_throttle: g(&self.dropped_throttle),
+            dropped_signature: g(&self.dropped_signature),
+            readvertised: g(&self.readvertised),
+        }
+    }
+}
+
 /// A swap packet (`0x40`–`0x44`). Blind-relay it onward like any flooded packet, and — if this node
 /// is a participant — route it to our own [`crate::swap_session::SwapSession`] and flood whatever
 /// reply it produces (a `Propose` → an `Accept`, etc.).
@@ -243,7 +310,14 @@ pub(crate) fn handle_swap_packet(
     if packet.msg_type == MessageType::SwapIntent {
         let head = ctx.cached_head().map(u64::from).unwrap_or(0);
         if let Ok(intent) = crate::swap_intent::decode_intent(&packet.payload) {
+            // G42: a participant counts every intent it observes; a pure relay carries them blind.
+            if st.swap.is_some() {
+                ctx.intent_metrics.note_seen();
+            }
             if !intent.is_fresh(head) {
+                if st.swap.is_some() {
+                    ctx.intent_metrics.note_dropped_expiry();
+                }
                 return;
             }
         }
@@ -257,7 +331,7 @@ pub(crate) fn handle_swap_packet(
             // G34/G39: discovery — buffer the intent against our standing one as a match-window
             // candidate (the window close in `gc_tick` initiates the best). G36: keyed by the flood's
             // origin (`sender_id`) so the per-sender throttle caps a flooder, not a real advertiser.
-            handle_intent(st, packet.sender_id, &packet.payload);
+            handle_intent(ctx, st, packet.sender_id, &packet.payload);
         } else if let Some(kind) = SwapKind::from_message_type(packet.msg_type) {
             let head = ctx.cached_head().map(u64::from).unwrap_or(0);
             let mut replies = match st.swap.as_mut() {
@@ -389,13 +463,14 @@ fn coordinator<'a>(
 /// candidate for the current match window (G39) — the window close in [`gc_tick`] then initiates
 /// against the best-rate candidate. A BTC-giver (or no standing intent) buffers nothing and just
 /// waits for a Propose. Returns no immediate reply (initiation is deferred to the window close).
-fn handle_intent(st: &mut WorkerState, sender: [u8; PEER_ID_LEN], payload: &[u8]) {
+fn handle_intent(ctx: &WorkerCtx, st: &mut WorkerState, sender: [u8; PEER_ID_LEN], payload: &[u8]) {
     let Ok(incoming) = crate::swap_intent::decode_intent(payload) else {
         return;
     };
     // G41: only act on an authentically-signed intent — its pubkey must hash to the claimed NIM
     // address and its signature must verify. A forged advertisement can't make us initiate a swap.
     if !incoming.verify_authentic() {
+        ctx.intent_metrics.note_dropped_signature();
         return;
     }
     let swap_id = {
@@ -405,11 +480,12 @@ fn handle_intent(st: &mut WorkerState, sender: [u8; PEER_ID_LEN], payload: &[u8]
         let Some(standing) = session.identity.standing_intent.as_ref() else {
             return;
         };
-        if !standing.would_initiate_against(&incoming)
-            || !standing.amount_compatible(&incoming)
-            || session.len() >= session.identity.max_concurrent_swaps
-        {
+        if !standing.would_initiate_against(&incoming) || !standing.amount_compatible(&incoming) {
+            ctx.intent_metrics.note_dropped_rate(); // wrong side / non-crossing rate / mis-sized (G40)
             return;
+        }
+        if session.len() >= session.identity.max_concurrent_swaps {
+            return; // at the concurrency cap (not a discovery-gate drop; left uncounted)
         }
         let swap_id = derive_swap_id(standing, &incoming);
         if session.coordinators.contains_key(&swap_id) {
@@ -424,6 +500,7 @@ fn handle_intent(st: &mut WorkerState, sender: [u8; PEER_ID_LEN], payload: &[u8]
     }
     // G36: charge the sender's budget — a flooder that has spent it can't keep filling the buffer.
     if !st.intents.throttle.admit(sender) {
+        ctx.intent_metrics.note_dropped_throttle();
         return;
     }
     // G39: collect it; the window close initiates against the best candidate, not the first.
@@ -589,7 +666,11 @@ pub(crate) fn gc_tick(ctx: &WorkerCtx, st: &mut WorkerState) {
     // G39: close the match window (if due) and initiate against the best buffered candidate, recording
     // the Propose so a lossy mesh retransmits it.
     if let Some(swap_id) = st.intents.matcher.tick() {
-        for (mt, payload) in initiate_from_intent(st, swap_id) {
+        let replies = initiate_from_intent(st, swap_id);
+        if !replies.is_empty() {
+            ctx.intent_metrics.note_matched(); // a discovered swap actually started (G42)
+        }
+        for (mt, payload) in replies {
             if let Some(session) = st.swap.as_mut() {
                 session.record_action(swap_id, mt, payload.clone());
             }
@@ -620,6 +701,7 @@ fn readvertise_intent(ctx: &WorkerCtx, st: &mut WorkerState, head: u64) {
         }
     };
     if st.intents.advertiser.on_tick() {
+        ctx.intent_metrics.note_readvertised(); // G42
         let bytes = crate::swap_intent::encode_intent(&intent);
         flood_swap_reply(ctx, MessageType::SwapIntent, bytes, st);
     }
