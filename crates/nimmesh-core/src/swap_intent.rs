@@ -140,6 +140,17 @@ pub fn sign_intent(intent: &mut SwapIntent, secret: &[u8; 32]) {
     intent.signature = sk.sign(&intent.signing_bytes()).to_bytes();
 }
 
+/// G45: the PRIVACY-PRESERVING way to advertise. Sign `intent` under a **fresh, ephemeral** NIM key
+/// derived from per-advertisement randomness, NOT the node's main key — so the flooded intent reveals
+/// nothing about the advertiser's main wallet and two of its advertisements don't link on the NIM
+/// identity. The advertiser MUST also rotate the BTC pubkey/address it puts in the intent (set them
+/// from a per-advertisement BTC key before calling this) and sweep the swap proceeds to its main
+/// wallet afterward. Mechanically identical to [`sign_intent`]; the name makes the safe path the
+/// obvious one. Full threat model + residual leaks: `docs/swap/DISCOVERY-PRIVACY.md`.
+pub fn sign_intent_ephemeral(intent: &mut SwapIntent, ephemeral_nim_seed: &[u8; 32]) {
+    sign_intent(intent, ephemeral_nim_seed);
+}
+
 /// A decode failure (carries no payload).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IntentError {

@@ -317,12 +317,21 @@ signing stay human-gated.)
       for guaranteed determinism — a probabilistic lossy ether makes "settles within a fixed budget"
       flaky, and "never commit a flaky gate" wins; recovery-under-loss is left to a future seeded-loss
       goal. 2 tests, 20/20 stable.
-- [ ] **G45 — Intent privacy / unlinkability review.** A `SwapIntent` now carries a NIM pubkey + signature
+- [x] **G45 — Intent privacy / unlinkability review.** A `SwapIntent` now carries a NIM pubkey + signature
       + addresses in cleartext, flooded mesh-wide — that links an advertiser's NIM identity to every BTC
       trade it wants. Audit what discovery leaks vs the privacy core value, and add the cheapest mitigation
       that keeps matching working (e.g. ephemeral per-intent keys, or address commitments revealed only on
       Propose). Document the threat model in docs/swap/. Design-heavy: log BLOCKED if it needs a money-path
       or native-bridge decision.
+      Done: (1) AUDIT — `docs/swap/DISCOVERY-PRIVACY.md`: a field-by-field leak table + passive-observer
+      threat model (identity↔trade linkage, same-advertiser correlation), scored vs the core values
+      (settlement stays non-custodial; unmitigated discovery is poor on unlinkability). (2) MITIGATION —
+      `sign_intent_ephemeral` makes "advertise under a fresh per-ad NIM key (+ rotated BTC fields), sweep
+      after" the named, obvious path; `swap_privacy_tests.rs` proves two ephemeral ads share NO identity
+      field yet each `verify_authentic`s (only the terms leak), and an ephemeral-keyed intent still
+      discovers + settles end to end. Residual leaks (BTC-pubkey↔HTLC link, amount fingerprinting) +
+      deeper mitigations (commit-reveal addressing, mixing) documented and logged **BLOCKED** (touch the
+      gated money-path + match handshake → owner-gated). 2 tests, 12/12 stable.
 - [ ] **G46 — Surface the discovery metrics in the demo UI.** Extend the G38 intents view with a small
       read-only "discovery stats" strip (seen / matched / dropped-by-reason / re-advertised) driven by the
       real nimiq-ui, fixture-fed like G38. Live wiring stays BLOCKED on the native bridge. `nq lint` gate.
