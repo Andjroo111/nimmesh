@@ -63,7 +63,7 @@ hardening the router against a hostile/lossy mesh.)
       `MessageType`, hand the packet to the session and flood the returned envelopes back over the
       radio. Tested over the `MockRadio`/`MeshHarness` — a swap message injected at one node produces
       the right flooded reply, end to end through the real node loop (not the session in isolation).
-- [ ] **G15 — Router robustness over a hostile mesh.** Harden `SwapSession.on_message`: a replayed
+- [x] **G15 — Router robustness over a hostile mesh.** Harden `SwapSession.on_message`: a replayed
       `Propose` for a live `swap_id` must not clobber the in-flight coordinator, a malformed payload
       is dropped (never panics, never half-creates a coordinator), and an `Abort`/settle frees the
       slot. Proptest: arbitrary packet streams never panic and never strand a coordinator mid-state.

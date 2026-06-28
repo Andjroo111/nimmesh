@@ -110,10 +110,18 @@ impl SwapSession {
         payload: &[u8],
         head: u64,
     ) -> Result<Vec<(MessageType, Vec<u8>)>, SessionError> {
+        // A malformed payload is dropped here (panic-free decode of untrusted mesh bytes) — no
+        // coordinator is touched, so a hostile frame can neither create nor corrupt state.
         let env = decode_swap(kind, payload)?;
         let swap_id = env.swap_id;
         match kind {
             SwapKind::Propose => {
+                // Replay / collision guard: a `Propose` for a `swap_id` we already track must NEVER
+                // clobber the in-flight coordinator (whether one we initiated or an accepted
+                // responder). Drop the duplicate with no reply — the live swap is untouched.
+                if self.coordinators.contains_key(&swap_id) {
+                    return Ok(Vec::new());
+                }
                 let p = SwapProposal::from_envelope(&env).ok_or(SessionError::BadPropose)?;
                 let ctx = SwapContext {
                     swap_id,
@@ -127,6 +135,8 @@ impl SwapSession {
                     network_id: p.network_id,
                 };
                 let mut coord = SwapCoordinator::new_responder(ctx, self.ladder);
+                // Gate BEFORE inserting: a rejected `Propose` (unsafe ladder, mismatched fields)
+                // leaves no half-built coordinator stranded in the map.
                 let accept = coord.recv_propose(&env, head)?;
                 self.coordinators.insert(swap_id, coord);
                 Ok(vec![(MessageType::SwapAccept, encode_swap(&accept)?)])
@@ -145,6 +155,8 @@ impl SwapSession {
                 Ok(vec![])
             }
             SwapKind::Abort => {
+                // The counterparty bailed before either side committed funds: free the slot. A
+                // stray Abort for an unknown swap is a harmless no-op.
                 self.coordinators.remove(&swap_id);
                 Ok(vec![])
             }
@@ -156,6 +168,21 @@ impl SwapSession {
             .get_mut(swap_id)
             .ok_or(SessionError::UnknownSwap)
     }
+
+    /// Drop every coordinator that has reached a terminal phase (Settled / Aborted / Refunded),
+    /// freeing its slot. Returns how many were reaped. The node calls this after it settles a swap;
+    /// the session GC tick (G16) calls it to keep a node from being memory-exhausted by stale swaps.
+    pub fn reap_terminal(&mut self) -> usize {
+        let before = self.coordinators.len();
+        self.coordinators.retain(|_, c| !c.phase().is_terminal());
+        before - self.coordinators.len()
+    }
+
+    /// Forget a swap (e.g. the node aborted it locally), freeing its slot. Returns whether one was
+    /// present.
+    pub fn remove(&mut self, swap_id: &[u8; SWAP_ID_LEN]) -> bool {
+        self.coordinators.remove(swap_id).is_some()
+    }
 }
 
 #[cfg(test)]
@@ -163,6 +190,7 @@ mod tests {
     use super::*;
     use crate::swap::{SwapPhase, SwapTerms};
     use crate::swap_leg::sha256;
+    use crate::swap_wire::SwapLegId;
 
     fn identity(seed: u8) -> NodeIdentity {
         let mut pk = [seed; BTC_PUBKEY_LEN];
@@ -291,6 +319,11 @@ mod tests {
             bob.coordinator(&swap_id).unwrap().phase(),
             SwapPhase::Settled
         );
+
+        // Settled is terminal: reaping frees both slots so the node isn't left holding dead swaps.
+        assert_eq!(alice.reap_terminal(), 1);
+        assert_eq!(bob.reap_terminal(), 1);
+        assert!(alice.is_empty() && bob.is_empty());
     }
 
     #[test]
@@ -328,5 +361,88 @@ mod tests {
             s.on_message(SwapKind::Accept, &encode_swap(&accept).unwrap(), 0),
             Err(SessionError::UnknownSwap)
         );
+    }
+
+    // --- G15: hostile-mesh robustness -------------------------------------------------
+
+    /// Build a valid `Propose` payload for `swap_id` (the initiator's, identical on every call so a
+    /// resend is a true replay).
+    fn propose_bytes(swap_id: [u8; SWAP_ID_LEN]) -> Vec<u8> {
+        let (_c, propose) =
+            SwapCoordinator::new_initiator(ctx(swap_id, 0x11), [42u8; 32], LadderParams::default());
+        encode_swap(&propose).unwrap()
+    }
+
+    #[test]
+    fn a_replayed_propose_does_not_clobber_the_live_coordinator() {
+        let mut bob = SwapSession::new(identity(0x22), LadderParams::default());
+        let swap_id = [0x55; SWAP_ID_LEN];
+        let propose = propose_bytes(swap_id);
+
+        // Bob accepts, then observes the initiator's NIM funding → InitiatorFunded.
+        only(bob.on_message(SwapKind::Propose, &propose, 0).unwrap());
+        let nim_fp = encode_swap(&crate::swap_messages::tx_envelope(
+            swap_id,
+            SwapLegId::Nim,
+            vec![0x11; 248],
+            [0xC1; 32],
+        ))
+        .unwrap();
+        bob.on_message(SwapKind::FundingProof, &nim_fp, 0).unwrap();
+        assert_eq!(
+            bob.coordinator(&swap_id).unwrap().phase(),
+            SwapPhase::InitiatorFunded
+        );
+
+        // A replayed identical Propose must be dropped (no reply) and must NOT reset the coordinator
+        // back to Accepted — the in-flight swap is untouched.
+        assert!(bob
+            .on_message(SwapKind::Propose, &propose, 0)
+            .unwrap()
+            .is_empty());
+        assert_eq!(bob.len(), 1);
+        assert_eq!(
+            bob.coordinator(&swap_id).unwrap().phase(),
+            SwapPhase::InitiatorFunded
+        );
+    }
+
+    #[test]
+    fn a_malformed_payload_creates_no_coordinator() {
+        let mut bob = SwapSession::new(identity(0x22), LadderParams::default());
+        // Garbage bytes for every kind → a structured error, never a panic, never a coordinator.
+        for kind in [
+            SwapKind::Propose,
+            SwapKind::Accept,
+            SwapKind::FundingProof,
+            SwapKind::PreimageReveal,
+            SwapKind::Abort,
+        ] {
+            let _ = bob.on_message(kind, &[0xFF; 7], 0); // Ok or Err — must not panic.
+            assert!(bob.is_empty(), "a malformed {kind:?} half-created state");
+        }
+    }
+
+    #[test]
+    fn an_abort_frees_the_slot() {
+        let mut bob = SwapSession::new(identity(0x22), LadderParams::default());
+        let swap_id = [0x66; SWAP_ID_LEN];
+        only(
+            bob.on_message(SwapKind::Propose, &propose_bytes(swap_id), 0)
+                .unwrap(),
+        );
+        assert_eq!(bob.len(), 1);
+
+        let abort = encode_swap(&crate::swap_messages::abort(swap_id, 0)).unwrap();
+        assert!(bob
+            .on_message(SwapKind::Abort, &abort, 0)
+            .unwrap()
+            .is_empty());
+        assert!(bob.is_empty());
+        // A stray Abort for an unknown swap is a harmless no-op.
+        assert!(bob
+            .on_message(SwapKind::Abort, &abort, 0)
+            .unwrap()
+            .is_empty());
     }
 }
