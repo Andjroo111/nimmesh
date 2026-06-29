@@ -156,8 +156,19 @@ Re-scan — next goals (append as they're built):
       `evm_address`es; it still settles atomically. Wire round-trip test proves `evm_address` survives
       the codec + is signed-over (tamper → `verify_authentic` fails). Pure discovery/wire change. Gate
       green ×3, clippy clean ×3.
-- [ ] **P8 — Polygon RPC gateway client (GATED).** A blocking JSON-RPC client (eth_sendRawTransaction /
-      eth_getTransactionReceipt / eth_getTransactionCount) behind a `polygon-gateway` feature, Amoy
-      only; **broadcast + real funds = needs:owner** (mirrors `bitcoin-gateway`).
+- [x] **P8 — Polygon RPC gateway client.** Done: `polygon_gateway` behind a new `polygon-gateway`
+      feature (`polygon-leg` + `ureq` + `serde_json`, OFF by default). Mirrors `rpc`/`gateway` exactly:
+      a PURE, OFFLINE-tested JSON-RPC codec — `json_rpc_request`, `quantity_hex`/`parse_quantity`, and
+      typed request-builder + response-parser pairs for `eth_getTransactionCount` (nonce),
+      `eth_gasPrice`, `eth_sendRawTransaction` (broadcast the P4 signed tx), `eth_getTransactionReceipt`
+      (`EvmReceipt` status/block, `None` while pending), and `eth_call` (HTLC/USDC reads) — plus the
+      `HttpPolygonRpc` `ureq` client layered on top. `guard_amoy` refuses Polygon mainnet hosts;
+      `EvmRpcError` carries the transient/terminal split. 10 offline tests vs hardcoded JSON fixtures
+      (request shape, quantity round-trip, count/gas/hash/receipt(success/revert/pending)/eth_call
+      parsing, a node `error` → terminal `Rpc`, malformed/hostile JSON → structured errors not panics,
+      HTTP transient classification). **The live `send`/read methods are NEVER exercised in the gate**;
+      broadcast + real funds + mainnet = needs:owner. `ureq`/`k256`/`sha3` confirmed absent from the
+      default runtime tree (present only under their features). Gate green ×4 (default + bitcoin-leg +
+      polygon-leg + polygon-gateway), clippy clean ×3, `polygon_gateway.rs` 517 lines.
 - [ ] **P9 — gas abstraction note + USDC swap demo.** Document the MATIC-for-gas problem (relayer /
       EIP-2771 / paymaster) and add a sim USDC swap demo path; mainnet/real funds owner-gated.

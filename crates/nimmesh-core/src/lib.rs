@@ -165,6 +165,13 @@ pub mod evm_rlp;
 #[cfg(feature = "polygon-leg")]
 pub mod evm_signer;
 
+// Mesh swap (P8): the Polygon (EVM) JSON-RPC gateway, behind `polygon-gateway` (adds `ureq` +
+// `serde_json`). `polygon_gateway` is the EVM analog of `rpc`/`gateway`: a pure, OFFLINE-tested
+// request/response codec (nonce / gas / sendRawTransaction / receipt / eth_call) + the `ureq` HTTP
+// client `HttpPolygonRpc`. Amoy-guarded; the LIVE broadcast + real funds + mainnet are owner-gated.
+#[cfg(feature = "polygon-gateway")]
+pub mod polygon_gateway;
+
 // Mesh swap: the REAL Bitcoin swap leg (behind `bitcoin-leg`) — the BTC-native analog of
 // `swap_builder::NimiqLeg`. Wraps `btc::BtcHtlcParams` + signs through the `btc::BtcEnclaveKey`
 // seam, exposing `htlc_address` / `build_claim` / `build_refund`. Supersedes the BTC half of the

@@ -69,6 +69,13 @@ bitcoin-gateway = ["bitcoin-leg", "dep:ureq", "dep:serde_json", "dep:getrandom"]
 # lean/WASM-friendly; ON for the Polygon leg. TESTNET/Amoy-guarded (mainnet + real funds gated).
 polygon-leg = ["dep:sha3", "dep:k256"]
 
+# P8: the Polygon (EVM) JSON-RPC gateway — broadcast + confirmation/read queries against a public
+# Amoy TESTNET RPC. Reuses the blocking `ureq` HTTP client + `serde_json` (same deps as `gateway-rpc`/
+# `bitcoin-gateway`). Depends on `polygon-leg` (uses the EVM tx types). OFF by default; the request/
+# response CODEC is unit-tested OFFLINE (no network in `cargo test`). Amoy-only; broadcast + real funds
+# + mainnet are owner-gated (a manual/example call, never the gate).
+polygon-gateway = ["polygon-leg", "dep:ureq", "dep:serde_json"]
+
 # Pure proc-macro mode (uniffi::setup_scaffolding!) — no UDL file, no build.rs.
 [dependencies]
 uniffi = { workspace = true, features = ["cli"] }
