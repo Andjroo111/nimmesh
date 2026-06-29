@@ -377,6 +377,10 @@ mod swap_usdc_e2e_tests;
 // P6: a matched NIM⇄USDC discovery pair → UsdcLeg settlement (connects swap_intent + swap_usdc_leg).
 #[cfg(all(test, feature = "polygon-leg"))]
 mod swap_usdc_discovery_tests;
+// P9: the full NIM⇄USDC pipeline end to end in SIM (discovery → calldata → sign → mock submit →
+// settle); needs the gateway, so it's behind polygon-gateway.
+#[cfg(all(test, feature = "polygon-gateway"))]
+mod swap_usdc_dryrun_tests;
 #[cfg(test)]
 mod test_support;
 

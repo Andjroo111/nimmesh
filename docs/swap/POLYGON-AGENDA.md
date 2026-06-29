@@ -170,5 +170,36 @@ Re-scan — next goals (append as they're built):
       broadcast + real funds + mainnet = needs:owner. `ureq`/`k256`/`sha3` confirmed absent from the
       default runtime tree (present only under their features). Gate green ×4 (default + bitcoin-leg +
       polygon-leg + polygon-gateway), clippy clean ×3, `polygon_gateway.rs` 517 lines.
-- [ ] **P9 — gas abstraction note + USDC swap demo.** Document the MATIC-for-gas problem (relayer /
-      EIP-2771 / paymaster) and add a sim USDC swap demo path; mainnet/real funds owner-gated.
+- [x] **P9 — gas-abstraction note + full USDC swap SIM dry-run.** Done: `docs/swap/USDC-GAS.md` —
+      the MATIC-for-gas problem + the four options (claimer holds MATIC / relayer + EIP-2771 / ERC-4337
+      paymaster / counterparty-sponsored), with which are owner-gated. And `MockPolygonRpc` (in-memory,
+      exercises the real P8 codec both directions, no HTTP; the tx hash it returns is the real
+      `keccak256` of the signed bytes) + `swap_usdc_dryrun_tests` — a single capstone test threading the
+      WHOLE stack OFFLINE: matched NIM⇄USDC discovery (P5/P7) → `counterparty_leg_for` → Usdc (P6) →
+      `usdc_leg_for_pair` (P7) → `htlc_new_swap` calldata (P3, selector checked) → nonce/gas from the
+      mock → Amoy tx assembled + signed with the real `LocalEvmKey` (P4, chainId 80002 asserted) →
+      "broadcast" via the mock (records EXACTLY the signed raw tx, returns a real-shaped hash + a
+      success receipt) → `htlc_withdraw` calldata (P3) → `UsdcLeg` + `swap::Swap` settle atomically (no
+      one-sided settlement). Gate green ×4 (default + bitcoin-leg + polygon-leg + polygon-gateway),
+      clippy clean ×3, default runtime tree still free of ureq/k256/sha3.
+
+## Status: USDC sim/testnet ladder complete
+
+P1–P9 deliver a full NIM⇄USDC-on-Polygon swap at the **sim/testnet** level, every layer validated
+against published vectors / offline fixtures and threaded end to end (the P9 dry-run): EVM primitives
+(P1), the HTLC leg model + NIM⇄USDC atomicity (P2), ABI calldata (P3), the EIP-155 signing-hash +
+signed-tx assembly + real `k256` signer (P4a–c), mesh discovery + the counter-asset rate gate (P5),
+discovery↔settlement leg selection (P6), the carried EVM payout address (P7), the Polygon JSON-RPC
+gateway (P8), and the gas-abstraction note + full pipeline dry-run (P9). Money-path gated throughout
+(MockSigner/sim secret in the engine, test key + mock RPC in the EVM path); `feat/usdc-polygon` stays
+review-only off `feat/mesh-swap`/PR #67.
+
+**Everything remaining is owner-gated or owner-directed, so the autonomous loop STOPS here:**
+- **Live Amoy testnet broadcast** — sign with a real, testnet-MATIC-funded key and `eth_sendRawTransaction`
+  against a live Amoy RPC, then poll the receipt. Needs a funded key + a live endpoint = **needs:owner**.
+- **Mainnet (Polygon 137) + real USDC** — **needs:owner** (real funds; the guards refuse it by default).
+- **Gas abstraction in practice** — deploy/choose a relayer (EIP-2771) or paymaster (ERC-4337); real
+  funds + a deployed contract + a service to run = **needs:owner** (see `docs/swap/USDC-GAS.md`).
+- **A USDC swap demo SERVER/UI** — a frontend effort that must go through `/nimiq-ui` and match the real
+  Nimiq references (Andjroo owns presentation + reference assets); a distinct initiative, not a protocol
+  rung. Awaiting Andjroo's go-ahead + direction.

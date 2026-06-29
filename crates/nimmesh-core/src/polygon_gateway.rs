@@ -355,6 +355,110 @@ impl HttpPolygonRpc {
     }
 }
 
+// --- MockPolygonRpc: an in-memory fake for the SIM dry-run (no network) ---------------------------
+
+/// A deterministic, in-memory stand-in for [`HttpPolygonRpc`] for the P9 sim dry-run + tests. It does
+/// **no network**: it RECORDS the raw-hex broadcasts (so a test can assert exactly the signed bytes
+/// were submitted) and answers each call by building the request through the real codec and parsing a
+/// synthesized JSON response through the real parser — so the dry-run exercises the actual codec both
+/// directions, just without HTTP. The `eth_sendRawTransaction` hash it returns is the REAL Ethereum tx
+/// hash (`keccak256` of the signed bytes), so it lines up with what a node would assign.
+pub struct MockPolygonRpc {
+    sent: std::sync::Mutex<Vec<String>>,
+    nonce: u64,
+    gas_price: u64,
+    head_block: u64,
+}
+
+impl Default for MockPolygonRpc {
+    fn default() -> Self {
+        MockPolygonRpc {
+            sent: std::sync::Mutex::new(Vec::new()),
+            nonce: 0,
+            gas_price: 30_000_000_000, // 30 gwei
+            head_block: 0x10,
+        }
+    }
+}
+
+impl MockPolygonRpc {
+    /// A mock at nonce 0, 30 gwei, head block 16.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// A mock reporting `nonce` for `get_transaction_count`.
+    pub fn at_nonce(nonce: u64) -> Self {
+        MockPolygonRpc {
+            nonce,
+            ..Self::default()
+        }
+    }
+
+    /// The raw-hex blobs broadcast so far, in order.
+    pub fn broadcasts(&self) -> Vec<String> {
+        self.sent.lock().unwrap().clone()
+    }
+
+    /// The deterministic tx hash this mock assigns a `0x`-prefixed raw tx — the REAL Ethereum hash,
+    /// `keccak256` of the signed bytes (decoded from the hex), so it matches a node's assignment.
+    fn fixture_hash(raw_hex: &str) -> String {
+        let bytes = decode_hex(raw_hex.strip_prefix("0x").unwrap_or(raw_hex)).unwrap_or_default();
+        format!(
+            "0x{}",
+            crate::nimiq::hex::bytes_to_hex(&crate::evm::keccak256(&bytes))
+        )
+    }
+
+    /// Next nonce — builds the request + parses a synthesized response through the real codec.
+    pub fn get_transaction_count(&self, address: &str) -> Result<u64, EvmRpcError> {
+        let _req = get_transaction_count_request(address, 1);
+        let resp =
+            serde_json::json!({ "jsonrpc": "2.0", "id": 1, "result": quantity_hex(self.nonce) });
+        parse_transaction_count(&resp)
+    }
+
+    /// Gas price — same codec round-trip, no network.
+    pub fn gas_price(&self) -> Result<u64, EvmRpcError> {
+        let _req = gas_price_request(1);
+        let resp = serde_json::json!({ "jsonrpc": "2.0", "id": 1, "result": quantity_hex(self.gas_price) });
+        parse_gas_price(&resp)
+    }
+
+    /// Record the broadcast + return the (real) tx hash, parsed back through the codec.
+    pub fn send_raw_transaction(&self, raw_hex: &str) -> Result<String, EvmRpcError> {
+        let _req = send_raw_transaction_request(raw_hex, 1);
+        self.sent.lock().unwrap().push(raw_hex.to_string());
+        let hash = Self::fixture_hash(raw_hex);
+        let resp = serde_json::json!({ "jsonrpc": "2.0", "id": 1, "result": hash });
+        parse_send_raw_transaction(&resp)
+    }
+
+    /// A successful receipt at the mock's head block, via the real receipt parser.
+    pub fn get_transaction_receipt(
+        &self,
+        tx_hash: &str,
+    ) -> Result<Option<EvmReceipt>, EvmRpcError> {
+        let _req = get_transaction_receipt_request(tx_hash, 1);
+        let resp = serde_json::json!({
+            "jsonrpc": "2.0", "id": 1,
+            "result": { "transactionHash": tx_hash, "status": "0x1", "blockNumber": quantity_hex(self.head_block) }
+        });
+        parse_transaction_receipt(&resp)
+    }
+}
+
+/// Decode a hex string (no `0x`) to bytes; `None` on odd length / non-hex (used by the mock's hash).
+fn decode_hex(s: &str) -> Option<Vec<u8>> {
+    if s.len() % 2 != 0 {
+        return None;
+    }
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(s.get(i..i + 2)?, 16).ok())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
