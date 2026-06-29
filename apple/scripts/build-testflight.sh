@@ -55,6 +55,16 @@ set -a; . "$CFG"; set +a
 : "${ASC_ISSUER_ID:?set ASC_ISSUER_ID in $CFG}"
 KEYFILE="$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
 [ -f "$KEYFILE" ] || { echo "ERROR: API key not found at $KEYFILE"; exit 1; }
+: "${ASC_SIGN_IDENTITY:?set ASC_SIGN_IDENTITY in $CFG}"
+: "${ASC_PROFILE_NAME:?set ASC_PROFILE_NAME in $CFG}"
+
+# This account can't use Apple cloud-managed signing, so we sign manually with a distribution
+# cert + App Store profile held in a dedicated build keychain. Unlock it + keep it searchable.
+if [ -n "${ASC_KEYCHAIN:-}" ] && [ -f "$ASC_KEYCHAIN" ]; then
+  security unlock-keychain -p "${ASC_KEYCHAIN_PASS:-}" "$ASC_KEYCHAIN" 2>/dev/null || true
+  security list-keychains -d user | tr -d '"' | grep -qF "$ASC_KEYCHAIN" \
+    || security list-keychains -d user -s "$ASC_KEYCHAIN" $(security list-keychains -d user | sed 's/"//g')
+fi
 
 source "$HOME/.cargo/env"
 
@@ -81,9 +91,11 @@ xcodebuild archive \
   -sdk iphoneos \
   -destination 'generic/platform=iOS' \
   -archivePath "$ARCHIVE" \
-  -allowProvisioningUpdates \
   DEVELOPMENT_TEAM="$ASC_TEAM_ID" \
-  CODE_SIGN_STYLE=Automatic \
+  CODE_SIGN_STYLE=Manual \
+  CODE_SIGN_IDENTITY="$ASC_SIGN_IDENTITY" \
+  PROVISIONING_PROFILE_SPECIFIER="$ASC_PROFILE_NAME" \
+  OTHER_CODE_SIGN_FLAGS="--keychain $ASC_KEYCHAIN" \
   MARKETING_VERSION="$MARKETING_VERSION" \
   CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
   | grep -E "Archive (succeeded|failed)|error:|\*\* ARCHIVE" || true
@@ -96,7 +108,11 @@ cat > "$BUILD/ExportOptions.plist" <<PLIST
 <plist version="1.0"><dict>
   <key>method</key><string>app-store-connect</string>
   <key>teamID</key><string>$ASC_TEAM_ID</string>
-  <key>signingStyle</key><string>automatic</string>
+  <key>signingStyle</key><string>manual</string>
+  <key>signingCertificate</key><string>$ASC_SIGN_IDENTITY</string>
+  <key>provisioningProfiles</key><dict>
+    <key>com.nimmesh.app</key><string>$ASC_PROFILE_NAME</string>
+  </dict>
   <key>destination</key><string>export</string>
   <key>uploadSymbols</key><true/>
   <key>manageAppVersionAndBuildNumber</key><false/>
@@ -107,7 +123,6 @@ xcodebuild -exportArchive \
   -archivePath "$ARCHIVE" \
   -exportPath "$EXPORT_DIR" \
   -exportOptionsPlist "$BUILD/ExportOptions.plist" \
-  -allowProvisioningUpdates \
   | grep -E "Export (succeeded|failed)|error:|\*\* EXPORT" || true
 IPA="$(/bin/ls "$EXPORT_DIR"/*.ipa 2>/dev/null | head -1 || true)"
 [ -n "$IPA" ] && [ -f "$IPA" ] || { echo "ERROR: no .ipa produced (see export errors above)"; exit 1; }

@@ -59,3 +59,4 @@ GoogleService-Info.plist
 .idea/
 .vscode/
 .claude/
+build/

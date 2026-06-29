@@ -2,6 +2,22 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.32.0] — 2026-06-28
+
+### Added — app icon + TestFlight signing (first build delivered)
+
+- **App icon:** the verbatim Nimiq brand hexagon (gold gradient) on the canonical navy radial
+  gradient (`--nimiq-blue-bg`), rendered 1024×1024 with no alpha (App Store requirement) into
+  `Assets.xcassets/AppIcon.appiconset` (single-size). `project.yml` adds the catalog +
+  `ASSETCATALOG_COMPILER_APPICON_NAME`. (TestFlight rejects a build with no icon, error 90022.)
+- **Signing:** this account can't use Apple's cloud-managed signing, so `build-testflight.sh`
+  now signs manually with a distribution cert + App Store profile (created once via the App
+  Store Connect API) held in a dedicated `nimmesh-build` keychain. Archive + export both use
+  manual signing; the script unlocks the keychain and keeps it searchable.
+
+**First TestFlight build uploaded** (v0.31.0, build 202606282326) — the headless
+archive → export → upload pipeline is proven end to end.
+
 ## [0.31.0] — 2026-06-27
 
 ### Added — TestFlight build + upload pipeline (remote / over-the-air delivery)
