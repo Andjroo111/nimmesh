@@ -2,6 +2,36 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.46.0] — 2026-07-02
+
+### Test harness — deterministic mesh-drain re-enables the discovery-stress tests (#84)
+
+Three multi-node discovery-stress tests were `#[ignore]`d in CI because their convergence driver
+(`pump_until`) raced a **wall-clock budget** (`CONVERGE = 10s`) against two background worker threads
+(node job queue → `MockEther` delivery). On CI's 2-core runners under `cargo test --all` the CPU
+oversubscribes, the workers starve, and a six-node scenario misses the budget — a flake, not a bug
+(they passed with `--ignored` locally). This replaces the clock with a **fence-driven drain to global
+quiescence** (ADR-0005) — no timing in the convergence path.
+
+- **Two `#[cfg(test)]` FIFO barriers.** `MeshNode::fence()` (`Job::Fence`) blocks until the worker has
+  run every earlier job *and its `radio.send`s*; `MockEther::fence()` (`EtherMsg::Fence`) blocks until
+  the delivery thread has delivered every pending transmit into its destination queue. Because both
+  block on a channel `recv` rather than spinning, the test thread yields the CPU to the workers — the
+  opposite of the busy-poll that starved them.
+- **Quiescence via one monotonic counter.** `MockEther::enqueued()` counts transmissions ever handed
+  to the ether. The new `settle` helper fences all nodes → reads `enqueued` → fences the ether →
+  fences all nodes, repeating until a full pass moves **zero** new transmissions = true global
+  quiescence (race-free: any concurrent send bumps the counter and forces another pass, so it can
+  never falsely report done). `drive_until` wraps it: poll every node's tick, `settle`, break the
+  instant the target holds — a fixed round cap, never a clock.
+- **Re-enabled (lib suite now 0 ignored):** `many_complementary_pairs_all_discover_and_settle`,
+  `a_partitioned_pair_discovers_after_the_link_heals_within_budget`,
+  `a_reconnected_peer_resets_the_re_advertise_budget_and_the_pair_settles`. Pass 10/10 locally and
+  under 6 background CPU burners, sub-second — the flake is structurally gone.
+- **Zero production-behaviour change.** The fences are `cfg(test)`; the only always-compiled addition
+  is the ether's `enqueued` counter (one relaxed `fetch_add` per transmit on a test/example substrate
+  the real BLE path never uses). Removes `pump_until`/`CONVERGE`.
+
 ## [0.45.0] — 2026-07-02
 
 ### Hardening — faster un-funded slot reclaim (G4 slice 2b, #75 → part of S5; closes G4)

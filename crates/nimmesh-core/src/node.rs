@@ -70,6 +70,11 @@ enum Job {
     /// on-demand crash-recovery snapshot — the session lives on the worker thread).
     #[cfg(test)]
     SnapshotSwaps(Sender<Vec<u8>>),
+    /// #84 (test): a FIFO drain barrier — the worker replies once every job enqueued before it has
+    /// run to completion (including any `radio.send` those jobs made). The node half of the
+    /// deterministic mesh-drain that replaces the flaky wall-clock convergence budget.
+    #[cfg(test)]
+    Fence(Sender<()>),
     /// Drain and exit (teardown).
     Shutdown,
 }
@@ -167,6 +172,12 @@ fn run_worker(
                     .map(|s| s.encode_snapshot())
                     .unwrap_or_default();
                 let _ = reply.send(bytes);
+            }
+            #[cfg(test)]
+            Job::Fence(reply) => {
+                // Every earlier job has already run (FIFO); acknowledge so the test thread can
+                // observe this node as drained. No protocol work — just the barrier reply.
+                let _ = reply.send(());
             }
         }
     }
@@ -638,6 +649,27 @@ impl MeshNode {
     #[cfg(test)]
     pub(crate) fn intent_metrics(&self) -> crate::swap_node::IntentMetricsSnapshot {
         self.ctx.intent_metrics.snapshot()
+    }
+
+    /// #84 (test): block until the worker has processed every job enqueued before this call. Because
+    /// the worker drains its queue strictly FIFO, the barrier reply proves all prior inbound
+    /// processing — and every `radio.send` it triggered (already handed to the ether) — is complete.
+    /// The node-side half of the deterministic mesh-drain (see the discovery-stress `settle` helper).
+    /// Returns at once if the worker is already gone. The timeout only bounds a pathological hang (a
+    /// worker deadlock would be a real bug); convergence itself is detected by state, not the clock.
+    #[cfg(test)]
+    pub(crate) fn fence(&self) {
+        let (reply_tx, reply_rx) = channel();
+        let sent = {
+            let guard = self.job_tx.lock().unwrap();
+            guard
+                .as_ref()
+                .map(|tx| tx.send(Job::Fence(reply_tx)).is_ok())
+                .unwrap_or(false)
+        };
+        if sent {
+            let _ = reply_rx.recv_timeout(Duration::from_secs(30));
+        }
     }
 
     /// G33 (test): the participant's live swap session encoded to recovery bytes (asks the worker;

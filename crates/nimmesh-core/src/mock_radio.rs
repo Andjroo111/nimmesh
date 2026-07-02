@@ -21,7 +21,7 @@
 //! reclaimed even while the ether lives — the leak-discipline the real shim needs.
 
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex, Weak};
 use std::thread::JoinHandle;
@@ -38,6 +38,17 @@ struct Transmit {
     src_node: Weak<MeshNode>,
     dst_peer: PeerId,
     bytes: Vec<u8>,
+}
+
+/// What travels down the ether's delivery channel. A [`Transmit`] is the real payload; the
+/// `#[cfg(test)]` `Fence` is a FIFO drain barrier (#84) — because the delivery loop is strictly
+/// sequential, the worker replies to a `Fence` only after every transmit ahead of it has been
+/// delivered (and its destination `on_packet_received_from` job enqueued). The ether half of the
+/// deterministic mesh-drain that replaces the flaky wall-clock convergence budget.
+enum EtherMsg {
+    Transmit(Transmit),
+    #[cfg(test)]
+    Fence(Sender<()>),
 }
 
 /// Tunable channel conditions for the virtual mesh.
@@ -65,9 +76,13 @@ impl Default for EtherConfig {
 struct EtherInner {
     registry: Mutex<HashMap<PeerId, Weak<MeshNode>>>,
     config: Mutex<EtherConfig>,
-    tx: Mutex<Option<Sender<Transmit>>>,
+    tx: Mutex<Option<Sender<EtherMsg>>>,
     /// xorshift64 state for deterministic loss decisions.
     rng: Mutex<u64>,
+    /// #84: monotonic count of transmissions ever handed to the ether. A deterministic drain reads
+    /// it before and after a full fence pass — an unchanged count means the pass produced no new
+    /// traffic, i.e. the mesh has reached global quiescence (see [`MeshHarness`] / `settle`).
+    enqueued: AtomicUsize,
 }
 
 impl EtherInner {
@@ -104,6 +119,7 @@ impl MockEther {
             config: Mutex::new(EtherConfig::default()),
             tx: Mutex::new(Some(tx)),
             rng: Mutex::new(0x9E37_79B9_7F4A_7C15),
+            enqueued: AtomicUsize::new(0),
         });
         let worker_inner = inner.clone();
         let worker = std::thread::spawn(move || Self::run(worker_inner, rx));
@@ -120,8 +136,36 @@ impl MockEther {
 
     /// Hand a transmission to the ether (called by [`MockRadio::send`], non-blocking).
     fn enqueue(&self, t: Transmit) {
+        self.inner.enqueued.fetch_add(1, Ordering::Relaxed);
         if let Some(tx) = self.inner.tx.lock().unwrap().as_ref() {
-            let _ = tx.send(t);
+            let _ = tx.send(EtherMsg::Transmit(t));
+        }
+    }
+
+    /// #84 (test): total transmissions ever handed to the ether. Read across a fence pass to detect
+    /// global quiescence (an unchanged count over a full drain = no new traffic was produced).
+    #[cfg(test)]
+    pub(crate) fn enqueued(&self) -> usize {
+        self.inner.enqueued.load(Ordering::Relaxed)
+    }
+
+    /// #84 (test): block until the delivery thread has processed every transmission enqueued before
+    /// this call. FIFO ordering means the barrier reply proves all earlier transmits have been
+    /// delivered into their destination nodes' job queues. The ether half of the deterministic
+    /// mesh-drain; returns at once if the delivery thread is gone. The timeout only bounds a
+    /// pathological hang — convergence is detected by state, never the clock.
+    #[cfg(test)]
+    pub(crate) fn fence(&self) {
+        let (reply_tx, reply_rx) = channel();
+        let sent = {
+            let guard = self.inner.tx.lock().unwrap();
+            guard
+                .as_ref()
+                .map(|tx| tx.send(EtherMsg::Fence(reply_tx)).is_ok())
+                .unwrap_or(false)
+        };
+        if sent {
+            let _ = reply_rx.recv_timeout(Duration::from_secs(30));
         }
     }
 
@@ -158,8 +202,21 @@ impl MockEther {
         }
     }
 
-    fn run(inner: Arc<EtherInner>, rx: Receiver<Transmit>) {
-        while let Ok(t) = rx.recv() {
+    fn run(inner: Arc<EtherInner>, rx: Receiver<EtherMsg>) {
+        while let Ok(msg) = rx.recv() {
+            // The `Fence` arm is `cfg(test)`-only, so a shipping build sees a single-variant match —
+            // intentional (the barrier exists solely for the deterministic-drain tests, #84).
+            #[allow(clippy::infallible_destructuring_match)]
+            let t = match msg {
+                EtherMsg::Transmit(t) => t,
+                // #84: a drain barrier — everything ahead of it in this FIFO channel has already
+                // been delivered, so acknowledge and move on.
+                #[cfg(test)]
+                EtherMsg::Fence(reply) => {
+                    let _ = reply.send(());
+                    continue;
+                }
+            };
             let (latency, loss, blocked) = {
                 let cfg = inner.config.lock().unwrap();
                 let blocked = cfg

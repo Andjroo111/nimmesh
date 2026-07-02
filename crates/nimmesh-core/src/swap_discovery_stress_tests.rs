@@ -15,11 +15,15 @@
 //! "eventually settles within a fixed budget" flaky); discovery is driven by polling every node's
 //! maintenance tick, and partition/heal is a hard, RNG-free cut. Each pair is its own link, so a
 //! BTC-giver's re-advertised intent only reaches its partner — no accidental cross-pair matches.
+//!
+//! #84: the "should settle" waits are driven by [`settle`] / [`drive_until`], which fence the node
+//! workers and the mock ether to a fixpoint (no wall-clock convergence budget), so these run in CI —
+//! they can't flake under `cargo test --all` scheduler oversubscription the way a timed budget did.
 
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use crate::mock_radio::MeshHarness;
+use crate::mock_radio::{MeshHarness, MockEther};
 use crate::node::MeshNode;
 use crate::swap::{LadderParams, SwapPhase};
 use crate::swap_discovery_tests::{
@@ -62,16 +66,11 @@ fn mk_identity(tag: u8) -> NodeIdentity {
     }
 }
 
-// NOTE: `#[ignore]` in CI. This is a *timing* proof (three concurrent pairs settle with no
-// cross-talk), and both `poll_sync` and mesh delivery ride background worker threads (node job
-// queue -> ether worker). Under `cargo test --all` on CI's 2-core runners the whole suite is thread-
-// oversubscribed, so a six-node scenario can miss any wall-clock convergence budget — a flake, not a
-// bug. The single-pair discovery tests below stay in CI (they converge under contention), and swap
-// *correctness* is proven deterministically by the e2e + adversarial suites. Run this one locally:
-// `cargo test -p nimmesh-core -- --ignored many_complementary_pairs`. Deterministic re-enable tracked
-// in the "make the multi-pair discovery harness sync-driven" issue.
+// #84: three concurrent pairs settle with no cross-talk. `poll_sync` and mesh delivery ride
+// background worker threads (node job queue -> ether worker), which is why a fixed-tick or wall-clock
+// convergence budget flaked under `cargo test --all` on CI's 2-core runners. [`drive_until`]/[`settle`]
+// fence those threads to a fixpoint instead, so this is deterministic and runs in CI.
 #[test]
-#[ignore = "timing/thread-contention sensitive under cargo test --all on CI 2-core runners; run with --ignored. Correctness covered by the deterministic e2e/adversarial suites; re-enable tracked separately."]
 fn many_complementary_pairs_all_discover_and_settle() {
     // Three NIM-giver / BTC-giver pairs on one ether. Each BTC-giver carries a SIGNED standing intent
     // it re-advertises (G37); its partner picks it up, runs the best-rate window (G39), initiates, and
@@ -121,10 +120,11 @@ fn many_complementary_pairs_all_discover_and_settle() {
                 && btc_nodes[i].swap_phase(swap_ids[i]) == Some(SwapPhase::Settled)
         })
     };
-    // Pump every node until all pairs settle. A wall-clock convergence budget (not a fixed tick
-    // count) keeps this deterministic under CI load; it breaks the instant every pair is Settled.
+    // Drive every node's tick then fence the mesh to quiescence each round (deterministic — no clock),
+    // breaking the instant every pair is Settled.
+    let ether = h.ether();
     assert!(
-        pump_until(&nodes, all_settled),
+        drive_until(&ether, &nodes, all_settled),
         "every complementary pair should discover its counterparty and settle"
     );
 
@@ -247,59 +247,90 @@ fn tick_round(nim: &Arc<MeshNode>, btc: &Arc<MeshNode>) {
     std::thread::sleep(Duration::from_millis(5));
 }
 
-/// A generous wall-clock budget for the multi-node "should settle" waits. Deliberately large: the
-/// wait breaks the instant the swap settles, so this only ever bounds the *failure* path.
-const CONVERGE: Duration = Duration::from_secs(10);
+/// Safety cap on [`settle`]'s fence passes. A swap handshake is a handful of messages and each pass
+/// clears at least one delivery→process→reply hop, so real convergence needs only a few passes; this
+/// bound just turns a hypothetical harness bug into a loud failure instead of a hang.
+const MAX_SETTLE_PASSES: usize = 64;
 
-/// Pump every node's maintenance tick until `done` holds or [`CONVERGE`] elapses; returns whether it
-/// converged. The mock ether delivers on a worker thread, so a fixed tick count races that thread and
-/// flakes under CI load; waiting on a wall-clock deadline and breaking the instant `done` holds is
-/// deterministic in outcome and keeps the happy path sub-second. (We can't make the ether synchronous
-/// — `test_support::SpyRadio` asserts the relay's `send` never runs inside `on_packet_received`.)
-fn pump_until<F: Fn() -> bool>(nodes: &[Arc<MeshNode>], done: F) -> bool {
-    let deadline = Instant::now() + CONVERGE;
-    loop {
+/// Safety cap on [`drive_until`]'s tick rounds. The re-advertise schedule fires at ticks 1/3/6/11/19
+/// and the best-rate window is 2 ticks, so ~25 rounds is the most any scenario here needs; this bound
+/// is generous headroom (the loop breaks the instant `done` holds).
+const MAX_DRIVE_ROUNDS: usize = 60;
+
+/// #84: drain the mesh to global quiescence — no wall-clock. Repeatedly fence every node (flushing
+/// its worker queue and pushing its outgoing sends into the ether) then fence the ether (delivering
+/// every pending transmit into the destination nodes' queues), until a full pass produces zero new
+/// transmissions. Because both halves block on a FIFO barrier reply rather than spinning, the test
+/// thread yields the CPU to the workers — so this is immune to the CI scheduler oversubscription that
+/// made a timed convergence budget flake. (We can't make the ether synchronous — `SpyRadio` asserts
+/// the relay's `send` never runs inside `on_packet_received`; fences drain the async path instead.)
+fn settle(ether: &MockEther, nodes: &[Arc<MeshNode>]) {
+    for _ in 0..MAX_SETTLE_PASSES {
+        for n in nodes {
+            n.fence();
+        }
+        let before = ether.enqueued();
+        ether.fence();
+        for n in nodes {
+            n.fence();
+        }
+        // A pass that delivered every pending transmit and provoked no new send = quiescent.
+        if ether.enqueued() == before {
+            return;
+        }
+    }
+    panic!("settle: mesh failed to reach quiescence within {MAX_SETTLE_PASSES} fence passes");
+}
+
+/// #84: poll every node's maintenance tick then [`settle`] the mesh, up to [`MAX_DRIVE_ROUNDS`],
+/// breaking the instant `done` holds. Discovery is tick-driven (re-advertise + best-rate window), so
+/// convergence needs several rounds — but each round settles deterministically, so the outcome is a
+/// function of protocol state alone, never of timing. Returns whether `done` held.
+fn drive_until<F: Fn() -> bool>(ether: &MockEther, nodes: &[Arc<MeshNode>], done: F) -> bool {
+    for _ in 0..MAX_DRIVE_ROUNDS {
         for n in nodes {
             n.poll_sync();
         }
+        settle(ether, nodes);
         if done() {
             return true;
         }
-        if Instant::now() >= deadline {
-            return false;
-        }
-        std::thread::sleep(Duration::from_millis(5));
     }
+    done()
 }
 
 #[test]
-#[ignore = "wall-clock settle-within-budget over the threaded MeshHarness; flakes under cargo test --all on CI 2-core runners (blows CONVERGE=10s under oversubscription). Run with --ignored. Correctness covered by the deterministic e2e/adversarial suites; sync-driven re-enable tracked in #84."]
 fn a_partitioned_pair_discovers_after_the_link_heals_within_budget() {
     // G47: PARTITION a complementary pair — the BTC-giver re-advertises (G37) but the cut blocks every
     // flood, so nothing discovers. HEAL within the bounded re-advertise budget and the next flood
-    // crosses → the pair discovers + settles. Deterministic recovery, no probabilistic loss.
+    // crosses → the pair discovers + settles. Deterministic recovery, no probabilistic loss. (#84:
+    // fenced to quiescence each round rather than raced against a wall-clock budget.)
     let mut h = MeshHarness::new();
     let (nim, btc, swap_id) = complementary_pair(&mut h, 0x60, 0x61);
-    h.ether().partition("nim", "btc");
+    let ether = h.ether();
+    let nodes = [nim.clone(), btc.clone()];
+    ether.partition("nim", "btc");
 
     // Partitioned: a few rounds burn some (blocked) re-advertises; no flood crosses → no discovery.
     for _ in 0..4 {
-        tick_round(&nim, &btc);
+        for n in &nodes {
+            n.poll_sync();
+        }
+        settle(&ether, &nodes);
     }
-    std::thread::sleep(Duration::from_millis(20));
     assert!(
         nim.swap_phase(swap_id).is_none(),
         "a partitioned pair must not discover"
     );
 
     // Heal while the BTC-giver still has re-advertise budget left → the next flood crosses → settle.
-    h.ether().heal("nim", "btc");
+    ether.heal("nim", "btc");
     let settled = || {
         nim.swap_phase(swap_id) == Some(SwapPhase::Settled)
             && btc.swap_phase(swap_id) == Some(SwapPhase::Settled)
     };
     assert!(
-        pump_until(&[nim.clone(), btc.clone()], settled),
+        drive_until(&ether, &nodes, settled),
         "the healed pair should discover and settle"
     );
 
@@ -335,26 +366,28 @@ fn a_partition_outlasting_the_re_advertise_budget_leaves_the_pair_silent() {
 }
 
 #[test]
-#[ignore = "wall-clock settle-within-budget over the threaded MeshHarness; flakes under cargo test --all on CI 2-core runners (blows CONVERGE=10s under oversubscription). Run with --ignored. Correctness covered by the deterministic e2e/adversarial suites; sync-driven re-enable tracked in #84."]
 fn a_reconnected_peer_resets_the_re_advertise_budget_and_the_pair_settles() {
     // G51: lift the G47 limit for an ACTUAL reconnect. The pair connects, then the link DROPS (the
     // peers disconnect); the BTC-giver spends its whole re-advertise budget while cut off, so nothing
     // discovers. On RECONNECT the peer set grows, which resets the budget — so the pair now discovers +
     // settles. (Contrast the G47 budget-exhaustion test: `ether.partition` never drops the peer, so the
     // count is unchanged and it stays silent — delivery-loss-without-disconnect keeps the limit.)
+    // #84: fenced to quiescence rather than raced against a wall-clock budget.
     let mut h = MeshHarness::new();
     let (nim, btc, swap_id) = complementary_pair(&mut h, 0x64, 0x65);
+    let ether = h.ether();
+    let nodes = [nim.clone(), btc.clone()];
 
     // The link drops.
     nim.on_peer_disconnected("btc".to_string());
     btc.on_peer_disconnected("nim".to_string());
 
-    // The BTC-giver burns its whole re-advertise budget while cut off — nothing reaches nim.
+    // The BTC-giver burns its whole re-advertise budget while cut off — with no peers its floods reach
+    // no one, so nothing crosses. Drain the ticks to quiescence, then confirm nothing discovered.
     for _ in 0..26 {
         btc.poll_sync();
-        std::thread::sleep(Duration::from_millis(3));
     }
-    std::thread::sleep(Duration::from_millis(20));
+    settle(&ether, &nodes);
     assert!(
         nim.swap_phase(swap_id).is_none(),
         "a disconnected pair must not discover"
@@ -368,7 +401,7 @@ fn a_reconnected_peer_resets_the_re_advertise_budget_and_the_pair_settles() {
             && btc.swap_phase(swap_id) == Some(SwapPhase::Settled)
     };
     assert!(
-        pump_until(&[nim.clone(), btc.clone()], settled),
+        drive_until(&ether, &nodes, settled),
         "after reconnect the reset re-advertise budget should discover + settle"
     );
 
