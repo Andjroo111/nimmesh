@@ -65,6 +65,70 @@ enum Wallet {
     /// The recovery phrase, for the backup screen (`nil` if no wallet).
     static func recoveryPhrase() -> String? { readMnemonic() }
 
+    // MARK: Backup codes
+
+    /// The wallet's TWO BACKUP CODES — the real Nimiq wallet's XOR one-time-pad scheme
+    /// (keyguard `BackupCodes.js`): `plaintext = versionAndFlags(0) + entropy(32)`;
+    /// `code1 = KDF(secret)` (deterministic, so the same wallet always yields the same
+    /// codes); `code2 = plaintext XOR code1`. EITHER code alone reveals nothing; both
+    /// together recover the wallet. Rendered as 44-char base64 with `/`→`!`, `+`→`;`
+    /// (the keyguard's narrow-character substitution). nimmesh codes use HKDF-SHA256 as
+    /// the KDF, so they are nimmesh-specific (not importable into the Nimiq wallet).
+    static func backupCodes() -> (code1: String, code2: String)? {
+        guard let phrase = readMnemonic(), let bip39 = bip39(),
+              let entropy = bip39.entropy(fromMnemonic: phrase), entropy.count == 32
+        else { return nil }
+        return codes(fromEntropy: entropy)
+    }
+
+    private static func codes(fromEntropy entropy: Data) -> (code1: String, code2: String) {
+        var plain = Data([0x00])   // versionAndFlags: version 0, no flags
+        plain.append(entropy)
+        let key = HKDF<SHA256>.deriveKey(
+            inputKeyMaterial: SymmetricKey(data: entropy),
+            info: Data("nimmesh BackupCodes - 0".utf8),
+            outputByteCount: plain.count
+        )
+        let code1Data = key.withUnsafeBytes { Data($0) }
+        let code2Data = Data(zip(plain, code1Data).map { $0 ^ $1 })
+        return (renderCode(code1Data), renderCode(code2Data))
+    }
+
+    /// Recover a wallet from its two backup codes (order-agnostic, like the keyguard:
+    /// re-derive the codes from the recovered entropy and accept either assignment).
+    /// Returns `false` on malformed codes, version mismatch, or checksum failure.
+    static func importBackupCodes(_ a: String, _ b: String) -> Bool {
+        guard let d1 = parseCode(a), let d2 = parseCode(b),
+              d1.count == 33, d2.count == 33
+        else { return false }
+        let plain = Data(zip(d1, d2).map { $0 ^ $1 })
+        guard plain[0] == 0x00 else { return false }   // version 0, no flags
+        let entropy = Data(plain.dropFirst())
+        let derived = codes(fromEntropy: entropy)
+        let inputs = Set([a.trimmingCharacters(in: .whitespacesAndNewlines),
+                          b.trimmingCharacters(in: .whitespacesAndNewlines)])
+        guard inputs == Set([derived.code1, derived.code2]) else { return false }
+        guard let bip39 = bip39(), let phrase = bip39.mnemonic(fromEntropy: entropy) else { return false }
+        guard storeMnemonic(phrase) else { return false }
+        cache = nil
+        return true
+    }
+
+    private static func renderCode(_ data: Data) -> String {
+        data.base64EncodedString()
+            .replacingOccurrences(of: "=", with: "")
+            .replacingOccurrences(of: "/", with: "!")
+            .replacingOccurrences(of: "+", with: ";")
+    }
+
+    private static func parseCode(_ code: String) -> Data? {
+        var s = code.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "!", with: "/")
+            .replacingOccurrences(of: ";", with: "+")
+        while s.count % 4 != 0 { s += "=" }
+        return Data(base64Encoded: s)
+    }
+
     /// Remove the wallet from this device. Without its 24 words the wallet is unrecoverable,
     /// so the UI always confirms (and reminds about the backup) before calling this. Used by
     /// the account menu's log-out and the fresh-install "start fresh" choice.

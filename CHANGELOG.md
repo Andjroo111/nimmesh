@@ -2,6 +2,36 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.38.0] — 2026-07-02
+
+### Added — real backup fidelity: two backup types + the word check (Andjroo's ask)
+
+Matched the real wallet's backup system (verified against wallet `BackupModal.vue` and
+Keyguard `ValidateWords.js` / `BackupCodes.js` upstream sources):
+
+- **The backup hub** (from the banner + account menu) is the wallet's BackupModal: navy,
+  "Important: Create a backup", TWO types — "Send yourself two backup codes" (~3min,
+  orange shield) and "Write down 24 recovery words" (~10min, green shield) — with the
+  wallet's own MessagesIcon/WordsIcon/ShieldIcon artwork, and "Remind me later".
+- **The word check.** After the 24 words (both the create flow and the backup flow),
+  the Keyguard's ValidateWords quiz, behavior-exact: 3 rounds, the target drawn from a
+  different third of the phrase each round, a giant target number, 6 alphabetized
+  candidate words from the same mnemonic; a wrong pick flashes red + shakes, reveals the
+  right word in green, and starts over; three greens pass.
+- **Backup codes**, the wallet's XOR one-time-pad scheme done natively: code1 = HKDF-SHA256
+  of the entropy, code2 = (version byte + entropy) XOR code1 — either code alone is
+  useless, both together restore the wallet; 44-char base64 with the keyguard's `/`→`!`,
+  `+`→`;` substitution; deterministic per wallet; checksum-verified on import
+  (order-agnostic). PROVEN with 200 random round-trips in both orders + tamper rejection
+  against the real BIP39 code. Onboarding gains "Use backup codes" restore.
+- **The banner finally turns off.** `backedUp` persists (UserDefaults via the bridge) and
+  now feeds the G19 nudge with the REAL state (it was hardcoded false); completing either
+  backup type (or restoring from codes/words) silences it. Log-out clears it.
+- Removed: the old checkbox self-attestation ("I have written down my words") — replaced
+  by the actual check; the old standalone words viewer — replaced by the hub flow.
+- Verified: Playwright end-to-end (hub, wrong-answer reset, quiz pass, codes flow, codes
+  import in reversed order, banner off), `nq lint` 0 errors, Swift crypto round-trip.
+
 ## [0.37.0] — 2026-07-02
 
 ### Changed — Send + Receive refined against the real wallet (Andjroo's review ask)

@@ -320,6 +320,62 @@
 
   /* Recovered-wallet onboarding: red-tinted "start fresh" link under the primary keep. */
   .ob-link.danger { color: var(--nimiq-red); }
+
+  /* ---- Backup (fidelity: the wallet's BackupModal + the Keyguard export flow) ---- */
+  /* The backup flow is a NAVY full-screen overlay (the real BackupModal is a navy modal). */
+  .onboard.navy { background: var(--nimiq-blue, #1f2348); background-image: var(--nimiq-blue-bg, radial-gradient(100% 100% at bottom right, #260133, #1f2348)); color: #fff; }
+  .onboard.navy .ob-top .ob-logo { color: #fff; }
+  .onboard.navy .ob-back { color: rgba(255,255,255,.7); }
+  .bh-header { text-align: center; padding: 8px 28px 0; }
+  .bh-header h2 { font-size: 24px; font-weight: 700; color: #fff; margin: 8px 0 10px; }
+  .bh-header p { font-size: 15px; line-height: 1.45; color: rgba(255,255,255,.6); margin: 0; }
+  .bh-options { display: flex; flex-direction: column; gap: 16px; padding: 26px 24px 0; }
+  .option-card { display: flex; flex-direction: column; align-items: flex-start; text-align: left;
+    padding: 20px; border: 0; border-radius: 10px; background: rgba(255,255,255,.12); cursor: pointer;
+    font-family: inherit; color: #fff; transition: background .2s cubic-bezier(.25,0,0,1), transform .2s cubic-bezier(.25,0,0,1); }
+  .option-card:active { background: rgba(255,255,255,.18); transform: translateY(1px); }
+  .option-card .option-icon { width: 38px; height: 32px; margin-bottom: 14px; }
+  .option-card h3 { font-size: 18px; font-weight: 700; margin: 0 0 6px; color: #fff; }
+  .option-card p { font-size: 14.5px; line-height: 1.35; margin: 0 0 14px; color: rgba(255,255,255,.7); }
+  .option-card .estimate { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: rgba(255,255,255,.7); }
+  .option-card .estimate svg { width: 16px; height: 17px; }
+  .option-card .estimate .shield-orange { color: var(--nimiq-orange, #fc8702); }
+  .option-card .estimate .shield-green { color: var(--nimiq-green, #21bca5); }
+  .bh-later { display: block; margin: 22px auto 0; background: none; border: 0; cursor: pointer;
+    font-family: inherit; font-weight: 700; font-size: 15px; color: rgba(255,255,255,.7); }
+  /* Keyguard ValidateWords: giant target number, hint, 6 small light-blue word pills. */
+  .val-index { font-size: 72px; line-height: 1; font-weight: 600; text-align: center; color: #fff; margin: 30px 0 14px; }
+  .val-hint { text-align: center; font-size: 15px; line-height: 1.4; color: rgba(255,255,255,.5); margin: 0 24px 26px; }
+  .val-words { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; padding: 0 18px; }
+  .val-words button { height: 36px; padding: 0 18px; border: 0; border-radius: 500px; cursor: pointer;
+    font-family: inherit; font-weight: 700; font-size: 14px; color: #fff;
+    background-image: radial-gradient(100% 100% at bottom right, #265DD7, #0582CA); }
+  .val-words button:disabled.inverse { opacity: .35; }
+  .val-words button.right { background-image: var(--nimiq-green-bg, radial-gradient(100% 100% at bottom right, #41A38E, #21BCA5)); }
+  .val-words button.wrong { background-image: var(--nimiq-red-bg, radial-gradient(100% 100% at bottom right, #CC3047, #D94432)); }
+  .val-words button.shake { animation: val-shake .5s; }
+  @keyframes val-shake { 10%, 90% { transform: translateX(-2px); } 20%, 80% { transform: translateX(4px); }
+    30%, 50%, 70% { transform: translateX(-6px); } 40%, 60% { transform: translateX(6px); } }
+  @media (prefers-reduced-motion: reduce) { .val-words button.shake { animation: none; } }
+  /* Backup codes: the code in a mono tile on the navy sheet. */
+  .code-box { margin: 16px 22px 0; padding: 16px 14px; border-radius: 10px; background: rgba(255,255,255,.12);
+    font-family: 'Fira Mono', monospace; font-size: 15px; line-height: 1.5; letter-spacing: .5px;
+    word-break: break-all; text-align: center; color: #fff; }
+  .bh-copy { display: block; margin: 14px auto 0; height: 42px; padding: 0 22px; border: 0; border-radius: 500px;
+    background: rgba(255,255,255,.14); color: #fff; font-family: inherit; font-weight: 700; font-size: 15px; cursor: pointer; }
+  .bh-copy:active { transform: translateY(1px); }
+  .bh-text { text-align: center; font-size: 15px; line-height: 1.5; color: rgba(255,255,255,.7); margin: 14px 28px 0; }
+  /* Backup success: the one green break. */
+  .bh-success { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 28px; }
+  .bh-success svg { width: 88px; height: 88px; color: var(--nimiq-green, #21bca5); margin-bottom: 20px; }
+  .bh-success h2 { font-size: 24px; font-weight: 700; color: #fff; margin: 0 0 8px; text-align: center; }
+  .bh-success p { font-size: 15px; color: rgba(255,255,255,.6); margin: 0; text-align: center; }
+  /* Backup-codes import (onboarding): two mono paste fields on the navy sheet. */
+  .code-input { margin: 12px 0 0; width: 100%; box-sizing: border-box; padding: 13px 12px; border: 0; border-radius: 8px;
+    box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.16); background: none; color: #fff; outline: none;
+    font-family: 'Fira Mono', monospace; font-size: 14px; letter-spacing: .5px; }
+  .code-input:focus { box-shadow: inset 0 0 0 1.5px rgba(33,188,165,.55); }
+  .code-input::placeholder { color: rgba(255,255,255,.35); font-family: inherit; }
 </style>
 </head>
 <body>
@@ -477,6 +533,10 @@
           <span class="ic"><svg viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
           <span class="tx"><b data-i18n="ob.import">Import wallet</b><span data-i18n="ob.import.sub">Use your 24 recovery words</span></span>
         </button>
+        <button class="ob-choice row" id="ob-codes-start">
+          <span class="ic"><svg viewBox="0 0 16 16" fill="none"><path d="M2.5 5.5h11M2.5 10.5h11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="5" cy="5.5" r="1.1" fill="currentColor"/><circle cx="11" cy="10.5" r="1.1" fill="currentColor"/></svg></span>
+          <span class="tx"><b data-i18n="ob.codes">Use backup codes</b><span data-i18n="ob.codes.sub">Restore from your two codes</span></span>
+        </button>
       </div>
     </div>
   </section>
@@ -491,8 +551,7 @@
         <div class="words-grid" id="ob-words"></div>
         <div class="ob-words-foot">
           <button class="ob-copy" id="ob-copy" data-i18n="words.copy">Copy words</button>
-          <label class="ob-check"><input type="checkbox" id="ob-saved"> <span data-i18n="words.saved">I have written down my 24 words and stored them safely</span></label>
-          <button class="ob-primary" id="ob-create-done" disabled data-i18n="words.continue">Continue</button>
+          <button class="ob-primary" id="ob-create-done" data-i18n="words.continue">Continue</button>
         </div>
       </div>
     </div>
@@ -529,6 +588,36 @@
     </div>
   </section>
 
+  <!-- create: verify the backup — the Keyguard check (pick the right word, 3 rounds) -->
+  <section class="ob-screen" id="ob-validate" hidden>
+    <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#ob-hex-gv)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="ob-hex-gv" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span></div>
+    <div class="ob-words-body">
+      <div class="ob-words-sheet">
+        <div class="h"><button class="ob-back" id="ob-validate-back" aria-label="Back"><svg width="18" height="14" viewBox="0 0 16 12" fill="none"><path d="M6 1L1 6l5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="2" y1="6" x2="15" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button><h2 data-i18n="val.title">Verify your backup</h2></div>
+        <div class="val-index"></div>
+        <p class="val-hint" data-i18n="val.hint">Select the correct word from your list of recovery words</p>
+        <div class="val-words"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- restore from the two backup codes -->
+  <section class="ob-screen" id="ob-codes-screen" hidden>
+    <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#ob-hex-gc)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="ob-hex-gc" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span></div>
+    <div class="ob-words-body">
+      <div class="ob-words-sheet">
+        <div class="h"><button class="ob-back" data-ob-back aria-label="Back"><svg width="18" height="14" viewBox="0 0 16 12" fill="none"><path d="M6 1L1 6l5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="2" y1="6" x2="15" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button><h2 data-i18n="codes.import.title">Enter your backup codes</h2></div>
+        <p class="sub" data-i18n="codes.import.sub">Paste the two codes you sent yourself. The order does not matter.</p>
+        <input class="code-input" id="ob-code-1" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Code 1">
+        <input class="code-input" id="ob-code-2" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Code 2">
+        <div class="ob-words-foot">
+          <div class="ob-err" id="ob-codes-error"></div>
+          <button class="ob-primary" id="ob-codes-do" data-i18n="codes.restore">Restore wallet</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- confirm the imported address before funding (white card) -->
   <section class="ob-screen" id="ob-confirm-screen" hidden>
     <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#ob-hex-g4)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="ob-hex-g4" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span></div>
@@ -545,17 +634,100 @@
   </section>
 </div>
 
-<!-- C1e: view the recovery words again (from the backup banner). -->
-<div class="onboard" id="backup-view" hidden>
-  <section class="ob-screen">
-    <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#ob-hex-g5)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="ob-hex-g5" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span><button class="ob-back" id="backup-close" data-i18n="a.close">Close</button></div>
+
+
+<!-- Backup flow — the real wallet's BackupModal (two backup types) + the Keyguard's
+     export flow (words -> VALIDATE) + backup codes (XOR split). Navy, like the real modal. -->
+<div class="onboard navy" id="backup-flow" hidden>
+  <!-- hub: choose a backup type -->
+  <section class="ob-screen" id="bh-hub" hidden>
+    <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#bh-hex-g1)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="bh-hex-g1" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span><button class="ob-back" data-bh-close>Close</button></div>
+    <div class="bh-header">
+      <h2 data-i18n="hub.title">Important: Create a backup</h2>
+      <p data-i18n="hub.sub">There is no ‘forgot password’. Create a backup to stay in control.</p>
+    </div>
+    <div class="bh-options">
+      <button class="option-card" id="bh-start-codes">
+        <svg class="option-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 38 33" aria-hidden="true"><path fill="#fff" fill-rule="evenodd" d="M8 20.913v4.969a2 2 0 0 0 2 2h19.498a4 4 0 0 1 2.633.988l3.382 2.956c.97.848 2.487.159 2.487-1.13V9a2 2 0 0 0-2-2h-6v11.882a2 2 0 0 1-2 2H8.502c-.169 0-.336.01-.502.031Z" clip-rule="evenodd" opacity=".3"/><path fill="url(#bh-messages-grad)" d="M0 2a2 2 0 0 1 2-2h26a2 2 0 0 1 2 2v16.882a2 2 0 0 1-2 2H8.502a4 4 0 0 0-2.633.988l-3.382 2.956c-.97.848-2.487.159-2.487-1.13V2Z"/><defs><radialGradient id="bh-messages-grad" cx="0" cy="0" r="1" gradientTransform="matrix(16.875 19.7368 -23.6842 9.9723 3.75 3.974)" gradientUnits="userSpaceOnUse"><stop stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity=".62"/></radialGradient></defs></svg>
+        <h3 data-i18n="hub.codes">Send yourself two backup codes</h3>
+        <p data-i18n="hub.codes.sub">Takes two ways of writing to yourself, like a messenger + email.</p>
+        <span class="estimate"><svg class="shield-orange" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 18 19" aria-hidden="true"><path fill="currentColor" d="M3.74 2.813h9.52c.478 0 .865.387.865.864v2.798c0 4.969-2.654 8.096-5.27 9.598a.712.712 0 0 1-.71 0c-2.616-1.502-5.27-4.63-5.27-9.598V3.677c0-.477.387-.865.864-.865Z"/></svg><span>~3min</span></span>
+      </button>
+      <button class="option-card" id="bh-start-words">
+        <svg class="option-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 32 32" aria-hidden="true"><path fill="#fff" fill-rule="evenodd" d="M6 28v2a2 2 0 0 0 2 2h22a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-4v21a2 2 0 0 1-2 2H6Z" clip-rule="evenodd" opacity=".3"/><path fill="url(#bh-words-grad)" fill-rule="evenodd" d="M0 2a2 2 0 0 1 2-2h22a2 2 0 0 1 2 2v24a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2Zm4 3a1 1 0 0 1 1-1h8a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Zm1 4a1 1 0 1 0 0 2h10a1 1 0 1 0 0-2H5Zm-1 6a1 1 0 0 1 1-1h7a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Zm1 4a1 1 0 1 0 0 2h8a1 1 0 1 0 0-2H5Z" clip-rule="evenodd"/><defs><radialGradient id="bh-words-grad" cx="0" cy="0" r="1" gradientTransform="matrix(10.6875 17.5439 -15 8.86427 2.375 3.532)" gradientUnits="userSpaceOnUse"><stop stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity=".62"/></radialGradient></defs></svg>
+        <h3 data-i18n="hub.words">Write down 24 recovery words</h3>
+        <p data-i18n="hub.words.sub">Takes a pen, a piece of paper and a safe place to store it.</p>
+        <span class="estimate"><svg class="shield-green" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 18 19" aria-hidden="true"><path fill="currentColor" d="M3.74 2.813h9.52c.478 0 .865.387.865.864v2.798c0 4.969-2.654 8.096-5.27 9.598a.712.712 0 0 1-.71 0c-2.616-1.502-5.27-4.63-5.27-9.598V3.677c0-.477.387-.865.864-.865Z"/></svg><span>~10min</span></span>
+      </button>
+    </div>
+    <button class="bh-later" data-bh-close data-i18n="hub.later">Remind me later</button>
+  </section>
+
+  <!-- words: show the 24 words, then Continue into the check -->
+  <section class="ob-screen" id="bh-words" hidden>
+    <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#bh-hex-g2)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="bh-hex-g2" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span><button class="ob-back" data-bh-close>Close</button></div>
     <div class="ob-words-body">
-      <div class="ob-words-sheet">
+      <div class="ob-words-sheet" style="background:none">
         <div class="h"><h2 data-i18n="words.title">Your Recovery Words</h2></div>
         <p class="sub" data-i18n="words.backup.sub">Write these down and keep them safe. Anyone with these words controls your funds.</p>
-        <div class="words-grid" id="backup-words"></div>
-        <div class="ob-words-foot"><button class="ob-copy" id="backup-copy" data-i18n="words.copy">Copy words</button></div>
+        <div class="words-grid" id="bh-words-grid"></div>
+        <div class="ob-words-foot">
+          <button class="ob-copy" id="bh-words-copy" data-i18n="words.copy">Copy words</button>
+          <button class="ob-primary" id="bh-words-continue" data-i18n="words.continue">Continue</button>
+        </div>
       </div>
+    </div>
+  </section>
+
+  <!-- validate: the Keyguard check — pick the right word, 3 rounds -->
+  <section class="ob-screen" id="bh-validate" hidden>
+    <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#bh-hex-g3)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="bh-hex-g3" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span><button class="ob-back" data-bh-close>Close</button></div>
+    <div class="bh-header"><h2 data-i18n="val.title">Verify your backup</h2></div>
+    <div class="val-index"></div>
+    <p class="val-hint" data-i18n="val.hint">Select the correct word from your list of recovery words</p>
+    <div class="val-words"></div>
+  </section>
+
+  <!-- backup codes: intro -> code 1 -> code 2 -->
+  <section class="ob-screen" id="bh-codes-intro" hidden>
+    <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#bh-hex-g4)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="bh-hex-g4" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span><button class="ob-back" data-bh-close>Close</button></div>
+    <div class="bh-header">
+      <h2 data-i18n="hub.codes">Send yourself two backup codes</h2>
+      <p data-i18n="codes.intro.sub">Both codes together restore your wallet. One alone is useless. Send each one to yourself over a DIFFERENT channel, like a messenger and an email.</p>
+    </div>
+    <div class="ob-words-foot" style="padding: 26px 24px 0">
+      <button class="ob-primary" id="bh-codes-go" data-i18n="words.continue">Continue</button>
+    </div>
+  </section>
+  <section class="ob-screen" id="bh-code-1" hidden>
+    <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#bh-hex-g5)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="bh-hex-g5" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span><button class="ob-back" data-bh-close>Close</button></div>
+    <div class="bh-header"><h2 data-i18n="codes.c1.title">Send yourself code 1</h2></div>
+    <div class="code-box" id="bh-code-1-text"></div>
+    <button class="bh-copy" id="bh-code-1-copy" data-i18n="codes.copy">Copy code</button>
+    <div class="ob-words-foot" style="padding: 22px 24px 0">
+      <button class="ob-primary" id="bh-code-1-next" data-i18n="words.continue">Continue</button>
+    </div>
+  </section>
+  <section class="ob-screen" id="bh-code-2" hidden>
+    <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#bh-hex-g6)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="bh-hex-g6" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span><button class="ob-back" data-bh-close>Close</button></div>
+    <div class="bh-header"><h2 data-i18n="codes.c2.title">Send yourself code 2</h2><p data-i18n="codes.c2.sub">Use a different channel than for code 1</p></div>
+    <div class="code-box" id="bh-code-2-text"></div>
+    <button class="bh-copy" id="bh-code-2-copy" data-i18n="codes.copy">Copy code</button>
+    <div class="ob-words-foot" style="padding: 22px 24px 0">
+      <button class="ob-primary" id="bh-code-2-next" data-i18n="words.continue">Continue</button>
+    </div>
+  </section>
+
+  <!-- success -->
+  <section class="ob-screen" id="bh-done" hidden>
+    <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#bh-hex-g7)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="bh-hex-g7" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span><button class="ob-back" data-bh-close>Close</button></div>
+    <div class="bh-success">
+      <svg viewBox="0 0 64 64" fill="none" aria-hidden="true"><circle cx="32" cy="32" r="29" stroke="currentColor" stroke-width="4"/><path d="M20 33.5 28.5 42 44 25" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <h2 data-i18n="done.title">Backup complete</h2>
+      <p data-i18n="done.sub">Your wallet is now recoverable without this phone</p>
+    </div>
+    <div class="ob-words-foot" style="padding: 0 24px 28px">
+      <button class="ob-primary" data-bh-close data-i18n="a.done">Done</button>
     </div>
   </section>
 </div>
@@ -712,6 +884,16 @@
       'rec.title': 'Cartera encontrada en este dispositivo', 'rec.sub': 'Una cartera de una instalación anterior sigue en el almacenamiento seguro del dispositivo. Esta es su dirección:', 'rec.keep': 'Conservar esta cartera', 'rec.fresh': 'Borrarla y empezar de cero', 'rec.confirm': '¿Borrar la cartera de este dispositivo? Sin sus 24 palabras NO se puede recuperar.',
       'acct.title': 'Mi cuenta', 'acct.copy': 'Copiar dirección', 'acct.backup': 'Respaldar palabras de recuperación', 'acct.logout': 'Cerrar sesión en este dispositivo', 'acct.logout.confirm': '¿Eliminar la cartera de este dispositivo? Sin tus 24 palabras NO se puede recuperar. Asegúrate de tenerlas guardadas.',
       'lang.title': 'Idioma', 'create.failed': 'No se pudo crear la cartera: ', 'scan.invalid': 'Eso no es una dirección Nimiq ni una solicitud de pago', 'cashlink.soon': 'Los Cashlinks llegarán pronto a nimmesh',
+      'hub.title': 'Importante: crea un respaldo', 'hub.sub': 'No existe ‘olvidé mi contraseña’. Crea un respaldo para mantener el control.',
+      'hub.codes': 'Envíate dos códigos de respaldo', 'hub.codes.sub': 'Solo necesitas dos formas de escribirte, como un mensajero y un correo.',
+      'hub.words': 'Anota las 24 palabras de recuperación', 'hub.words.sub': 'Solo necesitas papel, lápiz y un lugar seguro donde guardarlo.',
+      'hub.later': 'Recuérdamelo después', 'val.title': 'Verifica tu respaldo', 'val.hint': 'Selecciona la palabra correcta de tu lista de palabras de recuperación',
+      'codes.intro.sub': 'Los dos códigos juntos restauran tu cartera. Uno solo no sirve de nada. Envíate cada uno por un canal DIFERENTE, como un mensajero y un correo.',
+      'codes.c1.title': 'Envíate el código 1', 'codes.c2.title': 'Envíate el código 2', 'codes.c2.sub': 'Usa un canal distinto al del código 1', 'codes.copy': 'Copiar código',
+      'done.title': 'Respaldo completado', 'done.sub': 'Tu cartera ya se puede recuperar sin este teléfono', 'a.done': 'Listo',
+      'ob.codes': 'Usar códigos de respaldo', 'ob.codes.sub': 'Restaura con tus dos códigos',
+      'codes.import.title': 'Introduce tus códigos', 'codes.import.sub': 'Pega los dos códigos que te enviaste. El orden no importa.',
+      'codes.restore': 'Restaurar cartera', 'codes.invalid': 'Esos códigos no coinciden. Revisa ambos e inténtalo de nuevo.',
     },
     de: {
       'a.lang': 'Sprache', 'a.close': 'Schließen', 'a.copied': 'Kopiert',
@@ -731,6 +913,16 @@
       'rec.title': 'Wallet auf diesem Gerät gefunden', 'rec.sub': 'Eine Wallet einer früheren Installation liegt noch im sicheren Speicher des Geräts. Das ist ihre Adresse:', 'rec.keep': 'Diese Wallet behalten', 'rec.fresh': 'Löschen und neu anfangen', 'rec.confirm': 'Wallet von diesem Gerät löschen? Ohne ihre 24 Wörter ist sie NICHT wiederherstellbar.',
       'acct.title': 'Mein Konto', 'acct.copy': 'Adresse kopieren', 'acct.backup': 'Wiederherstellungswörter sichern', 'acct.logout': 'Von diesem Gerät abmelden', 'acct.logout.confirm': 'Wallet von diesem Gerät entfernen? Ohne deine 24 Wörter ist sie NICHT wiederherstellbar. Stelle sicher, dass du sie gesichert hast.',
       'lang.title': 'Sprache', 'create.failed': 'Wallet konnte nicht erstellt werden: ', 'scan.invalid': 'Das ist keine Nimiq-Adresse und keine Zahlungsanforderung', 'cashlink.soon': 'Cashlinks kommen bald zu nimmesh',
+      'hub.title': 'Wichtig: Erstelle ein Backup', 'hub.sub': 'Es gibt kein ‘Passwort vergessen’. Erstelle ein Backup und behalte die Kontrolle.',
+      'hub.codes': 'Schick dir zwei Backup-Codes', 'hub.codes.sub': 'Braucht nur zwei Wege, dir selbst zu schreiben, etwa Messenger + E-Mail.',
+      'hub.words': 'Schreibe 24 Wiederherstellungswörter auf', 'hub.words.sub': 'Braucht Stift, Papier und einen sicheren Ort dafür.',
+      'hub.later': 'Später erinnern', 'val.title': 'Backup überprüfen', 'val.hint': 'Wähle das richtige Wort aus deiner Liste der Wiederherstellungswörter',
+      'codes.intro.sub': 'Beide Codes zusammen stellen deine Wallet wieder her. Einer allein ist nutzlos. Schick dir jeden über einen ANDEREN Kanal, etwa Messenger und E-Mail.',
+      'codes.c1.title': 'Schick dir Code 1', 'codes.c2.title': 'Schick dir Code 2', 'codes.c2.sub': 'Nutze einen anderen Kanal als für Code 1', 'codes.copy': 'Code kopieren',
+      'done.title': 'Backup abgeschlossen', 'done.sub': 'Deine Wallet ist jetzt ohne dieses Handy wiederherstellbar', 'a.done': 'Fertig',
+      'ob.codes': 'Backup-Codes verwenden', 'ob.codes.sub': 'Mit deinen zwei Codes wiederherstellen',
+      'codes.import.title': 'Backup-Codes eingeben', 'codes.import.sub': 'Füge die zwei Codes ein, die du dir geschickt hast. Die Reihenfolge ist egal.',
+      'codes.restore': 'Wallet wiederherstellen', 'codes.invalid': 'Diese Codes passen nicht zusammen. Prüfe beide und versuche es erneut.',
     },
     fr: {
       'a.lang': 'Langue', 'a.close': 'Fermer', 'a.copied': 'Copié',
@@ -750,6 +942,16 @@
       'rec.title': 'Portefeuille trouvé sur cet appareil', 'rec.sub': 'Un portefeuille d’une installation précédente est encore dans le stockage sécurisé. Voici son adresse :', 'rec.keep': 'Garder ce portefeuille', 'rec.fresh': 'Le supprimer et repartir de zéro', 'rec.confirm': 'Supprimer le portefeuille de cet appareil ? Sans ses 24 mots il est IRRÉCUPÉRABLE.',
       'acct.title': 'Mon compte', 'acct.copy': 'Copier l’adresse', 'acct.backup': 'Sauvegarder les mots de récupération', 'acct.logout': 'Se déconnecter de cet appareil', 'acct.logout.confirm': 'Supprimer le portefeuille de cet appareil ? Sans tes 24 mots il est IRRÉCUPÉRABLE. Assure-toi de les avoir sauvegardés.',
       'lang.title': 'Langue', 'create.failed': 'Impossible de créer le portefeuille : ', 'scan.invalid': 'Ce n’est pas une adresse Nimiq ni une demande de paiement', 'cashlink.soon': 'Les Cashlinks arrivent bientôt sur nimmesh',
+      'hub.title': 'Important : crée une sauvegarde', 'hub.sub': 'Il n’y a pas de ‘mot de passe oublié’. Crée une sauvegarde pour garder le contrôle.',
+      'hub.codes': 'Envoie-toi deux codes de sauvegarde', 'hub.codes.sub': 'Il suffit de deux façons de t’écrire, comme un messager et un email.',
+      'hub.words': 'Note les 24 mots de récupération', 'hub.words.sub': 'Il suffit d’un stylo, d’un papier et d’un endroit sûr.',
+      'hub.later': 'Me le rappeler plus tard', 'val.title': 'Vérifie ta sauvegarde', 'val.hint': 'Sélectionne le bon mot dans ta liste de mots de récupération',
+      'codes.intro.sub': 'Les deux codes ensemble restaurent ton portefeuille. Un seul ne sert à rien. Envoie-toi chacun par un canal DIFFÉRENT, comme un messager et un email.',
+      'codes.c1.title': 'Envoie-toi le code 1', 'codes.c2.title': 'Envoie-toi le code 2', 'codes.c2.sub': 'Utilise un canal différent de celui du code 1', 'codes.copy': 'Copier le code',
+      'done.title': 'Sauvegarde terminée', 'done.sub': 'Ton portefeuille est désormais récupérable sans ce téléphone', 'a.done': 'Terminé',
+      'ob.codes': 'Utiliser les codes de sauvegarde', 'ob.codes.sub': 'Restaure avec tes deux codes',
+      'codes.import.title': 'Saisis tes codes de sauvegarde', 'codes.import.sub': 'Colle les deux codes que tu t’es envoyés. L’ordre n’a pas d’importance.',
+      'codes.restore': 'Restaurer le portefeuille', 'codes.invalid': 'Ces codes ne correspondent pas. Vérifie les deux et réessaie.',
     },
     pt: {
       'a.lang': 'Idioma', 'a.close': 'Fechar', 'a.copied': 'Copiado',
@@ -769,6 +971,16 @@
       'rec.title': 'Carteira encontrada neste aparelho', 'rec.sub': 'Uma carteira de uma instalação anterior ainda está no armazenamento seguro do aparelho. Este é o endereço dela:', 'rec.keep': 'Manter esta carteira', 'rec.fresh': 'Apagá-la e começar do zero', 'rec.confirm': 'Apagar a carteira deste aparelho? Sem as 24 palavras ela NÃO pode ser recuperada.',
       'acct.title': 'Minha conta', 'acct.copy': 'Copiar endereço', 'acct.backup': 'Backup das palavras de recuperação', 'acct.logout': 'Sair deste aparelho', 'acct.logout.confirm': 'Remover a carteira deste aparelho? Sem suas 24 palavras ela NÃO pode ser recuperada. Garanta que você as guardou.',
       'lang.title': 'Idioma', 'create.failed': 'Não foi possível criar a carteira: ', 'scan.invalid': 'Isso não é um endereço Nimiq nem uma cobrança', 'cashlink.soon': 'Os Cashlinks chegam em breve ao nimmesh',
+      'hub.title': 'Importante: crie um backup', 'hub.sub': 'Não existe ‘esqueci a senha’. Crie um backup para manter o controle.',
+      'hub.codes': 'Envie dois códigos de backup para você', 'hub.codes.sub': 'Bastam duas formas de escrever para si, como um mensageiro e um e-mail.',
+      'hub.words': 'Anote as 24 palavras de recuperação', 'hub.words.sub': 'Bastam caneta, papel e um lugar seguro para guardar.',
+      'hub.later': 'Lembrar mais tarde', 'val.title': 'Verifique seu backup', 'val.hint': 'Selecione a palavra correta da sua lista de palavras de recuperação',
+      'codes.intro.sub': 'Os dois códigos juntos restauram sua carteira. Um sozinho é inútil. Envie cada um por um canal DIFERENTE, como um mensageiro e um e-mail.',
+      'codes.c1.title': 'Envie o código 1 para você', 'codes.c2.title': 'Envie o código 2 para você', 'codes.c2.sub': 'Use um canal diferente do código 1', 'codes.copy': 'Copiar código',
+      'done.title': 'Backup concluído', 'done.sub': 'Sua carteira agora pode ser recuperada sem este telefone', 'a.done': 'Concluído',
+      'ob.codes': 'Usar códigos de backup', 'ob.codes.sub': 'Restaure com seus dois códigos',
+      'codes.import.title': 'Insira seus códigos de backup', 'codes.import.sub': 'Cole os dois códigos que você enviou para si. A ordem não importa.',
+      'codes.restore': 'Restaurar carteira', 'codes.invalid': 'Esses códigos não combinam. Confira os dois e tente de novo.',
     },
   };
   // English dynamic strings (the static ones live in the markup and are left untouched for en).
@@ -786,6 +998,7 @@
     'create.failed': 'Could not create wallet: ',
     'scan.invalid': 'That is not a Nimiq address or payment request',
     'cashlink.soon': 'Cashlinks are coming to nimmesh soon',
+    'codes.invalid': 'Those codes do not match. Check both codes and try again.',
   };
   let LANG = 'en';
   function T(key) { return (I18N[LANG] && I18N[LANG][key]) || I18N.en[key] || key; }
@@ -1122,7 +1335,7 @@
     return [...document.querySelectorAll(`#${id} input`)].map((x) => x.value.trim()).join(' ').trim();
   }
   function obShow(id) {
-    ['ob-welcome', 'ob-create-screen', 'ob-import-screen', 'ob-confirm-screen', 'ob-recovered'].forEach((s) => {
+    ['ob-welcome', 'ob-create-screen', 'ob-import-screen', 'ob-confirm-screen', 'ob-recovered', 'ob-validate', 'ob-codes-screen'].forEach((s) => {
       const el = document.getElementById(s); if (el) el.hidden = (s !== id);
     });
     const ob = document.getElementById('onboard'); if (ob) ob.hidden = false;
@@ -1137,23 +1350,86 @@
   function wordsOf(id) {
     return [...document.querySelectorAll(`#${id} .words-cell .w`)].map((el) => el.textContent).join(' ');
   }
+  // ---- The backup engine ----
+  // The Keyguard's ValidateWords check, behavior-exact: 3 rounds, the target word drawn
+  // from a different third of the phrase each round (random(0..7) + round*8), 6 sorted
+  // candidate words all taken from the SAME mnemonic. A wrong pick shows red + shake,
+  // reveals the right one in green, and starts over with fresh indices; three greens pass.
+  function runValidateWords(mnemonic, screenEl, onPass) {
+    const words = mnemonic.trim().split(/\s+/);
+    const idxEl = screenEl.querySelector('.val-index');
+    const listEl = screenEl.querySelector('.val-words');
+    let rounds = []; let round = 0;
+    const genRounds = () => { rounds = [0, 1, 2].map((i) => Math.floor(Math.random() * 8) + i * 8); round = 0; };
+    const options = (target) => {
+      const set = {}; set[words[target]] = 1;
+      while (Object.keys(set).length < 6) set[words[Math.floor(Math.random() * 24)]] = 1;
+      return Object.keys(set).sort();
+    };
+    function show() {
+      const target = rounds[round];
+      idxEl.textContent = String(target + 1);
+      listEl.innerHTML = options(target).map((w) => `<button type="button">${w}</button>`).join('');
+      [...listEl.querySelectorAll('button')].forEach((b) =>
+        b.addEventListener('click', () => pick(b, words[target])));
+    }
+    function pick(btn, correct) {
+      const buttons = [...listEl.querySelectorAll('button')];
+      buttons.forEach((b) => { b.disabled = true; if (b !== btn && b.textContent !== correct) b.classList.add('inverse'); });
+      if (btn.textContent !== correct) {
+        btn.classList.add('wrong', 'shake');
+        const right = buttons.find((b) => b.textContent === correct);
+        if (right) right.classList.add('right');
+        setTimeout(() => { genRounds(); show(); }, 820);   // start over, like the Keyguard
+      } else {
+        btn.classList.add('right');
+        round += 1;
+        setTimeout(round < 3 ? show : onPass, 600);
+      }
+    }
+    genRounds(); show();
+  }
+  async function completeBackup() {
+    try { if (window.nimmesh && nimmesh.setBackedUp) await nimmesh.setBackedUp(true); } catch (e) {}
+    applyBackupNudge('none');   // the banner's job is done
+  }
+  // The backup flow overlay (hub -> words -> validate | codes 1..2 -> done).
+  function bhShow(id) {
+    ['bh-hub', 'bh-words', 'bh-validate', 'bh-codes-intro', 'bh-code-1', 'bh-code-2', 'bh-done'].forEach((sid) => {
+      const el = document.getElementById(sid); if (el) el.hidden = (sid !== id);
+    });
+    const flow = document.getElementById('backup-flow'); if (flow) { flow.hidden = false; flow.scrollTop = 0; }
+  }
+  function bhClose() { const flow = document.getElementById('backup-flow'); if (flow) flow.hidden = true; }
+  function openBackupHub() {
+    if (!(window.nimmesh && nimmesh.recoveryPhrase)) return;
+    bhShow('bh-hub');
+  }
+
   (function wireWalletUI() {
     if (!document.getElementById('onboard')) return;
     document.querySelectorAll('[data-ob-back]').forEach((b) => b.addEventListener('click', () => obShow('ob-welcome')));
     document.querySelectorAll('[data-ob-restart]').forEach((b) => b.addEventListener('click', () => obShow('ob-import-screen')));
+    let createdMnemonic = '';
     document.getElementById('ob-create').addEventListener('click', async () => {
       try {
         const r = await nimmesh.createWallet();
+        createdMnemonic = r.mnemonic;
         fillWordsGrid('ob-words', r.mnemonic);
-        document.getElementById('ob-saved').checked = false;
-        document.getElementById('ob-create-done').disabled = true;
         obShow('ob-create-screen');
       } catch (e) { alert(T('create.failed') + (e && e.message ? e.message : e)); }
     });
-    document.getElementById('ob-saved').addEventListener('change', (e) => {
-      document.getElementById('ob-create-done').disabled = !e.target.checked;
+    // The check at the end of the 24 words (the Keyguard flow): Continue -> pick the
+    // right word, 3 rounds -> the wallet is born BACKED UP.
+    document.getElementById('ob-create-done').addEventListener('click', () => {
+      if (!createdMnemonic) { location.reload(); return; }
+      obShow('ob-validate');
+      runValidateWords(createdMnemonic, document.getElementById('ob-validate'), async () => {
+        await completeBackup();
+        location.reload();
+      });
     });
-    document.getElementById('ob-create-done').addEventListener('click', () => location.reload());
+    document.getElementById('ob-validate-back').addEventListener('click', () => obShow('ob-create-screen'));
     document.getElementById('ob-copy').addEventListener('click', () => copyText(wordsOf('ob-words'), 'ob-copy'));
     document.getElementById('ob-import-start').addEventListener('click', () => { buildImportGrid('ob-import-grid'); obShow('ob-import-screen'); });
     document.getElementById('ob-import-do').addEventListener('click', async () => {
@@ -1171,17 +1447,67 @@
       }
     });
     document.getElementById('ob-confirm-done').addEventListener('click', () => location.reload());
-    // Backup view (from the banner's Backup button AND the account sheet).
-    async function openBackupView() {
-      if (!(window.nimmesh && nimmesh.recoveryPhrase)) return;
-      try { const r = await nimmesh.recoveryPhrase(); fillWordsGrid('backup-words', r.mnemonic); document.getElementById('backup-view').hidden = false; }
-      catch (e) { /* no wallet */ }
-    }
+    // Restore from the two backup codes (either order).
+    document.getElementById('ob-codes-start').addEventListener('click', () => {
+      document.getElementById('ob-codes-error').textContent = '';
+      obShow('ob-codes-screen');
+    });
+    document.getElementById('ob-codes-do').addEventListener('click', async () => {
+      const err = document.getElementById('ob-codes-error');
+      err.textContent = '';
+      try {
+        const r = await nimmesh.importBackupCodes(
+          document.getElementById('ob-code-1').value.trim(),
+          document.getElementById('ob-code-2').value.trim(),
+        );
+        // codes ARE the backup — a codes-restored wallet is backed up by definition
+        try { await nimmesh.setBackedUp(true); } catch (e2) {}
+        const compact = (r.address || '').replace(/\s+/g, '');
+        document.getElementById('ob-confirm-addr').innerHTML = (compact.match(/.{1,4}/g) || [])
+          .map((c) => `<span class="chunk">${c}<span class="space">&nbsp;</span></span>`).join('');
+        obShow('ob-confirm-screen');
+      } catch (e) {
+        err.textContent = T('codes.invalid');
+      }
+    });
+    // The backup hub (the wallet's BackupModal): from the banner + the account sheet.
     const openBanner = document.getElementById('backup-open');
-    if (openBanner) openBanner.addEventListener('click', openBackupView);
-    document.getElementById('acct-backup').addEventListener('click', () => { close(); openBackupView(); });
-    document.getElementById('backup-close').addEventListener('click', () => { document.getElementById('backup-view').hidden = true; });
-    document.getElementById('backup-copy').addEventListener('click', () => copyText(wordsOf('backup-words'), 'backup-copy'));
+    if (openBanner) openBanner.addEventListener('click', openBackupHub);
+    document.getElementById('acct-backup').addEventListener('click', () => { close(); openBackupHub(); });
+    document.querySelectorAll('[data-bh-close]').forEach((b) => b.addEventListener('click', bhClose));
+    document.getElementById('bh-start-words').addEventListener('click', async () => {
+      try {
+        const r = await nimmesh.recoveryPhrase();
+        fillWordsGrid('bh-words-grid', r.mnemonic);
+        bhShow('bh-words');
+        document.getElementById('bh-words-continue').onclick = () => {
+          bhShow('bh-validate');
+          runValidateWords(r.mnemonic, document.getElementById('bh-validate'), async () => {
+            await completeBackup();
+            bhShow('bh-done');
+          });
+        };
+      } catch (e) { /* no wallet */ }
+    });
+    document.getElementById('bh-words-copy').addEventListener('click', () => copyText(wordsOf('bh-words-grid'), 'bh-words-copy'));
+    document.getElementById('bh-start-codes').addEventListener('click', async () => {
+      try {
+        const r = await nimmesh.backupCodes();
+        document.getElementById('bh-code-1-text').textContent = r.code1;
+        document.getElementById('bh-code-2-text').textContent = r.code2;
+        bhShow('bh-codes-intro');
+      } catch (e) { /* no wallet */ }
+    });
+    document.getElementById('bh-codes-go').addEventListener('click', () => bhShow('bh-code-1'));
+    document.getElementById('bh-code-1-copy').addEventListener('click', () =>
+      copyText(document.getElementById('bh-code-1-text').textContent, 'bh-code-1-copy'));
+    document.getElementById('bh-code-1-next').addEventListener('click', () => bhShow('bh-code-2'));
+    document.getElementById('bh-code-2-copy').addEventListener('click', () =>
+      copyText(document.getElementById('bh-code-2-text').textContent, 'bh-code-2-copy'));
+    document.getElementById('bh-code-2-next').addEventListener('click', async () => {
+      await completeBackup();
+      bhShow('bh-done');
+    });
     // Reinstall recovery: keep the previous install's wallet, or delete it and start fresh.
     // "Start fresh" confirms first — without the 24 words the old wallet is unrecoverable.
     document.getElementById('ob-keep').addEventListener('click', async () => {
@@ -1290,7 +1616,9 @@
     // G19: drive the backup nudge from the REAL balance (not the old mock 752). No key/seed
     // crosses the bridge — only the public balance + the backed-up flag.
     try {
-      const u = await nimmesh.backupUrgency({ backedUp: false, balanceLuna, daysSinceFirstFunds: 0 });
+      let backedUp = false;
+      try { backedUp = !!(await nimmesh.getBackedUp()).backedUp; } catch (e2) {}
+      const u = await nimmesh.backupUrgency({ backedUp, balanceLuna, daysSinceFirstFunds: 0 });
       applyBackupNudge(u.urgency);
     } catch (e) { /* leave the default words banner if the policy call fails */ }
     hideSplash(); // real home + real data are ready — reveal it (no mock flash)

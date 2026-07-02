@@ -75,6 +75,7 @@ final class Bridge: NSObject, WKScriptMessageHandler {
     private static let hasLaunchedKey = "nimmesh.hasLaunched"
     private static let recoveredWalletKey = "nimmesh.recoveredWallet"
     private static let langKey = "nimmesh.lang"
+    private static let backedUpKey = "nimmesh.backedUp"
 
     override init() {
         super.init()
@@ -148,6 +149,12 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         setLang: function (l) { return call('setLang', { lang: l }); },
         // Native camera QR scanner (Send bar). Resolves { text } or rejects on cancel.
         scanQr: function () { return call('scanQr'); },
+        // Backup: the wallet's two-code XOR backup + whether ANY backup was completed
+        // (drives the G19 nudge off). Codes are derived natively; the phrase never crosses.
+        backupCodes: function () { return call('backupCodes'); },
+        importBackupCodes: function (a, b) { return call('importBackupCodes', { code1: a, code2: b }); },
+        getBackedUp: function () { return call('getBackedUp'); },
+        setBackedUp: function (v) { return call('setBackedUp', { backedUp: !!v }); },
         // Live chain (MAINNET-only) — head height, balance, history, and the real send
         // (sign with the Keychain key + broadcast). The app never auto-sends.
         headHeight: function () { return call('headHeight'); },
@@ -317,7 +324,23 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             // Account-menu log-out. The UI confirms; without the words the wallet is gone.
             Wallet.delete()
             UserDefaults.standard.set(false, forKey: Bridge.recoveredWalletKey)
+            UserDefaults.standard.set(false, forKey: Bridge.backedUpKey)
             return (true, ["deleted": true])
+        case "backupCodes":
+            // The two XOR backup codes (either alone is useless; both recover the wallet).
+            guard let codes = Wallet.backupCodes() else { return (false, "no wallet") }
+            return (true, ["code1": codes.code1, "code2": codes.code2])
+        case "importBackupCodes":
+            let a = args as? [String: Any] ?? [:]
+            guard Wallet.importBackupCodes((a["code1"] as? String) ?? "", (a["code2"] as? String) ?? "")
+            else { return (false, "invalid backup codes") }
+            return (true, ["address": Wallet.address() ?? ""])
+        case "getBackedUp":
+            return (true, ["backedUp": UserDefaults.standard.bool(forKey: Bridge.backedUpKey)])
+        case "setBackedUp":
+            let a = args as? [String: Any] ?? [:]
+            UserDefaults.standard.set(a["backedUp"] as? Bool ?? false, forKey: Bridge.backedUpKey)
+            return (true, ["ok": true])
         case "getLang":
             return (true, ["lang": UserDefaults.standard.string(forKey: Bridge.langKey) ?? ""])
         case "setLang":
