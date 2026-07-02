@@ -553,10 +553,18 @@ fn initiate_from_intent(
     };
     let (coord, propose) =
         crate::swap_coordinator::SwapCoordinator::new_initiator(ctx, secret, ladder);
+    // S2 / #73: authenticate the Propose under this node's NIM enclave key before it floods, so the
+    // responder can verify the proposed terms weren't injected or tampered in transit. The seed stays
+    // behind the `EnclaveKey` seam — only the signature + public key ride the wire.
+    let signed = st
+        .swap
+        .as_ref()
+        .map(|s| s.sign_propose(&propose))
+        .unwrap_or(propose);
     if let Some(session) = st.swap.as_mut() {
         session.add_initiator(swap_id, coord);
     }
-    match encode_swap(&propose) {
+    match encode_swap(&signed) {
         Ok(bytes) => vec![(MessageType::SwapPropose, bytes)],
         Err(_) => Vec::new(),
     }

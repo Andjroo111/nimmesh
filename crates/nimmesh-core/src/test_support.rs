@@ -180,6 +180,56 @@ pub(crate) const TAKE_BTC: u64 = 50_000;
 const T_A: u64 = 10_000; // NIM-leg timeout (longer)
 const T_B: u64 = 5_000; // counterparty-leg timeout (shorter)
 
+/// S2 / #73: the NIM identity seed that owns the alice fixture's `nim_address` — its Ed25519 key
+/// hashes to [`participant_fixtures`]'s alice address, so alice's Proposes can be authenticated. A
+/// signing participant is wired with the matching enclave key ([`alice_propose_key`]).
+pub(crate) const ALICE_NIM_SECRET: [u8; 32] = [0x51; 32];
+
+/// The alice fixture's key-derived NIM address (`Blake2b-256(pubkey)[..20]` of [`ALICE_NIM_SECRET`]).
+pub(crate) fn alice_nim_address() -> [u8; 20] {
+    let pubkey = ed25519_dalek::SigningKey::from_bytes(&ALICE_NIM_SECRET)
+        .verifying_key()
+        .to_bytes();
+    *crate::nimiq::address::Address::from_public_key(&pubkey).as_bytes()
+}
+
+/// An in-memory [`EnclaveKey`](crate::nimiq::signer::EnclaveKey) for the alice fixture's NIM identity
+/// — wire it into a signing participant ([`crate::mock_radio::MeshHarness::add_participant_signing`])
+/// so its discovery-origination flow authenticates each Propose it floods.
+pub(crate) fn alice_propose_key() -> std::sync::Arc<dyn crate::nimiq::signer::EnclaveKey> {
+    std::sync::Arc::new(crate::nimiq::signer::InMemoryEnclaveKey::from_secret(
+        &ALICE_NIM_SECRET,
+    ))
+}
+
+/// Sign a `Propose` envelope under `nim_secret` (the way a node's enclave seam does), returning the
+/// wire-signed envelope a responder will authenticate. `nim_secret` must own the Propose's nim_address.
+pub(crate) fn sign_propose(
+    propose: &crate::swap_wire::SwapEnvelope,
+    nim_secret: &[u8; 32],
+) -> crate::swap_wire::SwapEnvelope {
+    let p = crate::swap_messages::SwapProposal::from_envelope(propose)
+        .expect("a well-formed Propose to sign");
+    let (pubkey, sig) = p.sign(nim_secret);
+    p.to_signed_envelope(pubkey, sig)
+}
+
+/// [`SwapCoordinator::new_initiator`](crate::swap_coordinator::SwapCoordinator::new_initiator) plus an
+/// authenticated Propose, exactly as a node originates one — the Propose is signed under
+/// [`ALICE_NIM_SECRET`] (which owns the alice fixtures' `nim_address`) before it hits the wire.
+pub(crate) fn new_initiator_signed(
+    ctx: crate::swap_coordinator::SwapContext,
+    swap_secret: [u8; 32],
+    ladder: crate::swap::LadderParams,
+) -> (
+    crate::swap_coordinator::SwapCoordinator,
+    crate::swap_wire::SwapEnvelope,
+) {
+    let (coord, propose) =
+        crate::swap_coordinator::SwapCoordinator::new_initiator(ctx, swap_secret, ladder);
+    (coord, sign_propose(&propose, &ALICE_NIM_SECRET))
+}
+
 /// The proven-safe ladder used across the swap node tests.
 pub(crate) fn terms() -> crate::swap::SwapTerms {
     crate::swap::SwapTerms {
@@ -205,7 +255,9 @@ pub(crate) fn participant_fixtures() -> (
         k
     };
     let alice_id = NodeIdentity {
-        nim_address: [0xA1; 20],
+        // S2 / #73: key-derived so alice's authenticated Propose self-certifies (its signing pubkey
+        // hashes to this address). The matching enclave key is `alice_propose_key`.
+        nim_address: alice_nim_address(),
         btc_address: b"tb1qalice".to_vec(),
         btc_pubkey: pk(0x11),
         rate_policy: crate::swap_session::RatePolicy::accept_all(),

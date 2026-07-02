@@ -30,12 +30,30 @@ use crate::swap_node::derive_swap_id;
 use crate::swap_session::{NodeIdentity, RatePolicy, DEFAULT_MAX_CONCURRENT_SWAPS};
 use crate::test_support::{make_beacon_packet, wait_until, SETTLE};
 
+/// The NIM identity secret for a `mk_identity(tag)` node — its Ed25519 key owns the node's
+/// key-derived `nim_address`, so a NIM-giver can authenticate the Propose it originates (S2 / #73).
+fn nim_secret(tag: u8) -> [u8; 32] {
+    [tag; 32]
+}
+
+/// The NIM enclave key for a `mk_identity(tag)` node, wired into a signing participant so its
+/// origination flow signs each Propose it floods.
+fn mk_enclave_key(tag: u8) -> Arc<dyn crate::nimiq::signer::EnclaveKey> {
+    Arc::new(crate::nimiq::signer::InMemoryEnclaveKey::from_secret(
+        &nim_secret(tag),
+    ))
+}
+
 /// A distinct participant identity keyed by `tag` (distinct NIM address + BTC pubkey → distinct swaps).
+/// The NIM address is key-derived from [`nim_secret`] so a NIM-giver's Propose self-certifies.
 fn mk_identity(tag: u8) -> NodeIdentity {
     let mut btc_pubkey = [tag; 33];
     btc_pubkey[0] = 0x02;
+    let nim_pubkey = ed25519_dalek::SigningKey::from_bytes(&nim_secret(tag))
+        .verifying_key()
+        .to_bytes();
     NodeIdentity {
-        nim_address: [tag; 20],
+        nim_address: *crate::nimiq::address::Address::from_public_key(&nim_pubkey).as_bytes(),
         btc_address: vec![tag; 8],
         btc_pubkey,
         rate_policy: RatePolicy::accept_all(),
@@ -81,7 +99,14 @@ fn many_complementary_pairs_all_discover_and_settle() {
 
         let nim_peer = format!("nim{i}");
         let btc_peer = format!("btc{i}");
-        let nim = h.add_participant(&nim_peer, &[nim_tag], nim_id, LadderParams::default());
+        // The NIM-giver signs each Propose it originates (S2 / #73); the BTC-giver only responds.
+        let nim = h.add_participant_signing(
+            &nim_peer,
+            &[nim_tag],
+            nim_id,
+            LadderParams::default(),
+            mk_enclave_key(nim_tag),
+        );
         let btc = h.add_participant(&btc_peer, &[btc_tag], btc_id, LadderParams::default());
         h.connect(&nim_peer, &btc_peer);
         nodes.push(nim.clone());
@@ -200,7 +225,15 @@ fn complementary_pair(
     let swap_id = derive_swap_id(&nim_intent, &btc_intent);
     nim_id.standing_intent = Some(nim_intent);
     btc_id.standing_intent = Some(btc_intent);
-    let nim = h.add_participant("nim", &[nim_tag], nim_id, LadderParams::default());
+    // The NIM-giver originates the Propose, so it is a *signing* participant (authenticates each
+    // Propose under its NIM key, S2 / #73); the BTC-giver only responds, so it needs no propose key.
+    let nim = h.add_participant_signing(
+        "nim",
+        &[nim_tag],
+        nim_id,
+        LadderParams::default(),
+        mk_enclave_key(nim_tag),
+    );
     let btc = h.add_participant("btc", &[btc_tag], btc_id, LadderParams::default());
     h.connect("nim", "btc");
     (nim, btc, swap_id)

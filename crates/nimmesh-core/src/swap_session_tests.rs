@@ -6,9 +6,11 @@ use crate::swap::{LadderParams, SwapPhase, SwapTerms};
 use crate::swap_coordinator::{SwapContext, SwapCoordinator};
 use crate::swap_funding_verify::{FundingObservation, SimVerifier};
 use crate::swap_leg::sha256;
+use crate::swap_messages::SwapProposal;
 use crate::swap_session::*;
 use crate::swap_wire::{
-    decode_swap, encode_swap, SwapKind, SwapLegId, BTC_PUBKEY_LEN, NIM_ADDRESS_LEN, SWAP_ID_LEN,
+    decode_swap, encode_swap, SwapEnvelope, SwapKind, SwapLegId, BTC_PUBKEY_LEN, NIM_ADDRESS_LEN,
+    SWAP_ID_LEN,
 };
 
 fn identity(seed: u8) -> NodeIdentity {
@@ -24,6 +26,28 @@ fn identity(seed: u8) -> NodeIdentity {
     }
 }
 
+/// The NIM identity secret owning an initiator fixture's `nim_address` for seed byte `seed` (S2 /
+/// #73) — so its Propose can be authenticated. Distinct seeds → distinct keys/addresses.
+fn nim_secret(seed: u8) -> [u8; 32] {
+    [seed; 32]
+}
+
+/// The key-derived NIM address for `seed` (`Blake2b-256(pubkey)[..20]` of its Ed25519 key).
+fn nim_address(seed: u8) -> [u8; NIM_ADDRESS_LEN] {
+    let pubkey = ed25519_dalek::SigningKey::from_bytes(&nim_secret(seed))
+        .verifying_key()
+        .to_bytes();
+    *crate::nimiq::address::Address::from_public_key(&pubkey).as_bytes()
+}
+
+/// Sign an initiator's Propose under the NIM key owning its `nim_address` (keyed by `seed`), the way
+/// a node's enclave seam does — so the responder's `recv_propose` authenticates its terms.
+fn signed(propose: &SwapEnvelope, seed: u8) -> SwapEnvelope {
+    let p = SwapProposal::from_envelope(propose).unwrap();
+    let (pubkey, sig) = p.sign(&nim_secret(seed));
+    p.to_signed_envelope(pubkey, sig)
+}
+
 fn ctx(swap_id: [u8; SWAP_ID_LEN], seed: u8) -> SwapContext {
     let mut pk = [seed; BTC_PUBKEY_LEN];
     pk[0] = 0x02;
@@ -34,7 +58,7 @@ fn ctx(swap_id: [u8; SWAP_ID_LEN], seed: u8) -> SwapContext {
             counterparty_timeout: 5_000,
         },
         hashlock: sha256(&[42u8; 32]),
-        nim_address: [seed; NIM_ADDRESS_LEN],
+        nim_address: nim_address(seed),
         btc_address: b"tb1qnode".to_vec(),
         btc_pubkey: pk,
         give_amount: 100_000,
@@ -58,10 +82,10 @@ fn two_sessions_route_a_full_swap_to_settled() {
     let mut alice = SwapSession::new(identity(0x11), p);
     let mut bob = SwapSession::new(identity(0x22), p);
 
-    // Alice starts an initiator coordinator + floods the Propose.
+    // Alice starts an initiator coordinator + floods the Propose (authenticated under her NIM key).
     let (coord, propose) = SwapCoordinator::new_initiator(ctx(swap_id, 0x11), secret, p);
     alice.add_initiator(swap_id, coord);
-    let propose_bytes = encode_swap(&propose).unwrap();
+    let propose_bytes = encode_swap(&signed(&propose, 0x11)).unwrap();
 
     // Bob's session routes the Propose → spins up a responder → returns the Accept.
     let (mt, accept_bytes) = only(
@@ -159,8 +183,12 @@ fn two_concurrent_proposes_route_to_separate_coordinators() {
         let (_c, propose) =
             SwapCoordinator::new_initiator(ctx(swap_id, 0x11), [42u8; 32], LadderParams::default());
         let (mt, _) = only(
-            bob.on_message(SwapKind::Propose, &encode_swap(&propose).unwrap(), 0)
-                .unwrap(),
+            bob.on_message(
+                SwapKind::Propose,
+                &encode_swap(&signed(&propose, 0x11)).unwrap(),
+                0,
+            )
+            .unwrap(),
         );
         assert_eq!(mt, MessageType::SwapAccept);
     }
@@ -193,7 +221,7 @@ fn a_message_for_an_unknown_swap_is_rejected() {
 fn propose_bytes(swap_id: [u8; SWAP_ID_LEN]) -> Vec<u8> {
     let (_c, propose) =
         SwapCoordinator::new_initiator(ctx(swap_id, 0x11), [42u8; 32], LadderParams::default());
-    encode_swap(&propose).unwrap()
+    encode_swap(&signed(&propose, 0x11)).unwrap()
 }
 
 #[test]
@@ -484,7 +512,7 @@ fn a_funding_proof_advances_a_responder_only_when_the_verifier_confirms_it() {
     let p = LadderParams::default();
     let swap_id = [0x7A; SWAP_ID_LEN];
     let (_c, propose) = SwapCoordinator::new_initiator(ctx(swap_id, 0x11), [42u8; 32], p);
-    let propose_bytes = encode_swap(&propose).unwrap();
+    let propose_bytes = encode_swap(&signed(&propose, 0x11)).unwrap();
     let nim_fp = nim_funding_proof(swap_id);
 
     // A responder whose verifier finds NO on-chain NIM HTLC. It accepts, then a FundingProof arrives

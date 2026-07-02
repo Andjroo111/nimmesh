@@ -9,11 +9,12 @@
 //! the observable per-swap phase mirror — proving the behaviour end to end, not the session in
 //! isolation.
 
-use crate::test_support::{participant_fixtures, terms, GIVE_NIM, TAKE_BTC};
+use crate::test_support::{new_initiator_signed, participant_fixtures, terms, GIVE_NIM, TAKE_BTC};
 
-// The swap participant fixtures (`participant_fixtures` / `terms` / `GIVE_NIM` / `TAKE_BTC`) live in
-// `test_support` so this suite and the adversarial suite share them and each file stays under the
-// 800-line ceiling.
+// The swap participant fixtures (`participant_fixtures` / `terms` / `GIVE_NIM` / `TAKE_BTC` /
+// `new_initiator_signed`) live in `test_support` so this suite and the adversarial suite share them
+// and each file stays under the 800-line ceiling. `new_initiator_signed` originates a swap the way a
+// node does: its Propose is authenticated (S2 / #73) under the alice fixture's NIM key.
 
 #[test]
 fn a_responder_node_accepts_a_proposed_swap_injected_over_the_mesh() {
@@ -25,7 +26,6 @@ fn a_responder_node_accepts_a_proposed_swap_injected_over_the_mesh() {
     use crate::mock_radio::MeshHarness;
     use crate::packet::{MessageType, Packet, BROADCAST_RECIPIENT};
     use crate::swap::{LadderParams, SwapPhase};
-    use crate::swap_coordinator::SwapCoordinator;
     use crate::swap_wire::encode_swap;
     use crate::test_support::{wait_until, SETTLE};
 
@@ -36,8 +36,7 @@ fn a_responder_node_accepts_a_proposed_swap_injected_over_the_mesh() {
     h.connect("bob", "relay");
 
     // Alice (off-mesh here) builds her Propose; it arrives at bob from some upstream peer.
-    let (_alice, propose) =
-        SwapCoordinator::new_initiator(alice_ctx, [42u8; 32], LadderParams::default());
+    let (_alice, propose) = new_initiator_signed(alice_ctx, [42u8; 32], LadderParams::default());
     let mut packet = Packet::new(
         MessageType::SwapPropose,
         [9u8; 8],
@@ -73,7 +72,6 @@ fn two_participant_nodes_drive_a_full_swap_to_settled_over_the_real_mesh() {
     // settle, all driven by the two MeshNode loops over the flood path (sim / stand-in tx bytes).
     use crate::mock_radio::MeshHarness;
     use crate::swap::{LadderParams, SwapPhase};
-    use crate::swap_coordinator::SwapCoordinator;
     use crate::test_support::{wait_until, SETTLE};
 
     let (swap_id, alice_id, bob_id, alice_ctx) = participant_fixtures();
@@ -84,7 +82,7 @@ fn two_participant_nodes_drive_a_full_swap_to_settled_over_the_real_mesh() {
 
     // Alice originates the swap: her coordinator + the Propose to flood. Everything after is driven.
     let (coordinator, propose) =
-        SwapCoordinator::new_initiator(alice_ctx, [42u8; 32], LadderParams::default());
+        new_initiator_signed(alice_ctx, [42u8; 32], LadderParams::default());
     alice.start_swap(swap_id, coordinator, propose);
 
     // Both sides drive themselves all the way to Settled — neither leg left one-sided.
@@ -114,7 +112,6 @@ fn the_worker_gc_tick_sheds_a_stale_swap_once_the_head_passes_its_timelock() {
     // is wired into the real MeshNode worker, not just callable on the session in isolation.
     use crate::mock_radio::MeshHarness;
     use crate::swap::{LadderParams, SwapPhase};
-    use crate::swap_coordinator::SwapCoordinator;
     use crate::swap_wire::encode_swap;
     use crate::test_support::{make_beacon_packet, wait_until, SETTLE};
 
@@ -123,8 +120,7 @@ fn the_worker_gc_tick_sheds_a_stale_swap_once_the_head_passes_its_timelock() {
     let bob = h.add_participant("bob", &[2], bob_id, LadderParams::default());
 
     // Bob accepts a proposed swap (no funds ever locked) — it sits in the session.
-    let (_alice, propose) =
-        SwapCoordinator::new_initiator(alice_ctx, [42u8; 32], LadderParams::default());
+    let (_alice, propose) = new_initiator_signed(alice_ctx, [42u8; 32], LadderParams::default());
     let mut packet = crate::packet::Packet::new(
         crate::packet::MessageType::SwapPropose,
         [9u8; 8],
@@ -170,7 +166,6 @@ fn a_stalled_funds_locked_swap_refunds_itself_via_the_worker_tick() {
     use crate::mock_radio::MeshHarness;
     use crate::packet::{MessageType, Packet, BROADCAST_RECIPIENT};
     use crate::swap::{LadderParams, SwapPhase};
-    use crate::swap_coordinator::SwapCoordinator;
     use crate::swap_messages::SwapAcceptance;
     use crate::swap_wire::encode_swap;
     use crate::test_support::{make_beacon_packet, wait_until, SETTLE};
@@ -182,7 +177,7 @@ fn a_stalled_funds_locked_swap_refunds_itself_via_the_worker_tick() {
     // Alice originates the swap, then an Accept arrives from an off-mesh counterparty → her driver
     // funds the NIM leg → SelfFunded (funds locked).
     let (coordinator, propose) =
-        SwapCoordinator::new_initiator(alice_ctx, [42u8; 32], LadderParams::default());
+        new_initiator_signed(alice_ctx, [42u8; 32], LadderParams::default());
     alice.start_swap(swap_id, coordinator, propose);
     let accept = SwapAcceptance {
         swap_id,
@@ -240,7 +235,6 @@ fn a_gc_abort_tears_down_the_swap_on_the_counterparty_over_the_mesh() {
     use crate::mock_radio::MeshHarness;
     use crate::packet::{MessageType, Packet, BROADCAST_RECIPIENT};
     use crate::swap::{LadderParams, SwapPhase};
-    use crate::swap_coordinator::SwapCoordinator;
     use crate::swap_session::NodeIdentity;
     use crate::swap_wire::{encode_swap, BTC_PUBKEY_LEN, NIM_ADDRESS_LEN};
     use crate::test_support::{make_beacon_packet, wait_until, SETTLE};
@@ -265,8 +259,7 @@ fn a_gc_abort_tears_down_the_swap_on_the_counterparty_over_the_mesh() {
 
     // A Propose injected at bob is accepted by bob AND relayed to carol, who also accepts — two
     // responders to a phantom initiator that never funds. Both sit at Accepted (un-funded).
-    let (_a, propose) =
-        SwapCoordinator::new_initiator(alice_ctx, [42u8; 32], LadderParams::default());
+    let (_a, propose) = new_initiator_signed(alice_ctx, [42u8; 32], LadderParams::default());
     let mut pkt = Packet::new(
         MessageType::SwapPropose,
         [9u8; 8],
@@ -322,7 +315,6 @@ fn a_swap_survives_a_lossy_mesh_via_retransmits() {
     // so this is reproducible, not flaky.
     use crate::mock_radio::MeshHarness;
     use crate::swap::LadderParams;
-    use crate::swap_coordinator::SwapCoordinator;
     use std::time::Duration;
 
     let (swap_id, alice_id, bob_id, alice_ctx) = participant_fixtures();
@@ -333,7 +325,7 @@ fn a_swap_survives_a_lossy_mesh_via_retransmits() {
     h.ether().set_loss(0.3); // a third of every flood is dropped
 
     let (coordinator, propose) =
-        SwapCoordinator::new_initiator(alice_ctx, [42u8; 32], LadderParams::default());
+        new_initiator_signed(alice_ctx, [42u8; 32], LadderParams::default());
     alice.start_swap(swap_id, coordinator, propose);
 
     // Drive the maintenance tick at a calm cadence (a delay between ticks lets each node's worker
@@ -370,7 +362,7 @@ fn many_concurrent_swaps_all_settle_over_a_lossy_mesh() {
     // would linger forever and fail the assertion.
     use crate::mock_radio::MeshHarness;
     use crate::swap::LadderParams;
-    use crate::swap_coordinator::{SwapContext, SwapCoordinator};
+    use crate::swap_coordinator::SwapContext;
     use crate::swap_leg::sha256;
     use crate::swap_wire::SWAP_ID_LEN;
     use std::time::Duration;
@@ -400,7 +392,7 @@ fn many_concurrent_swaps_all_settle_over_a_lossy_mesh() {
             take_amount: TAKE_BTC,
             network_id: 5,
         };
-        let (coord, propose) = SwapCoordinator::new_initiator(ctx, secret, LadderParams::default());
+        let (coord, propose) = new_initiator_signed(ctx, secret, LadderParams::default());
         alice.start_swap(*sid, coord, propose);
     }
 
@@ -437,7 +429,6 @@ fn a_rejoining_participant_catches_up_a_swap_via_store_and_forward() {
     // existed) is the gossip-sync reply, so his settling proves the store-and-forward catch-up.
     use crate::mock_radio::MeshHarness;
     use crate::swap::{LadderParams, SwapPhase};
-    use crate::swap_coordinator::SwapCoordinator;
     use crate::test_support::{wait_until, SETTLE};
 
     let (swap_id, alice_id, bob_id, alice_ctx) = participant_fixtures();
@@ -448,7 +439,7 @@ fn a_rejoining_participant_catches_up_a_swap_via_store_and_forward() {
 
     // Alice proposes while bob is absent; the relay stores the Propose for later store-and-forward.
     let (coordinator, propose) =
-        SwapCoordinator::new_initiator(alice_ctx, [42u8; 32], LadderParams::default());
+        new_initiator_signed(alice_ctx, [42u8; 32], LadderParams::default());
     alice.start_swap(swap_id, coordinator, propose);
     assert!(
         wait_until(|| relay.recent_stored() >= 1, SETTLE),
@@ -490,7 +481,6 @@ fn a_full_swap_rides_a_multi_hop_relay_line_end_to_end() {
     // polling. Proves swaps ride a DEEP mesh, not just a direct link or a single relay.
     use crate::mock_radio::MeshHarness;
     use crate::swap::{LadderParams, SwapPhase};
-    use crate::swap_coordinator::SwapCoordinator;
     use crate::test_support::{wait_until, SETTLE};
 
     let (swap_id, alice_id, bob_id, alice_ctx) = participant_fixtures();
@@ -507,7 +497,7 @@ fn a_full_swap_rides_a_multi_hop_relay_line_end_to_end() {
     h.connect("r4", "bob");
 
     let (coordinator, propose) =
-        SwapCoordinator::new_initiator(alice_ctx, [42u8; 32], LadderParams::default());
+        new_initiator_signed(alice_ctx, [42u8; 32], LadderParams::default());
     alice.start_swap(swap_id, coordinator, propose);
 
     // The swap drives end to end across the line; with no maintenance tick to reap them, both ends
@@ -540,7 +530,6 @@ fn a_swap_partitioned_mid_flight_recovers_after_the_heal() {
     // resilience to an outage during the swap, not just before it.
     use crate::mock_radio::MeshHarness;
     use crate::swap::{LadderParams, SwapPhase};
-    use crate::swap_coordinator::SwapCoordinator;
     use crate::test_support::{wait_until, SETTLE};
     use std::time::Duration;
 
@@ -554,7 +543,7 @@ fn a_swap_partitioned_mid_flight_recovers_after_the_heal() {
     h.ether().set_latency(Duration::from_millis(50));
 
     let (coordinator, propose) =
-        SwapCoordinator::new_initiator(alice_ctx, [42u8; 32], LadderParams::default());
+        new_initiator_signed(alice_ctx, [42u8; 32], LadderParams::default());
     alice.start_swap(swap_id, coordinator, propose);
 
     // Catch alice with her NIM leg funded (mid-flight), then cut the link and drop the pacing.
@@ -611,7 +600,6 @@ fn a_full_swap_drives_through_a_pluggable_signer() {
     // value length is one byte.)
     use crate::mock_radio::MeshHarness;
     use crate::swap::{LadderParams, SwapPhase};
-    use crate::swap_coordinator::SwapCoordinator;
     use crate::swap_signer::SwapSigner;
     use crate::swap_wire::{SwapLegId, SWAP_ID_LEN};
     use crate::test_support::{wait_until, SETTLE};
@@ -653,7 +641,7 @@ fn a_full_swap_drives_through_a_pluggable_signer() {
     h.connect("alice", "bob");
 
     let (coordinator, propose) =
-        SwapCoordinator::new_initiator(alice_ctx, [42u8; 32], LadderParams::default());
+        new_initiator_signed(alice_ctx, [42u8; 32], LadderParams::default());
     alice.start_swap(swap_id, coordinator, propose);
 
     assert!(
@@ -687,7 +675,7 @@ fn a_responder_declines_a_below_rate_proposal_over_the_mesh() {
     use crate::swap_messages::SwapProposal;
     use crate::swap_session::{NodeIdentity, RatePolicy};
     use crate::swap_wire::encode_swap;
-    use crate::test_support::{wait_until, SETTLE};
+    use crate::test_support::{alice_nim_address, wait_until, ALICE_NIM_SECRET, SETTLE};
 
     let bob_id = NodeIdentity {
         nim_address: [0xB2; 20],
@@ -704,11 +692,13 @@ fn a_responder_declines_a_below_rate_proposal_over_the_mesh() {
     let mut h = MeshHarness::new();
     let bob = h.add_participant("bob", &[2], bob_id, LadderParams::default());
 
-    // `ts` keeps each injected Propose's relay-key distinct (type+sender+timestamp).
+    // `ts` keeps each injected Propose's relay-key distinct (type+sender+timestamp). Each Propose is
+    // authenticated (S2 / #73) under alice's NIM key so it clears `recv_propose`; the rate gate — not
+    // authentication — is what declines the below-floor one.
     let propose = |swap_id: [u8; 16], give: u64, take: u64, ts: u64| {
         let mut pk = [0x11; 33];
         pk[0] = 0x02;
-        let env = SwapProposal {
+        let proposal = SwapProposal {
             swap_id,
             hashlock: sha256(&[42u8; 32]),
             give_amount: give,
@@ -717,12 +707,13 @@ fn a_responder_declines_a_below_rate_proposal_over_the_mesh() {
                 nim_timeout: 10_000,
                 counterparty_timeout: 5_000,
             },
-            nim_address: [0xA1; 20],
+            nim_address: alice_nim_address(),
             btc_address: b"tb1qalice".to_vec(),
             btc_pubkey: pk,
             network_id: 5,
-        }
-        .to_envelope();
+        };
+        let (pubkey, sig) = proposal.sign(&ALICE_NIM_SECRET);
+        let env = proposal.to_signed_envelope(pubkey, sig);
         let mut pkt = Packet::new(
             MessageType::SwapPropose,
             [9u8; 8],

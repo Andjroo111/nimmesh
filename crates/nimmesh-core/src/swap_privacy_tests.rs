@@ -10,7 +10,7 @@ use crate::swap::{LadderParams, SwapPhase};
 use crate::swap_discovery_tests::{btc_giver_intent, intent_for, intent_frame, FRESH};
 use crate::swap_intent::{sign_intent_ephemeral, Asset};
 use crate::swap_node::derive_swap_id;
-use crate::test_support::{participant_fixtures, wait_until, SETTLE};
+use crate::test_support::{alice_propose_key, participant_fixtures, wait_until, SETTLE};
 
 #[test]
 fn two_ephemeral_advertisements_share_no_identity_field() {
@@ -56,7 +56,15 @@ fn an_ephemeral_keyed_intent_still_discovers_and_settles() {
     alice_id.standing_intent = Some(alice_intent);
 
     let mut h = MeshHarness::new();
-    let alice = h.add_participant("alice", &[1], alice_id, LadderParams::default());
+    // Alice (the NIM-giver / initiator) signs the Propose her discovery flow originates (S2 / #73);
+    // bob's ephemeral key is on his *intent*, and does not affect alice's Propose authentication.
+    let alice = h.add_participant_signing(
+        "alice",
+        &[1],
+        alice_id,
+        LadderParams::default(),
+        alice_propose_key(),
+    );
     let bob = h.add_participant("bob", &[2], bob_id, LadderParams::default());
     h.connect("alice", "bob");
 

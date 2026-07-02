@@ -9,7 +9,7 @@
 //! already proven to recover (G20/G24), the worst case being a refund. Fixtures come from
 //! [`crate::test_support`].
 
-use crate::test_support::participant_fixtures;
+use crate::test_support::{new_initiator_signed, participant_fixtures};
 
 #[test]
 fn a_blind_relay_carries_a_swap_without_learning_it() {
@@ -20,7 +20,6 @@ fn a_blind_relay_carries_a_swap_without_learning_it() {
     // case, already proven to recover (G20/G24), never to lose.
     use crate::mock_radio::MeshHarness;
     use crate::swap::{LadderParams, SwapPhase};
-    use crate::swap_coordinator::SwapCoordinator;
     use crate::test_support::{wait_until, SETTLE};
 
     let (swap_id, alice_id, bob_id, alice_ctx) = participant_fixtures();
@@ -32,7 +31,7 @@ fn a_blind_relay_carries_a_swap_without_learning_it() {
     h.connect("relay", "bob");
 
     let (coordinator, propose) =
-        SwapCoordinator::new_initiator(alice_ctx, [42u8; 32], LadderParams::default());
+        new_initiator_signed(alice_ctx, [42u8; 32], LadderParams::default());
     alice.start_swap(swap_id, coordinator, propose);
 
     assert!(
@@ -68,7 +67,6 @@ fn a_forged_reveal_with_the_wrong_secret_cannot_settle_a_participant() {
     use crate::node::MeshNode;
     use crate::packet::{MessageType, Packet, BROADCAST_RECIPIENT};
     use crate::swap::{LadderParams, SwapPhase};
-    use crate::swap_coordinator::SwapCoordinator;
     use crate::swap_messages::tx_envelope;
     use crate::swap_wire::{encode_swap, SwapEnvelope, SwapLegId};
     use crate::test_support::{wait_until, SETTLE};
@@ -87,8 +85,7 @@ fn a_forged_reveal_with_the_wrong_secret_cannot_settle_a_participant() {
     let bob = h.add_participant("bob", &[2], bob_id, LadderParams::default());
 
     // Drive bob to BothFunded: Propose (he accepts), then a NIM FundingProof (he funds his BTC leg).
-    let (_a, propose) =
-        SwapCoordinator::new_initiator(alice_ctx, [42u8; 32], LadderParams::default());
+    let (_a, propose) = new_initiator_signed(alice_ctx, [42u8; 32], LadderParams::default());
     inject(&bob, MessageType::SwapPropose, 1, &propose);
     assert!(
         wait_until(
@@ -151,11 +148,24 @@ fn a_forged_reveal_with_the_wrong_secret_cannot_settle_a_participant() {
 
 // --- G30: concurrent-swap cap (anti-DoS) ----------------------------------------------------------
 
-/// A fair-rate `Propose` envelope (3.0 NIM/BTC) for `swap_id` — accepted by any non-strict policy.
+/// The NIM identity secret owning the fair-Propose fixture's `nim_address` (S2 / #73), so its
+/// authenticated Propose self-certifies and a responder accepts it.
+const PROPOSER_NIM_SECRET: [u8; 32] = [0xA1; 32];
+
+/// The fair-Propose fixture's key-derived NIM address.
+fn proposer_nim_address() -> [u8; 20] {
+    let pubkey = ed25519_dalek::SigningKey::from_bytes(&PROPOSER_NIM_SECRET)
+        .verifying_key()
+        .to_bytes();
+    *crate::nimiq::address::Address::from_public_key(&pubkey).as_bytes()
+}
+
+/// A fair-rate `Propose` envelope (3.0 NIM/BTC) for `swap_id`, authenticated (S2 / #73) so a
+/// responder accepts it — accepted by any non-strict rate policy.
 fn fair_propose(swap_id: [u8; 16]) -> crate::swap_wire::SwapEnvelope {
     let mut pk = [0x11; 33];
     pk[0] = 0x02;
-    crate::swap_messages::SwapProposal {
+    let proposal = crate::swap_messages::SwapProposal {
         swap_id,
         hashlock: crate::swap_leg::sha256(&[42u8; 32]),
         give_amount: 150_000,
@@ -164,12 +174,13 @@ fn fair_propose(swap_id: [u8; 16]) -> crate::swap_wire::SwapEnvelope {
             nim_timeout: 10_000,
             counterparty_timeout: 5_000,
         },
-        nim_address: [0xA1; 20],
+        nim_address: proposer_nim_address(),
         btc_address: b"tb1qalice".to_vec(),
         btc_pubkey: pk,
         network_id: 5,
-    }
-    .to_envelope()
+    };
+    let (pubkey, sig) = proposal.sign(&PROPOSER_NIM_SECRET);
+    proposal.to_signed_envelope(pubkey, sig)
 }
 
 /// Bob's identity with an accept-all rate and a `cap` on concurrent swaps.
@@ -300,7 +311,6 @@ fn a_node_restored_from_a_snapshot_still_refunds_a_funds_locked_swap() {
     use crate::mock_radio::MeshHarness;
     use crate::packet::{MessageType, Packet, BROADCAST_RECIPIENT};
     use crate::swap::{LadderParams, SwapPhase};
-    use crate::swap_coordinator::SwapCoordinator;
     use crate::swap_messages::SwapAcceptance;
     use crate::swap_wire::encode_swap;
     use crate::test_support::{make_beacon_packet, wait_until, SETTLE};
@@ -311,7 +321,7 @@ fn a_node_restored_from_a_snapshot_still_refunds_a_funds_locked_swap() {
 
     // Alice originates + an Accept arrives → she funds her NIM leg → SelfFunded (funds locked).
     let (coordinator, propose) =
-        SwapCoordinator::new_initiator(alice_ctx, [42u8; 32], LadderParams::default());
+        new_initiator_signed(alice_ctx, [42u8; 32], LadderParams::default());
     alice.start_swap(swap_id, coordinator, propose);
     let accept = SwapAcceptance {
         swap_id,

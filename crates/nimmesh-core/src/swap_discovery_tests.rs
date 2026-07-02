@@ -131,7 +131,7 @@ fn a_complementary_intent_kicks_off_a_swap_that_settles() {
     use crate::mock_radio::MeshHarness;
     use crate::swap::{LadderParams, SwapPhase};
     use crate::swap_node::derive_swap_id;
-    use crate::test_support::{wait_until, SETTLE};
+    use crate::test_support::{alice_propose_key, wait_until, SETTLE};
 
     let (_swap_id, alice_id, bob_id, _ctx) = participant_fixtures();
     let alice_intent = intent_for(&alice_id, Asset::Nim, 200_000, 50_000, FRESH);
@@ -145,7 +145,15 @@ fn a_complementary_intent_kicks_off_a_swap_that_settles() {
     alice_id.standing_intent = Some(alice_intent);
 
     let mut h = MeshHarness::new();
-    let alice = h.add_participant("alice", &[1], alice_id, LadderParams::default());
+    // Alice is a *signing* participant: the Propose her discovery flow floods is authenticated (S2 /
+    // #73) under her NIM key, so bob's `recv_propose` accepts it and the swap settles.
+    let alice = h.add_participant_signing(
+        "alice",
+        &[1],
+        alice_id,
+        LadderParams::default(),
+        alice_propose_key(),
+    );
     let bob = h.add_participant("bob", &[2], bob_id, LadderParams::default());
     h.connect("alice", "bob");
 

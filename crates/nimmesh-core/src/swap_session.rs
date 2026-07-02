@@ -5,16 +5,19 @@
 //! coordinator when a fresh `Propose` arrives, and returning the outgoing envelopes to flood. It is
 //! the thin layer a [`crate::node::MeshNode`] sits behind: packets in, coordinator dispatch,
 //! envelopes out. The chain actions a coordinator implies (fund / claim / extract `S`) stay with the
-//! node — it reaches the coordinator via [`coordinator`](SwapSession::coordinator). Pure: no keys,
-//! no bitcoin.
+//! node — it reaches the coordinator via [`coordinator`](SwapSession::coordinator). No bitcoin, and no
+//! raw key material: the only key seam it holds is an opaque [`EnclaveKey`] used to *sign* (not expose)
+//! an outgoing Propose (S2 / #73) — the seed stays behind the enclave, only signed bytes leave.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
+use crate::nimiq::signer::EnclaveKey;
 use crate::packet::MessageType;
 use crate::swap::LadderParams;
 use crate::swap_coordinator::{CoordError, SwapContext, SwapCoordinator};
 use crate::swap_funding_verify::{AcceptAllVerifier, FundingVerifier, DEFAULT_MIN_CONFIRMATIONS};
-use crate::swap_messages::SwapProposal;
+use crate::swap_messages::{SwapProposal, PROPOSE_PUBKEY_LEN, PROPOSE_SIG_LEN};
 use crate::swap_wire::{
     decode_swap, encode_swap, SwapEnvelope, SwapKind, SwapWireError, BTC_PUBKEY_LEN,
     NIM_ADDRESS_LEN, SWAP_ID_LEN,
@@ -99,6 +102,11 @@ pub struct SwapSession {
     /// `S`, on a message alone). Defaults to [`AcceptAllVerifier`] — the mesh sim has no chain to
     /// observe, so the seam is wired but nominal; a real node injects a gateway-backed verifier.
     verifier: Box<dyn FundingVerifier>,
+    /// S2 / #73: this node's NIM identity key, used to *authenticate* an outgoing `Propose` (sign its
+    /// [`SwapProposal::signing_bytes`]). Only a signature and public key ever leave the enclave — the
+    /// seed never crosses this seam. `None` on a responder-only node (it never originates a Propose);
+    /// an initiating node injects the key that owns its `identity.nim_address`.
+    propose_signer: Option<Arc<dyn EnclaveKey>>,
 }
 
 impl SwapSession {
@@ -110,7 +118,37 @@ impl SwapSession {
             coordinators: HashMap::new(),
             pending: HashMap::new(),
             verifier: Box::new(AcceptAllVerifier),
+            propose_signer: None,
         }
+    }
+
+    /// Inject this node's NIM identity key so it signs each `Propose` it originates (S2 / #73). The
+    /// key must own `identity.nim_address` (its public key hashes to it), so a responder can
+    /// authenticate the proposed terms via [`SwapProposal::verify_envelope`]. Only signed bytes + the
+    /// public key leave the enclave; the seed never does.
+    pub fn with_propose_signer(mut self, key: Arc<dyn EnclaveKey>) -> Self {
+        self.propose_signer = Some(key);
+        self
+    }
+
+    /// S2 / #73: authenticate an outgoing initiator `Propose` by signing its terms with this node's
+    /// NIM enclave key, returning the wire-signed envelope. If this node carries no propose signer (a
+    /// responder-only node never originates) — or the enclave returns malformed key material — the
+    /// envelope is returned unchanged, and an enforcing responder will reject it as unauthenticated.
+    pub(crate) fn sign_propose(&self, propose: &SwapEnvelope) -> SwapEnvelope {
+        let Some(key) = self.propose_signer.as_ref() else {
+            return propose.clone();
+        };
+        let Some(proposal) = SwapProposal::from_envelope(propose) else {
+            return propose.clone();
+        };
+        let (Ok(pubkey), Ok(signature)) = (
+            <[u8; PROPOSE_PUBKEY_LEN]>::try_from(key.public_key()),
+            <[u8; PROPOSE_SIG_LEN]>::try_from(key.sign_content(proposal.signing_bytes())),
+        ) else {
+            return propose.clone();
+        };
+        proposal.to_signed_envelope(pubkey, signature)
     }
 
     /// Inject the on-chain funding verifier (S1 / #72). A real node passes a gateway-backed verifier

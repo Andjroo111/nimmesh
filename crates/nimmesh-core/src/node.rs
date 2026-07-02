@@ -519,6 +519,30 @@ impl MeshNode {
         )
     }
 
+    /// S2 / #73 (test): a participant node that also holds a NIM enclave key, so each `Propose` it
+    /// originates over the discovery flow is authenticated (signed) before it floods. `propose_key`
+    /// must own `identity.nim_address`.
+    #[cfg(test)]
+    pub(crate) fn new_participant_signing(
+        sender_id: Vec<u8>,
+        radio: Arc<dyn BleRadio>,
+        policy: RelayPolicy,
+        identity: crate::swap_session::NodeIdentity,
+        ladder: crate::swap::LadderParams,
+        propose_key: Arc<dyn crate::nimiq::signer::EnclaveKey>,
+    ) -> Arc<Self> {
+        let session = SwapSession::new(identity, ladder).with_propose_signer(propose_key);
+        Self::build(
+            sender_id,
+            radio,
+            None,
+            policy,
+            false,
+            Some(session),
+            Some(Box::new(crate::swap_signer::MockSigner)),
+        )
+    }
+
     /// G33 (test): a participant node restored from a crash-recovery snapshot (G31/G32) — its swap
     /// session is rebuilt from `snapshot` bytes so a funds-locked swap resumes its refund tick. A
     /// corrupt blob falls back to an empty session (the node starts clean rather than crashing).

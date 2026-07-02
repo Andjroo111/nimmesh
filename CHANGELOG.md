@@ -2,7 +2,7 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
-## [0.40.0] — 2026-07-02
+## [0.41.0] — 2026-07-02
 
 ### Security — enforce authenticated swap Proposes (G2 slice 2b, #73 → closes S2)
 

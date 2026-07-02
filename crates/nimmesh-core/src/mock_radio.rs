@@ -365,6 +365,29 @@ impl MeshHarness {
         self.attach(peer_id, node, radio)
     }
 
+    /// S2 / #73 (test): add a swap participant that authenticates each `Propose` it originates, wired
+    /// with the NIM enclave key that owns `identity.nim_address` (so a responder verifies its terms).
+    #[cfg(test)]
+    pub fn add_participant_signing(
+        &mut self,
+        peer_id: &str,
+        sender_id: &[u8],
+        identity: crate::swap_session::NodeIdentity,
+        ladder: crate::swap::LadderParams,
+        propose_key: std::sync::Arc<dyn crate::nimiq::signer::EnclaveKey>,
+    ) -> Arc<MeshNode> {
+        let radio = MockRadio::new(peer_id, self.ether.clone());
+        let node = MeshNode::new_participant_signing(
+            sender_id.to_vec(),
+            radio.clone(),
+            RelayPolicy::deterministic(),
+            identity,
+            ladder,
+            propose_key,
+        );
+        self.attach(peer_id, node, radio)
+    }
+
     /// G33 (test): add a participant node restored from a crash-recovery snapshot (the bytes from
     /// another node's [`crate::node::MeshNode::swap_snapshot`]).
     #[cfg(test)]
