@@ -6,11 +6,18 @@
 //! cancel → [`abort`]. This is what wires the engine (terms, keys, signed txs) to the wire so a swap
 //! can actually be negotiated over the mesh. Pure: no keys, no bitcoin crate — just public data.
 
+use ed25519_dalek::Signer;
+
 use crate::swap::SwapTerms;
 use crate::swap_wire::{
     encode_swap, SwapEnvelope, SwapLegId, SwapWireError, BTC_PUBKEY_LEN, HASH_LEN, NIM_ADDRESS_LEN,
     SWAP_ID_LEN,
 };
+
+/// Ed25519 public-key length carried by an authenticated Propose (S2 / #73) — same as an intent's.
+pub const PROPOSE_PUBKEY_LEN: usize = 32;
+/// Ed25519 signature length over a Propose's [`signing_bytes`](SwapProposal::signing_bytes).
+pub const PROPOSE_SIG_LEN: usize = 64;
 
 /// The initiator's proposed swap — everything a `Propose` carries.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -74,6 +81,59 @@ impl SwapProposal {
     /// Encode straight to `Propose` wire bytes.
     pub fn encode(&self) -> Result<Vec<u8>, SwapWireError> {
         encode_swap(&self.to_envelope())
+    }
+
+    /// S2 / #73: the canonical bytes an authenticated Propose signs over — every **binding** term in a
+    /// fixed order, so a relay cannot alter the swap_id, hashlock, amounts, timeouts, or the
+    /// initiator's claim addresses in transit without invalidating the signature. Mirrors
+    /// [`crate::swap_intent::SwapIntent::signing_bytes`]. (The signature itself is carried out-of-band
+    /// on the wire in slice 2 and is not part of these bytes.)
+    pub fn signing_bytes(&self) -> Vec<u8> {
+        let mut b = Vec::with_capacity(128);
+        b.extend_from_slice(&self.swap_id);
+        b.extend_from_slice(&self.hashlock);
+        b.extend_from_slice(&self.give_amount.to_be_bytes());
+        b.extend_from_slice(&self.take_amount.to_be_bytes());
+        b.extend_from_slice(&self.terms.nim_timeout.to_be_bytes());
+        b.extend_from_slice(&self.terms.counterparty_timeout.to_be_bytes());
+        b.extend_from_slice(&self.nim_address);
+        b.extend_from_slice(&self.btc_address);
+        b.extend_from_slice(&self.btc_pubkey);
+        b.push(self.network_id);
+        b
+    }
+
+    /// S2 / #73: sign this Propose's terms with the initiator's Ed25519 seed (the NIM account key —
+    /// the same key that hashes to `nim_address`), returning `(pubkey, signature)` to carry on the
+    /// wire. In production the seed stays behind the `EnclaveKey` seam; this is the pure primitive +
+    /// the test/advertiser helper (mirrors [`crate::swap_intent::sign_intent`]).
+    pub fn sign(&self, secret: &[u8; 32]) -> ([u8; PROPOSE_PUBKEY_LEN], [u8; PROPOSE_SIG_LEN]) {
+        let sk = ed25519_dalek::SigningKey::from_bytes(secret);
+        let pubkey = sk.verifying_key().to_bytes();
+        let signature = sk.sign(&self.signing_bytes()).to_bytes();
+        (pubkey, signature)
+    }
+
+    /// S2 / #73: verify a Propose's terms are authentic and untampered — `pubkey` must hash to this
+    /// Propose's `nim_address` (so the signer controls the NIM claim address), AND `signature` must be
+    /// a valid Ed25519 signature (RFC-8032 `verify_strict`) over [`signing_bytes`](Self::signing_bytes).
+    /// A wrong key, a tampered field, or a junk signature returns `false`. Pure + panic-free.
+    pub fn verify_signature(
+        &self,
+        pubkey: &[u8; PROPOSE_PUBKEY_LEN],
+        signature: &[u8; PROPOSE_SIG_LEN],
+    ) -> bool {
+        if crate::nimiq::address::Address::from_public_key(pubkey).as_bytes() != &self.nim_address {
+            return false;
+        }
+        let Ok(vk) = ed25519_dalek::VerifyingKey::from_bytes(pubkey) else {
+            return false;
+        };
+        vk.verify_strict(
+            &self.signing_bytes(),
+            &ed25519_dalek::Signature::from_bytes(signature),
+        )
+        .is_ok()
     }
 }
 
@@ -246,5 +306,80 @@ mod tests {
             decode_swap(SwapKind::Abort, &bytes).unwrap().reason,
             Some(2)
         );
+    }
+
+    // --- S2 / #73: authenticated Propose terms ---------------------------------------------------
+
+    /// A Propose whose `nim_address` is the one owned by `secret`'s Ed25519 key (so a correct
+    /// signature can self-certify the address).
+    fn signed_proposal(secret: &[u8; 32]) -> SwapProposal {
+        let pubkey = ed25519_dalek::SigningKey::from_bytes(secret)
+            .verifying_key()
+            .to_bytes();
+        let nim_address = *crate::nimiq::address::Address::from_public_key(&pubkey).as_bytes();
+        let mut btc_pubkey = [0x11u8; BTC_PUBKEY_LEN];
+        btc_pubkey[0] = 0x02;
+        SwapProposal {
+            swap_id: [0xA1; SWAP_ID_LEN],
+            hashlock: [0x7E; HASH_LEN],
+            give_amount: 100_000,
+            take_amount: 50_000,
+            terms: SwapTerms {
+                nim_timeout: 10_000,
+                counterparty_timeout: 5_000,
+            },
+            nim_address,
+            btc_address: b"tb1qinit".to_vec(),
+            btc_pubkey,
+            network_id: 5,
+        }
+    }
+
+    #[test]
+    fn a_signed_proposal_verifies() {
+        let secret = [7u8; 32];
+        let p = signed_proposal(&secret);
+        let (pubkey, sig) = p.sign(&secret);
+        assert!(p.verify_signature(&pubkey, &sig));
+    }
+
+    #[test]
+    fn a_tampered_amount_fails_verification() {
+        // A relay rewrites the terms in transit — the signature no longer covers them.
+        let secret = [7u8; 32];
+        let p = signed_proposal(&secret);
+        let (pubkey, sig) = p.sign(&secret);
+        let mut tampered = p.clone();
+        tampered.give_amount = 1;
+        assert!(!tampered.verify_signature(&pubkey, &sig));
+    }
+
+    #[test]
+    fn a_tampered_hashlock_or_timeout_fails_verification() {
+        let secret = [7u8; 32];
+        let p = signed_proposal(&secret);
+        let (pubkey, sig) = p.sign(&secret);
+        let mut h = p.clone();
+        h.hashlock = [0xFF; HASH_LEN];
+        assert!(!h.verify_signature(&pubkey, &sig));
+        let mut t = p.clone();
+        t.terms.counterparty_timeout = 9_999;
+        assert!(!t.verify_signature(&pubkey, &sig));
+    }
+
+    #[test]
+    fn a_junk_signature_fails() {
+        let p = signed_proposal(&[7u8; 32]);
+        let (pubkey, _) = p.sign(&[7u8; 32]);
+        assert!(!p.verify_signature(&pubkey, &[0u8; PROPOSE_SIG_LEN]));
+    }
+
+    #[test]
+    fn a_relay_that_re_signs_with_its_own_key_is_rejected() {
+        // The self-certifying bind: a MITM can produce a valid signature over tampered terms, but only
+        // under ITS key — which does not hash to the Propose's nim_address, so the responder rejects it.
+        let p = signed_proposal(&[7u8; 32]);
+        let (atk_pubkey, atk_sig) = p.sign(&[9u8; 32]);
+        assert!(!p.verify_signature(&atk_pubkey, &atk_sig));
     }
 }
