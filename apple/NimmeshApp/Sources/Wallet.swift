@@ -65,6 +65,21 @@ enum Wallet {
     /// The recovery phrase, for the backup screen (`nil` if no wallet).
     static func recoveryPhrase() -> String? { readMnemonic() }
 
+    /// Remove the wallet from this device. Without its 24 words the wallet is unrecoverable,
+    /// so the UI always confirms (and reminds about the backup) before calling this. Used by
+    /// the account menu's log-out and the fresh-install "start fresh" choice.
+    @discardableResult
+    static func delete() -> Bool {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+        ]
+        let status = SecItemDelete(query as CFDictionary)
+        cache = nil
+        return status == errSecSuccess || status == errSecItemNotFound
+    }
+
     // MARK: Signing
 
     /// The signer for the current wallet, or `nil` if none exists yet (onboarding not done).

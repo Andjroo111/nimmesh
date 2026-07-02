@@ -24,12 +24,20 @@
   .topbar { display: flex; align-items: center; gap: 8px; padding: 16px 12px 4px; }
   .topbar .logo { display: flex; align-items: center; gap: 7px; flex: 0 0 auto; }
   .topbar .wordmark { font-weight: 700; font-size: 19px; color: #1f2348; }
-  /* A4: fleet chrome pills (global language pill + connect-wallet) at the top-right,
-     from the shared nimiq-app-shell (loaded online; the offline mesh UX degrades
-     gracefully without them). They self-inject their own Nimiq-correct styles. */
+  /* Top-right chrome: the language pill + the account pill. Both are LOCAL (no CDN) so
+     they work offline — this is an offline-first mesh app. The account pill replaces the
+     old Hub connect-wallet pill: the app HAS its own native wallet, so the pill IS your
+     account (identicon), opening the account sheet (address / backup / log out). */
   .topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: 0 1 auto; min-width: 0; }
-  /* keep the connect-wallet pill on one line + compact for the 390px topbar */
-  #connect-pill .nq-connect { white-space: nowrap; height: 38px; padding: 0 14px; }
+  .chip { display: inline-flex; align-items: center; gap: 5px; height: 36px; padding: 0 13px;
+    border: 0; border-radius: 500px; background: #fff; box-shadow: inset 0 0 0 1.5px rgba(31,35,72,.12);
+    color: #1f2348; font-family: inherit; font-weight: 700; font-size: 13px; cursor: pointer; }
+  .chip:active { transform: translateY(1px); }
+  .chip .chev { width: 10px; height: 6px; color: rgba(31,35,72,.4); }
+  .chip.acct { width: 36px; padding: 0; justify-content: center; background: transparent; box-shadow: none; }
+  .chip.acct .identicon { width: 34px; height: 34px; }
+  .chip.acct .identicon img { width: 100%; height: 100%; }
+  .chip[hidden] { display: none; }
   .header-wrap { padding: 8px 12px 0; }
   .tx-wrap { padding: 4px 20px 150px; }  /* clear the fixed bottom dock */
   .tx-wrap .transaction-list { width: 100%; }
@@ -281,6 +289,30 @@
   .net-opt[data-net="mainnet"].active { background: var(--nimiq-orange); color: #fff; box-shadow: 0 2px 8px rgba(252,135,2,.3); }
   .net-warn { text-align: center; margin: 8px 24px 0; font-size: 12.5px; font-weight: 700; color: var(--nimiq-orange); }
   .net-warn[hidden] { display: none; }
+
+  /* Account sheet: identicon + address + a plain action list (copy / backup / log out). */
+  .acct-actions { display: flex; flex-direction: column; margin: 12px 24px 0; }
+  .acct-actions button { display: flex; align-items: center; gap: 13px; padding: 15px 8px;
+    border: 0; border-top: 1.5px solid rgba(31,35,72,.08); background: none; cursor: pointer;
+    font-family: inherit; font-weight: 700; font-size: 15.5px; color: #1f2348; text-align: left; }
+  .acct-actions button:first-child { border-top: 0; }
+  .acct-actions button:active { background: rgba(31,35,72,.03); }
+  .acct-actions button svg { width: 20px; height: 20px; color: rgba(31,35,72,.45); flex: 0 0 auto; }
+  .acct-actions button.danger, .acct-actions button.danger svg { color: var(--nimiq-red); }
+  .acct-meta { text-align: center; color: rgba(31,35,72,.4); font-size: 12px; font-weight: 600; margin: 16px 24px 0; }
+
+  /* Language sheet: the offline language list (name + active check). */
+  .lang-list { display: flex; flex-direction: column; margin: 8px 24px 4px; }
+  .lang-list button { display: flex; align-items: center; justify-content: space-between; padding: 15px 8px;
+    border: 0; border-top: 1.5px solid rgba(31,35,72,.08); background: none; cursor: pointer;
+    font-family: inherit; font-weight: 700; font-size: 15.5px; color: #1f2348; }
+  .lang-list button:first-child { border-top: 0; }
+  .lang-list button:active { background: rgba(31,35,72,.03); }
+  .lang-list button svg.check { width: 18px; height: 18px; color: #0582ca; visibility: hidden; flex: 0 0 auto; }
+  .lang-list button.active svg.check { visibility: visible; }
+
+  /* Recovered-wallet onboarding: red-tinted "start fresh" link under the primary keep. */
+  .ob-link.danger { color: var(--nimiq-red); }
 </style>
 </head>
 <body>
@@ -298,8 +330,13 @@
       <span class="wordmark">nimmesh</span>
     </span>
     <div class="topbar-actions">
-      <div id="lang-pill" aria-label="Language"></div>
-      <div id="connect-pill" aria-label="Connect wallet"></div>
+      <button class="chip" id="lang-pill" aria-label="Language" data-i18n-aria="a.lang">
+        <span id="lang-pill-code">EN</span>
+        <svg class="chev" viewBox="0 0 10 6" fill="none"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button class="chip acct" id="account-pill" aria-label="My account" data-i18n-aria="acct.title" hidden>
+        <span class="identicon" data-wallet data-address="NQ30 AM32 NHXL 29F7 XUY0 HR3R 7XHF EF4L LYBS"><img src='data:image/svg+xml,<svg width="64" height="64" viewBox="0 -4 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path opacity=".1" d="M62.3 25.4L49.2 2.6A5.3 5.3 0 0 0 44.6 0H18.4c-1.9 0-3.6 1-4.6 2.6L.7 25.4c-1 1.6-1 3.6 0 5.2l13.1 22.8c1 1.6 2.7 2.6 4.6 2.6h26.2c1.9 0 3.6-1 4.6-2.6l13-22.8c1-1.6 1-3.6.1-5.2z" fill="url(%23identicon_radial)"/><defs><radialGradient id="identicon_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(-63.0033 0 0 -56 63 56)"><stop stop-color="%23260133"/><stop offset="1" stop-color="%231F2348"/></radialGradient></defs></svg>' alt="Your account identicon"></span>
+      </button>
     </div>
   </div>
 
@@ -309,7 +346,7 @@
   <div id="backup-wrap" style="padding:12px 10px 0;">
     <div class="backup-banner words nq-orange" id="backup-banner">
       <span class="alert-text"><svg class="alert-icon" width="17" height="16" viewBox="0 0 17 16" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M15.913 13.333L9.68 1.433a1.333 1.333 0 0 0-2.362 0l-6.232 11.9a1.333 1.333 0 0 0 1.182 1.952H14.73a1.333 1.333 0 0 0 1.182-1.952zm-8.08-7.718a.667.667 0 0 1 1.334 0v4a.667.667 0 1 1-1.334 0v-4zm.682 7.674h.018a.983.983 0 0 0 .967-1.022 1.018 1.018 0 0 0-1.016-.978h-.019a.984.984 0 0 0-.965 1.02c.02.546.468.978 1.015.98z" fill="currentColor"/></svg> <span id="backup-msg">There is no &lsquo;forgot password&rsquo;</span></span>
-      <button class="nq-button-pill orange" id="backup-open">Backup<svg class="nq-icon" width="16" height="12" viewBox="0 0 16 12" xmlns="http://www.w3.org/2000/svg"><path d="M10,1l5,5l-5,5" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="14" y1="6" x2="1" y2="6" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <button class="nq-button-pill orange" id="backup-open"><span data-i18n="backup.cta">Backup</span><svg class="nq-icon" width="16" height="12" viewBox="0 0 16 12" xmlns="http://www.w3.org/2000/svg"><path d="M10,1l5,5l-5,5" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="14" y1="6" x2="1" y2="6" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     </div>
   </div>
 
@@ -324,7 +361,7 @@
         </div>
         <div class="meta">
           <div class="flex-row">
-            <div class="label">Mesh Wallet</div>
+            <div class="label" data-i18n="home.label">Mesh Wallet</div>
             <span class="amount" id="home-balance">752 <span class="currency nim">NIM</span></span>
           </div>
           <div class="flex-row">
@@ -337,7 +374,7 @@
         <div class="container">
           <div class="search-bar">
             <svg fill="none" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="2"/><path d="M13.31 14.73a1 1 0 001.42-1.42l-1.42 1.42zM8.3 9.7l5.02 5.02 1.42-1.42L9.7 8.3 8.29 9.71z" fill="currentColor"/></svg>
-            <input type="text" placeholder="Search transactions">
+            <input type="text" placeholder="Search transactions" data-i18n-ph="home.search">
           </div>
         </div>
       </div>
@@ -393,16 +430,16 @@
 <div class="bottom-dock">
   <div class="meshbar" id="meshbar">
     <svg class="mesh-glyph" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="5" cy="18" r="2.4" fill="currentColor"/><circle cx="19" cy="18" r="2.4" fill="currentColor"/><circle cx="12" cy="5" r="2.4" fill="currentColor"/><path d="M6.4 16.3 10.7 6.9M13.3 6.9l4.3 9.4M7.2 18h9.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-    <span id="meshbar-text">Bluetooth mesh · offline-ready</span>
+    <span id="meshbar-text" data-i18n="mesh.ready">Bluetooth mesh · offline-ready</span>
   </div>
   <div class="actionbar">
     <button class="ab-receive" id="open-receive">
       <svg viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3.5 8.5L8 13l4.5-4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      Receive
+      <span data-i18n="bar.receive">Receive</span>
     </button>
     <button class="ab-send" id="open-send">
       <svg viewBox="0 0 16 16" fill="none"><path d="M8 13V3M3.5 7.5L8 3l4.5 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      Send
+      <span data-i18n="bar.send">Send</span>
     </button>
     <button class="ab-scan" aria-label="Scan QR code">
       <svg viewBox="0 0 22 22" fill="none"><path d="M3 3h5v5H3zM14 3h5v5h-5zM3 14h5v5H3z" stroke="currentColor" stroke-width="1.7"/><path d="M14 14h2v2h-2zM17 17h2v2h-2zM14 17h2v2h-2zM17 14h2v2h-2z" fill="currentColor"/></svg>
@@ -421,17 +458,17 @@
     <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#ob-hex-grad)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="ob-hex-grad" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span></div>
     <div class="ob-welcome-body">
       <div class="ob-welcome-hero">
-        <h1>Welcome to nimmesh</h1>
-        <p>Pay with NIM even when there is no internet. Set up your wallet to get started.</p>
+        <h1 data-i18n="ob.title">Welcome to nimmesh</h1>
+        <p data-i18n="ob.sub">Pay with NIM even when there is no internet. Set up your wallet to get started.</p>
       </div>
       <div class="ob-choices">
         <button class="ob-choice create" id="ob-create">
           <span class="ic"><svg viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></span>
-          <span class="tx"><b>Create new wallet</b><span>Generate a recovery phrase</span></span>
+          <span class="tx"><b data-i18n="ob.create">Create new wallet</b><span data-i18n="ob.create.sub">Generate a recovery phrase</span></span>
         </button>
         <button class="ob-choice row" id="ob-import-start">
           <span class="ic"><svg viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-          <span class="tx"><b>Import wallet</b><span>Use your 24 recovery words</span></span>
+          <span class="tx"><b data-i18n="ob.import">Import wallet</b><span data-i18n="ob.import.sub">Use your 24 recovery words</span></span>
         </button>
       </div>
     </div>
@@ -439,16 +476,16 @@
 
   <!-- create: show the 24 recovery words (navy Keyguard grid) -->
   <section class="ob-screen" id="ob-create-screen" hidden>
-    <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#ob-hex-grad)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/></svg> nimmesh</span></div>
+    <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#ob-hex-g1)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="ob-hex-g1" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span></div>
     <div class="ob-words-body">
       <div class="ob-words-sheet">
-        <div class="h"><button class="ob-back" data-ob-back aria-label="Back"><svg width="18" height="14" viewBox="0 0 16 12" fill="none"><path d="M6 1L1 6l5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="2" y1="6" x2="15" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button><h2>Your Recovery Words</h2></div>
-        <p class="sub">Write these 24 words down in order. Anyone with them controls your funds, and nimmesh cannot recover them for you.</p>
+        <div class="h"><button class="ob-back" data-ob-back aria-label="Back"><svg width="18" height="14" viewBox="0 0 16 12" fill="none"><path d="M6 1L1 6l5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="2" y1="6" x2="15" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button><h2 data-i18n="words.title">Your Recovery Words</h2></div>
+        <p class="sub" data-i18n="words.create.sub">Write these 24 words down in order. Anyone with them controls your funds, and nimmesh cannot recover them for you.</p>
         <div class="words-grid" id="ob-words"></div>
         <div class="ob-words-foot">
-          <button class="ob-copy" id="ob-copy">Copy words</button>
-          <label class="ob-check"><input type="checkbox" id="ob-saved"> I have written down my 24 words and stored them safely</label>
-          <button class="ob-primary" id="ob-create-done" disabled>Continue</button>
+          <button class="ob-copy" id="ob-copy" data-i18n="words.copy">Copy words</button>
+          <label class="ob-check"><input type="checkbox" id="ob-saved"> <span data-i18n="words.saved">I have written down my 24 words and stored them safely</span></label>
+          <button class="ob-primary" id="ob-create-done" disabled data-i18n="words.continue">Continue</button>
         </div>
       </div>
     </div>
@@ -456,31 +493,46 @@
 
   <!-- import: enter the 24 recovery words (navy Keyguard input grid) -->
   <section class="ob-screen" id="ob-import-screen" hidden>
-    <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#ob-hex-grad)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/></svg> nimmesh</span></div>
+    <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#ob-hex-g2)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="ob-hex-g2" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span></div>
     <div class="ob-words-body">
       <div class="ob-words-sheet">
-        <div class="h"><button class="ob-back" data-ob-back aria-label="Back"><svg width="18" height="14" viewBox="0 0 16 12" fill="none"><path d="M6 1L1 6l5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="2" y1="6" x2="15" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button><h2>Enter Recovery Words</h2></div>
-        <p class="sub">Type the 24 words of the wallet you want to import. You can paste all of them into the first field.</p>
+        <div class="h"><button class="ob-back" data-ob-back aria-label="Back"><svg width="18" height="14" viewBox="0 0 16 12" fill="none"><path d="M6 1L1 6l5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="2" y1="6" x2="15" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button><h2 data-i18n="import.title">Enter Recovery Words</h2></div>
+        <p class="sub" data-i18n="import.sub">Type the 24 words of the wallet you want to import. You can paste all of them into the first field.</p>
         <div class="words-grid" id="ob-import-grid"></div>
         <div class="ob-words-foot">
           <div class="ob-err" id="ob-import-error"></div>
-          <button class="ob-primary" id="ob-import-do">Import wallet</button>
+          <button class="ob-primary" id="ob-import-do" data-i18n="ob.import">Import wallet</button>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- reinstall recovery: the Keychain outlives an uninstall, so a previous install's wallet
+       can still be on the device. Never adopt it silently — show it and let the user choose. -->
+  <section class="ob-screen" id="ob-recovered" hidden>
+    <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#ob-hex-g3)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="ob-hex-g3" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span></div>
+    <div class="ob-confirm-body">
+      <h2 data-i18n="rec.title">Wallet found on this device</h2>
+      <p class="sub" data-i18n="rec.sub">A wallet from a previous install is still in this device's secure storage. This is its address:</p>
+      <div class="ob-addr"><div class="address-display format-nimiq" id="ob-recovered-addr"></div></div>
+      <div class="ob-confirm-foot">
+        <button class="ob-primary" id="ob-keep" data-i18n="rec.keep">Keep this wallet</button>
+        <button class="ob-link danger" id="ob-fresh" data-i18n="rec.fresh">Delete it and start fresh</button>
       </div>
     </div>
   </section>
 
   <!-- confirm the imported address before funding (white card) -->
   <section class="ob-screen" id="ob-confirm-screen" hidden>
-    <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#ob-hex-grad)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/></svg> nimmesh</span></div>
+    <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#ob-hex-g4)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="ob-hex-g4" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span></div>
     <div class="ob-confirm-body">
-      <h2>Confirm your address</h2>
-      <p class="sub">This is the address nimmesh derived from your phrase.</p>
+      <h2 data-i18n="confirm.title">Confirm your address</h2>
+      <p class="sub" data-i18n="confirm.sub">This is the address nimmesh derived from your phrase.</p>
       <div class="ob-addr"><div class="address-display format-nimiq" id="ob-confirm-addr"></div></div>
-      <div class="ob-warn">Check this matches your existing wallet exactly before you send any funds to it.</div>
+      <div class="ob-warn" data-i18n="confirm.warn">Check this matches your existing wallet exactly before you send any funds to it.</div>
       <div class="ob-confirm-foot">
-        <button class="ob-primary" id="ob-confirm-done">This is my wallet</button>
-        <button class="ob-link" data-ob-restart>That is not right, try again</button>
+        <button class="ob-primary" id="ob-confirm-done" data-i18n="confirm.mine">This is my wallet</button>
+        <button class="ob-link" data-ob-restart data-i18n="confirm.retry">That is not right, try again</button>
       </div>
     </div>
   </section>
@@ -489,13 +541,13 @@
 <!-- C1e: view the recovery words again (from the backup banner). -->
 <div class="onboard" id="backup-view" hidden>
   <section class="ob-screen">
-    <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#ob-hex-grad)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/></svg> nimmesh</span><button class="ob-back" id="backup-close">Close</button></div>
+    <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#ob-hex-g5)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="ob-hex-g5" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span><button class="ob-back" id="backup-close" data-i18n="a.close">Close</button></div>
     <div class="ob-words-body">
       <div class="ob-words-sheet">
-        <div class="h"><h2>Your Recovery Words</h2></div>
-        <p class="sub">Write these down and keep them safe. Anyone with these words controls your funds.</p>
+        <div class="h"><h2 data-i18n="words.title">Your Recovery Words</h2></div>
+        <p class="sub" data-i18n="words.backup.sub">Write these down and keep them safe. Anyone with these words controls your funds.</p>
         <div class="words-grid" id="backup-words"></div>
-        <div class="ob-words-foot"><button class="ob-copy" id="backup-copy">Copy words</button></div>
+        <div class="ob-words-foot"><button class="ob-copy" id="backup-copy" data-i18n="words.copy">Copy words</button></div>
       </div>
     </div>
   </section>
@@ -505,10 +557,10 @@
 <section class="sheet" id="receive-sheet" aria-label="Receive NIM">
   <div class="sheet-header">
     <button class="s-back sheet-close" aria-label="Back"><svg viewBox="0 0 16 12" fill="none"><path d="M6 1L1 6l5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="2" y1="6" x2="15" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
-    <div class="title">Receive NIM</div>
+    <div class="title" data-i18n="recv.title">Receive NIM</div>
     <button class="s-close sheet-close" aria-label="Close"><svg viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
   </div>
-  <p class="sheet-sub">Share your address, or request an exact amount</p>
+  <p class="sheet-sub" data-i18n="recv.sub">Share your address, or request an exact amount</p>
   <div class="receive-id">
     <div class="identicon" data-wallet data-address="NQ30 AM32 NHXL 29F7 XUY0 HR3R 7XHF EF4L LYBS">
       <img src='data:image/svg+xml,<svg width="64" height="64" viewBox="0 -4 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path opacity=".1" d="M62.3 25.4L49.2 2.6A5.3 5.3 0 0 0 44.6 0H18.4c-1.9 0-3.6 1-4.6 2.6L.7 25.4c-1 1.6-1 3.6 0 5.2l13.1 22.8c1 1.6 2.7 2.6 4.6 2.6h26.2c1.9 0 3.6-1 4.6-2.6l13-22.8c1-1.6 1-3.6.1-5.2z" fill="url(%23identicon_radial)"/><defs><radialGradient id="identicon_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(-63.0033 0 0 -56 63 56)"><stop stop-color="%23260133"/><stop offset="1" stop-color="%231F2348"/></radialGradient></defs></svg>' alt="Your account identicon">
@@ -519,13 +571,13 @@
       <span class="chunk">NQ30<span class="space">&nbsp;</span></span><span class="chunk">AM32<span class="space">&nbsp;</span></span><span class="chunk">NHXL<span class="space">&nbsp;</span></span><span class="chunk">29F7<span class="space">&nbsp;</span></span><span class="chunk">XUY0<span class="space">&nbsp;</span></span><span class="chunk">HR3R<span class="space">&nbsp;</span></span><span class="chunk">7XHF<span class="space">&nbsp;</span></span><span class="chunk">EF4L<span class="space">&nbsp;</span></span><span class="chunk">LYBS<span class="space">&nbsp;</span></span>
     </div>
   </div>
-  <p class="req-amount-label">Request an amount (optional)</p>
+  <p class="req-amount-label" data-i18n="recv.reqlabel">Request an amount (optional)</p>
   <div class="req-amount">
     <input id="req-amount" inputmode="decimal" placeholder="0" aria-label="Request amount in NIM">
     <span class="unit">NIM</span>
   </div>
   <div class="receive-cta">
-    <button class="req-link" id="req-link">Create request link</button>
+    <button class="req-link" id="req-link" data-i18n="recv.reqlink">Create request link</button>
     <button class="qr-toggle" id="qr-toggle" aria-label="Show QR code">
       <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1.6" stroke="currentColor" stroke-width="1.8"/><rect x="14" y="3" width="7" height="7" rx="1.6" stroke="currentColor" stroke-width="1.8"/><rect x="3" y="14" width="7" height="7" rx="1.6" stroke="currentColor" stroke-width="1.8"/><rect x="14.4" y="14.4" width="2.4" height="2.4" rx="0.6" fill="currentColor"/><rect x="18.6" y="14.4" width="2.4" height="2.4" rx="0.6" fill="currentColor"/><rect x="14.4" y="18.6" width="2.4" height="2.4" rx="0.6" fill="currentColor"/><rect x="18.6" y="18.6" width="2.4" height="2.4" rx="0.6" fill="currentColor"/></svg>
     </button>
@@ -540,7 +592,7 @@
 <section class="sheet" id="send-sheet" aria-label="Send Transaction">
   <div class="sheet-header">
     <button class="s-back sheet-close" aria-label="Back"><svg viewBox="0 0 16 12" fill="none"><path d="M6 1L1 6l5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="2" y1="6" x2="15" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
-    <div class="title">Send Transaction</div>
+    <div class="title" data-i18n="send.title">Send Transaction</div>
     <button class="s-close sheet-close" aria-label="Close"><svg viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
   </div>
   <!-- G16: the honest "will it send?" answer. Static reassurance here; on device the bridge
@@ -554,11 +606,11 @@
     <button class="net-opt active" data-net="testnet">Testnet</button>
     <button class="net-opt" data-net="mainnet">Mainnet</button>
   </div>
-  <div class="net-warn" id="net-warn" hidden>⚠ Mainnet sends REAL funds</div>
+  <div class="net-warn" id="net-warn" hidden data-i18n="net.warn">⚠ Mainnet sends REAL funds</div>
   <div class="contacts-row">
     <div class="contacts-btn">
       <svg viewBox="0 0 24 28" fill="none"><rect x="2" y="2" width="20" height="24" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="11" r="3.2" fill="currentColor"/><path d="M6.5 20.5c0-3 2.5-5 5.5-5s5.5 2 5.5 5" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>
-      Contacts
+      <span data-i18n="send.contacts">Contacts</span>
     </div>
     <div class="contacts-divider"></div>
     <div class="recent">
@@ -567,7 +619,7 @@
       <svg class="hex" viewBox="0 0 20 18"><path d="M19.96 8.16 15.76.84A1.69 1.69 0 0014.3 0H5.89c-.6 0-1.16.32-1.46.84L.23 8.16c-.3.52-.3 1.16 0 1.69l4.2 7.31c.3.52.86.84 1.46.84h8.41c.6 0 1.16-.32 1.46-.84l4.2-7.31a1.69 1.69 0 00.01-1.69z" fill="rgba(31,35,72,.1)"/></svg>
     </div>
   </div>
-  <div class="enter-address-label">ENTER ADDRESS</div>
+  <div class="enter-address-label" data-i18n="send.enteraddr">ENTER ADDRESS</div>
   <div class="addr-grid">
     <input maxlength="4" placeholder="NQ" inputmode="text" aria-label="address block 1">
     <input maxlength="4" inputmode="text" aria-label="address block 2">
@@ -584,12 +636,186 @@
     <input id="send-amount" inputmode="decimal" placeholder="0" aria-label="Amount in NIM">
     <span class="unit">NIM</span>
   </div>
-  <button class="send-btn" id="send-btn">Send</button>
+  <button class="send-btn" id="send-btn" data-i18n="send.cta">Send</button>
   <div class="send-status" id="send-status" hidden></div>
-  <p class="send-foot">Address unavailable? <a href="javascript:void(0)">Create a Cashlink</a></p>
+  <p class="send-foot"><span data-i18n="send.noaddr">Address unavailable?</span> <a href="javascript:void(0)" data-i18n="send.cashlink">Create a Cashlink</a></p>
+</section>
+
+<!-- Account sheet: the wallet-pill replacement — your identicon opens YOUR account
+     (address / copy / backup / log out), like the real wallet's account menu. -->
+<section class="sheet" id="account-sheet" aria-label="My account">
+  <div class="sheet-header">
+    <div class="title" data-i18n="acct.title">My account</div>
+    <button class="s-close sheet-close" aria-label="Close"><svg viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+  </div>
+  <div class="receive-id">
+    <div class="identicon" data-wallet data-address="NQ30 AM32 NHXL 29F7 XUY0 HR3R 7XHF EF4L LYBS">
+      <img src='data:image/svg+xml,<svg width="64" height="64" viewBox="0 -4 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path opacity=".1" d="M62.3 25.4L49.2 2.6A5.3 5.3 0 0 0 44.6 0H18.4c-1.9 0-3.6 1-4.6 2.6L.7 25.4c-1 1.6-1 3.6 0 5.2l13.1 22.8c1 1.6 2.7 2.6 4.6 2.6h26.2c1.9 0 3.6-1 4.6-2.6l13-22.8c1-1.6 1-3.6.1-5.2z" fill="url(%23identicon_radial)"/><defs><radialGradient id="identicon_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(-63.0033 0 0 -56 63 56)"><stop stop-color="%23260133"/><stop offset="1" stop-color="%231F2348"/></radialGradient></defs></svg>' alt="Your account identicon">
+    </div>
+  </div>
+  <div class="addr-box">
+    <div class="address-display format-nimiq">
+      <span class="chunk">NQ30<span class="space">&nbsp;</span></span><span class="chunk">AM32<span class="space">&nbsp;</span></span><span class="chunk">NHXL<span class="space">&nbsp;</span></span><span class="chunk">29F7<span class="space">&nbsp;</span></span><span class="chunk">XUY0<span class="space">&nbsp;</span></span><span class="chunk">HR3R<span class="space">&nbsp;</span></span><span class="chunk">7XHF<span class="space">&nbsp;</span></span><span class="chunk">EF4L<span class="space">&nbsp;</span></span><span class="chunk">LYBS<span class="space">&nbsp;</span></span>
+    </div>
+  </div>
+  <div class="acct-actions">
+    <button id="acct-copy">
+      <svg viewBox="0 0 20 20" fill="none"><rect x="7" y="7" width="10" height="11" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M13 4.5V4a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <span id="acct-copy-label" data-i18n="acct.copy">Copy address</span>
+    </button>
+    <button id="acct-backup">
+      <svg viewBox="0 0 20 20" fill="none"><rect x="3" y="2.5" width="14" height="15" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M6.5 7h7M6.5 10.5h7M6.5 14h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <span data-i18n="acct.backup">Backup recovery words</span>
+    </button>
+    <button id="acct-logout" class="danger">
+      <svg viewBox="0 0 20 20" fill="none"><path d="M12.5 6.5V4.75A1.75 1.75 0 0 0 10.75 3h-6A1.75 1.75 0 0 0 3 4.75v10.5A1.75 1.75 0 0 0 4.75 17h6a1.75 1.75 0 0 0 1.75-1.75V13.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M8 10h9.5M14.5 7l3 3-3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span data-i18n="acct.logout">Log out of this device</span>
+    </button>
+  </div>
+  <div class="acct-meta" id="acct-meta"></div>
+</section>
+
+<!-- Language sheet: local, offline i18n (no CDN) — this is an offline-first app. -->
+<section class="sheet" id="lang-sheet" aria-label="Language">
+  <div class="sheet-header">
+    <div class="title" data-i18n="lang.title">Language</div>
+    <button class="s-close sheet-close" aria-label="Close"><svg viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+  </div>
+  <div class="lang-list" id="lang-list"></div>
 </section>
 
 <script type="module">
+  // ---- i18n: local + offline (no CDN — this is an offline-first mesh app). English keys
+  // mirror the markup verbatim; data-i18n / data-i18n-ph / data-i18n-aria mark the targets.
+  // The choice persists in UserDefaults via the bridge (localStorage as the browser fallback)
+  // and a language switch reloads so every dynamic string re-renders consistently.
+  const LANGS = { en: 'English', es: 'Español', de: 'Deutsch', fr: 'Français', pt: 'Português' };
+  const I18N = {
+    en: {},  // English = the markup itself; T() falls through to it only for dynamic strings below
+    es: {
+      'a.lang': 'Idioma', 'a.close': 'Cerrar', 'a.copied': 'Copiado',
+      'backup.cta': 'Respaldar', 'backup.gentle': 'No hay ‘olvidé mi contraseña’', 'backup.important': 'Respalda tu cartera', 'backup.critical': 'Respalda ahora o perderás tus fondos',
+      'home.label': 'Cartera mesh', 'home.search': 'Buscar transacciones',
+      'mesh.ready': 'Malla Bluetooth · lista sin conexión', 'mesh.nearby': 'cerca', 'mesh.state.offline': 'malla sin conexión', 'mesh.state.meshed': 'malla conectada', 'mesh.state.online': 'malla en línea',
+      'bar.receive': 'Recibir', 'bar.send': 'Enviar',
+      'tx.recent': 'Recientes', 'tx.pending': 'Pendiente', 'tx.empty.title': 'Aún no hay transacciones', 'tx.empty.sub': 'Fondea tu cartera y tus pagos aparecerán aquí',
+      'recv.title': 'Recibir NIM', 'recv.sub': 'Comparte tu dirección o solicita un monto exacto', 'recv.reqlabel': 'Solicitar un monto (opcional)', 'recv.reqlink': 'Crear enlace de solicitud', 'recv.requesting': 'Solicitando',
+      'send.title': 'Enviar transacción', 'send.cta': 'Enviar', 'send.noaddr': '¿Sin dirección?', 'send.cashlink': 'Crea un Cashlink', 'send.contacts': 'Contactos', 'send.enteraddr': 'INTRODUCE LA DIRECCIÓN',
+      'send.openapp': 'Abre la app para enviar', 'send.fulladdr': 'Introduce la dirección completa de 36 caracteres', 'send.needamount': 'Introduce un monto', 'send.signing': 'Firmando y transmitiendo…', 'send.sent': 'Enviado · tx ', 'send.failed': 'Falló: ',
+      'net.warn': '⚠ Mainnet envía fondos REALES', 'net.confirm': '¿Cambiar a MAINNET? Los envíos usarán fondos REALES.',
+      'reach.default': 'Se retransmite por la malla y llega a la red cuando un dispositivo conectado está en línea', 'reach.online': 'Hay una pasarela accesible, esto se envía a la red ahora', 'reach.meshed': 'Conectado a la malla, retransmitiendo hasta llegar a la red', 'reach.offline': 'No hay dispositivos cerca todavía, en cola hasta que haya uno al alcance',
+      'ob.title': 'Bienvenido a nimmesh', 'ob.sub': 'Paga con NIM incluso sin internet. Configura tu cartera para empezar.', 'ob.create': 'Crear cartera nueva', 'ob.create.sub': 'Genera una frase de recuperación', 'ob.import': 'Importar cartera', 'ob.import.sub': 'Usa tus 24 palabras de recuperación',
+      'words.title': 'Tus palabras de recuperación', 'words.create.sub': 'Escribe estas 24 palabras en orden. Cualquiera con ellas controla tus fondos y nimmesh no puede recuperarlas por ti.', 'words.backup.sub': 'Escríbelas y guárdalas en un lugar seguro. Cualquiera con estas palabras controla tus fondos.', 'words.copy': 'Copiar palabras', 'words.saved': 'He escrito mis 24 palabras y las guardé en un lugar seguro', 'words.continue': 'Continuar',
+      'import.title': 'Introduce las palabras', 'import.sub': 'Escribe las 24 palabras de la cartera que quieres importar. Puedes pegarlas todas en el primer campo.', 'import.invalid': 'Esa no es una frase válida de 24 palabras. Revisa las palabras y la ortografía.',
+      'confirm.title': 'Confirma tu dirección', 'confirm.sub': 'Esta es la dirección que nimmesh derivó de tu frase.', 'confirm.warn': 'Comprueba que coincide exactamente con tu cartera antes de enviarle fondos.', 'confirm.mine': 'Esta es mi cartera', 'confirm.retry': 'No es correcta, intentar de nuevo',
+      'rec.title': 'Cartera encontrada en este dispositivo', 'rec.sub': 'Una cartera de una instalación anterior sigue en el almacenamiento seguro del dispositivo. Esta es su dirección:', 'rec.keep': 'Conservar esta cartera', 'rec.fresh': 'Borrarla y empezar de cero', 'rec.confirm': '¿Borrar la cartera de este dispositivo? Sin sus 24 palabras NO se puede recuperar.',
+      'acct.title': 'Mi cuenta', 'acct.copy': 'Copiar dirección', 'acct.backup': 'Respaldar palabras de recuperación', 'acct.logout': 'Cerrar sesión en este dispositivo', 'acct.logout.confirm': '¿Eliminar la cartera de este dispositivo? Sin tus 24 palabras NO se puede recuperar. Asegúrate de tenerlas guardadas.',
+      'lang.title': 'Idioma', 'create.failed': 'No se pudo crear la cartera: ',
+    },
+    de: {
+      'a.lang': 'Sprache', 'a.close': 'Schließen', 'a.copied': 'Kopiert',
+      'backup.cta': 'Backup', 'backup.gentle': 'Es gibt kein ‘Passwort vergessen’', 'backup.important': 'Sichere deine Wallet', 'backup.critical': 'Sichere jetzt oder verliere dein Guthaben',
+      'home.label': 'Mesh-Wallet', 'home.search': 'Transaktionen suchen',
+      'mesh.ready': 'Bluetooth-Mesh · offline bereit', 'mesh.nearby': 'in der Nähe', 'mesh.state.offline': 'Mesh offline', 'mesh.state.meshed': 'Mesh verbunden', 'mesh.state.online': 'Mesh online',
+      'bar.receive': 'Empfangen', 'bar.send': 'Senden',
+      'tx.recent': 'Zuletzt', 'tx.pending': 'Ausstehend', 'tx.empty.title': 'Noch keine Transaktionen', 'tx.empty.sub': 'Lade deine Wallet auf und deine Zahlungen erscheinen hier',
+      'recv.title': 'NIM empfangen', 'recv.sub': 'Teile deine Adresse oder fordere einen genauen Betrag an', 'recv.reqlabel': 'Betrag anfordern (optional)', 'recv.reqlink': 'Anfrage-Link erstellen', 'recv.requesting': 'Angefordert:',
+      'send.title': 'Transaktion senden', 'send.cta': 'Senden', 'send.noaddr': 'Keine Adresse?', 'send.cashlink': 'Cashlink erstellen', 'send.contacts': 'Kontakte', 'send.enteraddr': 'ADRESSE EINGEBEN',
+      'send.openapp': 'Zum Senden die App öffnen', 'send.fulladdr': 'Gib die vollständige 36-stellige Adresse ein', 'send.needamount': 'Gib einen Betrag ein', 'send.signing': 'Signieren + Senden…', 'send.sent': 'Gesendet · tx ', 'send.failed': 'Fehlgeschlagen: ',
+      'net.warn': '⚠ Mainnet sendet ECHTES Geld', 'net.confirm': 'Zu MAINNET wechseln? Sendungen verwenden ECHTES Geld.',
+      'reach.default': 'Wird über das Mesh weitergereicht und erreicht das Netzwerk, sobald ein verbundenes Gerät online ist', 'reach.online': 'Ein Gateway ist erreichbar, dies wird jetzt ins Netzwerk gesendet', 'reach.meshed': 'Mit dem Mesh verbunden, wird weitergereicht bis es das Netzwerk erreicht', 'reach.offline': 'Noch keine Geräte in der Nähe, wartet bis eines in Reichweite ist',
+      'ob.title': 'Willkommen bei nimmesh', 'ob.sub': 'Zahle mit NIM, auch ohne Internet. Richte deine Wallet ein, um zu starten.', 'ob.create': 'Neue Wallet erstellen', 'ob.create.sub': 'Erzeugt eine Wiederherstellungs-Phrase', 'ob.import': 'Wallet importieren', 'ob.import.sub': 'Nutze deine 24 Wiederherstellungswörter',
+      'words.title': 'Deine Wiederherstellungswörter', 'words.create.sub': 'Schreibe diese 24 Wörter der Reihe nach auf. Jeder mit diesen Wörtern kontrolliert dein Guthaben, und nimmesh kann sie nicht für dich wiederherstellen.', 'words.backup.sub': 'Schreibe sie auf und bewahre sie sicher auf. Jeder mit diesen Wörtern kontrolliert dein Guthaben.', 'words.copy': 'Wörter kopieren', 'words.saved': 'Ich habe meine 24 Wörter aufgeschrieben und sicher verwahrt', 'words.continue': 'Weiter',
+      'import.title': 'Wiederherstellungswörter eingeben', 'import.sub': 'Tippe die 24 Wörter der Wallet ein, die du importieren willst. Du kannst alle in das erste Feld einfügen.', 'import.invalid': 'Das ist keine gültige 24-Wort-Phrase. Prüfe die Wörter und die Schreibweise.',
+      'confirm.title': 'Bestätige deine Adresse', 'confirm.sub': 'Das ist die Adresse, die nimmesh aus deiner Phrase abgeleitet hat.', 'confirm.warn': 'Prüfe genau, dass sie mit deiner bestehenden Wallet übereinstimmt, bevor du Geld darauf sendest.', 'confirm.mine': 'Das ist meine Wallet', 'confirm.retry': 'Stimmt nicht, nochmal versuchen',
+      'rec.title': 'Wallet auf diesem Gerät gefunden', 'rec.sub': 'Eine Wallet einer früheren Installation liegt noch im sicheren Speicher des Geräts. Das ist ihre Adresse:', 'rec.keep': 'Diese Wallet behalten', 'rec.fresh': 'Löschen und neu anfangen', 'rec.confirm': 'Wallet von diesem Gerät löschen? Ohne ihre 24 Wörter ist sie NICHT wiederherstellbar.',
+      'acct.title': 'Mein Konto', 'acct.copy': 'Adresse kopieren', 'acct.backup': 'Wiederherstellungswörter sichern', 'acct.logout': 'Von diesem Gerät abmelden', 'acct.logout.confirm': 'Wallet von diesem Gerät entfernen? Ohne deine 24 Wörter ist sie NICHT wiederherstellbar. Stelle sicher, dass du sie gesichert hast.',
+      'lang.title': 'Sprache', 'create.failed': 'Wallet konnte nicht erstellt werden: ',
+    },
+    fr: {
+      'a.lang': 'Langue', 'a.close': 'Fermer', 'a.copied': 'Copié',
+      'backup.cta': 'Sauvegarde', 'backup.gentle': 'Il n’y a pas de ‘mot de passe oublié’', 'backup.important': 'Sauvegarde ton portefeuille', 'backup.critical': 'Sauvegarde maintenant ou perds tes fonds',
+      'home.label': 'Portefeuille mesh', 'home.search': 'Rechercher des transactions',
+      'mesh.ready': 'Mesh Bluetooth · prêt hors ligne', 'mesh.nearby': 'à proximité', 'mesh.state.offline': 'mesh hors ligne', 'mesh.state.meshed': 'mesh connecté', 'mesh.state.online': 'mesh en ligne',
+      'bar.receive': 'Recevoir', 'bar.send': 'Envoyer',
+      'tx.recent': 'Récentes', 'tx.pending': 'En attente', 'tx.empty.title': 'Pas encore de transactions', 'tx.empty.sub': 'Alimente ton portefeuille et tes paiements apparaîtront ici',
+      'recv.title': 'Recevoir des NIM', 'recv.sub': 'Partage ton adresse ou demande un montant exact', 'recv.reqlabel': 'Demander un montant (facultatif)', 'recv.reqlink': 'Créer un lien de demande', 'recv.requesting': 'Demande de',
+      'send.title': 'Envoyer une transaction', 'send.cta': 'Envoyer', 'send.noaddr': 'Adresse indisponible ?', 'send.cashlink': 'Créer un Cashlink', 'send.contacts': 'Contacts', 'send.enteraddr': 'SAISIR L’ADRESSE',
+      'send.openapp': 'Ouvre l’app pour envoyer', 'send.fulladdr': 'Saisis l’adresse complète de 36 caractères', 'send.needamount': 'Saisis un montant', 'send.signing': 'Signature + diffusion…', 'send.sent': 'Envoyé · tx ', 'send.failed': 'Échec : ',
+      'net.warn': '⚠ Le mainnet envoie des fonds RÉELS', 'net.confirm': 'Passer au MAINNET ? Les envois utiliseront des fonds RÉELS.',
+      'reach.default': 'Relayé par le mesh, il atteint le réseau dès qu’un appareil connecté est en ligne', 'reach.online': 'Une passerelle est joignable, l’envoi part sur le réseau maintenant', 'reach.meshed': 'Connecté au mesh, relayé jusqu’à atteindre le réseau', 'reach.offline': 'Aucun appareil à proximité pour l’instant, en file d’attente',
+      'ob.title': 'Bienvenue sur nimmesh', 'ob.sub': 'Paie en NIM même sans internet. Configure ton portefeuille pour commencer.', 'ob.create': 'Créer un portefeuille', 'ob.create.sub': 'Génère une phrase de récupération', 'ob.import': 'Importer un portefeuille', 'ob.import.sub': 'Utilise tes 24 mots de récupération',
+      'words.title': 'Tes mots de récupération', 'words.create.sub': 'Note ces 24 mots dans l’ordre. Quiconque les détient contrôle tes fonds, et nimmesh ne peut pas les récupérer pour toi.', 'words.backup.sub': 'Note-les et garde-les en lieu sûr. Quiconque détient ces mots contrôle tes fonds.', 'words.copy': 'Copier les mots', 'words.saved': 'J’ai noté mes 24 mots et je les ai rangés en lieu sûr', 'words.continue': 'Continuer',
+      'import.title': 'Saisis les mots de récupération', 'import.sub': 'Tape les 24 mots du portefeuille à importer. Tu peux tous les coller dans le premier champ.', 'import.invalid': 'Ce n’est pas une phrase valide de 24 mots. Vérifie les mots et l’orthographe.',
+      'confirm.title': 'Confirme ton adresse', 'confirm.sub': 'Voici l’adresse que nimmesh a dérivée de ta phrase.', 'confirm.warn': 'Vérifie qu’elle correspond exactement à ton portefeuille avant d’y envoyer des fonds.', 'confirm.mine': 'C’est mon portefeuille', 'confirm.retry': 'Ce n’est pas ça, réessayer',
+      'rec.title': 'Portefeuille trouvé sur cet appareil', 'rec.sub': 'Un portefeuille d’une installation précédente est encore dans le stockage sécurisé. Voici son adresse :', 'rec.keep': 'Garder ce portefeuille', 'rec.fresh': 'Le supprimer et repartir de zéro', 'rec.confirm': 'Supprimer le portefeuille de cet appareil ? Sans ses 24 mots il est IRRÉCUPÉRABLE.',
+      'acct.title': 'Mon compte', 'acct.copy': 'Copier l’adresse', 'acct.backup': 'Sauvegarder les mots de récupération', 'acct.logout': 'Se déconnecter de cet appareil', 'acct.logout.confirm': 'Supprimer le portefeuille de cet appareil ? Sans tes 24 mots il est IRRÉCUPÉRABLE. Assure-toi de les avoir sauvegardés.',
+      'lang.title': 'Langue', 'create.failed': 'Impossible de créer le portefeuille : ',
+    },
+    pt: {
+      'a.lang': 'Idioma', 'a.close': 'Fechar', 'a.copied': 'Copiado',
+      'backup.cta': 'Backup', 'backup.gentle': 'Não existe ‘esqueci a senha’', 'backup.important': 'Faça backup da sua carteira', 'backup.critical': 'Faça backup agora ou perca seus fundos',
+      'home.label': 'Carteira mesh', 'home.search': 'Buscar transações',
+      'mesh.ready': 'Mesh Bluetooth · pronto offline', 'mesh.nearby': 'por perto', 'mesh.state.offline': 'mesh offline', 'mesh.state.meshed': 'mesh conectado', 'mesh.state.online': 'mesh online',
+      'bar.receive': 'Receber', 'bar.send': 'Enviar',
+      'tx.recent': 'Recentes', 'tx.pending': 'Pendente', 'tx.empty.title': 'Ainda não há transações', 'tx.empty.sub': 'Adicione fundos à carteira e seus pagamentos aparecerão aqui',
+      'recv.title': 'Receber NIM', 'recv.sub': 'Compartilhe seu endereço ou solicite um valor exato', 'recv.reqlabel': 'Solicitar um valor (opcional)', 'recv.reqlink': 'Criar link de cobrança', 'recv.requesting': 'Solicitando',
+      'send.title': 'Enviar transação', 'send.cta': 'Enviar', 'send.noaddr': 'Sem endereço?', 'send.cashlink': 'Criar um Cashlink', 'send.contacts': 'Contatos', 'send.enteraddr': 'INSERIR ENDEREÇO',
+      'send.openapp': 'Abra o app para enviar', 'send.fulladdr': 'Insira o endereço completo de 36 caracteres', 'send.needamount': 'Insira um valor', 'send.signing': 'Assinando + transmitindo…', 'send.sent': 'Enviado · tx ', 'send.failed': 'Falhou: ',
+      'net.warn': '⚠ A mainnet envia fundos REAIS', 'net.confirm': 'Mudar para MAINNET? Os envios usarão fundos REAIS.',
+      'reach.default': 'Retransmitido pela mesh, chega à rede quando um aparelho conectado estiver online', 'reach.online': 'Um gateway está acessível, isto vai para a rede agora', 'reach.meshed': 'Conectado à mesh, retransmitindo até chegar à rede', 'reach.offline': 'Nenhum aparelho por perto ainda, na fila até um ficar ao alcance',
+      'ob.title': 'Bem-vindo ao nimmesh', 'ob.sub': 'Pague com NIM mesmo sem internet. Configure sua carteira para começar.', 'ob.create': 'Criar carteira nova', 'ob.create.sub': 'Gera uma frase de recuperação', 'ob.import': 'Importar carteira', 'ob.import.sub': 'Use suas 24 palavras de recuperação',
+      'words.title': 'Suas palavras de recuperação', 'words.create.sub': 'Anote estas 24 palavras em ordem. Qualquer pessoa com elas controla seus fundos, e o nimmesh não pode recuperá-las por você.', 'words.backup.sub': 'Anote-as e guarde-as em segurança. Qualquer pessoa com estas palavras controla seus fundos.', 'words.copy': 'Copiar palavras', 'words.saved': 'Anotei minhas 24 palavras e as guardei em segurança', 'words.continue': 'Continuar',
+      'import.title': 'Insira as palavras de recuperação', 'import.sub': 'Digite as 24 palavras da carteira que quer importar. Você pode colar todas no primeiro campo.', 'import.invalid': 'Essa não é uma frase válida de 24 palavras. Confira as palavras e a grafia.',
+      'confirm.title': 'Confirme seu endereço', 'confirm.sub': 'Este é o endereço que o nimmesh derivou da sua frase.', 'confirm.warn': 'Confira se corresponde exatamente à sua carteira antes de enviar fundos para ela.', 'confirm.mine': 'Esta é a minha carteira', 'confirm.retry': 'Não está certo, tentar de novo',
+      'rec.title': 'Carteira encontrada neste aparelho', 'rec.sub': 'Uma carteira de uma instalação anterior ainda está no armazenamento seguro do aparelho. Este é o endereço dela:', 'rec.keep': 'Manter esta carteira', 'rec.fresh': 'Apagá-la e começar do zero', 'rec.confirm': 'Apagar a carteira deste aparelho? Sem as 24 palavras ela NÃO pode ser recuperada.',
+      'acct.title': 'Minha conta', 'acct.copy': 'Copiar endereço', 'acct.backup': 'Backup das palavras de recuperação', 'acct.logout': 'Sair deste aparelho', 'acct.logout.confirm': 'Remover a carteira deste aparelho? Sem suas 24 palavras ela NÃO pode ser recuperada. Garanta que você as guardou.',
+      'lang.title': 'Idioma', 'create.failed': 'Não foi possível criar a carteira: ',
+    },
+  };
+  // English dynamic strings (the static ones live in the markup and are left untouched for en).
+  I18N.en = {
+    'a.copied': 'Copied',
+    'backup.gentle': 'There is no ‘forgot password’', 'backup.important': 'Back up your wallet', 'backup.critical': 'Back up now or lose your funds',
+    'mesh.nearby': 'nearby', 'mesh.state.offline': 'mesh offline', 'mesh.state.meshed': 'mesh meshed', 'mesh.state.online': 'mesh online',
+    'tx.recent': 'Recent', 'tx.pending': 'Pending', 'tx.empty.title': 'No transactions yet', 'tx.empty.sub': 'Fund your wallet and your payments show up here',
+    'recv.requesting': 'Requesting',
+    'send.openapp': 'Open in the app to send', 'send.fulladdr': 'Enter the full 36-character address', 'send.needamount': 'Enter an amount', 'send.signing': 'Signing + broadcasting…', 'send.sent': 'Sent · tx ', 'send.failed': 'Failed: ',
+    'net.confirm': 'Switch to MAINNET? Sends will use REAL funds.',
+    'reach.default': 'Relays over the mesh and reaches the network when a connected device is online', 'reach.online': 'A gateway is reachable, so this sends to the network now', 'reach.meshed': 'Connected to the mesh, relaying until it reaches the network', 'reach.offline': 'No devices nearby yet, queued until one is in range',
+    'import.invalid': 'That is not a valid 24-word recovery phrase. Check the words and the spelling.',
+    'rec.confirm': 'Delete the wallet from this device? Without its 24 words it CANNOT be recovered.',
+    'acct.logout.confirm': 'Remove the wallet from this device? Without your 24 words it CANNOT be recovered. Make sure you have them backed up.',
+    'create.failed': 'Could not create wallet: ',
+  };
+  let LANG = 'en';
+  function T(key) { return (I18N[LANG] && I18N[LANG][key]) || I18N.en[key] || key; }
+  async function initLang() {
+    let saved = '';
+    try { if (window.nimmesh && nimmesh.getLang) saved = (await nimmesh.getLang()).lang || ''; } catch (e) {}
+    if (!saved) { try { saved = localStorage.getItem('nimmesh.lang') || ''; } catch (e) {} }
+    if (!saved) { const nav = (navigator.language || 'en').slice(0, 2).toLowerCase(); saved = LANGS[nav] ? nav : 'en'; }
+    LANG = LANGS[saved] ? saved : 'en';
+  }
+  function applyI18n() {
+    document.documentElement.lang = LANG;
+    if (LANG !== 'en') {
+      document.querySelectorAll('[data-i18n]').forEach((el) => { const v = I18N[LANG][el.dataset.i18n]; if (v) el.textContent = v; });
+      document.querySelectorAll('[data-i18n-ph]').forEach((el) => { const v = I18N[LANG][el.dataset.i18nPh]; if (v) el.placeholder = v; });
+      document.querySelectorAll('[data-i18n-aria]').forEach((el) => { const v = I18N[LANG][el.dataset.i18nAria]; if (v) el.setAttribute('aria-label', v); });
+    }
+    const code = document.getElementById('lang-pill-code');
+    if (code) code.textContent = LANG.toUpperCase();
+  }
+  async function switchLang(l) {
+    if (!LANGS[l] || l === LANG) return;
+    try { localStorage.setItem('nimmesh.lang', l); } catch (e) {}
+    try { if (window.nimmesh && nimmesh.setLang) await nimmesh.setLang(l); } catch (e) {}
+    location.reload();  // every dynamic string re-renders consistently in the new language
+  }
+  await initLang();
+  applyI18n();
+
   // Swap every identicon placeholder for the real deterministic iqon.
   // CRITICAL: Iqons.svgPath (the part sprite) must be set BEFORE toDataUrl().
   import Iqons from 'https://cdn.jsdelivr.net/npm/@nimiq/iqons@1.6.0/dist/iqons.min.js';
@@ -599,15 +825,43 @@
     catch (e) { console.error('iqon failed', e); }
   }
 
-  // A3: bottom-sheet open/close (Receive / Send).
+  // A3: bottom-sheet open/close (Receive / Send / Account / Language).
   const backdrop = document.getElementById('backdrop');
-  const sheets = { receive: document.getElementById('receive-sheet'), send: document.getElementById('send-sheet') };
+  const sheets = {
+    receive: document.getElementById('receive-sheet'), send: document.getElementById('send-sheet'),
+    account: document.getElementById('account-sheet'), lang: document.getElementById('lang-sheet'),
+  };
   const open = (k) => { backdrop.classList.add('open'); sheets[k].classList.add('open'); };
   const close = () => { backdrop.classList.remove('open'); Object.values(sheets).forEach(s => s.classList.remove('open')); };
   document.getElementById('open-receive').addEventListener('click', () => open('receive'));
   document.getElementById('open-send').addEventListener('click', () => open('send'));
   backdrop.addEventListener('click', close);
   document.querySelectorAll('.sheet-close').forEach(b => b.addEventListener('click', close));
+
+  // The language pill + sheet: local and offline, persisted via the bridge (UserDefaults).
+  (function mountLangUI() {
+    const list = document.getElementById('lang-list');
+    if (!list) return;
+    list.innerHTML = Object.entries(LANGS).map(([code, name]) =>
+      `<button data-lang="${code}" class="${code === LANG ? 'active' : ''}"><span>${name}</span>` +
+      '<svg class="check" viewBox="0 0 16 16" fill="none"><path d="M2.5 8.5L6 12l7.5-8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>').join('');
+    list.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => switchLang(b.dataset.lang)));
+    document.getElementById('lang-pill').addEventListener('click', () => open('lang'));
+  })();
+
+  // The account pill (identicon) opens the account sheet: address / copy / backup / log out.
+  // Revealed by the boot block once the bridge confirms a wallet exists.
+  document.getElementById('account-pill').addEventListener('click', () => open('account'));
+  document.getElementById('acct-copy').addEventListener('click', () => {
+    const compact = window.RECEIVE_ADDR || '';
+    const spaced = (compact.match(/.{1,4}/g) || []).join(' ');
+    copyText(spaced, 'acct-copy-label');
+  });
+  document.getElementById('acct-logout').addEventListener('click', async () => {
+    if (!(window.nimmesh && nimmesh.deleteWallet)) return;
+    if (!confirm(T('acct.logout.confirm'))) return;
+    try { await nimmesh.deleteWallet(); location.reload(); } catch (e) {}
+  });
   // G18: the "pay me X NIM" request — build a nimiq: URI (address + optional amount) and show
   // it as a QR so the payer's amount is pre-filled (no fat-fingering). The Rust `request_uri`
   // codec is the cross-platform-exact authority used natively; this builds the same simple URI
@@ -628,7 +882,7 @@
     if (window.renderReceiveQR) window.renderReceiveQR(buildReceiveUri());
     const nim = requestedNim();
     const tag = document.getElementById('qr-amount');
-    if (tag) { tag.hidden = nim === 0; tag.textContent = nim > 0 ? `Requesting ${nim} NIM` : ''; }
+    if (tag) { tag.hidden = nim === 0; tag.textContent = nim > 0 ? `${T('recv.requesting')} ${nim} NIM` : ''; }
   }
   function revealQR(show) {
     document.getElementById('qr-reveal').hidden = !show;
@@ -660,19 +914,19 @@
     sendStatus.className = 'send-status' + (cls ? ' ' + cls : '');
   }
   sendBtn.addEventListener('click', async () => {
-    if (!(window.nimmesh && nimmesh.sendTransaction)) { setSendStatus('Open in the app to send', 'err'); return; }
+    if (!(window.nimmesh && nimmesh.sendTransaction)) { setSendStatus(T('send.openapp'), 'err'); return; }
     const recipient = cells.map((c) => c.value.trim().toUpperCase()).join('');
     const nim = parseFloat(document.getElementById('send-amount').value);
-    if (recipient.replace(/\s/g, '').length < 36) { setSendStatus('Enter the full 36-character address', 'err'); return; }
-    if (!(nim > 0)) { setSendStatus('Enter an amount', 'err'); return; }
+    if (recipient.replace(/\s/g, '').length < 36) { setSendStatus(T('send.fulladdr'), 'err'); return; }
+    if (!(nim > 0)) { setSendStatus(T('send.needamount'), 'err'); return; }
     const amountLuna = Math.round(nim * 100000);
     sendBtn.disabled = true;
-    setSendStatus('Signing + broadcasting…');
+    setSendStatus(T('send.signing'));
     try {
       const r = await nimmesh.sendTransaction({ recipient, amountLuna });
-      setSendStatus('Sent · tx ' + r.txHash, 'ok');
+      setSendStatus(T('send.sent') + r.txHash, 'ok');
     } catch (e) {
-      setSendStatus('Failed: ' + (e && e.message ? e.message : e), 'err');
+      setSendStatus(T('send.failed') + (e && e.message ? e.message : e), 'err');
     } finally {
       sendBtn.disabled = false;
     }
@@ -687,7 +941,7 @@
   }
   netOpts.forEach((o) => o.addEventListener('click', async () => {
     const mainnet = o.dataset.net === 'mainnet';
-    if (mainnet && !confirm('Switch to MAINNET? Sends will use REAL funds.')) return;
+    if (mainnet && !confirm(T('net.confirm'))) return;
     if (window.nimmesh && nimmesh.setNetwork) { try { await nimmesh.setNetwork(mainnet); } catch (e) {} }
     applyNetwork(mainnet);
   }));
@@ -703,9 +957,9 @@
     if (urgency === 'none') { wrap.hidden = true; return; }   // backed up / nothing at stake
     wrap.hidden = false;
     const COPY = {
-      gentle: 'There is no ‘forgot password’',
-      important: 'Back up your wallet',
-      critical: 'Back up now or lose your funds',
+      gentle: T('backup.gentle'),
+      important: T('backup.important'),
+      critical: T('backup.critical'),
     };
     msg.textContent = COPY[urgency] || COPY.gentle;
     const isCritical = urgency === 'critical';
@@ -720,11 +974,11 @@
     const txt = document.getElementById('send-reach-text');
     if (!el || !txt) return;
     const MAP = {
-      online: ['', 'A gateway is reachable, so this sends to the network now'],
-      meshed: ['meshed', 'Connected to the mesh, relaying until it reaches the network'],
-      offline: ['offline', 'No devices nearby yet, queued until one is in range'],
+      online: ['', T('reach.online')],
+      meshed: ['meshed', T('reach.meshed')],
+      offline: ['offline', T('reach.offline')],
     };
-    const [cls, copy] = MAP[r] || ['', 'Relays over the mesh and reaches the network when a connected device is online'];
+    const [cls, copy] = MAP[r] || ['', T('reach.default')];
     el.className = 'send-reach' + (cls ? ' ' + cls : '');
     txt.textContent = copy;
   }
@@ -749,8 +1003,8 @@
     if (!txs.length) {
       list.innerHTML = '<div class="tx-empty" style="text-align:center;padding:48px 24px;color:#1f2348;opacity:.45">'
         + '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true" style="width:40px;height:40px;margin-bottom:12px"><circle cx="5" cy="18" r="2.4" fill="currentColor"/><circle cx="19" cy="18" r="2.4" fill="currentColor"/><circle cx="12" cy="5" r="2.4" fill="currentColor"/><path d="M6.4 16.3 10.7 6.9M13.3 6.9l4.3 9.4M7.2 18h9.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>'
-        + '<div style="font-weight:700;font-size:15px">No transactions yet</div>'
-        + '<div style="font-size:13px;opacity:.8;margin-top:4px">Fund your wallet and your payments show up here</div></div>';
+        + `<div style="font-weight:700;font-size:15px">${T('tx.empty.title')}</div>`
+        + `<div style="font-size:13px;opacity:.8;margin-top:4px">${T('tx.empty.sub')}</div></div>`;
       return;
     }
     const rows = txs.map((t) => {
@@ -762,7 +1016,7 @@
       const addr = (t.counterparty || '').trim();
       const cls = t.confirmed ? 'confirmed' : 'pending';
       const amtCls = t.incoming ? 'amounts isIncoming' : 'amounts';
-      const status = t.confirmed ? `${hh}:${mm}` : '<span class="tx-pending">Pending</span>';
+      const status = t.confirmed ? `${hh}:${mm}` : `<span class="tx-pending">${T('tx.pending')}</span>`;
       return `<button class="transaction ${cls}">
         <div class="date"><span class="day">${day}</span><br><span class="month">${mon}</span></div>
         <div class="identicon" data-address="${addr}"><img alt="Nimiq identicon"></div>
@@ -770,7 +1024,7 @@
         <div class="${amtCls}"><span class="amount">${fmtNim(t.valueLuna)} <span class="currency nim">NIM</span></span><div class="fiat-amount fiat-loading">&nbsp;</div></div>
       </button>`;
     }).join('');
-    list.innerHTML = `<div class="month-label"><label>Recent</label></div>${rows}`;
+    list.innerHTML = `<div class="month-label"><label>${T('tx.recent')}</label></div>${rows}`;
     for (const el of list.querySelectorAll('.identicon[data-address]')) {
       try { el.querySelector('img').src = await Iqons.toDataUrl(el.dataset.address); } catch (e) {}
     }
@@ -815,7 +1069,7 @@
     return [...document.querySelectorAll(`#${id} input`)].map((x) => x.value.trim()).join(' ').trim();
   }
   function obShow(id) {
-    ['ob-welcome', 'ob-create-screen', 'ob-import-screen', 'ob-confirm-screen'].forEach((s) => {
+    ['ob-welcome', 'ob-create-screen', 'ob-import-screen', 'ob-confirm-screen', 'ob-recovered'].forEach((s) => {
       const el = document.getElementById(s); if (el) el.hidden = (s !== id);
     });
     const ob = document.getElementById('onboard'); if (ob) ob.hidden = false;
@@ -824,7 +1078,7 @@
     try {
       navigator.clipboard.writeText(text);
       const b = document.getElementById(btnId);
-      if (b) { const t = b.textContent; b.textContent = 'Copied'; setTimeout(() => { b.textContent = t; }, 1200); }
+      if (b) { const t = b.textContent; b.textContent = T('a.copied'); setTimeout(() => { b.textContent = t; }, 1200); }
     } catch (e) { /* clipboard unavailable */ }
   }
   function wordsOf(id) {
@@ -841,7 +1095,7 @@
         document.getElementById('ob-saved').checked = false;
         document.getElementById('ob-create-done').disabled = true;
         obShow('ob-create-screen');
-      } catch (e) { alert('Could not create wallet: ' + (e && e.message ? e.message : e)); }
+      } catch (e) { alert(T('create.failed') + (e && e.message ? e.message : e)); }
     });
     document.getElementById('ob-saved').addEventListener('change', (e) => {
       document.getElementById('ob-create-done').disabled = !e.target.checked;
@@ -860,19 +1114,32 @@
           .map((c) => `<span class="chunk">${c}<span class="space">&nbsp;</span></span>`).join('');
         obShow('ob-confirm-screen');
       } catch (e) {
-        err.textContent = 'That is not a valid 24-word recovery phrase. Check the words and the spelling.';
+        err.textContent = T('import.invalid');
       }
     });
     document.getElementById('ob-confirm-done').addEventListener('click', () => location.reload());
-    // Backup view (from the banner's Backup button).
-    const open = document.getElementById('backup-open');
-    if (open) open.addEventListener('click', async () => {
+    // Backup view (from the banner's Backup button AND the account sheet).
+    async function openBackupView() {
       if (!(window.nimmesh && nimmesh.recoveryPhrase)) return;
       try { const r = await nimmesh.recoveryPhrase(); fillWordsGrid('backup-words', r.mnemonic); document.getElementById('backup-view').hidden = false; }
       catch (e) { /* no wallet */ }
-    });
+    }
+    const openBanner = document.getElementById('backup-open');
+    if (openBanner) openBanner.addEventListener('click', openBackupView);
+    document.getElementById('acct-backup').addEventListener('click', () => { close(); openBackupView(); });
     document.getElementById('backup-close').addEventListener('click', () => { document.getElementById('backup-view').hidden = true; });
     document.getElementById('backup-copy').addEventListener('click', () => copyText(wordsOf('backup-words'), 'backup-copy'));
+    // Reinstall recovery: keep the previous install's wallet, or delete it and start fresh.
+    // "Start fresh" confirms first — without the 24 words the old wallet is unrecoverable.
+    document.getElementById('ob-keep').addEventListener('click', async () => {
+      try { await nimmesh.resolveRecovered(true); } catch (e) {}
+      location.reload();
+    });
+    document.getElementById('ob-fresh').addEventListener('click', async () => {
+      if (!confirm(T('rec.confirm'))) return;
+      try { await nimmesh.resolveRecovered(false); } catch (e) {}
+      obShow('ob-welcome');
+    });
   })();
 
   // C1f: hide the launch splash once the wallet state is known + real data is in. The 5s
@@ -883,22 +1150,33 @@
   // A1/A4: the mesh status line is always visible (the obvious "this is the offline mesh"
   // differentiator). On device the bridge enriches it with live peers/network/core.
   if (window.nimmesh) {
-    // C1e: no wallet yet -> run onboarding (create/import) before showing the home.
+    // C1e: no wallet yet -> onboarding (create/import). A wallet that predates this install
+    // (the Keychain outlives an uninstall) is never adopted silently — the user chooses
+    // "keep it or start fresh" on the recovered screen first.
     try {
-      if (nimmesh.walletExists) {
-        const w = await nimmesh.walletExists();
-        if (!w.exists) { obShow('ob-welcome'); hideSplash(); }
-      }
+      const w = nimmesh.walletStatus ? await nimmesh.walletStatus()
+        : { ...(await nimmesh.walletExists()), recovered: false };
+      if (w.exists && w.recovered) {
+        try {
+          const { address } = await nimmesh.walletAddress();
+          const compact = (address || '').replace(/\s+/g, '');
+          document.getElementById('ob-recovered-addr').innerHTML = (compact.match(/.{1,4}/g) || [])
+            .map((c) => `<span class="chunk">${c}<span class="space">&nbsp;</span></span>`).join('');
+        } catch (e) {}
+        obShow('ob-recovered'); hideSplash();
+      } else if (!w.exists) { obShow('ob-welcome'); hideSplash(); }
     } catch (e) { /* assume wallet exists if the probe fails */ }
     // Reflect the selected network (default testnet) in the toggle + the mesh bar.
     let netName = 'testnet';
     try { const net = await nimmesh.currentNetwork(); netName = net.name; applyNetwork(net.mainnet); } catch (e) {}
     try {
       const [v, m] = await Promise.all([nimmesh.version(), nimmesh.meshStatus()]);
-      let line = `mesh ${m.state} · ${m.peers} nearby · ${netName} · core ${v.core}`;
+      let line = `${T('mesh.state.' + m.state)} · ${m.peers} ${T('mesh.nearby')} · ${netName} · core ${v.core}`;
       // C1c: also show the live head we anchor sends to (proves app → chain RPC works).
       try { const h = await nimmesh.headHeight(); if (h && h.height) line += ` · head ${h.height}`; } catch (e) {}
       document.getElementById('meshbar-text').textContent = line;
+      const meta = document.getElementById('acct-meta');
+      if (meta) meta.textContent = `${netName} · core ${v.core}`;
     } catch (e) { console.error('bridge probe failed', e); }
     // G16: light up the Send sheet's "will it send?" line from the node's reach. With no
     // native radio yet (Phase D) the bridge honestly reports offline; once the shim runs a
@@ -920,8 +1198,7 @@
           el.textContent = spaced;
           if (el.hasAttribute('title')) el.setAttribute('title', spaced);
         });
-        const grid = document.querySelector('#receive-sheet .address-display');
-        if (grid) {
+        for (const grid of document.querySelectorAll('#receive-sheet .address-display, #account-sheet .address-display')) {
           grid.innerHTML = (compact.match(/.{1,4}/g) || [])
             .map((c) => `<span class="chunk">${c}<span class="space">&nbsp;</span></span>`)
             .join('');
@@ -930,6 +1207,8 @@
           el.dataset.address = spaced;
           try { el.querySelector('img').src = await Iqons.toDataUrl(spaced); } catch (e) {}
         }
+        // The account pill (the wallet-pill replacement) shows once the wallet is real.
+        document.getElementById('account-pill').hidden = false;
       }
     } catch (e) { /* no wallet bridge (plain browser) — keep the demo address */ }
     // C1d: the REAL balance + REAL transaction history from the chain — this replaces the
@@ -959,22 +1238,8 @@
     hideSplash(); // real home + real data are ready — reveal it (no mock flash)
   }
 
-  // A4: fleet chrome — the global language pill + connect-wallet pill (shared nimiq-app-shell).
-  // Loaded online from jsDelivr (the fleet-standard pattern); offline the core mesh UX
-  // (home / send-compose / receive) keeps working and the pills simply don't appear.
-  (async () => {
-    try {
-      const shell = await import('https://cdn.jsdelivr.net/gh/Andjroo111/nimiq-app-shell@v0.2.1/dist/app-shell.js');
-      const i18n = shell.createI18n({ locales: shell.mergeLocales(shell.shellLocales), fallback: 'en' });
-      const lang = document.getElementById('lang-pill');
-      if (lang) shell.mountLanguagePill(lang, { i18n });
-      const connect = document.getElementById('connect-pill');
-      if (connect) {
-        const wallet = shell.createWallet({ appName: 'nimmesh', hubEndpoint: 'https://hub.nimiq-testnet.com' });
-        shell.mountWalletPill(connect, { wallet, i18n });
-      }
-    } catch (e) { console.warn('fleet chrome pills unavailable (offline?) — mesh UX continues', e); }
-  })();
+  // (The old A4 CDN app-shell pills are gone: the language pill is now local + offline above,
+  // and the Hub connect-wallet pill was replaced by the account pill — the app IS the wallet.)
 </script>
 <!-- qr-creator for the Receive QR canvas (renders even while the sheet is hidden) -->
 <script src="https://cdn.jsdelivr.net/npm/qr-creator@1.0.0/dist/qr-creator.min.js"></script>

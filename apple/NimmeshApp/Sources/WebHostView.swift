@@ -64,6 +64,22 @@ final class Bridge: NSObject, WKScriptMessageHandler {
     static let channel = "nimmesh"
     weak var webView: WKWebView?
 
+    /// The iOS Keychain survives an app uninstall; UserDefaults does not. So a wallet that is
+    /// already present on the very FIRST launch of this install belongs to a previous install —
+    /// flag it so the UI asks "keep it or start fresh" instead of silently adopting it.
+    private static let hasLaunchedKey = "nimmesh.hasLaunched"
+    private static let recoveredWalletKey = "nimmesh.recoveredWallet"
+    private static let langKey = "nimmesh.lang"
+
+    override init() {
+        super.init()
+        let defaults = UserDefaults.standard
+        if !defaults.bool(forKey: Bridge.hasLaunchedKey) {
+            defaults.set(true, forKey: Bridge.hasLaunchedKey)
+            if Wallet.hasWallet() { defaults.set(true, forKey: Bridge.recoveredWalletKey) }
+        }
+    }
+
     // G5: the offline BLE mesh — a CoreBluetooth radio driving a Rust `MeshNode`. Built once
     // (lazily, on the first meshStatus probe at launch); the node holds the radio strongly, the
     // radio holds the node weakly. On the simulator BLE is unsupported (0 peers, no crash); on a
@@ -115,6 +131,17 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         createWallet: function () { return call('createWallet'); },
         importWallet: function (m) { return call('importWallet', { mnemonic: m }); },
         recoveryPhrase: function () { return call('recoveryPhrase'); },
+        // Reinstall-aware status: the Keychain outlives an uninstall, so a wallet can already
+        // exist on a first launch — `recovered` marks it as a previous install's wallet and the
+        // UI asks "keep it or start fresh" instead of silently adopting it.
+        walletStatus: function () { return call('walletStatus'); },
+        resolveRecovered: function (keep) { return call('resolveRecovered', { keep: !!keep }); },
+        // Account menu: remove the wallet from this device (the UI confirms + reminds that
+        // without the 24 words it cannot be recovered).
+        deleteWallet: function () { return call('deleteWallet'); },
+        // UI language preference, persisted in UserDefaults so it survives relaunches.
+        getLang: function () { return call('getLang'); },
+        setLang: function (l) { return call('setLang', { lang: l }); },
         // Mainnet toggle (gated; default testnet). The app never auto-sends real funds.
         currentNetwork: function () { return call('currentNetwork'); },
         setNetwork: function (m) { return call('setNetwork', { mainnet: !!m }); },
@@ -256,6 +283,31 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             // C1e: the stored phrase, for the in-app backup screen.
             guard let phrase = Wallet.recoveryPhrase() else { return (false, "no wallet") }
             return (true, ["mnemonic": phrase])
+        case "walletStatus":
+            // Reinstall-aware existence: `recovered` = this wallet predates the current install
+            // (Keychain survived an uninstall) and the user hasn't chosen keep/start-fresh yet.
+            return (true, [
+                "exists": Wallet.hasWallet(),
+                "recovered": UserDefaults.standard.bool(forKey: Bridge.recoveredWalletKey),
+            ])
+        case "resolveRecovered":
+            // The user's keep/start-fresh choice for a previous install's wallet. "Start fresh"
+            // deletes it (the UI confirmed + reminded about the 24 words first).
+            let a = args as? [String: Any] ?? [:]
+            if !(a["keep"] as? Bool ?? true) { Wallet.delete() }
+            UserDefaults.standard.set(false, forKey: Bridge.recoveredWalletKey)
+            return (true, ["exists": Wallet.hasWallet()])
+        case "deleteWallet":
+            // Account-menu log-out. The UI confirms; without the words the wallet is gone.
+            Wallet.delete()
+            UserDefaults.standard.set(false, forKey: Bridge.recoveredWalletKey)
+            return (true, ["deleted": true])
+        case "getLang":
+            return (true, ["lang": UserDefaults.standard.string(forKey: Bridge.langKey) ?? ""])
+        case "setLang":
+            let a = args as? [String: Any] ?? [:]
+            UserDefaults.standard.set((a["lang"] as? String) ?? "", forKey: Bridge.langKey)
+            return (true, ["ok": true])
         case "currentNetwork":
             // The selected network (default testnet). Mainnet is the gated real-funds toggle.
             return (true, ["mainnet": NimiqRpc.isMainnet, "name": NimiqRpc.isMainnet ? "mainnet" : "testnet"])

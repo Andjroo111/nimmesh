@@ -2,6 +2,39 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.33.0] — 2026-07-02
+
+### Fixed — the chrome actually works (on-device feedback, round 2)
+
+Andjroo's first Ad Hoc install surfaced three broken pieces of chrome. All three are now real:
+
+- **Leftover wallet on a fresh install:** the wallet lives in the iOS Keychain, which
+  SURVIVES an app uninstall — so a reinstall silently adopted the previous install's wallet
+  and skipped onboarding. The bridge now detects a reinstall (UserDefaults is wiped with the
+  app; a wallet present on the very first launch is a previous install's) and the UI shows a
+  **"Wallet found on this device"** screen: keep it, or delete it and start fresh
+  (create/import). Plus a permanent escape hatch: **Log out of this device** in the new
+  account menu (confirms + reminds that without the 24 words the wallet is unrecoverable).
+- **The connect-wallet pill did nothing:** it was fleet chrome for websites (Nimiq Hub
+  connect) loaded from a CDN — meaningless inside an app that IS a wallet, and broken in the
+  WKWebView. Replaced with an **account pill** (your identicon, top right) opening an
+  **account sheet**: identicon + 3x3 address, copy address, backup recovery words, log out,
+  and a network/core meta line.
+- **The language pill did nothing:** it loaded from jsDelivr (dead offline — in an
+  offline-first mesh app) and the page had no translations to switch. Now fully **local +
+  offline i18n** in EN / ES / DE / FR / PT: static strings via `data-i18n`, dynamic strings
+  (mesh line, send statuses, backup nudge, reachability, tx list, dialogs) via `T()`, choice
+  persisted in UserDefaults over the bridge (localStorage in a plain browser), switch
+  reloads for full consistency.
+- **Onboarding logo fix:** every onboarding screen's gold hexagon referenced a gradient
+  defined inside the (hidden) welcome screen — a display:none gradient is not a usable paint
+  server, so the logo rendered empty. Each screen now carries its own uniquely-id'd def.
+
+New bridge methods: `walletStatus` (exists + recovered), `resolveRecovered(keep)`,
+`deleteWallet`, `getLang`/`setLang`. `Wallet.delete()` clears the Keychain entry.
+Verified with Playwright at 390px across EN/ES/DE scenarios (mocked bridge; screenshots in
+the PR): home, account sheet, language sheet, recovered screen, onboarding words, Send sheet.
+
 ## [0.32.0] — 2026-06-28
 
 ### Added — app icon + TestFlight signing (first build delivered)
