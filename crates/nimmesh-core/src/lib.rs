@@ -374,6 +374,8 @@ mod swap_node_e2e_tests;
 mod swap_privacy_tests;
 #[cfg(test)]
 mod swap_resume_tests;
+#[cfg(test)]
+mod swap_session_tests;
 // P2: the NIM⇄USDC atomicity proof — drives both state machines with a `UsdcLeg` counterparty leg.
 // Behind `polygon-leg` (the leg only exists with that feature), so it runs in the `--features
 // polygon-leg` gate pass.
