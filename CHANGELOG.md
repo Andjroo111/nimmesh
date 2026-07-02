@@ -2,6 +2,44 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.42.0] — 2026-07-02
+
+### Security — per-chain confirmation-depth + reorg policy (G3 slice, #74 → part of S6)
+
+Funding verification (G1/#72) already refused an on-chain HTLC that wasn't buried to a `min_confirmations` depth — but that depth was a single flat floor (`= 1`), wrong across chains and silent on reorgs. G3 makes the depth **per chain** and pins down "re-verify on reorg".
+
+- **`ConfirmationPolicy`** (`swap_funding_verify`) carries one min-confirmation depth per chain and
+  resolves it from the leg being verified: `required(Asset)` and
+  `required_for_leg(leg, counterparty)` (the NIM leg uses the NIM depth; the counterparty leg uses
+  BTC's or USDC's). Reuses `swap_intent::Asset` — no parallel chain enum. Builder +
+  `Default = testnet_defaults`, so an un-configured node is safe-by-default (never zero-conf).
+- **Testnet defaults** (deliberately low, mainnet-gated to re-tune): NIM `2`, BTC `3`, USDC/Polygon
+  `5` — increasing with reorg risk. Never ship to mainnet (Phase 4 raises them).
+- **Reorg = a property of a stateless gate**, not a new subsystem: `require_funded` re-runs on every
+  `FundingProof`/tick with a fresh observation and holds no "already funded" memory, so a leg that
+  reorgs below its policy depth is refused again (`TooShallow`), and an orphaned funding tx reads as
+  `Absent` (`NotFundedYet`). Every subsequent money-path step re-runs the gate, so a reorg between
+  funding and reveal is caught before the reveal. `LedgerVerifier` gained `reorg_to` / `orphan_all`
+  to prove it. Continuous post-advance monitoring (rolling back a *funded* leg) stays with the
+  gateway-backed verifier (#72 tail, gated on real chains).
+- **Wiring:** `SwapSession` holds a `ConfirmationPolicy` + `counterparty_chain` (default testnet /
+  BTC — the mesh path is BTC-shaped; USDC drives `SwapEngine` directly) and resolves the depth per
+  leg in its `FundingProof` handler. The pure `require_funded` / `verify_and_observe_funding`
+  signatures are unchanged (no coordinator call-site churn).
+- **Tests:** policy per-chain defaults + leg resolution + builder; ledger reorg (deep→shallow refused
+  again) + orphan (reads Absent); a session-level test proving the mesh gate applies the policy's NIM
+  depth (2-deep refused, 3-deep advances). See `docs/adr/0003-confirmation-depth-reorg-policy.md`.
+
+### CI — quiet two more wall-clock discovery-stress flakes (#84)
+
+`a_partitioned_pair_discovers_after_the_link_heals_within_budget` and
+`a_reconnected_peer_resets_the_re_advertise_budget_and_the_pair_settles` are `#[ignore]`'d in CI, like
+their sibling `many_complementary_pairs_all_discover_and_settle` already was: they wait on a settle
+completing within a wall-clock budget over the threaded `MeshHarness`, which blows `CONVERGE` under
+`cargo test --all` on CI's oversubscribed 2-core runners (they pass locally and with `--ignored`).
+Correctness stays covered by the deterministic e2e/adversarial suites; the sync-driven re-enable is
+tracked in #84. Not a code change — no money-path impact.
+
 ## [0.41.0] — 2026-07-02
 
 ### Security — enforce authenticated swap Proposes (G2 slice 2b, #73 → closes S2)

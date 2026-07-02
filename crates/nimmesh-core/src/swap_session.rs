@@ -16,7 +16,8 @@ use crate::nimiq::signer::EnclaveKey;
 use crate::packet::MessageType;
 use crate::swap::LadderParams;
 use crate::swap_coordinator::{CoordError, SwapContext, SwapCoordinator};
-use crate::swap_funding_verify::{AcceptAllVerifier, FundingVerifier, DEFAULT_MIN_CONFIRMATIONS};
+use crate::swap_funding_verify::{AcceptAllVerifier, ConfirmationPolicy, FundingVerifier};
+use crate::swap_intent::Asset;
 use crate::swap_messages::{SwapProposal, PROPOSE_PUBKEY_LEN, PROPOSE_SIG_LEN};
 use crate::swap_wire::{
     decode_swap, encode_swap, SwapEnvelope, SwapKind, SwapWireError, BTC_PUBKEY_LEN,
@@ -107,6 +108,14 @@ pub struct SwapSession {
     /// seed never crosses this seam. `None` on a responder-only node (it never originates a Propose);
     /// an initiating node injects the key that owns its `identity.nim_address`.
     propose_signer: Option<Arc<dyn EnclaveKey>>,
+    /// #74 / G3: per-chain confirmation-depth policy. A `FundingProof` only advances a coordinator
+    /// once the counterparty's HTLC is buried to *its chain's* depth (NIM shallower than BTC/USDC),
+    /// and a reorg that re-buries it shallower stalls it again. Defaults to the testnet policy.
+    confirm_policy: ConfirmationPolicy,
+    /// #74 / G3: which chain this node's mesh swaps settle on the counterparty side (BTC today — USDC
+    /// swaps drive `SwapEngine` directly, not this session path). Selects the counterparty-leg depth
+    /// from `confirm_policy`. Defaults to [`Asset::Btc`].
+    counterparty_chain: Asset,
 }
 
 impl SwapSession {
@@ -119,6 +128,8 @@ impl SwapSession {
             pending: HashMap::new(),
             verifier: Box::new(AcceptAllVerifier),
             propose_signer: None,
+            confirm_policy: ConfirmationPolicy::testnet_defaults(),
+            counterparty_chain: Asset::Btc,
         }
     }
 
@@ -156,6 +167,22 @@ impl SwapSession {
     /// on-chain; the default is [`AcceptAllVerifier`] (the sim has no chain to observe).
     pub fn with_funding_verifier(mut self, verifier: Box<dyn FundingVerifier>) -> Self {
         self.verifier = verifier;
+        self
+    }
+
+    /// Set the per-chain confirmation-depth policy (#74 / G3). A real node tunes how deep each chain's
+    /// HTLC must be buried before it funds/reveals against it; the default is
+    /// [`ConfirmationPolicy::testnet_defaults`]. A reorg that re-buries a leg below its depth stalls
+    /// the swap again (re-verified on every `FundingProof`).
+    pub fn with_confirmation_policy(mut self, policy: ConfirmationPolicy) -> Self {
+        self.confirm_policy = policy;
+        self
+    }
+
+    /// Set which chain this node's mesh swaps settle on the counterparty side (#74 / G3) — picks the
+    /// counterparty-leg depth from the confirmation policy. Defaults to [`Asset::Btc`].
+    pub fn with_counterparty_chain(mut self, chain: Asset) -> Self {
+        self.counterparty_chain = chain;
         self
     }
 
@@ -260,10 +287,14 @@ impl SwapSession {
                     .coordinators
                     .get_mut(&swap_id)
                     .ok_or(SessionError::UnknownSwap)?;
-                coord.verify_and_observe_funding(
-                    self.verifier.as_ref(),
-                    DEFAULT_MIN_CONFIRMATIONS,
-                )?;
+                // #74 / G3: verify at the counterparty leg's *own* chain depth, not one flat floor —
+                // the responder checks the initiator's NIM leg (NIM depth), the initiator checks the
+                // counterparty leg (BTC/USDC depth). Fields are disjoint from `coord`.
+                let leg = coord.counterparty_expectation().leg;
+                let min_confirmations = self
+                    .confirm_policy
+                    .required_for_leg(leg, self.counterparty_chain);
+                coord.verify_and_observe_funding(self.verifier.as_ref(), min_confirmations)?;
                 Ok(vec![])
             }
             SwapKind::PreimageReveal => {

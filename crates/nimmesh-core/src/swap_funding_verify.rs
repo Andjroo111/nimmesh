@@ -20,6 +20,7 @@
 //! [`crate::swap_coordinator::SwapCoordinator`] gates its funded-observed transitions on this
 //! (`verify_and_observe_funding`); slice 2 routes the node/session/engine through it exclusively.
 
+use crate::swap_intent::Asset;
 use crate::swap_wire::{SwapLegId, HASH_LEN};
 
 /// What the counterparty's on-chain HTLC must satisfy for us to safely proceed against it.
@@ -75,9 +76,95 @@ pub trait FundingVerifier: Send + Sync {
     fn observe(&self, expect: &HtlcExpectation) -> FundingObservation;
 }
 
-/// The sim default confirmation floor. The mock mesh has no real chain, so this is nominal; a real
-/// node tunes it per leg (BTC wants more than NIM) via its gateway-backed verifier. See #74/G3.
+/// The sim default confirmation floor — a single flat depth for paths that have no per-chain context
+/// (the mock mesh has no real chain, so this is nominal). Real, chain-aware callers use
+/// [`ConfirmationPolicy`] instead, which tunes the depth per chain. See #74/G3.
 pub const DEFAULT_MIN_CONFIRMATIONS: u32 = 1;
+
+/// Per-chain minimum confirmation depth before a leg's HTLC is treated as `funded`/`settled` (#74/G3).
+///
+/// A single flat floor is wrong across chains: NIM's Albatross PoS reaches macro-block finality in a
+/// few blocks, Bitcoin's PoW needs more burial to be reorg-safe, and Polygon PoS reorgs deeper still.
+/// This policy carries one depth per chain and resolves the right one for the leg being verified, so
+/// [`require_funded`] refuses a leg that is on-chain but not yet buried to *its* chain's depth — and
+/// refuses it AGAIN if a reorg re-buries it shallower (the gate re-runs on every observation, holding
+/// no "already funded" memory). Defaults are deliberately low **testnet** values; Phase 4 mainnet
+/// gating re-tunes them (see `docs/adr/0003-confirmation-depth-reorg-policy.md`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConfirmationPolicy {
+    /// Depth required on the Nimiq leg.
+    nim: u32,
+    /// Depth required on the Bitcoin leg.
+    btc: u32,
+    /// Depth required on the USDC-on-Polygon leg.
+    usdc: u32,
+}
+
+impl ConfirmationPolicy {
+    /// Sane **testnet** per-chain defaults: NIM `2` (fast PoS finality, a couple of blocks past the
+    /// funding batch), BTC `3` (moderate PoW burial for signet/testnet), USDC/Polygon `5` (PoS with
+    /// deeper probabilistic reorgs). Increasing with reorg risk; low enough to keep the sim/testnet
+    /// loop fast. Mainnet gating raises them (BTC→6, Polygon deeper) — never ship these to mainnet.
+    pub const fn testnet_defaults() -> Self {
+        ConfirmationPolicy {
+            nim: 2,
+            btc: 3,
+            usdc: 5,
+        }
+    }
+
+    /// The same depth `n` on every chain — handy for tests and for a deployment that wants one floor.
+    pub const fn uniform(n: u32) -> Self {
+        ConfirmationPolicy {
+            nim: n,
+            btc: n,
+            usdc: n,
+        }
+    }
+
+    /// Override the NIM-leg depth (builder style).
+    pub const fn with_nim(mut self, n: u32) -> Self {
+        self.nim = n;
+        self
+    }
+    /// Override the BTC-leg depth (builder style).
+    pub const fn with_btc(mut self, n: u32) -> Self {
+        self.btc = n;
+        self
+    }
+    /// Override the USDC-leg depth (builder style).
+    pub const fn with_usdc(mut self, n: u32) -> Self {
+        self.usdc = n;
+        self
+    }
+
+    /// The required depth for a given chain.
+    pub const fn required(&self, chain: Asset) -> u32 {
+        match chain {
+            Asset::Nim => self.nim,
+            Asset::Btc => self.btc,
+            Asset::Usdc => self.usdc,
+        }
+    }
+
+    /// The required depth for the leg being verified. The NIM leg always uses the NIM depth; the
+    /// counterparty leg uses whichever chain (`counterparty`) that swap settles on (BTC or USDC).
+    /// This is the seam the coordinator/session gate calls to turn its `HtlcExpectation.leg` into a
+    /// concrete `min_confirmations` for [`require_funded`].
+    pub const fn required_for_leg(&self, leg: SwapLegId, counterparty: Asset) -> u32 {
+        match leg {
+            SwapLegId::Nim => self.nim,
+            SwapLegId::Counterparty => self.required(counterparty),
+        }
+    }
+}
+
+impl Default for ConfirmationPolicy {
+    /// Testnet defaults — an un-configured node is safe-by-default (never zero-confirmation).
+    fn default() -> Self {
+        ConfirmationPolicy::testnet_defaults()
+    }
+}
 
 /// A verifier that accepts any funding — the mesh **sim** default, since the mock mesh has no chain to
 /// observe (nodes only exchange messages). It exists to WIRE the gate into the mesh path so it is
@@ -233,6 +320,21 @@ impl LedgerVerifier {
     /// Publish (or re-publish at a deeper confirmation) an on-chain HTLC.
     pub fn fund(&mut self, htlc: OnChainHtlc) {
         self.htlcs.push(htlc);
+    }
+
+    /// Model a chain **reorg** that re-buries every funded HTLC to `confirmations` (a shallower depth
+    /// than it had reached). The gate re-observes and, if the new depth is below the leg's policy,
+    /// refuses again (#74/G3). Caps rather than sets, so a reorg never *deepens* a tx.
+    pub fn reorg_to(&mut self, confirmations: u32) {
+        for h in &mut self.htlcs {
+            h.confirmations = h.confirmations.min(confirmations);
+        }
+    }
+
+    /// Model a deep reorg that **orphans** the funding tx entirely (it leaves the canonical chain).
+    /// The gate then sees nothing on-chain — [`FundingObservation::Absent`] — i.e. NotFundedYet.
+    pub fn orphan_all(&mut self) {
+        self.htlcs.clear();
     }
 }
 
@@ -485,6 +587,121 @@ mod tests {
         assert_eq!(
             require_funded(&ledger.observe(&expect()), &expect(), 3),
             Ok(3)
+        );
+    }
+
+    // ---- G3 / #74: per-chain confirmation policy + reorg re-verification ----
+
+    #[test]
+    fn confirmation_policy_testnet_defaults_are_per_chain() {
+        let p = ConfirmationPolicy::testnet_defaults();
+        // Per-chain depths, increasing with reorg risk / finality uncertainty (see the ADR).
+        assert_eq!(p.required(Asset::Nim), 2);
+        assert_eq!(p.required(Asset::Btc), 3);
+        assert_eq!(p.required(Asset::Usdc), 5);
+        // Default == the testnet defaults, so an un-configured node is safe-by-default.
+        assert_eq!(ConfirmationPolicy::default(), p);
+    }
+
+    #[test]
+    fn confirmation_policy_required_for_leg_resolves_counterparty_chain() {
+        let p = ConfirmationPolicy::testnet_defaults();
+        // The NIM leg always uses the NIM depth, whatever the counterparty chain is.
+        assert_eq!(p.required_for_leg(SwapLegId::Nim, Asset::Btc), 2);
+        assert_eq!(p.required_for_leg(SwapLegId::Nim, Asset::Usdc), 2);
+        // The counterparty leg uses *that* chain's depth — BTC and USDC differ.
+        assert_eq!(p.required_for_leg(SwapLegId::Counterparty, Asset::Btc), 3);
+        assert_eq!(p.required_for_leg(SwapLegId::Counterparty, Asset::Usdc), 5);
+    }
+
+    #[test]
+    fn confirmation_policy_uniform_and_builder_override() {
+        assert_eq!(ConfirmationPolicy::uniform(4).required(Asset::Btc), 4);
+        let p = ConfirmationPolicy::testnet_defaults().with_btc(6);
+        assert_eq!(p.required(Asset::Btc), 6);
+        assert_eq!(p.required(Asset::Nim), 2); // other chains unchanged
+    }
+
+    #[test]
+    fn shallow_then_deep_advances_only_when_buried_at_policy_depth() {
+        // Depth < policy never advances; the same HTLC, once buried to the policy depth, passes.
+        let need = ConfirmationPolicy::testnet_defaults().required(Asset::Nim);
+        assert!(need >= 2, "test assumes NIM depth > 1");
+        let htlc = |confs| OnChainHtlc {
+            leg: SwapLegId::Nim,
+            hashlock: [0x11; HASH_LEN],
+            recipient: vec![0xA1; 20],
+            amount: 100_000,
+            timeout: 10_000,
+            confirmations: confs,
+        };
+        let mut ledger = LedgerVerifier::new();
+        ledger.fund(htlc(need - 1)); // one block short of the policy depth
+        assert_eq!(
+            require_funded(&ledger.observe(&expect()), &expect(), need),
+            Err(FundingRejected::TooShallow {
+                have: need - 1,
+                need
+            })
+        );
+        ledger.fund(htlc(need)); // buried to the policy depth
+        assert_eq!(
+            require_funded(&ledger.observe(&expect()), &expect(), need),
+            Ok(need)
+        );
+    }
+
+    #[test]
+    fn a_reorg_below_policy_depth_refuses_again() {
+        // Re-verify on reorg (#74/G3): an HTLC buried deep enough to pass can be re-orged shallower;
+        // the same gate must refuse it AGAIN — no funded transition may rest on a leg that reorged
+        // below its policy depth.
+        let need = ConfirmationPolicy::testnet_defaults().required(Asset::Nim);
+        assert!(need >= 2, "test assumes NIM depth > 1");
+        let mut ledger = LedgerVerifier::new();
+        ledger.fund(OnChainHtlc {
+            leg: SwapLegId::Nim,
+            hashlock: [0x11; HASH_LEN],
+            recipient: vec![0xA1; 20],
+            amount: 100_000,
+            timeout: 10_000,
+            confirmations: need + 4, // comfortably buried — passes now
+        });
+        assert!(require_funded(&ledger.observe(&expect()), &expect(), need).is_ok());
+
+        // A reorg re-buries the funding tx below the policy depth → the gate refuses it again.
+        ledger.reorg_to(need - 1);
+        assert_eq!(
+            require_funded(&ledger.observe(&expect()), &expect(), need),
+            Err(FundingRejected::TooShallow {
+                have: need - 1,
+                need
+            })
+        );
+    }
+
+    #[test]
+    fn a_reorg_that_orphans_the_funding_tx_reads_as_absent() {
+        // A deep reorg can orphan the funding tx entirely (depth → gone). The gate then sees nothing
+        // on-chain, i.e. NotFundedYet — the honest "wait / eventually refund" path, never an advance.
+        let mut ledger = LedgerVerifier::new();
+        ledger.fund(OnChainHtlc {
+            leg: SwapLegId::Nim,
+            hashlock: [0x11; HASH_LEN],
+            recipient: vec![0xA1; 20],
+            amount: 100_000,
+            timeout: 10_000,
+            confirmations: 8,
+        });
+        assert!(matches!(
+            ledger.observe(&expect()),
+            FundingObservation::Found { .. }
+        ));
+        ledger.orphan_all();
+        assert_eq!(ledger.observe(&expect()), FundingObservation::Absent);
+        assert_eq!(
+            require_funded(&ledger.observe(&expect()), &expect(), 1),
+            Err(FundingRejected::NotFundedYet)
         );
     }
 }

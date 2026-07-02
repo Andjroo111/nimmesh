@@ -4,7 +4,9 @@
 use crate::packet::MessageType;
 use crate::swap::{LadderParams, SwapPhase, SwapTerms};
 use crate::swap_coordinator::{SwapContext, SwapCoordinator};
-use crate::swap_funding_verify::{FundingObservation, SimVerifier};
+use crate::swap_funding_verify::{
+    ConfirmationPolicy, FundingObservation, LedgerVerifier, OnChainHtlc, SimVerifier,
+};
 use crate::swap_leg::sha256;
 use crate::swap_messages::SwapProposal;
 use crate::swap_session::*;
@@ -551,6 +553,73 @@ fn a_funding_proof_advances_a_responder_only_when_the_verifier_confirms_it() {
         .unwrap();
     assert_eq!(
         bob_ok.coordinator(&swap_id).unwrap().phase(),
+        SwapPhase::InitiatorFunded
+    );
+}
+
+#[test]
+fn the_mesh_gate_applies_the_per_chain_confirmation_policy_depth() {
+    // #74 / G3: the session verifies the initiator's NIM leg at the *policy's* NIM depth, not a flat
+    // floor. With a policy demanding 3 NIM confirmations, a 2-deep on-chain HTLC is refused; a 3-deep
+    // one advances the responder (only then may it fund BTC). Two sessions (no shared mutability)
+    // stand in for the same HTLC observed at two depths — the shallow one is what a reorg would
+    // re-expose (the reorg refusal itself is unit-covered in `swap_funding_verify`).
+    let head = 0;
+    let p = LadderParams::default();
+    let swap_id = [0x7A; SWAP_ID_LEN];
+    let (_c, propose) = SwapCoordinator::new_initiator(ctx(swap_id, 0x11), [42u8; 32], p);
+    let propose_bytes = encode_swap(&signed(&propose, 0x11)).unwrap();
+    let nim_fp = nim_funding_proof(swap_id);
+
+    // The initiator's on-chain NIM HTLC pays Bob (the responder) under the agreed hashlock.
+    // The recipient the responder claims to is its own `identity.nim_address` (the session builds the
+    // responder ctx from its identity), which is the raw seed address, not the key-derived one.
+    let nim_htlc = |confs| OnChainHtlc {
+        leg: SwapLegId::Nim,
+        hashlock: sha256(&[42u8; 32]),
+        recipient: [0x22u8; NIM_ADDRESS_LEN].to_vec(),
+        amount: 100_000,
+        timeout: 10_000,
+        confirmations: confs,
+    };
+    let policy = ConfirmationPolicy::testnet_defaults().with_nim(3);
+
+    // Only 2 deep vs a policy of 3 → refuse and stay Accepted (never funds BTC).
+    let mut shallow = LedgerVerifier::new();
+    shallow.fund(nim_htlc(2));
+    let mut bob_shallow = SwapSession::new(identity(0x22), p)
+        .with_confirmation_policy(policy)
+        .with_funding_verifier(Box::new(shallow));
+    only(
+        bob_shallow
+            .on_message(SwapKind::Propose, &propose_bytes, head)
+            .unwrap(),
+    );
+    assert!(matches!(
+        bob_shallow.on_message(SwapKind::FundingProof, &nim_fp, head),
+        Err(SessionError::Coord(_))
+    ));
+    assert_eq!(
+        bob_shallow.coordinator(&swap_id).unwrap().phase(),
+        SwapPhase::Accepted
+    );
+
+    // Buried to the policy depth (3) → advances to InitiatorFunded.
+    let mut deep = LedgerVerifier::new();
+    deep.fund(nim_htlc(3));
+    let mut bob_deep = SwapSession::new(identity(0x22), p)
+        .with_confirmation_policy(policy)
+        .with_funding_verifier(Box::new(deep));
+    only(
+        bob_deep
+            .on_message(SwapKind::Propose, &propose_bytes, head)
+            .unwrap(),
+    );
+    bob_deep
+        .on_message(SwapKind::FundingProof, &nim_fp, head)
+        .unwrap();
+    assert_eq!(
+        bob_deep.coordinator(&swap_id).unwrap().phase(),
         SwapPhase::InitiatorFunded
     );
 }

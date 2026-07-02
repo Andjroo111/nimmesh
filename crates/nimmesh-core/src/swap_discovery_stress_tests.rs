@@ -273,6 +273,7 @@ fn pump_until<F: Fn() -> bool>(nodes: &[Arc<MeshNode>], done: F) -> bool {
 }
 
 #[test]
+#[ignore = "wall-clock settle-within-budget over the threaded MeshHarness; flakes under cargo test --all on CI 2-core runners (blows CONVERGE=10s under oversubscription). Run with --ignored. Correctness covered by the deterministic e2e/adversarial suites; sync-driven re-enable tracked in #84."]
 fn a_partitioned_pair_discovers_after_the_link_heals_within_budget() {
     // G47: PARTITION a complementary pair — the BTC-giver re-advertises (G37) but the cut blocks every
     // flood, so nothing discovers. HEAL within the bounded re-advertise budget and the next flood
@@ -334,6 +335,7 @@ fn a_partition_outlasting_the_re_advertise_budget_leaves_the_pair_silent() {
 }
 
 #[test]
+#[ignore = "wall-clock settle-within-budget over the threaded MeshHarness; flakes under cargo test --all on CI 2-core runners (blows CONVERGE=10s under oversubscription). Run with --ignored. Correctness covered by the deterministic e2e/adversarial suites; sync-driven re-enable tracked in #84."]
 fn a_reconnected_peer_resets_the_re_advertise_budget_and_the_pair_settles() {
     // G51: lift the G47 limit for an ACTUAL reconnect. The pair connects, then the link DROPS (the
     // peers disconnect); the BTC-giver spends its whole re-advertise budget while cut off, so nothing
