@@ -2,6 +2,15 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.36.1] — 2026-07-02
+
+### Fixed — official QR icons (rule 15: never fabricate Nimiq icons)
+
+Both QR glyphs were hand-drawn (caught by Andjroo). Replaced with the VERBATIM
+`@nimiq/style` icon SVGs (the same ones `@nimiq/vue-components` exports):
+- Send bar scan button → `scan-qr-code.svg` (corner brackets + QR, the icon Andjroo showed).
+- Receive sheet QR toggle → `qr-code.svg` (what the wallet's ReceiveModal QrCodeIcon uses).
+
 ## [0.36.0] — 2026-07-02
 
 ### Fixed — the QR code, done right (on-device feedback, round 5)
