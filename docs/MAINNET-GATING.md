@@ -5,6 +5,13 @@
 > is a deliberate, human, Andjroo-only act — there is no code path that does it automatically,
 > and the autonomous loop never proposes one.
 
+> **2026-07-02 — Andjroo exercised the gate.** For the real-funds phone test he instructed
+> "we need to be on mainnet": the **iOS app's network toggle now defaults to mainnet**
+> (`NimiqRpc.isMainnet`, v0.34.0). Everything else in this contract stands: the app never
+> auto-sends (a send is a user tap), the Send sheet warns on mainnet, testnet is one tap
+> away, the faucet is testnet-only, and the Rust core / tests / tools / loop remain
+> testnet-pinned (`default_network()` is still testnet).
+
 This is the G13 safety contract. It documents (1) the invariants that keep us on testnet, (2)
 exactly what a future mainnet switch would require, and (3) the checklist that must be green
 **before** that switch is even considered. It is paired with `RISKS.md` (the hazard list) and

@@ -2,6 +2,28 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.34.0] — 2026-07-02
+
+### Fixed — on-device feedback, round 3 (dialogs, flags, mainnet)
+
+- **`confirm()` did not exist on device — every confirm-gated action silently no-oped.**
+  A WKWebView has NO built-in JS dialogs; without a `WKUIDelegate`, `confirm()` returns
+  false immediately. That is why "Delete it and start fresh", "Log out of this device" AND
+  the mainnet switch all did nothing on the phone (they worked in browser tests, which have
+  real dialogs). The bridge now implements the three `WKUIDelegate` dialog panels as native
+  `UIAlertController`s (alert / confirm / prompt), presented from the top view controller,
+  each completion handler called exactly once.
+- **Flag hexagons are back in the language picker** (Andjroo: we shouldn't have dropped
+  them). The fleet-standard flag-hex (nimiq-app-shell `buildFlagHex`: flag-icons artwork
+  clipped into the Nimiq hexagon + faint grey flags-on-white edge, fleet mapping en→US,
+  es→MX, de→DE, fr→FR, pt→BR) is vendored as five LOCAL svg files in `webui/flags/` —
+  offline, no CDN. The pill shows the current flag + caret (fleet pattern); the language
+  sheet rows show flag + native name.
+- **The app now defaults to MAINNET** (Andjroo, 2026-07-02: "we need to be on mainnet" —
+  the owner exercising the `MAINNET-GATING.md` gate for the real-funds phone test). A
+  persisted toggle choice still wins; testnet is one tap away; the Send-sheet mainnet
+  warning stays; the faucet stays testnet-only; the Rust core stays testnet-pinned.
+
 ## [0.33.0] — 2026-07-02
 
 ### Fixed — the chrome actually works (on-device feedback, round 2)

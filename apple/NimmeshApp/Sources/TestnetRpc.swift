@@ -7,15 +7,21 @@ import NimmeshCore
 /// only does network IO — fetch the head for `validityStartHeight`, broadcast the signed blob,
 /// poll for inclusion, read a balance, tap the faucet.
 ///
-/// **Network is a gated toggle, default TESTNET** (persisted in `UserDefaults`). Mainnet is
-/// opt-in for the real-funds phone test (`docs/DEVICE-TEST.md`); it is never the default and the
-/// app never auto-sends — a mainnet send is a deliberate user action. The faucet is testnet-only.
+/// **Network is a toggle, default MAINNET** (persisted in `UserDefaults`). Andjroo flipped the
+/// default for the real-funds phone test (2026-07-02: "we need to be on mainnet") — the owner
+/// IS the mainnet gate (`docs/MAINNET-GATING.md`), and the app still never auto-sends: a send
+/// is always a deliberate user action, the Send sheet warns on mainnet, testnet stays one tap
+/// away, and the faucet remains testnet-only.
 enum NimiqRpc {
     private static let mainnetKey = "nimmesh.network.mainnet"
 
-    /// Whether the app is pointed at **mainnet** (real funds). Default `false` (testnet).
+    /// Whether the app is pointed at **mainnet** (real funds). Default `true` (a persisted
+    /// toggle choice wins; unset = mainnet per the owner's 2026-07-02 instruction).
     static var isMainnet: Bool {
-        get { UserDefaults.standard.bool(forKey: mainnetKey) }
+        get {
+            guard UserDefaults.standard.object(forKey: mainnetKey) != nil else { return true }
+            return UserDefaults.standard.bool(forKey: mainnetKey)
+        }
         set { UserDefaults.standard.set(newValue, forKey: mainnetKey) }
     }
 

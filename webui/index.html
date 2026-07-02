@@ -308,6 +308,8 @@
     font-family: inherit; font-weight: 700; font-size: 15.5px; color: #1f2348; }
   .lang-list button:first-child { border-top: 0; }
   .lang-list button:active { background: rgba(31,35,72,.03); }
+  .lang-list button .lg { display: inline-flex; align-items: center; gap: 12px; }
+  .lang-list button .lg img { display: block; }
   .lang-list button svg.check { width: 18px; height: 18px; color: #0582ca; visibility: hidden; flex: 0 0 auto; }
   .lang-list button.active svg.check { visibility: visible; }
 
@@ -331,7 +333,7 @@
     </span>
     <div class="topbar-actions">
       <button class="chip" id="lang-pill" aria-label="Language" data-i18n-aria="a.lang">
-        <span id="lang-pill-code">EN</span>
+        <img id="lang-pill-flag" src="flags/en.svg" width="24" height="22" alt="">
         <svg class="chev" viewBox="0 0 10 6" fill="none"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
       <button class="chip acct" id="account-pill" aria-label="My account" data-i18n-aria="acct.title" hidden>
@@ -804,8 +806,8 @@
       document.querySelectorAll('[data-i18n-ph]').forEach((el) => { const v = I18N[LANG][el.dataset.i18nPh]; if (v) el.placeholder = v; });
       document.querySelectorAll('[data-i18n-aria]').forEach((el) => { const v = I18N[LANG][el.dataset.i18nAria]; if (v) el.setAttribute('aria-label', v); });
     }
-    const code = document.getElementById('lang-pill-code');
-    if (code) code.textContent = LANG.toUpperCase();
+    const flag = document.getElementById('lang-pill-flag');
+    if (flag) flag.src = `flags/${LANG}.svg`;   // the fleet flag-hex (local, offline)
   }
   async function switchLang(l) {
     if (!LANGS[l] || l === LANG) return;
@@ -843,7 +845,8 @@
     const list = document.getElementById('lang-list');
     if (!list) return;
     list.innerHTML = Object.entries(LANGS).map(([code, name]) =>
-      `<button data-lang="${code}" class="${code === LANG ? 'active' : ''}"><span>${name}</span>` +
+      `<button data-lang="${code}" class="${code === LANG ? 'active' : ''}">` +
+      `<span class="lg"><img src="flags/${code}.svg" width="24" height="22" alt="">${name}</span>` +
       '<svg class="check" viewBox="0 0 16 16" fill="none"><path d="M2.5 8.5L6 12l7.5-8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>').join('');
     list.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => switchLang(b.dataset.lang)));
     document.getElementById('lang-pill').addEventListener('click', () => open('lang'));

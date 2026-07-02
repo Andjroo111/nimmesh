@@ -1,5 +1,6 @@
 import Security
 import SwiftUI
+import UIKit
 import WebKit
 import NimmeshCore
 
@@ -38,6 +39,10 @@ struct WebHostView: UIViewRepresentable {
         }
 
         let webView = WKWebView(frame: .zero, configuration: config)
+        // JS dialogs (alert/confirm) DO NOT EXIST in a WKWebView unless the app implements
+        // WKUIDelegate — without it `confirm()` silently returns false, which made every
+        // confirm-gated action (delete wallet, log out, mainnet switch) a no-op on device.
+        webView.uiDelegate = context.coordinator
         // Match the wallet's light page background (#f8f8f8) behind the safe areas /
         // during load, instead of a white/black flash.
         webView.isOpaque = false
@@ -345,5 +350,60 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             .flatMap { String(data: $0, encoding: .utf8) } ?? "null"
         let js = "window.__nimmeshResolve(\(id), \(ok ? "true" : "false"), \(json));"
         DispatchQueue.main.async { webView.evaluateJavaScript(js) }
+    }
+}
+
+/// Native JS dialogs. A WKWebView has NO built-in `alert()`/`confirm()` — without these the
+/// page's confirm-gated actions (delete wallet, log out, the mainnet switch) silently no-op.
+/// Each completion handler MUST be called exactly once, including when no presenter exists.
+extension Bridge: WKUIDelegate {
+    private func present(_ alert: UIAlertController) -> Bool {
+        let window = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first { $0.isKeyWindow }
+        guard var top = window?.rootViewController else { return false }
+        while let presented = top.presentedViewController { top = presented }
+        top.present(alert, animated: true)
+        return true
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptAlertPanelWithMessage message: String,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping () -> Void
+    ) {
+        let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler() })
+        if !present(alert) { completionHandler() }
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptConfirmPanelWithMessage message: String,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping (Bool) -> Void
+    ) {
+        let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(false) })
+        alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler(true) })
+        if !present(alert) { completionHandler(false) }
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptTextInputPanelWithPrompt prompt: String,
+        defaultText: String?,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping (String?) -> Void
+    ) {
+        let alert = UIAlertController(title: nil, message: prompt, preferredStyle: .alert)
+        alert.addTextField { $0.text = defaultText }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(nil) })
+        alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak alert] _ in
+            completionHandler(alert?.textFields?.first?.text ?? "")
+        })
+        if !present(alert) { completionHandler(nil) }
     }
 }
