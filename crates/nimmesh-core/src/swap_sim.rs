@@ -21,6 +21,7 @@ use crate::swap::{LadderParams, SwapPhase, SwapTerms};
 use crate::swap_btc_leg::BtcSwapLeg;
 use crate::swap_builder::NimiqLeg;
 use crate::swap_engine::{EngineError, SwapConfig, SwapEffect, SwapEngine};
+use crate::swap_funding_verify::FundingObservation;
 use crate::swap_leg::sha256;
 use crate::swap_wire::SwapLegId;
 
@@ -189,14 +190,26 @@ impl SwapSim {
                 // Responder observes the NIM funding, funds the BTC HTLC (pays the P2WSH); the sim
                 // confirms it and both sides observe both legs funded.
                 let wire = self.nim_funding.clone().ok_or(missing("nim funding"))?;
-                self.responder.observe_initiator_funded(wire)?;
+                // The sim chain confirms funding instantly and exactly as agreed, so the S1 gate sees a
+                // healthy on-chain observation (agreed amount, agreed timeout, one confirmation).
+                let nim_obs = FundingObservation::Found {
+                    amount: NIM_AMOUNT,
+                    timeout: T_A_MS,
+                    confirmations: 1,
+                };
+                self.responder.observe_initiator_funded(wire, nim_obs, 1)?;
                 let _addr = self.responder.fund(HEAD_MS, &self.ladder, VSH)?; // FundBtcAddress
                 let funded = FundedHtlc {
                     txid: sim_txid(),
                     vout: 0,
                     value_sat: BTC_AMOUNT,
                 };
-                self.initiator.observe_btc_funded(funded)?;
+                let btc_obs = FundingObservation::Found {
+                    amount: BTC_AMOUNT,
+                    timeout: T_B_MS,
+                    confirmations: 1,
+                };
+                self.initiator.observe_btc_funded(funded, btc_obs, 1)?;
                 self.responder.observe_nim_funded(funded)?;
                 self.btc_funding = Some(funded);
             }

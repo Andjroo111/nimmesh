@@ -21,6 +21,7 @@ use crate::swap::{LadderParams, SwapPhase, SwapRole, SwapTerms};
 use crate::swap_btc_leg::BtcSwapLeg;
 use crate::swap_builder::NimiqLeg;
 use crate::swap_engine::{EngineError, SwapConfig, SwapEffect, SwapEngine};
+use crate::swap_funding_verify::FundingObservation;
 use crate::swap_wire::SwapLegId;
 
 /// The BTC network a swap runs on. Mainnet is intentionally absent (gated).
@@ -360,13 +361,26 @@ impl SwapEngineHandle {
             .map_err(Into::into)
     }
 
-    /// (Responder) record the observed initiator NIM-HTLC funding tx → `InitiatorFunded`.
+    /// (Responder) record the observed initiator NIM-HTLC funding tx → `InitiatorFunded`, after
+    /// verifying it on-chain (S1 / #72). The caller's gateway supplies what it saw for the NIM HTLC:
+    /// `observed_amount` (luna locked), `observed_timeout` (T_A, ms), and `confirmations`; the engine
+    /// refuses to advance unless it locks at least the agreed amount, keeps at least T_A, and is buried
+    /// `min_confirmations` deep — so the responder never funds BTC on the initiator's word alone.
     pub fn observe_initiator_funded(
         &self,
         nim_funding_wire: Vec<u8>,
+        observed_amount: u64,
+        observed_timeout: u64,
+        confirmations: u32,
+        min_confirmations: u32,
     ) -> Result<(), SwapEngineError> {
+        let observed = FundingObservation::Found {
+            amount: observed_amount,
+            timeout: observed_timeout,
+            confirmations,
+        };
         self.lock()
-            .observe_initiator_funded(nim_funding_wire)
+            .observe_initiator_funded(nim_funding_wire, observed, min_confirmations)
             .map_err(Into::into)
     }
 
@@ -383,15 +397,29 @@ impl SwapEngineHandle {
             .map_err(Into::into)
     }
 
-    /// (Initiator) record the observed BTC HTLC funding output → `BothFunded`.
+    /// (Initiator) record the observed BTC HTLC funding output → `BothFunded`, after verifying it
+    /// on-chain (S1 / #72). `value_sat` is the observed locked amount and `confirmations` its depth; the
+    /// engine refuses to advance (so never reveals `S`) unless the funding locks at least the agreed
+    /// amount and is buried `min_confirmations` deep. `observed_timeout` (T_B, ms) is recorded for
+    /// completeness — the P2WSH address already fixes the CLTV.
     pub fn observe_btc_funded(
         &self,
         txid: String,
         vout: u32,
         value_sat: u64,
+        observed_timeout: u64,
+        confirmations: u32,
+        min_confirmations: u32,
     ) -> Result<(), SwapEngineError> {
         let funded = parse_funded(&txid, vout, value_sat)?;
-        self.lock().observe_btc_funded(funded).map_err(Into::into)
+        let observed = FundingObservation::Found {
+            amount: value_sat,
+            timeout: observed_timeout,
+            confirmations,
+        };
+        self.lock()
+            .observe_btc_funded(funded, observed, min_confirmations)
+            .map_err(Into::into)
     }
 
     /// (Responder) confirm both legs funded → `BothFunded`, recording this node's own BTC outpoint.
@@ -540,7 +568,8 @@ mod tests {
             other => panic!("expected NIM broadcast, got {other:?}"),
         };
 
-        resp.observe_initiator_funded(nim_wire).unwrap();
+        resp.observe_initiator_funded(nim_wire, u64::MAX, u64::MAX, 100, 1)
+            .unwrap();
         match resp.fund(HEAD_MS, ladder(), 100).unwrap() {
             FfiSwapEffect::FundBtcAddress {
                 address,

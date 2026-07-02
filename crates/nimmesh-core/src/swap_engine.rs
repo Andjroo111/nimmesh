@@ -27,6 +27,9 @@ use crate::btc::{extract_preimage, BtcError, FundedHtlc, HASH_LEN};
 use crate::swap::{LadderParams, Swap, SwapAction, SwapError, SwapPhase, SwapRole, SwapTerms};
 use crate::swap_btc_leg::BtcSwapLeg;
 use crate::swap_builder::{FundingTerms, LegBuildError, LegBuilder, NimiqLeg};
+use crate::swap_funding_verify::{
+    require_funded, FundingObservation, FundingRejected, HtlcExpectation,
+};
 use crate::swap_leg::sha256;
 use crate::swap_wire::SwapLegId;
 
@@ -80,6 +83,9 @@ pub enum EngineError {
     MissingInput(&'static str),
     /// A claimed preimage did not hash to the swap's hashlock — never trust it.
     BadPreimage,
+    /// The counterparty's on-chain HTLC funding could not be verified against the agreed terms, so we
+    /// refuse to fund our own leg (or reveal `S`). Carries the reason (S1 / #72).
+    FundingUnverified(FundingRejected),
 }
 
 impl std::fmt::Display for EngineError {
@@ -90,6 +96,9 @@ impl std::fmt::Display for EngineError {
             EngineError::BtcLeg(e) => write!(f, "btc leg: {e}"),
             EngineError::MissingInput(what) => write!(f, "missing input: {what}"),
             EngineError::BadPreimage => write!(f, "revealed preimage does not match the hashlock"),
+            EngineError::FundingUnverified(r) => {
+                write!(f, "counterparty funding unverified: {r:?}")
+            }
         }
     }
 }
@@ -164,12 +173,26 @@ impl SwapEngine {
         self.swap.accept(head, params).map_err(EngineError::Swap)
     }
 
-    /// (Responder) record the observed initiator NIM-HTLC funding tx → `InitiatorFunded`. The wire is
-    /// kept so the responder can build its NIM claim from it later.
+    /// (Responder) record the observed initiator NIM-HTLC funding tx → `InitiatorFunded`, but ONLY
+    /// after verifying it on-chain (S1 / #72): `observed` is what the caller's gateway saw for the NIM
+    /// HTLC (amount / timeout / depth); it must lock at least `nim_amount`, keep at least the agreed
+    /// `T_A`, and be buried `min_confirmations` deep — otherwise we refuse to advance and so never fund
+    /// BTC against an initiator that only *claims* to have funded. The wire is kept to build the claim.
     pub fn observe_initiator_funded(
         &mut self,
         nim_funding_wire: Vec<u8>,
+        observed: FundingObservation,
+        min_confirmations: u32,
     ) -> Result<(), EngineError> {
+        let expect = HtlcExpectation {
+            leg: SwapLegId::Nim,
+            hashlock: self.hashlock(),
+            min_amount: self.nim_amount,
+            min_timeout: self.swap.terms.nim_timeout,
+            recipient: self.counterparty_nim_address.clone(),
+        };
+        require_funded(&observed, &expect, min_confirmations)
+            .map_err(EngineError::FundingUnverified)?;
         self.swap
             .observe_initiator_funded()
             .map_err(EngineError::Swap)?;
@@ -215,9 +238,26 @@ impl SwapEngine {
         }
     }
 
-    /// (Initiator) record the observed BTC HTLC funding output → `BothFunded`; keeps the outpoint to
-    /// build the claim.
-    pub fn observe_btc_funded(&mut self, funded: FundedHtlc) -> Result<(), EngineError> {
+    /// (Initiator) record the observed BTC HTLC funding output → `BothFunded`, but ONLY after verifying
+    /// it on-chain (S1 / #72): `observed` is the caller's gateway report; it must lock at least
+    /// `btc_amount_sat` and be `min_confirmations` deep — otherwise we refuse to advance and so never
+    /// reveal `S` against a BTC HTLC that is not really there. (The P2WSH address encodes the hashlock +
+    /// CLTV, so locating funds at it already fixes those; here we enforce amount + depth.)
+    pub fn observe_btc_funded(
+        &mut self,
+        funded: FundedHtlc,
+        observed: FundingObservation,
+        min_confirmations: u32,
+    ) -> Result<(), EngineError> {
+        let expect = HtlcExpectation {
+            leg: SwapLegId::Counterparty,
+            hashlock: self.hashlock(),
+            min_amount: self.btc_amount_sat,
+            min_timeout: self.swap.terms.counterparty_timeout,
+            recipient: Vec::new(),
+        };
+        require_funded(&observed, &expect, min_confirmations)
+            .map_err(EngineError::FundingUnverified)?;
         self.swap
             .observe_counterparty_funded()
             .map_err(EngineError::Swap)?;
@@ -355,6 +395,16 @@ mod tests {
     const BTC_FEE: u64 = 500;
     const VSH: u32 = 100;
 
+    /// A healthy on-chain observation (locks the exact agreed amount, ample timeout, deeply buried) —
+    /// the honest happy path for the S1 funding-verification gate.
+    fn observed(amount: u64) -> FundingObservation {
+        FundingObservation::Found {
+            amount,
+            timeout: u64::MAX,
+            confirmations: 100,
+        }
+    }
+
     fn ladder() -> LadderParams {
         // Margin T_A−T_B = 3_600_000 ms; window T_B−head = 3_600_000 ms. Require 30 min of each (ms).
         LadderParams {
@@ -442,6 +492,44 @@ mod tests {
     }
 
     #[test]
+    fn a_responder_engine_refuses_to_fund_an_unverified_nim_htlc() {
+        // S1 / #72 at the engine layer: the responder will not advance (and so never funds BTC) unless
+        // the observed NIM funding meets the agreed amount + required depth.
+        let p = ladder();
+        let mut resp = responder();
+        resp.accept(HEAD_MS, &p).unwrap();
+
+        // Underfunded (1 luna vs the agreed NIM_AMOUNT) → refused, stays at Accepted.
+        let underfunded = FundingObservation::Found {
+            amount: 1,
+            timeout: u64::MAX,
+            confirmations: 100,
+        };
+        assert!(matches!(
+            resp.observe_initiator_funded(vec![0u8; 248], underfunded, 1),
+            Err(EngineError::FundingUnverified(_))
+        ));
+        assert_eq!(resp.phase(), SwapPhase::Accepted);
+
+        // Correct amount but too shallow → refused (reorg safety).
+        let shallow = FundingObservation::Found {
+            amount: NIM_AMOUNT,
+            timeout: u64::MAX,
+            confirmations: 1,
+        };
+        assert!(matches!(
+            resp.observe_initiator_funded(vec![0u8; 248], shallow, 6),
+            Err(EngineError::FundingUnverified(_))
+        ));
+        assert_eq!(resp.phase(), SwapPhase::Accepted);
+
+        // Healthy + deep → advances (and only now would it fund BTC).
+        resp.observe_initiator_funded(vec![0u8; 248], observed(NIM_AMOUNT), 1)
+            .unwrap();
+        assert_eq!(resp.phase(), SwapPhase::InitiatorFunded);
+    }
+
+    #[test]
     fn full_cross_chain_swap_drives_both_engines_to_settled() {
         let p = ladder();
         let mut init = initiator();
@@ -464,7 +552,8 @@ mod tests {
         };
 
         // 2) Responder observes it, then funds the BTC HTLC by paying the P2WSH.
-        resp.observe_initiator_funded(nim_funding).unwrap();
+        resp.observe_initiator_funded(nim_funding, observed(NIM_AMOUNT), 1)
+            .unwrap();
         let btc_addr = match resp.fund(HEAD_MS, &p, VSH).unwrap() {
             SwapEffect::FundBtcAddress {
                 address,
@@ -480,7 +569,8 @@ mod tests {
         let funded = synth_btc_funding(&btc_addr);
 
         // 3) Both observe the second leg funded (same single BTC outpoint).
-        init.observe_btc_funded(funded).unwrap();
+        init.observe_btc_funded(funded, observed(BTC_AMOUNT), 1)
+            .unwrap();
         resp.observe_nim_funded(funded).unwrap();
         assert_eq!(init.phase(), SwapPhase::BothFunded);
         assert_eq!(resp.phase(), SwapPhase::BothFunded);
@@ -527,7 +617,8 @@ mod tests {
             SwapEffect::Broadcast { tx, .. } => tx,
             other => panic!("got {other:?}"),
         };
-        resp.observe_initiator_funded(nim_funding).unwrap();
+        resp.observe_initiator_funded(nim_funding, observed(NIM_AMOUNT), 1)
+            .unwrap();
         let addr = match resp.fund(HEAD_MS, &p, VSH).unwrap() {
             SwapEffect::FundBtcAddress { address, .. } => address,
             other => panic!("got {other:?}"),
@@ -574,13 +665,15 @@ mod tests {
             SwapEffect::Broadcast { tx, .. } => tx,
             other => panic!("got {other:?}"),
         };
-        resp.observe_initiator_funded(nim_funding).unwrap();
+        resp.observe_initiator_funded(nim_funding, observed(NIM_AMOUNT), 1)
+            .unwrap();
         let addr = match resp.fund(HEAD_MS, &p, VSH).unwrap() {
             SwapEffect::FundBtcAddress { address, .. } => address,
             other => panic!("got {other:?}"),
         };
         let funded = synth_btc_funding(&addr);
-        init.observe_btc_funded(funded).unwrap();
+        init.observe_btc_funded(funded, observed(BTC_AMOUNT), 1)
+            .unwrap();
         resp.observe_nim_funded(funded).unwrap();
 
         // Initiator refunds its NIM leg after T_A; the tx is a TimeoutResolve.
