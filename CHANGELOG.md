@@ -2,6 +2,27 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.37.0] — 2026-07-02
+
+### Changed — Send + Receive refined against the real wallet (Andjroo's review ask)
+
+Screenshot-diffed both sheets against the authentic mobile captures
+(`references/screenshots/wallet-app/logged-in/`) and the pixel-verified `amount-input`
+registry component:
+
+- **Send:** recents now show the real wallet's placeholder name bars under the identicon
+  hexagons; real breathing room before ENTER ADDRESS; the address grid is the live
+  wallet's treatment (one rounded light box, full-width row hairlines, SHORT column ticks
+  instead of full cell borders); the amount is the real `amount-input` component behavior
+  (large, centered, grey at rest -> navy with a value -> light-blue focused, bold baseline
+  NIM, content-tracking width); the footer is the wallet's layout ("Address unavailable?"
+  line + "Create a Cashlink" pill — tapping it honestly says Cashlinks aren't in nimmesh
+  yet, i18n'd).
+- **Receive:** the request-amount field uses the same `amount-input` treatment (small
+  variant); the CTA row matches the capture (pill centered, bare QR icon at the right
+  edge instead of a circled button).
+- Verified: Playwright screenshots (rest + scan-filled + receive), `nq lint` 0 errors.
+
 ## [0.36.1] — 2026-07-02
 
 ### Fixed — official QR icons (rule 15: never fabricate Nimiq icons)

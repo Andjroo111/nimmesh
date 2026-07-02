@@ -209,49 +209,69 @@
   .receive-id .identicon img { width: 100%; height: 100%; }
   .addr-box { margin: 12px 24px 8px; padding: 22px 12px; background: #f6f6f8; border-radius: 12px; }
   .addr-box .address-display { font-size: 3rem; max-width: 100%; }
-  .receive-cta { display: flex; align-items: center; justify-content: center; gap: 16px; padding: 14px 24px 4px; }
+  /* CTA row per the live capture: the pill centered, the QR icon bare at the right edge. */
+  .receive-cta { position: relative; display: flex; align-items: center; justify-content: center; padding: 18px 24px 4px; }
   /* border:0 — without it the UA default `2px outset` button border shows (the dark ring). */
   .receive-cta .req-link { height: 42px; padding: 0 22px; border: 0; border-radius: 500px; background: #ececed;
-    color: #1f2348; font-weight: 700; font-size: 14px; display: inline-flex; align-items: center; cursor: pointer; }
-  .receive-cta .qr-toggle { width: 44px; height: 44px; border: 0; border-radius: 50%; background: #ececed;
-    color: rgba(31,35,72,.6); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
-  .receive-cta button:active { transform: translateY(1px); }
+    color: #1f2348; font-weight: 700; font-size: 15px; display: inline-flex; align-items: center; cursor: pointer; }
+  .receive-cta .qr-toggle { position: absolute; right: 22px; top: 50%; transform: translateY(-50%);
+    width: 42px; height: 42px; border: 0; background: transparent;
+    color: rgba(31,35,72,.4); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+  .receive-cta button:active { transform: translate(0, 1px); }
+  .receive-cta .qr-toggle:active { transform: translateY(calc(-50% + 1px)); }
   .receive-cta button:focus:not(:focus-visible) { outline: none; }   /* no ring on tap; keep it for keyboard */
-  .receive-cta .qr-toggle svg { width: 22px; height: 22px; }
+  .receive-cta .qr-toggle svg { width: 26px; height: 26px; }
   .qr-reveal { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 18px 0 4px; }
   .qr-reveal[hidden] { display: none; }
   /* G18: request a specific amount → a "pay me X NIM" link/QR (borderless amount input,
      like the real wallet). Prevents fat-fingered amounts on the payer's side. */
-  .req-amount-label { text-align: center; color: rgba(31,35,72,.45); font-size: 13px; font-weight: 600; margin: 14px 0 0; }
-  .req-amount { display: flex; align-items: baseline; justify-content: center; gap: 8px; margin: 2px 24px 0; }
-  .req-amount input { width: 140px; border: 0; background: transparent; font-family: inherit; font-size: 30px;
-    font-weight: 700; color: #1f2348; text-align: right; outline: none; padding: 0; caret-color: #0582ca; }
-  .req-amount input::placeholder { color: rgba(31,35,72,.25); font-weight: 700; }
-  .req-amount .unit { font-size: 16px; font-weight: 700; color: rgba(31,35,72,.5); }
+  .req-amount-label { text-align: center; color: rgba(31,35,72,.45); font-size: 13px; font-weight: 600; margin: 16px 0 0; }
+  /* The real amount-input component, scaled for the phone sheet: centered, grey at rest,
+     navy with a value, light-blue while focused; bold baseline NIM unit; borderless like
+     the wallet's send/request screens; input width tracks its content. */
+  .amount-input { display: flex; align-items: baseline; justify-content: center; margin: 22px 24px 0;
+    font-size: 44px; color: rgba(31,35,72,.5); transition: color .2s cubic-bezier(.25,0,0,1); }
+  .amount-input.has-value { color: #1f2348; }
+  .amount-input.focussed { color: #0582ca; }
+  .amount-input input { border: 0; background: none; outline: none; font: inherit; color: inherit;
+    text-align: center; padding: 0 2px; width: 1.6ch; max-width: 100%; min-width: 0; caret-color: #0582ca; }
+  .amount-input input::placeholder { color: rgba(31,35,72,.3); }
+  .amount-input .nim { margin-left: 8px; font-size: 22px; font-weight: 700; line-height: 1; }
+  .amount-input.sm { font-size: 34px; margin-top: 4px; }
+  .amount-input.sm .nim { font-size: 18px; }
   .qr-amount { color: rgba(31,35,72,.6); font-weight: 700; font-size: 14px; margin-top: 10px; }
   .qr-amount[hidden] { display: none; }
 
   /* Send sheet */
-  .contacts-row { display: flex; align-items: center; padding: 10px 24px 22px; }
-  .contacts-btn { display: flex; flex-direction: column; align-items: center; gap: 7px;
+  .contacts-row { display: flex; align-items: flex-start; padding: 16px 24px 6px; }
+  .contacts-btn { display: flex; flex-direction: column; align-items: center; gap: 8px;
     color: rgba(31,35,72,.5); font-size: 13px; font-weight: 600; flex: 0 0 auto; }
   .contacts-btn svg { width: 40px; height: 46px; }
   .contacts-divider { width: 1.5px; align-self: stretch; background: rgba(31,35,72,.12); margin: 4px 18px; border-radius: 2px; }
   .recent { display: flex; gap: 18px; }
+  .recent-item { display: flex; flex-direction: column; align-items: center; gap: 9px; }
   .recent .hex { width: 50px; height: 56px; display: block; }
+  /* empty-state name bars under the recent identicons (the real wallet's placeholder rows) */
+  .recent-item .bar { width: 46px; height: 8px; border-radius: 4px; background: rgba(31,35,72,.07); }
   .enter-address-label { text-align: center; color: rgba(31,35,72,.4); font-size: 12px; font-weight: 700;
-    letter-spacing: 1.5px; margin: 4px 0 16px; }
-  .addr-grid { margin: 0 24px; border: 1.5px solid rgba(31,35,72,.14); border-radius: 8px;
+    letter-spacing: 1.5px; margin: 30px 0 16px; }
+  /* Address grid, matched to the LIVE mobile wallet: one rounded light box, full-width
+     row hairlines, SHORT vertical ticks between columns (not full cell borders). */
+  .addr-grid { margin: 0 24px; box-shadow: inset 0 0 0 1.5px rgba(31,35,72,.1); border-radius: 8px;
     display: grid; grid-template-columns: repeat(3, 1fr); overflow: hidden; }
-  .addr-grid input { border: 0; background: none; text-align: center; font-family: 'Fira Mono', monospace;
-    font-size: 17px; text-transform: uppercase; padding: 15px 0; color: #1f2348; min-width: 0;
-    border-right: 1px solid rgba(31,35,72,.09); border-bottom: 1px solid rgba(31,35,72,.09); }
+  .addr-grid .cell { display: flex; }
+  .addr-grid .cell:nth-child(n+4) { border-top: 1px solid rgba(31,35,72,.08); }
+  .addr-grid .cell:nth-child(3n+2), .addr-grid .cell:nth-child(3n) {
+    background: linear-gradient(rgba(31,35,72,.14), rgba(31,35,72,.14)) left center / 1px 50% no-repeat; }
+  .addr-grid input { flex: 1 1 auto; border: 0; background: none; text-align: center; font-family: 'Fira Mono', monospace;
+    font-size: 18px; text-transform: uppercase; padding: 17px 0; color: #1f2348; min-width: 0; width: 100%; }
   .addr-grid input::placeholder { color: rgba(31,35,72,.3); }
   .addr-grid input:focus { outline: none; background: rgba(5,130,202,.05); }
-  .addr-grid input:nth-child(3n) { border-right: 0; }
-  .addr-grid input:nth-child(n+7) { border-bottom: 0; }
-  .send-foot { text-align: center; color: rgba(31,35,72,.5); font-size: 14px; margin: 24px 24px 0; }
-  .send-foot a { color: #1f2348; font-weight: 700; text-decoration: none; }
+  .send-foot { text-align: center; color: rgba(31,35,72,.5); font-size: 15px; margin: 26px 24px 0; }
+  .cashlink-row { display: flex; justify-content: center; margin: 12px 0 0; }
+  .cashlink-pill { height: 42px; padding: 0 22px; border: 0; border-radius: 500px; background: #ececed;
+    color: #1f2348; font-weight: 700; font-size: 15px; font-family: inherit; cursor: pointer; }
+  .cashlink-pill:active { transform: translateY(1px); }
   /* honest stub note: real signing/broadcast is the gated money-path (C1) */
   .send-stub { display: flex; align-items: center; gap: 8px; justify-content: center; margin: 18px 24px 0;
     padding: 10px 14px; border-radius: 8px; background: rgba(5,130,202,.07); color: #0582ca;
@@ -262,13 +282,7 @@
   .send-reach .dot { width: 9px; height: 9px; border-radius: 50%; background: #21bca5; flex: 0 0 auto; }
   .send-reach.meshed .dot { background: #fc8702; }
   .send-reach.offline .dot { background: rgba(31,35,72,.3); }
-  /* C1c: the real Send — borderless amount input + a Send button + a status line. */
-  .send-amount { display: flex; align-items: baseline; justify-content: center; gap: 8px; margin: 16px 24px 0; }
-  .send-amount input { width: 150px; border: 0; background: transparent; font-family: inherit; font-size: 30px;
-    font-weight: 700; color: #1f2348; text-align: right; outline: none; padding: 0; caret-color: #0582ca; }
-  .send-amount input::placeholder { color: rgba(31,35,72,.25); font-weight: 700; }
-  .send-amount .unit { font-size: 16px; font-weight: 700; color: rgba(31,35,72,.5); }
-  .send-btn { display: block; width: calc(100% - 48px); margin: 14px 24px 0; height: 52px; border: 0; cursor: pointer;
+  .send-btn { display: block; width: calc(100% - 48px); margin: 24px 24px 0; height: 52px; border: 0; cursor: pointer;
     border-radius: 500px; font-family: inherit; font-weight: 700; font-size: 16px; color: #fff;
     background-image: radial-gradient(100% 100% at bottom right, #265DD7, #0582CA); box-shadow: 0 8px 24px rgba(5,130,202,.25);
     transition: transform .2s cubic-bezier(.25,0,0,1), box-shadow .2s cubic-bezier(.25,0,0,1); }
@@ -565,9 +579,9 @@
     </div>
   </div>
   <p class="req-amount-label" data-i18n="recv.reqlabel">Request an amount (optional)</p>
-  <div class="req-amount">
+  <div class="amount-input sm" id="req-amount-wrap">
     <input id="req-amount" inputmode="decimal" placeholder="0" aria-label="Request amount in NIM">
-    <span class="unit">NIM</span>
+    <span class="nim">NIM</span>
   </div>
   <div class="receive-cta">
     <button class="req-link" id="req-link" data-i18n="recv.reqlink">Create request link</button>
@@ -601,31 +615,32 @@
     </div>
     <div class="contacts-divider"></div>
     <div class="recent">
-      <svg class="hex" viewBox="0 0 20 18"><path d="M19.96 8.16 15.76.84A1.69 1.69 0 0014.3 0H5.89c-.6 0-1.16.32-1.46.84L.23 8.16c-.3.52-.3 1.16 0 1.69l4.2 7.31c.3.52.86.84 1.46.84h8.41c.6 0 1.16-.32 1.46-.84l4.2-7.31a1.69 1.69 0 00.01-1.69z" fill="rgba(31,35,72,.1)"/></svg>
-      <svg class="hex" viewBox="0 0 20 18"><path d="M19.96 8.16 15.76.84A1.69 1.69 0 0014.3 0H5.89c-.6 0-1.16.32-1.46.84L.23 8.16c-.3.52-.3 1.16 0 1.69l4.2 7.31c.3.52.86.84 1.46.84h8.41c.6 0 1.16-.32 1.46-.84l4.2-7.31a1.69 1.69 0 00.01-1.69z" fill="rgba(31,35,72,.1)"/></svg>
-      <svg class="hex" viewBox="0 0 20 18"><path d="M19.96 8.16 15.76.84A1.69 1.69 0 0014.3 0H5.89c-.6 0-1.16.32-1.46.84L.23 8.16c-.3.52-.3 1.16 0 1.69l4.2 7.31c.3.52.86.84 1.46.84h8.41c.6 0 1.16-.32 1.46-.84l4.2-7.31a1.69 1.69 0 00.01-1.69z" fill="rgba(31,35,72,.1)"/></svg>
+      <span class="recent-item"><svg class="hex" viewBox="0 0 20 18"><path d="M19.96 8.16 15.76.84A1.69 1.69 0 0014.3 0H5.89c-.6 0-1.16.32-1.46.84L.23 8.16c-.3.52-.3 1.16 0 1.69l4.2 7.31c.3.52.86.84 1.46.84h8.41c.6 0 1.16-.32 1.46-.84l4.2-7.31a1.69 1.69 0 00.01-1.69z" fill="rgba(31,35,72,.1)"/></svg><span class="bar"></span></span>
+      <span class="recent-item"><svg class="hex" viewBox="0 0 20 18"><path d="M19.96 8.16 15.76.84A1.69 1.69 0 0014.3 0H5.89c-.6 0-1.16.32-1.46.84L.23 8.16c-.3.52-.3 1.16 0 1.69l4.2 7.31c.3.52.86.84 1.46.84h8.41c.6 0 1.16-.32 1.46-.84l4.2-7.31a1.69 1.69 0 00.01-1.69z" fill="rgba(31,35,72,.1)"/></svg><span class="bar"></span></span>
+      <span class="recent-item"><svg class="hex" viewBox="0 0 20 18"><path d="M19.96 8.16 15.76.84A1.69 1.69 0 0014.3 0H5.89c-.6 0-1.16.32-1.46.84L.23 8.16c-.3.52-.3 1.16 0 1.69l4.2 7.31c.3.52.86.84 1.46.84h8.41c.6 0 1.16-.32 1.46-.84l4.2-7.31a1.69 1.69 0 00.01-1.69z" fill="rgba(31,35,72,.1)"/></svg><span class="bar"></span></span>
     </div>
   </div>
   <div class="enter-address-label" data-i18n="send.enteraddr">ENTER ADDRESS</div>
   <div class="addr-grid">
-    <input maxlength="4" placeholder="NQ" inputmode="text" aria-label="address block 1">
-    <input maxlength="4" inputmode="text" aria-label="address block 2">
-    <input maxlength="4" inputmode="text" aria-label="address block 3">
-    <input maxlength="4" inputmode="text" aria-label="address block 4">
-    <input maxlength="4" inputmode="text" aria-label="address block 5">
-    <input maxlength="4" inputmode="text" aria-label="address block 6">
-    <input maxlength="4" inputmode="text" aria-label="address block 7">
-    <input maxlength="4" inputmode="text" aria-label="address block 8">
-    <input maxlength="4" inputmode="text" aria-label="address block 9">
+    <div class="cell"><input maxlength="4" placeholder="NQ" inputmode="text" aria-label="address block 1"></div>
+    <div class="cell"><input maxlength="4" inputmode="text" aria-label="address block 2"></div>
+    <div class="cell"><input maxlength="4" inputmode="text" aria-label="address block 3"></div>
+    <div class="cell"><input maxlength="4" inputmode="text" aria-label="address block 4"></div>
+    <div class="cell"><input maxlength="4" inputmode="text" aria-label="address block 5"></div>
+    <div class="cell"><input maxlength="4" inputmode="text" aria-label="address block 6"></div>
+    <div class="cell"><input maxlength="4" inputmode="text" aria-label="address block 7"></div>
+    <div class="cell"><input maxlength="4" inputmode="text" aria-label="address block 8"></div>
+    <div class="cell"><input maxlength="4" inputmode="text" aria-label="address block 9"></div>
   </div>
-  <!-- C1c: the real send — amount, then sign (Keychain key) + broadcast. -->
-  <div class="send-amount">
+  <!-- C1c: the real send — amount (the real amount-input treatment), then sign + broadcast. -->
+  <div class="amount-input" id="send-amount-wrap">
     <input id="send-amount" inputmode="decimal" placeholder="0" aria-label="Amount in NIM">
-    <span class="unit">NIM</span>
+    <span class="nim">NIM</span>
   </div>
   <button class="send-btn" id="send-btn" data-i18n="send.cta">Send</button>
   <div class="send-status" id="send-status" hidden></div>
-  <p class="send-foot"><span data-i18n="send.noaddr">Address unavailable?</span> <a href="javascript:void(0)" data-i18n="send.cashlink">Create a Cashlink</a></p>
+  <p class="send-foot" data-i18n="send.noaddr">Address unavailable?</p>
+  <div class="cashlink-row"><button class="cashlink-pill" id="cashlink-btn" data-i18n="send.cashlink">Create a Cashlink</button></div>
 </section>
 
 <!-- Account sheet: the wallet-pill replacement — your identicon opens YOUR account
@@ -696,7 +711,7 @@
       'confirm.title': 'Confirma tu dirección', 'confirm.sub': 'Esta es la dirección que nimmesh derivó de tu frase.', 'confirm.warn': 'Comprueba que coincide exactamente con tu cartera antes de enviarle fondos.', 'confirm.mine': 'Esta es mi cartera', 'confirm.retry': 'No es correcta, intentar de nuevo',
       'rec.title': 'Cartera encontrada en este dispositivo', 'rec.sub': 'Una cartera de una instalación anterior sigue en el almacenamiento seguro del dispositivo. Esta es su dirección:', 'rec.keep': 'Conservar esta cartera', 'rec.fresh': 'Borrarla y empezar de cero', 'rec.confirm': '¿Borrar la cartera de este dispositivo? Sin sus 24 palabras NO se puede recuperar.',
       'acct.title': 'Mi cuenta', 'acct.copy': 'Copiar dirección', 'acct.backup': 'Respaldar palabras de recuperación', 'acct.logout': 'Cerrar sesión en este dispositivo', 'acct.logout.confirm': '¿Eliminar la cartera de este dispositivo? Sin tus 24 palabras NO se puede recuperar. Asegúrate de tenerlas guardadas.',
-      'lang.title': 'Idioma', 'create.failed': 'No se pudo crear la cartera: ', 'scan.invalid': 'Eso no es una dirección Nimiq ni una solicitud de pago',
+      'lang.title': 'Idioma', 'create.failed': 'No se pudo crear la cartera: ', 'scan.invalid': 'Eso no es una dirección Nimiq ni una solicitud de pago', 'cashlink.soon': 'Los Cashlinks llegarán pronto a nimmesh',
     },
     de: {
       'a.lang': 'Sprache', 'a.close': 'Schließen', 'a.copied': 'Kopiert',
@@ -715,7 +730,7 @@
       'confirm.title': 'Bestätige deine Adresse', 'confirm.sub': 'Das ist die Adresse, die nimmesh aus deiner Phrase abgeleitet hat.', 'confirm.warn': 'Prüfe genau, dass sie mit deiner bestehenden Wallet übereinstimmt, bevor du Geld darauf sendest.', 'confirm.mine': 'Das ist meine Wallet', 'confirm.retry': 'Stimmt nicht, nochmal versuchen',
       'rec.title': 'Wallet auf diesem Gerät gefunden', 'rec.sub': 'Eine Wallet einer früheren Installation liegt noch im sicheren Speicher des Geräts. Das ist ihre Adresse:', 'rec.keep': 'Diese Wallet behalten', 'rec.fresh': 'Löschen und neu anfangen', 'rec.confirm': 'Wallet von diesem Gerät löschen? Ohne ihre 24 Wörter ist sie NICHT wiederherstellbar.',
       'acct.title': 'Mein Konto', 'acct.copy': 'Adresse kopieren', 'acct.backup': 'Wiederherstellungswörter sichern', 'acct.logout': 'Von diesem Gerät abmelden', 'acct.logout.confirm': 'Wallet von diesem Gerät entfernen? Ohne deine 24 Wörter ist sie NICHT wiederherstellbar. Stelle sicher, dass du sie gesichert hast.',
-      'lang.title': 'Sprache', 'create.failed': 'Wallet konnte nicht erstellt werden: ', 'scan.invalid': 'Das ist keine Nimiq-Adresse und keine Zahlungsanforderung',
+      'lang.title': 'Sprache', 'create.failed': 'Wallet konnte nicht erstellt werden: ', 'scan.invalid': 'Das ist keine Nimiq-Adresse und keine Zahlungsanforderung', 'cashlink.soon': 'Cashlinks kommen bald zu nimmesh',
     },
     fr: {
       'a.lang': 'Langue', 'a.close': 'Fermer', 'a.copied': 'Copié',
@@ -734,7 +749,7 @@
       'confirm.title': 'Confirme ton adresse', 'confirm.sub': 'Voici l’adresse que nimmesh a dérivée de ta phrase.', 'confirm.warn': 'Vérifie qu’elle correspond exactement à ton portefeuille avant d’y envoyer des fonds.', 'confirm.mine': 'C’est mon portefeuille', 'confirm.retry': 'Ce n’est pas ça, réessayer',
       'rec.title': 'Portefeuille trouvé sur cet appareil', 'rec.sub': 'Un portefeuille d’une installation précédente est encore dans le stockage sécurisé. Voici son adresse :', 'rec.keep': 'Garder ce portefeuille', 'rec.fresh': 'Le supprimer et repartir de zéro', 'rec.confirm': 'Supprimer le portefeuille de cet appareil ? Sans ses 24 mots il est IRRÉCUPÉRABLE.',
       'acct.title': 'Mon compte', 'acct.copy': 'Copier l’adresse', 'acct.backup': 'Sauvegarder les mots de récupération', 'acct.logout': 'Se déconnecter de cet appareil', 'acct.logout.confirm': 'Supprimer le portefeuille de cet appareil ? Sans tes 24 mots il est IRRÉCUPÉRABLE. Assure-toi de les avoir sauvegardés.',
-      'lang.title': 'Langue', 'create.failed': 'Impossible de créer le portefeuille : ', 'scan.invalid': 'Ce n’est pas une adresse Nimiq ni une demande de paiement',
+      'lang.title': 'Langue', 'create.failed': 'Impossible de créer le portefeuille : ', 'scan.invalid': 'Ce n’est pas une adresse Nimiq ni une demande de paiement', 'cashlink.soon': 'Les Cashlinks arrivent bientôt sur nimmesh',
     },
     pt: {
       'a.lang': 'Idioma', 'a.close': 'Fechar', 'a.copied': 'Copiado',
@@ -753,7 +768,7 @@
       'confirm.title': 'Confirme seu endereço', 'confirm.sub': 'Este é o endereço que o nimmesh derivou da sua frase.', 'confirm.warn': 'Confira se corresponde exatamente à sua carteira antes de enviar fundos para ela.', 'confirm.mine': 'Esta é a minha carteira', 'confirm.retry': 'Não está certo, tentar de novo',
       'rec.title': 'Carteira encontrada neste aparelho', 'rec.sub': 'Uma carteira de uma instalação anterior ainda está no armazenamento seguro do aparelho. Este é o endereço dela:', 'rec.keep': 'Manter esta carteira', 'rec.fresh': 'Apagá-la e começar do zero', 'rec.confirm': 'Apagar a carteira deste aparelho? Sem as 24 palavras ela NÃO pode ser recuperada.',
       'acct.title': 'Minha conta', 'acct.copy': 'Copiar endereço', 'acct.backup': 'Backup das palavras de recuperação', 'acct.logout': 'Sair deste aparelho', 'acct.logout.confirm': 'Remover a carteira deste aparelho? Sem suas 24 palavras ela NÃO pode ser recuperada. Garanta que você as guardou.',
-      'lang.title': 'Idioma', 'create.failed': 'Não foi possível criar a carteira: ', 'scan.invalid': 'Isso não é um endereço Nimiq nem uma cobrança',
+      'lang.title': 'Idioma', 'create.failed': 'Não foi possível criar a carteira: ', 'scan.invalid': 'Isso não é um endereço Nimiq nem uma cobrança', 'cashlink.soon': 'Os Cashlinks chegam em breve ao nimmesh',
     },
   };
   // English dynamic strings (the static ones live in the markup and are left untouched for en).
@@ -770,6 +785,7 @@
     'acct.logout.confirm': 'Remove the wallet from this device? Without your 24 words it CANNOT be recovered. Make sure you have them backed up.',
     'create.failed': 'Could not create wallet: ',
     'scan.invalid': 'That is not a Nimiq address or payment request',
+    'cashlink.soon': 'Cashlinks are coming to nimmesh soon',
   };
   let LANG = 'en';
   function T(key) { return (I18N[LANG] && I18N[LANG][key]) || I18N.en[key] || key; }
@@ -890,6 +906,29 @@
     if (c.value.length >= 4 && i < cells.length - 1) cells[i + 1].focus();
   }));
 
+  // The amount-input component's behavior: grey at rest -> navy with a value -> light-blue
+  // while focused, and the input's width tracks its content (the upstream width-finder idea,
+  // done with ch units since the value is digits only).
+  function wireAmountInput(wrapId) {
+    const wrap = document.getElementById(wrapId);
+    if (!wrap) return;
+    const inp = wrap.querySelector('input');
+    const sync = () => {
+      wrap.classList.toggle('has-value', inp.value.trim().length > 0);
+      inp.style.width = Math.max(1.6, inp.value.length + 0.5) + 'ch';
+    };
+    inp.addEventListener('input', sync);
+    inp.addEventListener('focus', () => wrap.classList.add('focussed'));
+    inp.addEventListener('blur', () => wrap.classList.remove('focussed'));
+    sync();
+  }
+  wireAmountInput('send-amount-wrap');
+  wireAmountInput('req-amount-wrap');
+
+  // Cashlinks are a real wallet feature nimmesh doesn't ship yet — say so honestly.
+  const cashlink = document.getElementById('cashlink-btn');
+  if (cashlink) cashlink.addEventListener('click', () => alert(T('cashlink.soon')));
+
   // C1c: the real Send — read the address grid + amount, sign with the Keychain key, and
   // broadcast via the bridge. In a plain browser (no bridge) it explains it needs
   // the app. The seed never crosses — only the recipient + amount go down, a tx hash comes back.
@@ -950,7 +989,11 @@
     if (!scanned) { alert(T('scan.invalid')); return; }
     const blocks = scanned.address.match(/.{1,4}/g) || [];
     cells.forEach((c, i) => { c.value = blocks[i] || ''; });
-    if (scanned.amount > 0) document.getElementById('send-amount').value = String(scanned.amount);
+    if (scanned.amount > 0) {
+      const amt = document.getElementById('send-amount');
+      amt.value = String(scanned.amount);
+      amt.dispatchEvent(new Event('input'));   // re-sync the amount-input width + color
+    }
     setSendStatus('');
     close();
     open('send');
