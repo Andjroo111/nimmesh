@@ -103,6 +103,11 @@ pub mod swap_leg_select;
 // timelocks can't be made safe over a high-latency mesh. Rules only: no keys, no bytes, no radio.
 pub mod swap;
 
+// Mesh swap (G1 / finding S1): the anti-theft funding-verification seam — a party never funds its own
+// leg or reveals `S` on a `FundingProof` *message* alone; it first confirms the counterparty's HTLC is
+// on-chain with the agreed hashlock / amount / timeout / recipient at sufficient depth.
+pub mod swap_funding_verify;
+
 // Mesh swap (F4): the chain-agnostic `SwapLeg` seam + a faithful in-memory mock HTLC chain.
 // `swap_leg` is the trait each chain implements (NimiqLeg via `nimiq::htlc`; BitcoinLeg gated →
 // F5); `MockLeg` enforces the real claim/refund rules (SHA-256 hashlock, claim-before-timeout,

@@ -9,6 +9,9 @@
 //! *coordination*. The on-chain tx bytes are opaque blobs to it.
 
 use crate::swap::{LadderParams, Swap, SwapError, SwapPhase, SwapRole, SwapTerms};
+use crate::swap_funding_verify::{
+    require_funded, FundingRejected, FundingVerifier, HtlcExpectation,
+};
 use crate::swap_leg::sha256;
 use crate::swap_messages::{tx_envelope, SwapAcceptance, SwapProposal};
 use crate::swap_wire::{
@@ -27,6 +30,10 @@ pub enum CoordError {
     },
     /// A revealed preimage did not hash to the agreed hashlock.
     BadPreimage,
+    /// The counterparty's HTLC could not be verified on-chain, so we refuse to fund our own leg (or
+    /// reveal `S`). Carries the specific reason (not yet on-chain, too shallow, under-funded, timeout
+    /// too short, or a hashlock/recipient mismatch) — a lie or a not-yet, either way we do not proceed.
+    FundingUnverified(FundingRejected),
 }
 
 impl From<SwapError> for CoordError {
@@ -261,6 +268,11 @@ impl SwapCoordinator {
 
     /// Handle the peer's `FundingProof`: the initiator observes the counterparty leg funded
     /// (BothFunded); the responder observes the initiator's funding (it can now fund its own).
+    ///
+    /// **Security (S1 / #72):** advancing off the *message* alone is unsafe with real funds — the
+    /// sanctioned path is [`verify_and_observe_funding`](Self::verify_and_observe_funding), which only
+    /// advances after confirming the counterparty HTLC on-chain. Slice 2 routes the node/session/engine
+    /// through the verified path exclusively; this message handler stays for the sim/test transport.
     pub fn recv_funding_proof(&mut self, env: &SwapEnvelope) -> Result<(), CoordError> {
         let leg = env.leg.ok_or(CoordError::BadMessage {
             reason: "FundingProof has no leg",
@@ -282,6 +294,54 @@ impl SwapCoordinator {
                 }
                 self.swap.observe_initiator_funded()?;
             }
+        }
+        Ok(())
+    }
+
+    /// The on-chain HTLC we must verify before proceeding: the *counterparty's* leg. A responder
+    /// verifies the initiator's NIM leg before funding its own BTC; an initiator verifies the
+    /// responder's BTC leg before revealing `S`. `recipient` is *our* claim key on that leg — if the
+    /// on-chain HTLC pays anyone else it is not ours to take. Amount/timeout floors are the agreed
+    /// terms for that leg (more amount / later timeout only helps us; less is a lie).
+    pub fn counterparty_expectation(&self) -> HtlcExpectation {
+        match self.swap.role {
+            // Responder verifies the initiator's NIM funding (claimable by us with `S`).
+            SwapRole::Responder => HtlcExpectation {
+                leg: SwapLegId::Nim,
+                hashlock: self.ctx.hashlock,
+                min_amount: self.ctx.give_amount,
+                min_timeout: self.ctx.terms.nim_timeout,
+                recipient: self.ctx.nim_address.to_vec(),
+            },
+            // Initiator verifies the responder's counterparty (BTC) funding (claimable by us with `S`).
+            SwapRole::Initiator => HtlcExpectation {
+                leg: SwapLegId::Counterparty,
+                hashlock: self.ctx.hashlock,
+                min_amount: self.ctx.take_amount,
+                min_timeout: self.ctx.terms.counterparty_timeout,
+                recipient: self.ctx.btc_pubkey.to_vec(),
+            },
+        }
+    }
+
+    /// Gate the funded-observed transition on an ON-CHAIN check of the counterparty's HTLC (S1 / #72).
+    /// Observes the chain via `verifier`, applies [`require_funded`] against the agreed terms at
+    /// `min_confirmations` depth, and ONLY on success advances the state machine — the responder to
+    /// `InitiatorFunded` (so it may now fund), the initiator to `BothFunded` (so it may now reveal `S`).
+    /// On any refusal it returns [`CoordError::FundingUnverified`] and does not move: the caller retries
+    /// next tick, or refunds once the timelock passes. This is the anti-theft invariant: no funded
+    /// transition is reachable without a matching, deep-enough, correctly-parameterised on-chain HTLC.
+    pub fn verify_and_observe_funding<V: FundingVerifier>(
+        &mut self,
+        verifier: &V,
+        min_confirmations: u32,
+    ) -> Result<(), CoordError> {
+        let expect = self.counterparty_expectation();
+        let obs = verifier.observe(&expect);
+        require_funded(&obs, &expect, min_confirmations).map_err(CoordError::FundingUnverified)?;
+        match self.swap.role {
+            SwapRole::Responder => self.swap.observe_initiator_funded()?,
+            SwapRole::Initiator => self.swap.observe_counterparty_funded()?,
         }
         Ok(())
     }
@@ -479,5 +539,120 @@ mod tests {
             Err(CoordError::BadMessage { .. })
         ));
         assert_eq!(bob.phase(), SwapPhase::Proposed);
+    }
+
+    // --- S1 / #72: the funding-verification gate (never fund or reveal on a message alone) ---------
+
+    /// A responder that has accepted the Propose but funded nothing — the moment before the S1 theft.
+    fn responder_at_accepted() -> SwapCoordinator {
+        let p = LadderParams::default();
+        let (_alice, propose) = SwapCoordinator::new_initiator(ctx(0x11, 0xA1), [42u8; 32], p);
+        let mut bob = SwapCoordinator::new_responder(ctx(0x22, 0xB2), p);
+        bob.recv_propose(&propose, 0).unwrap();
+        assert_eq!(bob.phase(), SwapPhase::Accepted);
+        bob
+    }
+
+    /// An initiator that has funded NIM and now must NOT reveal `S` until it has verified the
+    /// responder's BTC HTLC on-chain.
+    fn initiator_at_self_funded() -> SwapCoordinator {
+        let p = LadderParams::default();
+        let (mut alice, propose) = SwapCoordinator::new_initiator(ctx(0x11, 0xA1), [42u8; 32], p);
+        let mut bob = SwapCoordinator::new_responder(ctx(0x22, 0xB2), p);
+        let accept = bob.recv_propose(&propose, 0).unwrap();
+        alice.recv_accept(&accept, 0).unwrap();
+        alice.fund(0, vec![0x11; 248], [0xC1; 32]).unwrap();
+        assert_eq!(alice.phase(), SwapPhase::SelfFunded);
+        alice
+    }
+
+    #[test]
+    fn a_responder_refuses_to_fund_when_the_nim_htlc_is_absent() {
+        use crate::swap_funding_verify::{FundingObservation, SimVerifier};
+        let mut bob = responder_at_accepted();
+        let v = SimVerifier::returning(FundingObservation::Absent);
+        assert!(matches!(
+            bob.verify_and_observe_funding(&v, 1),
+            Err(CoordError::FundingUnverified(FundingRejected::NotFundedYet))
+        ));
+        // The anti-theft invariant: it did NOT reach InitiatorFunded, so the node never funds BTC.
+        assert_eq!(bob.phase(), SwapPhase::Accepted);
+    }
+
+    #[test]
+    fn a_responder_refuses_an_underfunded_nim_htlc() {
+        use crate::swap_funding_verify::{FundingObservation, SimVerifier};
+        let mut bob = responder_at_accepted();
+        // give_amount is 100_000; an HTLC that only locks 1 luna is the classic lie.
+        let v = SimVerifier::returning(FundingObservation::Found {
+            amount: 1,
+            timeout: 10_000,
+            confirmations: 9,
+        });
+        assert!(matches!(
+            bob.verify_and_observe_funding(&v, 1),
+            Err(CoordError::FundingUnverified(
+                FundingRejected::Underfunded { .. }
+            ))
+        ));
+        assert_eq!(bob.phase(), SwapPhase::Accepted);
+    }
+
+    #[test]
+    fn a_responder_refuses_a_wrong_hashlock() {
+        use crate::swap_funding_verify::{FundingObservation, MismatchReason, SimVerifier};
+        let mut bob = responder_at_accepted();
+        let v = SimVerifier::returning(FundingObservation::Mismatch(MismatchReason::Hashlock));
+        assert!(matches!(
+            bob.verify_and_observe_funding(&v, 1),
+            Err(CoordError::FundingUnverified(FundingRejected::Mismatch(
+                MismatchReason::Hashlock
+            )))
+        ));
+        assert_eq!(bob.phase(), SwapPhase::Accepted);
+    }
+
+    #[test]
+    fn a_responder_refuses_a_shallow_nim_htlc_until_it_is_buried() {
+        use crate::swap_funding_verify::{FundingObservation, SimVerifier};
+        let mut bob = responder_at_accepted();
+        let v = SimVerifier::returning(FundingObservation::Found {
+            amount: 100_000,
+            timeout: 10_000,
+            confirmations: 1,
+        });
+        assert!(matches!(
+            bob.verify_and_observe_funding(&v, 6),
+            Err(CoordError::FundingUnverified(
+                FundingRejected::TooShallow { .. }
+            ))
+        ));
+        assert_eq!(bob.phase(), SwapPhase::Accepted);
+    }
+
+    #[test]
+    fn a_responder_funds_only_once_the_nim_htlc_is_verified() {
+        use crate::swap_funding_verify::SimVerifier;
+        let mut bob = responder_at_accepted();
+        let v = SimVerifier::healthy(100_000, 10_000, 6);
+        bob.verify_and_observe_funding(&v, 3).unwrap();
+        assert_eq!(bob.phase(), SwapPhase::InitiatorFunded); // now — and only now — may it fund BTC
+    }
+
+    #[test]
+    fn an_initiator_will_not_reveal_until_the_btc_htlc_is_verified() {
+        use crate::swap_funding_verify::{FundingObservation, SimVerifier};
+        let mut alice = initiator_at_self_funded();
+        // No BTC HTLC on-chain → refuse to advance to BothFunded, so `S` is never revealed.
+        let absent = SimVerifier::returning(FundingObservation::Absent);
+        assert!(matches!(
+            alice.verify_and_observe_funding(&absent, 1),
+            Err(CoordError::FundingUnverified(_))
+        ));
+        assert_eq!(alice.phase(), SwapPhase::SelfFunded);
+        // Once the responder's BTC HTLC is verified (take_amount 50_000, T_B 5_000) → BothFunded.
+        let ok = SimVerifier::healthy(50_000, 5_000, 6);
+        alice.verify_and_observe_funding(&ok, 3).unwrap();
+        assert_eq!(alice.phase(), SwapPhase::BothFunded);
     }
 }
