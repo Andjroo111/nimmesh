@@ -174,6 +174,83 @@ impl FundingVerifier for SimVerifier {
     }
 }
 
+/// One HTLC as it appears on a (sim) chain — the shape a gateway-backed verifier reads off a real
+/// chain. Matched by `(leg, recipient, hashlock)`; `confirmations` grows as blocks bury it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OnChainHtlc {
+    /// Which leg this HTLC settles.
+    pub leg: SwapLegId,
+    /// The hashlock it commits to.
+    pub hashlock: [u8; HASH_LEN],
+    /// Who it pays on claim (raw key/address bytes).
+    pub recipient: Vec<u8>,
+    /// Locked amount.
+    pub amount: u64,
+    /// Absolute timeout.
+    pub timeout: u64,
+    /// Confirmation depth (0 = unconfirmed).
+    pub confirmations: u32,
+}
+
+/// A verifier backed by an in-memory ledger of [`OnChainHtlc`]s: a faithful chain oracle for tests and
+/// the sim, and the reference matching logic a gateway-backed [`FundingVerifier`] mirrors against a
+/// real chain. Unlike [`SimVerifier`] (fixed answer), this actually *matches* the expectation: it finds
+/// the deepest HTLC on the leg that pays **our** recipient under **our** hashlock. An HTLC that pays us
+/// under a different hashlock, or our hashlock paying someone else, is a hard [`MismatchReason`];
+/// nothing at all is [`FundingObservation::Absent`].
+#[derive(Debug, Clone, Default)]
+pub struct LedgerVerifier {
+    htlcs: Vec<OnChainHtlc>,
+}
+
+impl LedgerVerifier {
+    /// An empty ledger — nothing funded yet.
+    pub fn new() -> Self {
+        LedgerVerifier { htlcs: Vec::new() }
+    }
+    /// Publish (or re-publish at a deeper confirmation) an on-chain HTLC.
+    pub fn fund(&mut self, htlc: OnChainHtlc) {
+        self.htlcs.push(htlc);
+    }
+}
+
+impl FundingVerifier for LedgerVerifier {
+    fn observe(&self, expect: &HtlcExpectation) -> FundingObservation {
+        let mut pays_us = false;
+        let mut best: Option<&OnChainHtlc> = None;
+        for h in self.htlcs.iter().filter(|h| h.leg == expect.leg) {
+            if h.recipient == expect.recipient {
+                pays_us = true;
+                if h.hashlock == expect.hashlock
+                    && best.map_or(true, |b| h.confirmations > b.confirmations)
+                {
+                    best = Some(h);
+                }
+            }
+        }
+        if let Some(h) = best {
+            return FundingObservation::Found {
+                amount: h.amount,
+                timeout: h.timeout,
+                confirmations: h.confirmations,
+            };
+        }
+        if pays_us {
+            // Pays us, but not under the hashlock we agreed — `S` would never open it.
+            return FundingObservation::Mismatch(MismatchReason::Hashlock);
+        }
+        if self
+            .htlcs
+            .iter()
+            .any(|h| h.leg == expect.leg && h.hashlock == expect.hashlock)
+        {
+            // Our hashlock is on-chain but paying someone else — not ours to take.
+            return FundingObservation::Mismatch(MismatchReason::Recipient);
+        }
+        FundingObservation::Absent
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -305,5 +382,87 @@ mod tests {
         let v = SimVerifier::healthy(100_000, 10_000, 6);
         let obs = v.observe(&expect());
         assert_eq!(require_funded(&obs, &expect(), 3), Ok(6));
+    }
+
+    fn on_chain(recipient: Vec<u8>, hashlock: [u8; HASH_LEN], confirmations: u32) -> OnChainHtlc {
+        OnChainHtlc {
+            leg: SwapLegId::Nim,
+            hashlock,
+            recipient,
+            amount: 100_000,
+            timeout: 10_000,
+            confirmations,
+        }
+    }
+
+    #[test]
+    fn ledger_absent_when_empty() {
+        let ledger = LedgerVerifier::new();
+        assert_eq!(ledger.observe(&expect()), FundingObservation::Absent);
+    }
+
+    #[test]
+    fn ledger_finds_our_matching_htlc() {
+        let mut ledger = LedgerVerifier::new();
+        ledger.fund(on_chain(vec![0xA1; 20], [0x11; HASH_LEN], 4));
+        assert_eq!(
+            ledger.observe(&expect()),
+            FundingObservation::Found {
+                amount: 100_000,
+                timeout: 10_000,
+                confirmations: 4
+            }
+        );
+    }
+
+    #[test]
+    fn ledger_reports_the_deepest_matching_htlc() {
+        // The same HTLC re-published as it is buried deeper — the deepest confirmation wins.
+        let mut ledger = LedgerVerifier::new();
+        ledger.fund(on_chain(vec![0xA1; 20], [0x11; HASH_LEN], 1));
+        ledger.fund(on_chain(vec![0xA1; 20], [0x11; HASH_LEN], 5));
+        assert!(matches!(
+            ledger.observe(&expect()),
+            FundingObservation::Found {
+                confirmations: 5,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn ledger_flags_an_htlc_that_pays_us_under_the_wrong_hashlock() {
+        let mut ledger = LedgerVerifier::new();
+        ledger.fund(on_chain(vec![0xA1; 20], [0x99; HASH_LEN], 6)); // pays us, wrong hashlock
+        assert_eq!(
+            ledger.observe(&expect()),
+            FundingObservation::Mismatch(MismatchReason::Hashlock)
+        );
+    }
+
+    #[test]
+    fn ledger_flags_our_hashlock_paying_someone_else() {
+        let mut ledger = LedgerVerifier::new();
+        ledger.fund(on_chain(vec![0xBE; 20], [0x11; HASH_LEN], 6)); // right hashlock, not our recipient
+        assert_eq!(
+            ledger.observe(&expect()),
+            FundingObservation::Mismatch(MismatchReason::Recipient)
+        );
+    }
+
+    #[test]
+    fn ledger_result_flows_through_require_funded() {
+        // End to end: a deep, matching ledger entry passes the full gate; a shallow one is rejected.
+        let mut ledger = LedgerVerifier::new();
+        ledger.fund(on_chain(vec![0xA1; 20], [0x11; HASH_LEN], 2));
+        assert_eq!(
+            require_funded(&ledger.observe(&expect()), &expect(), 3),
+            Err(FundingRejected::TooShallow { have: 2, need: 3 })
+        );
+        ledger.fund(on_chain(vec![0xA1; 20], [0x11; HASH_LEN], 3));
+        assert_eq!(
+            require_funded(&ledger.observe(&expect()), &expect(), 3),
+            Ok(3)
+        );
     }
 }

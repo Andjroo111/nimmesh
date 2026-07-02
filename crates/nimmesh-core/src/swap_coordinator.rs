@@ -655,4 +655,44 @@ mod tests {
         alice.verify_and_observe_funding(&ok, 3).unwrap();
         assert_eq!(alice.phase(), SwapPhase::BothFunded);
     }
+
+    #[test]
+    fn a_responder_advances_only_when_the_nim_htlc_appears_on_the_ledger() {
+        // The end-to-end anti-theft property against a chain oracle (not a message): the responder
+        // funds its BTC ONLY after the initiator's NIM HTLC is really on-chain, buried deep enough.
+        use crate::swap_funding_verify::{LedgerVerifier, OnChainHtlc};
+        let mut bob = responder_at_accepted();
+        let mut chain = LedgerVerifier::new();
+
+        // Empty chain → not funded yet; stays put (never funds BTC on the initiator's word alone).
+        assert!(matches!(
+            bob.verify_and_observe_funding(&chain, 3),
+            Err(CoordError::FundingUnverified(FundingRejected::NotFundedYet))
+        ));
+        assert_eq!(bob.phase(), SwapPhase::Accepted);
+
+        // The initiator's NIM HTLC appears (pays bob's nim_address 0xB2, agreed hashlock) but only 1
+        // block deep → too shallow, still refuse.
+        let nim_htlc = |confs| OnChainHtlc {
+            leg: SwapLegId::Nim,
+            hashlock: sha256(&[42u8; 32]),
+            recipient: vec![0xB2; NIM_ADDRESS_LEN],
+            amount: 100_000,
+            timeout: 10_000,
+            confirmations: confs,
+        };
+        chain.fund(nim_htlc(1));
+        assert!(matches!(
+            bob.verify_and_observe_funding(&chain, 3),
+            Err(CoordError::FundingUnverified(
+                FundingRejected::TooShallow { .. }
+            ))
+        ));
+        assert_eq!(bob.phase(), SwapPhase::Accepted);
+
+        // Buried to depth 3 → the responder finally advances (and only now would it fund BTC).
+        chain.fund(nim_htlc(3));
+        bob.verify_and_observe_funding(&chain, 3).unwrap();
+        assert_eq!(bob.phase(), SwapPhase::InitiatorFunded);
+    }
 }
