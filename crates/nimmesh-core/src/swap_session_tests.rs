@@ -4,6 +4,7 @@
 use crate::packet::MessageType;
 use crate::swap::{LadderParams, SwapPhase, SwapTerms};
 use crate::swap_coordinator::{SwapContext, SwapCoordinator};
+use crate::swap_funding_verify::{FundingObservation, SimVerifier};
 use crate::swap_leg::sha256;
 use crate::swap_session::*;
 use crate::swap_wire::{
@@ -462,4 +463,66 @@ fn a_stale_gc_drops_the_pending_retransmit() {
     // for it instead, not a retransmit of the dead negotiation).
     assert_eq!(bob.tick(10_001), vec![swap_id]);
     assert!(bob.pending_retransmits().is_empty());
+}
+
+// --- S1 / #72: the mesh-path funding-verification gate ----------------------------------------
+
+/// Build a `FundingProof` payload for the initiator's NIM leg of `swap_id`.
+fn nim_funding_proof(swap_id: [u8; SWAP_ID_LEN]) -> Vec<u8> {
+    encode_swap(&crate::swap_messages::tx_envelope(
+        swap_id,
+        SwapLegId::Nim,
+        vec![0x11; 248],
+        [0xC1; 32],
+    ))
+    .unwrap()
+}
+
+#[test]
+fn a_funding_proof_advances_a_responder_only_when_the_verifier_confirms_it() {
+    let head = 0;
+    let p = LadderParams::default();
+    let swap_id = [0x7A; SWAP_ID_LEN];
+    let (_c, propose) = SwapCoordinator::new_initiator(ctx(swap_id, 0x11), [42u8; 32], p);
+    let propose_bytes = encode_swap(&propose).unwrap();
+    let nim_fp = nim_funding_proof(swap_id);
+
+    // A responder whose verifier finds NO on-chain NIM HTLC. It accepts, then a FundingProof arrives
+    // — but with nothing verified on-chain it must REFUSE to advance (returns the error, which the
+    // node treats as "no reply") and stay at Accepted, so it never funds its BTC leg on the message.
+    let mut bob_reject = SwapSession::new(identity(0x22), p)
+        .with_funding_verifier(Box::new(SimVerifier::returning(FundingObservation::Absent)));
+    only(
+        bob_reject
+            .on_message(SwapKind::Propose, &propose_bytes, head)
+            .unwrap(),
+    );
+    assert_eq!(
+        bob_reject.coordinator(&swap_id).unwrap().phase(),
+        SwapPhase::Accepted
+    );
+    assert!(matches!(
+        bob_reject.on_message(SwapKind::FundingProof, &nim_fp, head),
+        Err(SessionError::Coord(_))
+    ));
+    assert_eq!(
+        bob_reject.coordinator(&swap_id).unwrap().phase(),
+        SwapPhase::Accepted // the anti-theft invariant: never advanced, so never funds BTC
+    );
+
+    // The honest path: the default verifier (sim = accept-all) confirms the funding, so the very
+    // same FundingProof advances the responder to InitiatorFunded (now it may fund BTC).
+    let mut bob_ok = SwapSession::new(identity(0x22), p);
+    only(
+        bob_ok
+            .on_message(SwapKind::Propose, &propose_bytes, head)
+            .unwrap(),
+    );
+    bob_ok
+        .on_message(SwapKind::FundingProof, &nim_fp, head)
+        .unwrap();
+    assert_eq!(
+        bob_ok.coordinator(&swap_id).unwrap().phase(),
+        SwapPhase::InitiatorFunded
+    );
 }

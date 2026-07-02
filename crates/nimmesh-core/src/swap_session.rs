@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use crate::packet::MessageType;
 use crate::swap::LadderParams;
 use crate::swap_coordinator::{CoordError, SwapContext, SwapCoordinator};
+use crate::swap_funding_verify::{AcceptAllVerifier, FundingVerifier, DEFAULT_MIN_CONFIRMATIONS};
 use crate::swap_messages::SwapProposal;
 use crate::swap_wire::{
     decode_swap, encode_swap, SwapEnvelope, SwapKind, SwapWireError, BTC_PUBKEY_LEN,
@@ -93,6 +94,11 @@ pub struct SwapSession {
     /// G20: per-swap last-emitted action, re-flooded each tick (TTL-bounded) to recover a message
     /// dropped over a lossy mesh.
     pending: HashMap<[u8; SWAP_ID_LEN], PendingAction>,
+    /// S1 / #72: the on-chain funding verifier this node consults before a `FundingProof` may advance
+    /// a coordinator to a funded phase (so the responder never funds, and the initiator never reveals
+    /// `S`, on a message alone). Defaults to [`AcceptAllVerifier`] — the mesh sim has no chain to
+    /// observe, so the seam is wired but nominal; a real node injects a gateway-backed verifier.
+    verifier: Box<dyn FundingVerifier>,
 }
 
 impl SwapSession {
@@ -103,7 +109,16 @@ impl SwapSession {
             ladder,
             coordinators: HashMap::new(),
             pending: HashMap::new(),
+            verifier: Box::new(AcceptAllVerifier),
         }
+    }
+
+    /// Inject the on-chain funding verifier (S1 / #72). A real node passes a gateway-backed verifier
+    /// so a `FundingProof` only advances a coordinator once the counterparty's HTLC is confirmed
+    /// on-chain; the default is [`AcceptAllVerifier`] (the sim has no chain to observe).
+    pub fn with_funding_verifier(mut self, verifier: Box<dyn FundingVerifier>) -> Self {
+        self.verifier = verifier;
+        self
     }
 
     /// Register an initiator coordinator this node started, so its `Accept`/`FundingProof` route to it.
@@ -198,7 +213,19 @@ impl SwapSession {
                 Ok(vec![])
             }
             SwapKind::FundingProof => {
-                self.route(&swap_id)?.recv_funding_proof(&env)?;
+                // S1 / #72: a `FundingProof` message no longer advances the swap by itself — the node
+                // first confirms the counterparty's HTLC on-chain via its verifier. It advances only on
+                // a verified funding; otherwise it stays put (a not-yet-confirmed funding retries next
+                // tick; a real mismatch/underfunding stalls to a timeout refund). The verifier and the
+                // coordinators map are disjoint fields, so we borrow both directly (not via `route`).
+                let coord = self
+                    .coordinators
+                    .get_mut(&swap_id)
+                    .ok_or(SessionError::UnknownSwap)?;
+                coord.verify_and_observe_funding(
+                    self.verifier.as_ref(),
+                    DEFAULT_MIN_CONFIRMATIONS,
+                )?;
                 Ok(vec![])
             }
             SwapKind::PreimageReveal => {

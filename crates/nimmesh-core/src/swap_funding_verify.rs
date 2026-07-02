@@ -70,9 +70,31 @@ pub enum MismatchReason {
 /// Observe a chain for the HTLC described by an [`HtlcExpectation`]. The sole boundary between the pure
 /// swap logic and a real chain: tests use [`SimVerifier`]; slice 2 adds gateway-backed impls behind
 /// this same trait. Read-only — carries no keys and signs nothing.
-pub trait FundingVerifier {
+pub trait FundingVerifier: Send + Sync {
     /// Report what is on-chain for `expect`.
     fn observe(&self, expect: &HtlcExpectation) -> FundingObservation;
+}
+
+/// The sim default confirmation floor. The mock mesh has no real chain, so this is nominal; a real
+/// node tunes it per leg (BTC wants more than NIM) via its gateway-backed verifier. See #74/G3.
+pub const DEFAULT_MIN_CONFIRMATIONS: u32 = 1;
+
+/// A verifier that accepts any funding — the mesh **sim** default, since the mock mesh has no chain to
+/// observe (nodes only exchange messages). It exists to WIRE the gate into the mesh path so it is
+/// enforced-by-construction: a real node overrides it with a gateway-backed verifier (NIM RPC / BTC /
+/// Polygon), and the reject path is proven with a rejecting verifier in the session tests. In the sim
+/// this keeps the happy path settling while the seam is exercised on every funding step.
+#[derive(Debug, Clone, Default)]
+pub struct AcceptAllVerifier;
+
+impl FundingVerifier for AcceptAllVerifier {
+    fn observe(&self, _expect: &HtlcExpectation) -> FundingObservation {
+        FundingObservation::Found {
+            amount: u64::MAX,
+            timeout: u64::MAX,
+            confirmations: u32::MAX,
+        }
+    }
 }
 
 /// The decision to proceed was refused — with the reason, so the caller surfaces it and keeps waiting

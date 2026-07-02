@@ -331,9 +331,9 @@ impl SwapCoordinator {
     /// On any refusal it returns [`CoordError::FundingUnverified`] and does not move: the caller retries
     /// next tick, or refunds once the timelock passes. This is the anti-theft invariant: no funded
     /// transition is reachable without a matching, deep-enough, correctly-parameterised on-chain HTLC.
-    pub fn verify_and_observe_funding<V: FundingVerifier>(
+    pub fn verify_and_observe_funding(
         &mut self,
-        verifier: &V,
+        verifier: &dyn FundingVerifier,
         min_confirmations: u32,
     ) -> Result<(), CoordError> {
         let expect = self.counterparty_expectation();
