@@ -1,0 +1,153 @@
+/* Nimiq toast notification — port of the wallet's bottom toast
+   (upstream: wallet SwapNotification.vue + vue-components LoadingSpinner.vue).
+   Requires the Nimiq legacy stylesheet (nimiq-style.min.css) for the
+   --nimiq-* color/gradient variables and html { font-size: 8px }.
+
+   Root element should be a <button class="nq-toast"> (the upstream toast is a
+   button that re-opens the underlying flow). States:
+     (default)          info / in-progress — blue gradient
+     .nq-toast--success success            — green gradient
+     .nq-toast--error   error              — orange gradient
+     .nq-toast--warning warning / expired  — gold gradient
+   The toast is position:fixed at the viewport's bottom right, like upstream.
+   To embed it statically (e.g. in a gallery), override position/right/bottom. */
+
+.nq-toast {
+    /* button reset (wallet themes.scss button.reset) */
+    background: none;
+    border: none;
+    outline: none;
+    padding: 0;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    font-weight: inherit;
+    text-align: inherit;
+    cursor: pointer;
+
+    /* font-size vars (wallet themes.scss :root) */
+    --body-size: 2rem;
+    --small-label-size: 1.5rem;
+
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    width: 34rem;
+    height: 8rem;
+    border-radius: 0.75rem;
+    color: white;
+    background-color: var(--nimiq-blue);
+    background-image: var(--nimiq-blue-bg);
+
+    position: fixed;
+    right: 3rem;
+    bottom: 3rem;
+}
+
+.nq-toast--success {
+    background-color: var(--nimiq-green);
+    background-image: var(--nimiq-green-bg);
+}
+
+.nq-toast--error {
+    background-color: var(--nimiq-orange);
+    background-image: var(--nimiq-orange-bg);
+}
+
+.nq-toast--warning {
+    background-color: var(--nimiq-gold);
+    background-image: var(--nimiq-gold-bg);
+}
+
+.nq-toast .icon {
+    width: 8rem;
+    flex-shrink: 0;
+}
+
+.nq-toast .icon svg {
+    display: block;
+    margin: auto;
+}
+
+.nq-toast .icon svg.nq-icon {
+    width: 4rem;
+    height: 4rem;
+}
+
+.nq-toast--success .icon .nq-icon {
+    padding: 0.5rem;
+}
+
+.nq-toast .loading-spinner {
+    width: 4.5rem;
+}
+
+.nq-toast .content {
+    display: flex;
+    flex-direction: column;
+}
+
+.nq-toast .status {
+    font-size: var(--body-size);
+    font-weight: 600;
+    margin-bottom: 0.125rem;
+}
+
+.nq-toast .closing-notice {
+    font-size: var(--small-label-size);
+    font-weight: bold;
+    opacity: 0.7;
+}
+
+.nq-toast .closing-notice.nq-orange {
+    opacity: 1;
+    color: var(--nimiq-orange);
+}
+
+/* maximize glyph, top right corner */
+.nq-toast > svg {
+    color: white;
+    position: absolute;
+    right: 1.25rem;
+    top: 1.25rem;
+}
+
+/* hexagon loading spinner (info / in-progress state)
+   — upstream LoadingSpinner.vue, ids converted to namespaced classes
+   so multiple toasts can coexist on one page */
+.nq-toast .loading-spinner .big-hex {
+    stroke-dashoffset: -40.5;
+    animation: nq-toast-big-hex 4s cubic-bezier(0.76, 0.29, 0.29, 0.76) infinite;
+}
+
+.nq-toast .loading-spinner .small-hex {
+    stroke-dashoffset: 13;
+    animation: nq-toast-small-hex 4s cubic-bezier(0.76, 0.29, 0.29, 0.76) infinite;
+}
+
+@keyframes nq-toast-small-hex {
+    0%   { stroke-dashoffset: 13 }
+    17%  { stroke-dashoffset: 38.42 }
+    33%  { stroke-dashoffset: 63.84 }
+    50%  { stroke-dashoffset: 89.25 }
+    67%  { stroke-dashoffset: 114.66 }
+    83%  { stroke-dashoffset: 140.08 }
+    100% { stroke-dashoffset: 165.5 }
+}
+
+@keyframes nq-toast-big-hex {
+    0%   { stroke-dashoffset: -40.5 }
+    17%  { stroke-dashoffset: -15.08 }
+    33%  { stroke-dashoffset: 10.33 }
+    50%  { stroke-dashoffset: 35.75 }
+    67%  { stroke-dashoffset: 61.17 }
+    83%  { stroke-dashoffset: 86.58 }
+    100% { stroke-dashoffset: 112 }
+}
+
+@media (max-width: 768px) {
+    .nq-toast {
+        right: 1.5rem;
+        bottom: 10.5rem;
+    }
+}

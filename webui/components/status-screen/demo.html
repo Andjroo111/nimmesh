@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nimiq StatusScreen</title>
+<link rel="stylesheet" href="../../../../assets/css/legacy/nimiq-style.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Mulish:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="status-screen.css">
+<style>
+    body {
+        font-family: 'Mulish', sans-serif;
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--nimiq-gray);
+    }
+
+    /* SmallPage container */
+    .small-page {
+        width: 100%;
+        max-width: 52.5rem; /* 420px */
+        height: 70.5rem; /* 564px */
+        display: flex;
+        flex-direction: column;
+        flex-shrink: 0;
+        margin: 0 1.25rem;
+    }
+</style>
+</head>
+<body>
+    <div class="small-page nq-card">
+        <div class="status-screen exit-transition">
+            <div class="wrapper success nq-green-bg">
+                <div class="spacer"></div>
+
+                <div class="icon-row">
+                    <svg class="nq-icon" width="74" height="74" viewBox="0 0 74 74" xmlns="http://www.w3.org/2000/svg"><path d="M71.12 1.84a4.5 4.5 0 0 0-6.28 1.04l-42.1 58.74L8.68 47.54a4.5 4.5 0 1 0-6.36 6.37l17.8 17.81a4.57 4.57 0 0 0 6.84-.56l45.2-63.03a4.5 4.5 0 0 0-1.04-6.29z" fill="currentColor" stroke="currentColor" stroke-width=".8"/></svg>
+                    <h1 class="title nq-h1">Payment successful.</h1>
+                </div>
+
+                <div class="spacer"></div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

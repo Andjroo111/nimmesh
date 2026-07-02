@@ -1,0 +1,10 @@
+/* Nimiq Identicon — from @nimiq/vue-components Identicon.vue.
+   Size the identicon by setting width (and optionally height) on .identicon. */
+.identicon {
+    width: 10rem;
+}
+
+.identicon img {
+    width: 100%;
+    height: 100%;
+}

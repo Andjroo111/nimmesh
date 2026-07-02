@@ -20,6 +20,7 @@
 
 pub mod address;
 pub mod hex;
+pub mod htlc;
 pub mod signer;
 pub mod tx;
 

@@ -1,0 +1,59 @@
+<!-- Nimiq toast notification — requires toast-notification.css.
+     States: (default) info | nq-toast--success | nq-toast--error | nq-toast--warning.
+     position:fixed bottom-right like upstream; only show one at a time, or offset
+     `bottom` per toast when stacking. -->
+
+<!-- info / in-progress (blue, hexagon spinner, maximize glyph) -->
+<button class="nq-toast" type="button">
+  <div class="icon">
+    <svg height="48" width="54" viewBox="0 0 54 48" color="inherit" class="loading-spinner">
+      <path class="big-hex" d="M51.9,21.9L41.3,3.6c-0.8-1.3-2.2-2.1-3.7-2.1H16.4c-1.5,0-2.9,0.8-3.7,2.1L2.1,21.9c-0.8,1.3-0.8,2.9,0,4.2 l10.6,18.3c0.8,1.3,2.2,2.1,3.7,2.1h21.3c1.5,0,2.9-0.8,3.7-2.1l10.6-18.3C52.7,24.8,52.7,23.2,51.9,21.9z" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.4" stroke-dasharray="92.5 60" />
+      <path class="small-hex" d="M51.9,21.9L41.3,3.6c-0.8-1.3-2.2-2.1-3.7-2.1H16.4c-1.5,0-2.9,0.8-3.7,2.1L2.1,21.9c-0.8,1.3-0.8,2.9,0,4.2 l10.6,18.3c0.8,1.3,2.2,2.1,3.7,2.1h21.3c1.5,0,2.9-0.8,3.7-2.1l10.6-18.3C52.7,24.8,52.7,23.2,51.9,21.9z" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-dasharray="47.5 105" />
+    </svg>
+  </div>
+  <div class="content">
+    <div class="status">Performing swap 2/5</div>
+    <span class="closing-notice nq-orange">Don't close your wallet!</span>
+  </div>
+  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="4" y="10.5" width="8" height="1.5" rx=".75" fill="currentColor"/>
+    <path d="M1.23 5.96l.07-5 5 .07M2.1 1.72l4.87 5.01" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+</button>
+
+<!-- error (orange, alert triangle, maximize glyph) -->
+<button class="nq-toast nq-toast--error" type="button">
+  <div class="icon">
+    <svg class="nq-icon" width="17" height="16" viewBox="0 0 17 16" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M15.913 13.333L9.68 1.433a1.333 1.333 0 0 0-2.362 0l-6.232 11.9a1.333 1.333 0 0 0 1.182 1.952H14.73a1.333 1.333 0 0 0 1.182-1.952zm-8.08-7.718a.667.667 0 0 1 1.334 0v4a.667.667 0 1 1-1.334 0v-4zm.682 7.674h.018a.983.983 0 0 0 .967-1.022 1.018 1.018 0 0 0-1.016-.978h-.019a.984.984 0 0 0-.965 1.02c.02.546.468.978 1.015.98z" fill="currentColor"/></svg>
+  </div>
+  <div class="content">
+    <div class="status">There's a problem</div>
+    <span class="closing-notice">Click for more information</span>
+  </div>
+  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="4" y="10.5" width="8" height="1.5" rx=".75" fill="currentColor"/>
+    <path d="M1.23 5.96l.07-5 5 .07M2.1 1.72l4.87 5.01" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+</button>
+
+<!-- success (green, checkmark, no maximize glyph) -->
+<button class="nq-toast nq-toast--success" type="button">
+  <div class="icon">
+    <svg class="nq-icon" width="74" height="74" viewBox="0 0 74 74" xmlns="http://www.w3.org/2000/svg"><path d="M71.12 1.84a4.5 4.5 0 0 0-6.28 1.04l-42.1 58.74L8.68 47.54a4.5 4.5 0 1 0-6.36 6.37l17.8 17.81a4.57 4.57 0 0 0 6.84-.56l45.2-63.03a4.5 4.5 0 0 0-1.04-6.29z" fill="currentColor" stroke="currentColor" stroke-width=".8"/></svg>
+  </div>
+  <div class="content">
+    <div class="status">Swap successful!</div>
+    <span class="closing-notice">It's safe to close your wallet now</span>
+  </div>
+</button>
+
+<!-- warning / expired (gold, stopwatch, no maximize glyph) -->
+<button class="nq-toast nq-toast--warning" type="button">
+  <div class="icon">
+    <svg class="nq-icon" width="98" height="123" viewBox="0 0 98 123" xmlns="http://www.w3.org/2000/svg"><path d="M85.7 42.3l8-8a5.1 5.1 0 1 0-7.3-7.2l-8.2 8.2c-7-5.2-15.4-8.5-24-9.4V10.3h10.2a5.1 5.1 0 0 0 0-10.3H33.6a5.1 5.1 0 0 0 0 10.3H44v15.6a48.7 48.7 0 1 0 41.8 16.4zM49 112.8a38.4 38.4 0 1 1 0-77 38.4 38.4 0 0 1 0 77z M54.2 48.6a5.1 5.1 0 0 0-10.3 0V74a5.2 5.2 0 0 0 5.2 5.1 5.1 5.1 0 0 0 5-5V48.5z" fill="currentColor"/></svg>
+  </div>
+  <div class="content">
+    <div class="status">Swap has expired</div>
+    <span class="closing-notice">Click for more information</span>
+  </div>
+</button>

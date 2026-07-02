@@ -34,6 +34,180 @@ pub mod codec;
 pub mod envelope;
 pub mod packet;
 
+// G49: the static-file serving behind the swap browser demo (webui/ tree, path-traversal sandbox),
+// extracted from the `swap_demo_server` example so it's covered by a deterministic test. Pure std.
+pub mod demo_http;
+
+// G55/G57: the discovery health derivation — a pure read-only summary of the G42 IntentMetrics
+// (status / match-rate / dominant drop). Surfaced by the demo's /api/health; no behaviour depends on it.
+pub mod swap_health;
+
+// Mesh swap (F2, feat/mesh-swap): the swap wire messages (`0x40`–`0x44`) + their TLV envelope,
+// layered on the same codec/relay/store-forward/gateway stack as `nimiqTx`. `swap_wire` is the
+// type-length-value codec for propose / accept / funding-proof / preimage-reveal / abort —
+// public broadcast-safe data + opaque signed tx blobs only (no keys, no preimage-before-reveal).
+// The Nimiq HTLC tx serialization the swap funds/claims with lives in `nimiq::htlc`. See
+// docs/swap/SWAP.md; the build contract is docs/swap/SWAP-LOOP.md.
+pub mod swap_wire;
+
+// Mesh swap: the engine↔wire bridge. `swap_messages` builds the `swap_wire` envelopes from swap
+// state (initiator `SwapProposal` → Propose; responder `SwapAcceptance` → Accept; a funded leg /
+// revealing claim → `tx_envelope`) and parses them back — so a swap can be negotiated over the mesh.
+pub mod swap_messages;
+
+// Mesh swap: the protocol brain a node runs (one side of a swap). `swap_coordinator::SwapCoordinator`
+// turns the message protocol into method calls — feed it the peer's envelope (or report a local
+// funding/claim tx) and it advances the `Swap` state machine and returns the next outgoing envelope.
+// Two coordinators exchanging envelopes drive a full swap with no hand orchestration.
+pub mod swap_coordinator;
+
+// Mesh swap: the node-side router. `swap_session::SwapSession` owns one `SwapCoordinator` per
+// in-flight `swap_id`, routes each incoming swap packet to the right one (spinning up a responder on
+// a fresh `Propose`), and returns the outgoing envelopes to flood — the glue between a `MeshNode`'s
+// packet receipt and the coordinators. Pure routing: no keys, no bitcoin.
+pub mod swap_session;
+
+// Mesh swap: the SwapSession <-> MeshNode hook. `swap_node` holds the worker-side swap-packet
+// handlers that blind-relay every swap packet (privacy) and, for a participant node, route it to
+// the `SwapSession` and flood the reply -- packets in, coordinator dispatch, envelopes out.
+pub mod swap_node;
+
+// Mesh swap: the signer seam. `swap_signer::SwapSigner` is the trait the node driver calls to turn a
+// swap action into signed funding/claim tx bytes (the gated money-path); `MockSigner` is the sim
+// stand-in every participant holds today, with the real NIM/BTC signer dropping in via the same trait.
+pub mod swap_signer;
+
+// Mesh swap: the responder's exchange-rate acceptance policy. `swap_rate::RatePolicy` is the minimum
+// NIM-per-BTC a responder will accept; it rides the `NodeIdentity` and gates `SwapSession::on_message`
+// so a lopsided proposal is declined before a coordinator is created.
+pub mod swap_rate;
+
+// Mesh swap: crash recovery. `swap_recovery` adds `SwapSession::snapshot`/`restore` (+ the
+// `CoordinatorSnapshot` it persists) so a node that restarts with funds locked rebuilds its
+// coordinators and resumes the refund tick — "worst case is a refund" survives a crash.
+pub mod swap_recovery;
+
+// Mesh swap: counterparty discovery. `swap_intent::SwapIntent` is a flooded advertisement of the
+// trade a node wants; a node holding the complementary intent (mirror trade, crossing rate) kicks
+// off a `SwapPropose`. The discovery layer over the existing swap settlement protocol.
+pub mod swap_intent;
+
+// Mesh swap (P6): the chain-agnostic leg-selection seam. `swap_leg_select::counterparty_leg_for` maps
+// a matched intent's `counter_asset` (BTC or USDC) to the counterparty leg the settlement layer builds
+// (`BtcSwapLeg` vs `UsdcLeg`). Pure core (no leg-feature dep) so the live engine + the sim agree.
+pub mod swap_leg_select;
+
+// Mesh swap (F3): the swap state machine + the `Δ_safe` timelock-safety gate. `swap` owns the
+// clock-free, height-anchored lifecycle (propose → accept → fund → reveal → settle, with a refund
+// exit in every funded phase) and `assess_ladder` — the gate that REFUSES to fund a swap whose
+// timelocks can't be made safe over a high-latency mesh. Rules only: no keys, no bytes, no radio.
+pub mod swap;
+
+// Mesh swap (F4): the chain-agnostic `SwapLeg` seam + a faithful in-memory mock HTLC chain.
+// `swap_leg` is the trait each chain implements (NimiqLeg via `nimiq::htlc`; BitcoinLeg gated →
+// F5); `MockLeg` enforces the real claim/refund rules (SHA-256 hashlock, claim-before-timeout,
+// refund-after-timeout) and reveals the preimage on claim, so the `swap_e2e_tests` can prove the
+// atomicity invariant: no one-sided settlement is ever possible.
+pub mod swap_leg;
+
+// Mesh swap (F5): the per-chain swap-tx BUILDER seam (distinct from `swap_leg`'s escrow model).
+// `swap_builder` is the `LegBuilder` trait each chain implements to PRODUCE the signed bytes a
+// swap floods: `NimiqLeg` builds a byte-exact, signed HTLC funding tx via `nimiq::htlc` (the seed
+// stays behind the `EnclaveKey` seam); its claim/refund await the gated NIM resolve proof, and
+// `BitcoinLeg` is a documented gated stub (real BTC node + funds = needs:owner).
+pub mod swap_builder;
+
+// Mesh swap (B1): the Bitcoin counterparty leg, built with `rust-bitcoin` behind the
+// `bitcoin-leg` feature (off by default → the core stays lean/WASM-friendly). `btc` owns the HTLC
+// redeem script (`OP_SHA256` hashlock — the SAME 32-byte H as `nimiq::htlc`), the P2WSH address,
+// and (next) the BIP143 claim/refund signing. Byte-validated vs `bitcoinjs-lib`. Signet; gated
+// for mainnet. See docs/swap/BTC-LEG.md.
+#[cfg(feature = "bitcoin-leg")]
+pub mod btc;
+
+/// Re-export of `rust-bitcoin` (behind `bitcoin-leg`) so tools/examples can build keys, addresses,
+/// and txids without a separate dependency declaration.
+#[cfg(feature = "bitcoin-leg")]
+pub use bitcoin;
+
+// Mesh swap (P1): EVM (Polygon) primitives for the USDC counterparty leg, behind `polygon-leg`
+// (OFF by default → core stays lean/WASM-friendly). `evm` owns Keccak-256, EVM address derivation,
+// and ABI function selectors; the USDC HTLC leg builds on it. The swap hashlock stays SHA-256.
+#[cfg(feature = "polygon-leg")]
+pub mod evm;
+
+// Mesh swap (P2): the USDC-on-Polygon counterparty leg, behind `polygon-leg`. `swap_usdc_leg::UsdcLeg`
+// is a faithful in-memory model of the Polygon HTLC contract (newSwap/withdraw/refund) implementing
+// the chain-agnostic `swap_leg::SwapLeg` trait, so it plugs into the engine exactly like `MockLeg`.
+// The contract hashes with the SHA-256 precompile (0x02), so its hashlock H matches the NIM/BTC legs
+// and one secret unlocks all three. Sim only — no EVM tx-building/RPC/funds (P3/P4, gated).
+#[cfg(feature = "polygon-leg")]
+pub mod swap_usdc_leg;
+
+// Mesh swap (P3): hand-built EVM ABI calldata for the USDC HTLC + ERC-20 calls, behind `polygon-leg`.
+// `evm_abi` builds `approve`/`transferFrom` + `newSwap`/`withdraw`/`refund` calldata (selector ++
+// 32-byte ABI words) with no ethers/web3 dep — the bytes P4 will sign + broadcast (testnet, gated).
+// Byte-builder only: never signs or sends. Validated vs public ERC-20 selectors + a known approve.
+#[cfg(feature = "polygon-leg")]
+pub mod evm_abi;
+
+// Mesh swap (P4a): EVM RLP + the EIP-155 legacy tx signing-hash, behind `polygon-leg`. `evm_rlp`
+// turns the P3 `evm_abi` calldata + tx fields into the exact keccak256 signing hash a wallet signs —
+// KEY-FREE (no secp256k1, no key, no RPC, no broadcast; that's P4b, gated). Amoy testnet chainId
+// 80002 only (mainnet 137 never emitted). Validated vs the canonical EIP-155 spec vector.
+#[cfg(feature = "polygon-leg")]
+pub mod evm_rlp;
+
+// Mesh swap (P4c): the real secp256k1 `EvmSigner`, behind `polygon-leg`. `evm_signer::LocalEvmKey`
+// signs the P4a/P4b EIP-155 hash with RFC-6979 deterministic ECDSA + EIP-2 low-s (via `k256`, pure
+// Rust), the EVM mirror of `btc::BtcEnclaveKey` — the secret never leaves the seam. Validated vs the
+// published EIP-155 test-key vector. Testnet/Amoy only; real funded key + mainnet + broadcast gated.
+#[cfg(feature = "polygon-leg")]
+pub mod evm_signer;
+
+// Mesh swap (P8): the Polygon (EVM) JSON-RPC gateway, behind `polygon-gateway` (adds `ureq` +
+// `serde_json`). `polygon_gateway` is the EVM analog of `rpc`/`gateway`: a pure, OFFLINE-tested
+// request/response codec (nonce / gas / sendRawTransaction / receipt / eth_call) + the `ureq` HTTP
+// client `HttpPolygonRpc`. Amoy-guarded; the LIVE broadcast + real funds + mainnet are owner-gated.
+#[cfg(feature = "polygon-gateway")]
+pub mod polygon_gateway;
+
+// Mesh swap: the REAL Bitcoin swap leg (behind `bitcoin-leg`) — the BTC-native analog of
+// `swap_builder::NimiqLeg`. Wraps `btc::BtcHtlcParams` + signs through the `btc::BtcEnclaveKey`
+// seam, exposing `htlc_address` / `build_claim` / `build_refund`. Supersedes the BTC half of the
+// `swap_builder::BitcoinLeg` gated stub (BTC's UTXO model doesn't fit the NIM-shaped `LegBuilder`).
+#[cfg(feature = "bitcoin-leg")]
+pub mod swap_btc_leg;
+
+// Mesh swap: the cross-chain swap ORCHESTRATOR (behind `bitcoin-leg`). `swap_engine::SwapEngine`
+// folds the `live_cross_chain_swap` example into a first-class, pure (no-network) API the UI + mesh
+// drive: it owns the `swap::Swap` state machine + this node's `NimiqLeg` + `BtcSwapLeg`, turning each
+// `SwapAction` into a concrete `SwapEffect` (tx bytes to broadcast, or a BTC address to fund). The
+// responder reads `S` off the on-chain BTC claim — atomicity stays real. Testnet only; mainnet gated.
+#[cfg(feature = "bitcoin-leg")]
+pub mod swap_engine;
+
+// Mesh swap: the UniFFI facade over `swap_engine::SwapEngine` (behind `bitcoin-leg`). `swap_ffi`
+// exposes a `SwapEngineHandle` UniFFI object (like `nimiq::signer::AppSigner`) so the WebView UI +
+// the native mesh shim can drive a NIM⇄BTC swap. The pure engine stays uniffi-free; the facade owns
+// interior mutability + the bitcoin-type↔FFI conversions. Keys cross as the `with_foreign` EnclaveKey
+// / BtcEnclaveKey traits (seeds never cross FFI). Testnet/signet only; mainnet not offered.
+#[cfg(feature = "bitcoin-leg")]
+pub mod swap_ffi;
+
+// Swap demo: an in-memory sim chain + dual-engine stepper (behind `bitcoin-leg`). `swap_sim::SwapSim`
+// drives a full initiator+responder atomic swap one real engine action per `step()` against a
+// simulated chain — what the browser demo server runs so the UI is powered by the real engine.
+// Sim/testnet only; no real funds. See docs/swap/DEMO-LOOP.md.
+#[cfg(feature = "bitcoin-leg")]
+pub mod swap_sim;
+
+// Mesh swap (B2): the BTC gateway — broadcast + confirmation over a public signet indexer
+// (mempool.space), behind the `bitcoin-gateway` feature (adds `ureq`/`serde_json`). The one online
+// hop for the BTC leg; signet-only (mainnet base refused). See docs/swap/BTC-LEG.md.
+#[cfg(feature = "bitcoin-gateway")]
+pub mod btc_gateway;
+
 // G5: the BLE mesh node + its byte-stream radio seam (ADR-0002). The native radio stays
 // behind the `BleRadio` foreign trait (`radio`); Rust drives it from `MeshNode` (`node`)
 // off a worker thread, speaking the real G4 codec via the relay/gateway/origin `engine`
@@ -175,6 +349,38 @@ mod e2e_tests;
 mod hardening_e2e_tests;
 #[cfg(test)]
 mod send_e2e_tests;
+#[cfg(test)]
+mod swap_adversarial_tests;
+#[cfg(test)]
+mod swap_discovery_ratelimit_tests;
+#[cfg(test)]
+mod swap_discovery_stress_tests;
+#[cfg(test)]
+mod swap_discovery_tests;
+#[cfg(test)]
+mod swap_e2e_tests;
+#[cfg(test)]
+mod swap_health_tests;
+#[cfg(test)]
+mod swap_metrics_tests;
+#[cfg(test)]
+mod swap_node_e2e_tests;
+#[cfg(test)]
+mod swap_privacy_tests;
+#[cfg(test)]
+mod swap_resume_tests;
+// P2: the NIM⇄USDC atomicity proof — drives both state machines with a `UsdcLeg` counterparty leg.
+// Behind `polygon-leg` (the leg only exists with that feature), so it runs in the `--features
+// polygon-leg` gate pass.
+#[cfg(all(test, feature = "polygon-leg"))]
+mod swap_usdc_e2e_tests;
+// P6: a matched NIM⇄USDC discovery pair → UsdcLeg settlement (connects swap_intent + swap_usdc_leg).
+#[cfg(all(test, feature = "polygon-leg"))]
+mod swap_usdc_discovery_tests;
+// P9: the full NIM⇄USDC pipeline end to end in SIM (discovery → calldata → sign → mock submit →
+// settle); needs the gateway, so it's behind polygon-gateway.
+#[cfg(all(test, feature = "polygon-gateway"))]
+mod swap_usdc_dryrun_tests;
 #[cfg(test)]
 mod test_support;
 

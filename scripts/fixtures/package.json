@@ -7,6 +7,9 @@
     "gen": "bun run gen-fixtures.mjs"
   },
   "dependencies": {
-    "@nimiq/core": "^2.5.0"
+    "@nimiq/core": "^2.5.0",
+    "bitcoinjs-lib": "^7.0.1",
+    "ecpair": "^3.0.1",
+    "tiny-secp256k1": "^2.2.4"
   }
 }

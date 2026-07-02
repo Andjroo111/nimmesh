@@ -24,12 +24,57 @@ path = "src/bin/uniffi-bindgen.rs"
 name = "live_testnet_broadcast"
 required-features = ["gateway-rpc"]
 
+# Mesh swap: the live TESTNET HTLC fund -> claim-with-preimage proof (validates the redeem proof
+# the @nimiq/core JS lib cannot). Built only with `--features gateway-rpc`; never in `cargo test`.
+[[example]]
+name = "live_testnet_htlc_swap"
+required-features = ["gateway-rpc"]
+
+# Mesh swap B3: the live signet BTC HTLC proof (fund P2WSH -> claim-with-preimage). Needs a one-time
+# signet faucet tap (captcha) to fund the printed address; then it completes automatically.
+[[example]]
+name = "live_signet_btc_htlc"
+required-features = ["bitcoin-gateway"]
+
+# Mesh swap B4: the full atomic NIM<->BTC swap live on two chains (one secret unlocks both legs).
+[[example]]
+name = "live_cross_chain_swap"
+required-features = ["gateway-rpc", "bitcoin-gateway"]
+
+# Swap demo: a std-only HTTP server that runs the REAL engine (swap_sim) against an in-memory sim
+# chain and serves webui/, so the browser UI is powered by the actual SwapEngine. Sim-only, no funds.
+[[example]]
+name = "swap_demo_server"
+required-features = ["bitcoin-leg"]
+
 [features]
 # G8: the real blocking HTTP JSON-RPC gateway client (`ureq` + `serde_json`) + the
 # keypair-entropy source for the live example. OFF by default so the pure-protocol core
 # stays dependency-light and WASM-friendly; the `gateway::RpcGateway` + `rpc::MockRpc`
 # (offline tests) need no feature. TESTNET-only either way (every constructor is guarded).
 gateway-rpc = ["dep:ureq", "dep:serde_json", "dep:getrandom"]
+
+# Mesh swap (B1): the Bitcoin counterparty leg — `rust-bitcoin` builds the HTLC P2WSH script +
+# the claim/refund segwit txs (BIP143 sighash, secp256k1). OFF by default so the pure-protocol
+# core stays lean; ON for the BTC leg (on-device + the signet tools). TESTNET/signet-guarded.
+bitcoin-leg = ["dep:bitcoin"]
+
+# B2: the BTC gateway — broadcast + confirmation queries against a public signet indexer
+# (mempool.space/signet/api). Reuses the blocking `ureq` HTTP client + `serde_json` (same deps as
+# `gateway-rpc`). The on-device tx-building (`bitcoin-leg`) needs no HTTP; only a gateway node does.
+bitcoin-gateway = ["bitcoin-leg", "dep:ureq", "dep:serde_json", "dep:getrandom"]
+
+# P1 (mesh swap): the USDC-on-Polygon counterparty leg — EVM HTLC contract calls + tx signing. `sha3`
+# gives Keccak-256 (EVM addresses + ABI selectors). OFF by default so the pure-protocol core stays
+# lean/WASM-friendly; ON for the Polygon leg. TESTNET/Amoy-guarded (mainnet + real funds gated).
+polygon-leg = ["dep:sha3", "dep:k256"]
+
+# P8: the Polygon (EVM) JSON-RPC gateway — broadcast + confirmation/read queries against a public
+# Amoy TESTNET RPC. Reuses the blocking `ureq` HTTP client + `serde_json` (same deps as `gateway-rpc`/
+# `bitcoin-gateway`). Depends on `polygon-leg` (uses the EVM tx types). OFF by default; the request/
+# response CODEC is unit-tested OFFLINE (no network in `cargo test`). Amoy-only; broadcast + real funds
+# + mainnet are owner-gated (a manual/example call, never the gate).
+polygon-gateway = ["polygon-leg", "dep:ureq", "dep:serde_json"]
 
 # Pure proc-macro mode (uniffi::setup_scaffolding!) — no UDL file, no build.rs.
 [dependencies]
@@ -43,6 +88,21 @@ uniffi = { workspace = true, features = ["cli"] }
 ureq = { version = "2", optional = true, features = ["json"] }
 serde_json = { version = "1", optional = true }
 getrandom = { version = "0.2", optional = true }
+
+# B1: the Bitcoin leg (mesh swap). `bitcoin` (rust-bitcoin) owns the HTLC redeem script, the P2WSH
+# address, BIP143 segwit sighash, and secp256k1 signing — it bundles `secp256k1`. OPTIONAL, pulled
+# in only by the `bitcoin-leg` feature so the core stays dependency-light + WASM-friendly when off.
+bitcoin = { version = "0.32", optional = true }
+
+# P1: Keccak-256 for the USDC-on-Polygon (EVM) leg — EVM addresses + ABI function selectors. Note the
+# EVM uses Keccak-256 (`Keccak256`), NOT NIST SHA3-256. Pulled in only by `polygon-leg`. Pure Rust.
+sha3 = { version = "0.10", optional = true }
+
+# P4c: the EVM secp256k1 signer (mesh swap). `k256` (RustCrypto, PURE RUST → WASM-friendly, unlike
+# the C `secp256k1` the BTC leg uses) provides RFC-6979 deterministic ECDSA with recoverable
+# signatures + low-s normalization (EIP-2). OPTIONAL, pulled in ONLY by `polygon-leg` so the core
+# stays lean. TESTNET only; signing a mainnet tx / a real funded key is owner-gated.
+k256 = { version = "0.13", optional = true, features = ["ecdsa"] }
 
 # G11: optional encrypted memo / 1:1 chat. `snow` is the Noise Protocol implementation
 # driving the `Noise_XX_25519_ChaChaPoly_SHA256` mutual-auth, identity-hiding handshake;

@@ -1,0 +1,77 @@
+/* G38: read-only "open intents on the mesh" view. Built on swap.css tokens (legacy @nimiq/style,
+   html{font-size:8px}); custom CSS in px. Fixture-fed; live intents arrive over the native bridge. */
+
+.intents-sheet {
+  flex: 1;
+  background: #fff;
+  border-radius: 12px 12px 0 0;
+  padding: 20px 18px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+}
+.intents-sheet h2 { font-size: 26px; font-weight: 700; margin: 0; text-align: center; }
+.intents-sub { margin: -8px 0 0; color: var(--ink-50); font-weight: 600; font-size: 15px; text-align: center; }
+.intents-head { text-align: center; color: var(--ink-40); font-weight: 700; font-size: 12px; }
+.intents-head .num { font-family: 'Fira Mono', monospace; font-weight: 400; }
+
+.intent-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+
+.intent {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1.5px var(--ink-12);
+  background: #fff;
+}
+.intent.expired { opacity: 0.55; }
+
+.intent .identicon { width: 40px; height: 40px; flex: 0 0 auto; }
+.intent .identicon img { width: 100%; height: 100%; display: block; }
+
+.intent-trade { flex: 1 1 auto; min-width: 0; }
+.intent-pair { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 17px; }
+.intent-pair > span { white-space: nowrap; }
+.intent-pair .num { font-family: 'Fira Mono', monospace; font-weight: 400; }
+.intent-pair .tk { font-size: 13px; font-weight: 700; }
+.intent-pair .tk.nim { color: var(--navy); }
+.intent-pair .tk.btc { color: var(--btc); }
+.intent-pair .arrow { color: var(--ink-40); flex: 0 0 auto; }
+.intent-rate { margin-top: 3px; color: var(--ink-50); font-size: 13px; font-weight: 600; }
+.intent-rate .num { font-family: 'Fira Mono', monospace; font-weight: 400; }
+
+.intent-meta { text-align: right; flex: 0 0 auto; display: flex; flex-direction: column; gap: 2px; }
+.intent-meta .freshness { font-weight: 700; font-size: 13px; }
+.intent.fresh .freshness { color: var(--green); }
+.intent.expired .freshness { color: var(--ink-40); }
+.intent-meta .expiry { color: var(--ink-40); font-size: 12px; font-weight: 600; }
+.intent-meta .expiry .num { font-family: 'Fira Mono', monospace; font-weight: 400; }
+
+.intents-foot { margin: 6px 0 0; color: var(--ink-40); font-size: 12px; text-align: center; line-height: 1.5; }
+
+/* G46: discovery-stats strip — the G42 counters (intents seen / matched / dropped-by-reason /
+   re-advertised), fixture-fed like the list above. */
+.stats {
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1.5px var(--ink-12);
+  padding: 14px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.stats-title { margin: 0; color: var(--ink-50); font-weight: 700; font-size: 14px; text-align: center; }
+.stats-health { margin: -4px 0 0; color: var(--ink-40); font-weight: 600; font-size: 13px; text-align: center; }
+.stats-health [data-health="matchRatePct"] { font-family: 'Fira Mono', monospace; font-weight: 400; }
+.stats-top { display: flex; justify-content: space-around; }
+.stat { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.stat-num { font-family: 'Fira Mono', monospace; font-size: 26px; font-weight: 400; color: var(--navy); line-height: 1; }
+.stat-num.green { color: var(--green); }
+.stat-lbl { color: var(--ink-40); font-size: 12px; font-weight: 600; }
+
+.stats-drops { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.drop { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.drop-num { font-family: 'Fira Mono', monospace; font-size: 18px; font-weight: 400; color: var(--ink-50); line-height: 1; }
+.drop-lbl { color: var(--ink-40); font-size: 12px; font-weight: 600; }

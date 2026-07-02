@@ -36,6 +36,7 @@ use crate::packet::PEER_ID_LEN;
 use crate::radio::BleRadio;
 use crate::relay::RelayPolicy;
 use crate::settlement::{PaymentStatus, Settlement};
+use crate::swap_session::SwapSession;
 use crate::transport::{mock_tx_id, TxId};
 
 /// A unit of work handed from a BLE callback to the worker thread.
@@ -58,6 +59,17 @@ enum Job {
     BeaconTick,
     /// G15: flood a `nimiqBalanceQuery` for this address (asks any gateway for its balance).
     BalanceQuery(Address),
+    /// G14 (test): register an initiator coordinator + flood its `Propose` (swap origination).
+    #[cfg(test)]
+    StartSwap {
+        swap_id: [u8; crate::swap_wire::SWAP_ID_LEN],
+        coordinator: Box<crate::swap_coordinator::SwapCoordinator>,
+        propose: Box<crate::swap_wire::SwapEnvelope>,
+    },
+    /// G33 (test): encode the participant's live swap session to bytes and send them back (the
+    /// on-demand crash-recovery snapshot — the session lives on the worker thread).
+    #[cfg(test)]
+    SnapshotSwaps(Sender<Vec<u8>>),
     /// Drain and exit (teardown).
     Shutdown,
 }
@@ -98,8 +110,10 @@ fn run_worker(
     rx: Receiver<Job>,
     policy: RelayPolicy,
     verify_before_relay: bool,
+    swap: Option<SwapSession>,
+    signer: Option<Box<dyn crate::swap_signer::SwapSigner>>,
 ) {
-    let mut st = WorkerState::new(policy, verify_before_relay);
+    let mut st = WorkerState::new(policy, verify_before_relay, swap, signer);
     while let Ok(job) = rx.recv() {
         match job {
             Job::Shutdown => break,
@@ -121,6 +135,8 @@ fn run_worker(
             Job::SyncTick => {
                 let _ = catch_unwind(AssertUnwindSafe(|| {
                     maintenance_tick(&ctx, &mut st);
+                    // G16: shed terminal/stale swaps on the same maintenance cadence.
+                    crate::swap_node::gc_tick(&ctx, &mut st);
                 }));
             }
             Job::BeaconTick => {
@@ -132,6 +148,25 @@ fn run_worker(
                 let _ = catch_unwind(AssertUnwindSafe(|| {
                     flood_local_balance_query(&ctx, addr, &mut st);
                 }));
+            }
+            #[cfg(test)]
+            Job::StartSwap {
+                swap_id,
+                coordinator,
+                propose,
+            } => {
+                let _ = catch_unwind(AssertUnwindSafe(|| {
+                    crate::swap_node::start_swap(&ctx, swap_id, *coordinator, *propose, &mut st);
+                }));
+            }
+            #[cfg(test)]
+            Job::SnapshotSwaps(reply) => {
+                let bytes = st
+                    .swap
+                    .as_ref()
+                    .map(|s| s.encode_snapshot())
+                    .unwrap_or_default();
+                let _ = reply.send(bytes);
             }
         }
     }
@@ -148,7 +183,15 @@ impl MeshNode {
     #[uniffi::constructor]
     pub fn new(sender_id: Vec<u8>, radio: Arc<dyn BleRadio>) -> Arc<Self> {
         // Production verifies every `nimiqTx` before relaying (G12 spam filter, RISKS.md #4).
-        Self::build(sender_id, radio, None, RelayPolicy::production(), true)
+        Self::build(
+            sender_id,
+            radio,
+            None,
+            RelayPolicy::production(),
+            true,
+            None,
+            None,
+        )
     }
 
     /// A peer connected (`CBPeripheral` / GATT link up). Cheap: record it as a flood
@@ -397,6 +440,8 @@ impl MeshNode {
         gateway: Option<Arc<dyn MeshGateway>>,
         policy: RelayPolicy,
         verify_before_relay: bool,
+        swap: Option<SwapSession>,
+        signer: Option<Box<dyn crate::swap_signer::SwapSigner>>,
     ) -> Arc<Self> {
         let ctx = Arc::new(WorkerCtx::new(
             to_sender_id(&sender_id),
@@ -405,8 +450,9 @@ impl MeshNode {
         ));
         let (tx, rx) = channel();
         let worker_ctx = ctx.clone();
-        let worker =
-            std::thread::spawn(move || run_worker(worker_ctx, rx, policy, verify_before_relay));
+        let worker = std::thread::spawn(move || {
+            run_worker(worker_ctx, rx, policy, verify_before_relay, swap, signer)
+        });
         // Bring the radio up. Real BLE starts advertising + scanning concurrently.
         radio.start_advertising();
         radio.start_scanning();
@@ -426,7 +472,76 @@ impl MeshNode {
         policy: RelayPolicy,
     ) -> Arc<Self> {
         // Verify off: the harness floods opaque stand-in bytes (not real signed txs).
-        Self::build(sender_id, radio, None, policy, false)
+        Self::build(sender_id, radio, None, policy, false, None, None)
+    }
+
+    /// G14 (test): a swap **participant** node — a plain node that also runs a [`SwapSession`] for
+    /// `identity`, with the default sim signer (`MockSigner`), so it decodes its own `swap_id` off
+    /// the swap stream, builds its tx bytes via the signer seam, and floods replies.
+    #[cfg(test)]
+    pub(crate) fn new_participant(
+        sender_id: Vec<u8>,
+        radio: Arc<dyn BleRadio>,
+        policy: RelayPolicy,
+        identity: crate::swap_session::NodeIdentity,
+        ladder: crate::swap::LadderParams,
+    ) -> Arc<Self> {
+        Self::new_participant_with_signer(
+            sender_id,
+            radio,
+            policy,
+            identity,
+            ladder,
+            Box::new(crate::swap_signer::MockSigner),
+        )
+    }
+
+    /// G26 (test): a participant node with a caller-supplied [`crate::swap_signer::SwapSigner`] —
+    /// proving the signer seam is pluggable (a different signer drops in unchanged).
+    #[cfg(test)]
+    pub(crate) fn new_participant_with_signer(
+        sender_id: Vec<u8>,
+        radio: Arc<dyn BleRadio>,
+        policy: RelayPolicy,
+        identity: crate::swap_session::NodeIdentity,
+        ladder: crate::swap::LadderParams,
+        signer: Box<dyn crate::swap_signer::SwapSigner>,
+    ) -> Arc<Self> {
+        let session = SwapSession::new(identity, ladder);
+        Self::build(
+            sender_id,
+            radio,
+            None,
+            policy,
+            false,
+            Some(session),
+            Some(signer),
+        )
+    }
+
+    /// G33 (test): a participant node restored from a crash-recovery snapshot (G31/G32) — its swap
+    /// session is rebuilt from `snapshot` bytes so a funds-locked swap resumes its refund tick. A
+    /// corrupt blob falls back to an empty session (the node starts clean rather than crashing).
+    #[cfg(test)]
+    pub(crate) fn new_participant_restored(
+        sender_id: Vec<u8>,
+        radio: Arc<dyn BleRadio>,
+        policy: RelayPolicy,
+        identity: crate::swap_session::NodeIdentity,
+        ladder: crate::swap::LadderParams,
+        snapshot: Vec<u8>,
+    ) -> Arc<Self> {
+        let session = SwapSession::restore_bytes(identity.clone(), ladder, &snapshot)
+            .unwrap_or_else(|_| SwapSession::new(identity, ladder));
+        Self::build(
+            sender_id,
+            radio,
+            None,
+            policy,
+            false,
+            Some(session),
+            Some(Box::new(crate::swap_signer::MockSigner)),
+        )
     }
 
     /// Build a gateway node with a caller-chosen relay policy (deterministic in tests).
@@ -436,7 +551,7 @@ impl MeshNode {
         gateway: Arc<dyn MeshGateway>,
         policy: RelayPolicy,
     ) -> Arc<Self> {
-        Self::build(sender_id, radio, Some(gateway), policy, false)
+        Self::build(sender_id, radio, Some(gateway), policy, false, None, None)
     }
 
     /// G12 harness helper: a verifying plain node (verify-before-relay ON) — used by the
@@ -446,7 +561,7 @@ impl MeshNode {
         radio: Arc<dyn BleRadio>,
         policy: RelayPolicy,
     ) -> Arc<Self> {
-        Self::build(sender_id, radio, None, policy, true)
+        Self::build(sender_id, radio, None, policy, true, None, None)
     }
 
     fn do_shutdown(&self) {
@@ -467,6 +582,51 @@ impl MeshNode {
     #[cfg(test)]
     pub(crate) fn wait_payment(&self, tx_id: &[u8], timeout: Duration) -> PaymentStatus {
         self.ctx.wait(to_tx_id(tx_id), timeout)
+    }
+
+    /// G14 (test): originate a swap — register the initiator `coordinator` + flood its `Propose`.
+    #[cfg(test)]
+    pub(crate) fn start_swap(
+        &self,
+        swap_id: [u8; crate::swap_wire::SWAP_ID_LEN],
+        coordinator: crate::swap_coordinator::SwapCoordinator,
+        propose: crate::swap_wire::SwapEnvelope,
+    ) {
+        if let Some(tx) = self.job_tx.lock().unwrap().as_ref() {
+            let _ = tx.send(Job::StartSwap {
+                swap_id,
+                coordinator: Box::new(coordinator),
+                propose: Box::new(propose),
+            });
+        }
+    }
+
+    /// G14 (test): this node's phase for a swap it participates in (reads the observable mirror).
+    #[cfg(test)]
+    pub(crate) fn swap_phase(
+        &self,
+        swap_id: [u8; crate::swap_wire::SWAP_ID_LEN],
+    ) -> Option<crate::swap::SwapPhase> {
+        crate::swap_node::swap_phase(&self.ctx, swap_id)
+    }
+
+    /// G42 (test/observability): a snapshot of this node's discovery-layer counters.
+    #[cfg(test)]
+    pub(crate) fn intent_metrics(&self) -> crate::swap_node::IntentMetricsSnapshot {
+        self.ctx.intent_metrics.snapshot()
+    }
+
+    /// G33 (test): the participant's live swap session encoded to recovery bytes (asks the worker;
+    /// returns empty if the node isn't a participant or the worker is gone).
+    #[cfg(test)]
+    pub(crate) fn swap_snapshot(&self) -> Vec<u8> {
+        let (tx, rx) = channel();
+        if let Some(job_tx) = self.job_tx.lock().unwrap().as_ref() {
+            if job_tx.send(Job::SnapshotSwaps(tx)).is_ok() {
+                return rx.recv_timeout(Duration::from_secs(3)).unwrap_or_default();
+            }
+        }
+        Vec::new()
     }
 
     /// How many packets this node has relayed onward (test/observability hook).
