@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>nimmesh — install</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      font-family: -apple-system, system-ui, sans-serif;
+      background: radial-gradient(ellipse at bottom, #260133, #1F2348);
+      color: #fff; text-align: center;
+    }
+    main { padding: 32px 24px; max-width: 420px; }
+    .hex { width: 88px; height: 88px; margin: 0 auto 20px; }
+    h1 { font-size: 28px; margin: 0 0 4px; letter-spacing: -0.02em; }
+    p.sub { color: rgba(255,255,255,.6); margin: 0 0 28px; font-size: 15px; line-height: 1.5; }
+    a.install {
+      display: inline-block; padding: 16px 40px; border-radius: 999px;
+      background: linear-gradient(283deg, #EC991C, #E9B213);
+      color: #1F2348; font-weight: 700; font-size: 17px; text-decoration: none;
+      box-shadow: 0 6px 20px rgba(233,178,19,.35);
+    }
+    .steps { margin-top: 28px; text-align: left; color: rgba(255,255,255,.75); font-size: 14px; line-height: 1.7; }
+    .steps b { color: #fff; }
+    .note { margin-top: 20px; font-size: 12px; color: rgba(255,255,255,.4); }
+  </style>
+</head>
+<body>
+  <main>
+    <svg class="hex" viewBox="0 0 64 64" aria-hidden="true">
+      <defs><linearGradient id="g" x1="0" y1="1" x2="1" y2="0">
+        <stop offset="0" stop-color="#EC991C"/><stop offset="1" stop-color="#E9B213"/>
+      </linearGradient></defs>
+      <path fill="url(#g)" d="M62.5 28.6 48.9 5.1A6.7 6.7 0 0 0 43.1 1.7H15.9a6.7 6.7 0 0 0-5.8 3.4L-3.5 28.6a6.7 6.7 0 0 0 0 6.7l13.6 23.6a6.7 6.7 0 0 0 5.8 3.4h27.2a6.7 6.7 0 0 0 5.8-3.4l13.6-23.6a6.7 6.7 0 0 0 0-6.7z" transform="translate(2.5)"/>
+    </svg>
+    <h1>nimmesh</h1>
+    <p class="sub">Offline Bluetooth-mesh payments on Nimiq.<br>Direct install — no TestFlight, no codes.</p>
+    <a class="install" href="itms-services://?action=download-manifest&amp;url=https%3A%2F%2Fnimiq-nimmesh.pages.dev%2Fota%2Fmanifest.plist">Install nimmesh</a>
+    <div class="steps">
+      1. Open this page in <b>Safari</b> on the iPhone (not Chrome, not the TestFlight app).<br>
+      2. Tap <b>Install nimmesh</b>, then <b>Install</b> on the system prompt.<br>
+      3. Go to the Home Screen — the icon appears and downloads in a few seconds.<br>
+      4. No trust step needed (distribution-signed). Valid until <b>June 2027</b>.
+    </div>
+    <p class="note">Ad Hoc build — installs only on registered devices. v0.32.0</p>
+  </main>
+</body>
+</html>
