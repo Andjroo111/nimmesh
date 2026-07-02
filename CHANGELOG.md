@@ -26,6 +26,19 @@ authentication gap the security review flagged).
   initiator's identity — so the self-certifying signature (pubkey → `nim_address` + signed terms) is
   the delivered guarantee. Funding authenticity remains G1's on-chain check.
 
+## [0.41.2] — 2026-07-02
+
+### Changed — the codes flow ENDING, keyguard-exact (Andjroo's captures, round 4)
+
+- Code 2's copy is the real one: "Send this code to yourself using another email or
+  messenger. For your safety, both codes must be stored separately."
+- Confirm 2 asks the real question: "Did you send Code 2 with a different method than
+  Code 1?" with "YES, ALL DONE".
+- New final screen: **"All set up?"** — 5/5 progress, BOTH bubbles with their codes and
+  green check circles, the light-blue-on-dark restore note ("If you ever lose this phone,
+  you can restore your wallet by entering both codes."), and LET'S GO returning straight
+  to the wallet (the codes path no longer detours through the generic done screen).
+
 ## [0.41.1] — 2026-07-02
 
 ### Changed — the account menu's backup entry is just "Backup"
