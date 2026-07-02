@@ -26,6 +26,17 @@ authentication gap the security review flagged).
   initiator's identity — so the self-certifying signature (pubkey → `nim_address` + signed terms) is
   the delivered guarantee. Funding authenticity remains G1's on-chain check.
 
+## [0.41.1] — 2026-07-02
+
+### Changed — the account menu's backup entry is just "Backup"
+
+Andjroo completed a backup and thought the flow was gone (the banner rightly disappears).
+It never was: the account menu (identicon, top right) reopens the full hub anytime —
+Face ID unlock, then re-view the words or the (deterministic, unchanged) codes. The menu
+item was labeled "Backup recovery words", underselling that it opens BOTH backup types;
+now simply "Backup". Re-entry verified in the harness with backedUp=true.
+Also aligns the OTA payload with the 0.41.x version line (the swap track bumped 0.41.0).
+
 ## [0.40.0] — 2026-07-02
 
 ### Changed — backup codes, keyguard-exact (Andjroo's captures, round 3)
