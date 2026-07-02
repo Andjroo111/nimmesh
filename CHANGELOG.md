@@ -2,6 +2,31 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.36.0] — 2026-07-02
+
+### Fixed — the QR code, done right (on-device feedback, round 5)
+
+Andjroo: "the QR code isn't working and is not correct." Both true, three causes:
+
+- **It could fail to render at all:** qr-creator loaded from a CDN, so a slow or absent
+  network left a permanently blank canvas. Now VENDORED at `webui/qr-code/qr-creator.min.js`
+  (pinned 1.0.0) — offline-first like everything else.
+- **It was not what the real wallet renders.** Checked the wallet upstream
+  (`ReceiveModal.vue` / `QrCodeOverlay.vue` / `PaymentLinkOverlay.vue`): the wallet fills
+  QR modules with SOLID nimiq-blue `#1F2348` (not the component's gradient default) and,
+  with no amount, encodes the BARE formatted address (spaces included) — not a `nimiq:`
+  URI. Ours now matches exactly; with a requested amount it encodes the `nimiq:` request
+  URI (G18 semantics), also navy. Rendered at devicePixelRatio (qr-creator has no DPR
+  handling) so it is crisp. Verified by DECODING the rendered canvas with jsQR: no-amount
+  QR decodes to the exact spaced address; amount QR to `nimiq:<addr>?amount=<nim>`.
+- **The scan button was a placeholder.** Now a real NATIVE camera scanner
+  (`QrScanner.swift`: AVFoundation metadata scanning, full-screen preview, cancel, haptic
+  on hit; `NSCameraUsageDescription` added; permission-checked; sim-safe). New bridge
+  method `scanQr`. The page parses a bare NQ address (spaced/any case) or a `nimiq:`
+  request URI (also inside a wallet link), validates the Nimiq base32 shape, fills the
+  Send sheet's address grid + amount, and opens it. Playwright-verified end to end with a
+  mocked scanner.
+
 ## [0.35.0] — 2026-07-02
 
 ### Changed — mainnet only + live balance/history (on-device feedback, round 4)

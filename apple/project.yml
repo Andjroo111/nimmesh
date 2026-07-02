@@ -44,6 +44,8 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        # The QR scanner (Send -> scan an address / payment request)
+        NSCameraUsageDescription: "nimmesh uses the camera to scan a recipient's address or payment QR code."
         # Mesh needs to advertise + scan, incl. in the background (ADR-0002)
         NSBluetoothAlwaysUsageDescription: "nimmesh relays payments through nearby phones over Bluetooth so you can pay with no internet."
         NSBluetoothPeripheralUsageDescription: "nimmesh relays payments through nearby phones over Bluetooth so you can pay with no internet."

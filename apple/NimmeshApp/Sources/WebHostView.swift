@@ -146,6 +146,8 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         // UI language preference, persisted in UserDefaults so it survives relaunches.
         getLang: function () { return call('getLang'); },
         setLang: function (l) { return call('setLang', { lang: l }); },
+        // Native camera QR scanner (Send bar). Resolves { text } or rejects on cancel.
+        scanQr: function () { return call('scanQr'); },
         // Live chain (MAINNET-only) — head height, balance, history, and the real send
         // (sign with the Keychain key + broadcast). The app never auto-sends.
         headHeight: function () { return call('headHeight'); },
@@ -167,10 +169,36 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         case "headHeight", "walletBalance", "walletHistory", "sendTransaction":
             Task { let (ok, payload) = await self.handleAsync(method: method, args: args)
                 self.resolve(id: id, ok: ok, payload: payload) }
+        case "scanQr":
+            // The native camera scanner (Send bar's scan button). Resolves with the decoded
+            // string, or rejects on cancel / denial — the page treats that as a quiet no-op.
+            DispatchQueue.main.async {
+                guard let top = Bridge.topmostViewController() else {
+                    self.resolve(id: id, ok: false, payload: "cancelled"); return
+                }
+                QrScannerViewController.scan(from: top) { text in
+                    if let text = text, !text.isEmpty {
+                        self.resolve(id: id, ok: true, payload: ["text": text])
+                    } else {
+                        self.resolve(id: id, ok: false, payload: "cancelled")
+                    }
+                }
+            }
         default:
             let (ok, payload) = handle(method: method, args: args)
             resolve(id: id, ok: ok, payload: payload)
         }
+    }
+
+    /// The view controller to present native UI (dialogs, the scanner) from.
+    static func topmostViewController() -> UIViewController? {
+        let window = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first { $0.isKeyWindow }
+        guard var top = window?.rootViewController else { return nil }
+        while let presented = top.presentedViewController { top = presented }
+        return top
     }
 
     /// C1c: the live-chain network methods — fetch head, balance, history, and the real send
@@ -332,12 +360,7 @@ final class Bridge: NSObject, WKScriptMessageHandler {
 /// Each completion handler MUST be called exactly once, including when no presenter exists.
 extension Bridge: WKUIDelegate {
     private func present(_ alert: UIAlertController) -> Bool {
-        let window = UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .flatMap { $0.windows }
-            .first { $0.isKeyWindow }
-        guard var top = window?.rootViewController else { return false }
-        while let presented = top.presentedViewController { top = presented }
+        guard let top = Bridge.topmostViewController() else { return false }
         top.present(alert, animated: true)
         return true
     }
