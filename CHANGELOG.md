@@ -2,6 +2,25 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.38.1] — 2026-07-02
+
+### Changed — the 24-word backup, keyguard-EXACT (Andjroo's live captures)
+
+Andjroo captured the real wallet.nimiq.com -> keyguard.nimiq.com flow on his phone; matched
+it screen for screen:
+
+- **New intro screen** — "There is no Password Recovery!" with the orange warning and the
+  keyguard's three orange rules (paper-edit / copy / fire icons, verbatim assets).
+- **Step progress bar** (green segments) across the whole flow, words AND codes paths.
+- **Words screen** — title "Write these 24 Words on Paper", ORANGE "Anyone with these
+  words can access your account!" warning, FILLED word tiles with zero-padded numbers
+  (01..24) replacing the outline cells, uppercase "VALIDATE BACKUP" capsule. The copy
+  button is gone (the keyguard has none — paper is the point).
+- **Validate screen** — title "Validate your Backup", per-round ordinal question
+  ("What is the 14th word?", localized), UPPERCASE word pills, exactly like the capture.
+- The create-wallet flow gets the same words + validate treatment.
+- Hub close is the modal's circled x.
+
 ## [0.38.0] — 2026-07-02
 
 ### Added — real backup fidelity: two backup types + the word check (Andjroo's ask)
