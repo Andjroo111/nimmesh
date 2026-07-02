@@ -2,6 +2,50 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.40.0] — 2026-07-02
+
+### Security — enforce authenticated swap Proposes (G2 slice 2b, #73 → closes S2)
+
+The final S2 piece: a swap `Propose` is now **signed at origination and verified on receipt**, so a
+relay can neither inject a proposal nor tamper with proposed terms in transit (the settlement-message
+authentication gap the security review flagged).
+
+- **Sign at the initiate flow.** A participant node holds its NIM identity behind an `EnclaveKey`
+  seam (`SwapSession::with_propose_signer`); `swap_node::initiate_from_intent` authenticates each
+  `Propose` under it (`SwapProposal::signing_bytes` → `to_signed_envelope`) before it floods. The
+  seed never crosses the seam — only the public key + signature ride the wire.
+- **Enforce at `recv_propose`.** `SwapCoordinator::recv_propose` now rejects any `Propose` whose
+  wire signature does not verify under a NIM key that hashes to the Propose's own `nim_address`
+  (self-certifying bind), *before* touching state — new `CoordError::UnauthenticProposal`. An
+  unsigned, tampered, or forged (relay-re-signed) Propose never spins up a responder coordinator.
+- **Adversarial tests.** `recv_propose` rejects unsigned + on-wire-tampered + forged Proposes and
+  accepts a valid signed one; every mesh/session/discovery fixture now originates a key-derived,
+  authenticated Propose. Coordinator tests extracted to `swap_coordinator_tests.rs` (file-size cap).
+- **Scope note:** binding the Propose to a pre-known counterparty pubkey (full anti-MITM) isn't
+  meaningful in the one-sided discovery model — a responder has no committed expectation of the
+  initiator's identity — so the self-certifying signature (pubkey → `nim_address` + signed terms) is
+  the delivered guarantee. Funding authenticity remains G1's on-chain check.
+
+## [0.40.0] — 2026-07-02
+
+### Changed — backup codes, keyguard-exact (Andjroo's captures, round 3)
+
+Matched his live keyguard captures of the "Send yourself two backup codes" flow:
+
+- **Keyguard order**: unlock FIRST, then the intro (5-step progress bar).
+- **The message-bubble illustration** (BackupCodesIllustrationBase, colors verbatim):
+  code 1 = purple bubble (#693BC4→#8F3FD5, tail bottom-left), code 2 = red
+  (#DC1845→#F33F68, tail bottom-right), numbered white circles, placeholder lines on the
+  intro, the real code inside the bubble on the send screens, faded ghost for the other
+  code, GREEN + check when confirmed.
+- **The real copy**: "The codes combined grant access to your account…", orange "Anyone
+  with both codes will have full access!" (two lines), "LET'S GO", "Send yourself Code 1",
+  "COPY CODE 1/2", "How to send to yourself ›" (tip on tap).
+- **Per-code confirm screens**: "Did you send Code 1/2 to yourself?" with
+  "YES, CONTINUE TO CODE 2" / "YES, FINISH BACKUP" and the small "No, go back" pill;
+  copying a code auto-advances to its confirm (the keyguard's copy-then-confirm rhythm).
+- Fixed an unhandled promise rejection when the clipboard write is denied.
+
 ## [0.39.0] — 2026-07-02
 
 ### Added/Changed — unlock step + keyguard card shape (Andjroo's captures, round 2)

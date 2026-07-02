@@ -379,6 +379,47 @@
     padding: 14px 0 calc(24px + env(safe-area-inset-bottom, 0px));
     box-shadow: 0 8px 56px rgba(0,0,0,.11); }
   .kg-card .kg-progress { margin: 6px 18px 14px; }
+  /* The keyguard's backup-codes message-bubble illustration (BackupCodesIllustrationBase):
+     code 1 = purple bubble (tail bottom-left), code 2 = red bubble (tail bottom-right),
+     complete = green + check, inactive = faded white ghost. Colors verbatim. */
+  .bc-illu { position: relative; margin: 26px 22px 10px; }
+  .bc-bubble { position: relative; width: 80%; border-radius: 8px; padding: 13px 16px 15px; color: #fff;
+    box-shadow: 0 6px 20px rgba(0,0,0,.25); }
+  .bc-bubble.b1 { background-image: radial-gradient(141.42% 141.42% at 100% 100%, #693BC4 0%, #8F3FD5 100%); }
+  .bc-bubble.b2 { background-image: radial-gradient(141.42% 141.42% at 0% 100%, #DC1845 0%, #F33F68 100%); }
+  .bc-bubble.b1::after, .bc-bubble.b2::after { content: ''; position: absolute; bottom: -9px;
+    border-style: solid; border-color: transparent; }
+  .bc-bubble.b1::after { left: 14px; border-width: 10px 12px 0 0; border-top-color: #693BC4; }
+  .bc-bubble.b2::after { right: 14px; border-width: 0 12px 10px 0; border-right-color: #DC1845; }
+  .bc-bubble .bc-label { color: rgba(255,255,255,.6); font-size: 14.5px; margin-bottom: 7px; }
+  .bc-bubble code { display: block; font-family: inherit; font-size: 15.5px; line-height: 1.4;
+    word-break: break-all; color: #fff; }
+  .bc-bubble .bc-lines i { display: block; height: 11px; border-radius: 3px; background: rgba(255,255,255,.15); margin: 9px 0 0; }
+  .bc-bubble .bc-lines i:first-child { width: 86%; }
+  .bc-bubble .bc-lines i:last-child { width: 58%; }
+  .bc-dot { position: absolute; top: -15px; left: -13px; width: 34px; height: 34px; border-radius: 50%;
+    background: #fff; display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 16px; box-shadow: 0 2px 10px rgba(0,0,0,.25); }
+  .b1 .bc-dot { color: #8D3FD4; }
+  .b2 .bc-dot { color: #F33E67; }
+  .bc-bubble.complete { background-image: radial-gradient(100% 100% at 100% 100%, #41A38E 0%, #21BCA5 100%) !important; }
+  .bc-bubble.b1.complete::after { border-top-color: #2fa694; }
+  .bc-bubble.b2.complete::after { border-right-color: #2fa694; }
+  .bc-bubble.complete .bc-dot { color: var(--nimiq-green, #21bca5); }
+  .bc-dot svg { width: 16px; height: 16px; }
+  /* intro: the two bubbles overlap (1 back top-left, 2 front bottom-right) */
+  .bc-illu .bc-bubble.b2.offset { width: 80%; margin: -30px 0 0 auto; }
+  /* code screens: the OTHER code is a faded ghost behind to the side */
+  .bc-ghost { position: absolute; top: 44px; right: -6px; width: 62%; height: 92px; border-radius: 8px;
+    background: rgba(255,255,255,.06); }
+  .bc-ghost.left { right: auto; left: -6px; }
+  .bc-illu .bc-bubble.front { z-index: 1; }
+  /* the small dark "No, go back" pill under the confirm CTA */
+  .bh-noback { display: block; margin: 12px auto 0; height: 34px; padding: 0 18px; border: 0; border-radius: 500px;
+    background: rgba(255,255,255,.14); color: #fff; font-family: inherit; font-weight: 700; font-size: 13.5px; cursor: pointer; }
+  .bh-how { display: block; margin: 14px auto 0; background: none; border: 0; cursor: pointer;
+    font-family: inherit; font-weight: 700; font-size: 14.5px; color: rgba(255,255,255,.7); }
+
   /* Unlock your Backup: the big keyguard lock. */
   .kg-lock { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; padding: 24px 0; }
   .kg-lock svg { width: 62px; height: 91px; color: rgba(255,255,255,.9); }
@@ -760,43 +801,91 @@ Keep them safe.</p>
       </div>
   </section>
 
-  <!-- backup codes: intro -> code 1 -> code 2 -->
+  <!-- backup codes, the keyguard flow: intro -> code 1 -> confirm -> code 2 -> confirm -->
   <section class="ob-screen" id="bh-codes-intro" hidden>
-    <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#bh-hex-g4)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="bh-hex-g4" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span><button class="ob-back" data-bh-close>Close</button></div>
+    <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#bh-hex-g4)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="bh-hex-g4" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span><button class="ob-back" data-bh-close data-i18n="a.close">Close</button></div>
     <div class="kg-card">
-    <div class="kg-progress"><span class="seg on"></span><span class="seg"></span><span class="seg"></span><span class="seg"></span></div>
-    <div class="bh-header">
-      <h2 data-i18n="hub.codes">Send yourself two backup codes</h2>
-      <p data-i18n="codes.intro.sub">Both codes together restore your wallet. One alone is useless. Send each one to yourself over a DIFFERENT channel, like a messenger and an email.</p>
-    </div>
-    <div class="ob-words-foot" style="padding: 26px 24px 0">
-      <button class="ob-primary" id="bh-codes-go" data-i18n="words.continue">Continue</button>
-    </div>
+      <div class="kg-progress"><span class="seg on"></span><span class="seg on"></span><span class="seg"></span><span class="seg"></span><span class="seg"></span></div>
+      <div class="bh-header">
+        <h2 data-i18n="hub.codes">Send yourself two backup codes</h2>
+        <p data-i18n="codes.intro.sub">The codes combined grant access to your account. Send them to yourself using two different platforms.</p>
       </div>
+      <div class="bc-illu">
+        <div class="bc-bubble b1 "><span class="bc-dot">1</span><div class="bc-label">nimmesh Backup Code 1/2</div><div class="bc-lines"><i></i><i></i></div></div>
+        <div class="bc-bubble b2 offset front"><span class="bc-dot">2</span><div class="bc-label">nimmesh Backup Code 2/2</div><div class="bc-lines"><i></i><i></i></div></div>
+      </div>
+      <p class="kg-warn" data-i18n="codes.warn">Anyone with both codes will have full access!
+Don't share them and keep them safe.</p>
+      <div class="ob-words-foot" style="padding: 18px 24px 0">
+        <button class="ob-primary kg" id="bh-codes-go" data-i18n="codes.go">Let's go</button>
+      </div>
+    </div>
   </section>
   <section class="ob-screen" id="bh-code-1" hidden>
-    <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#bh-hex-g5)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="bh-hex-g5" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span><button class="ob-back" data-bh-close>Close</button></div>
+    <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#bh-hex-g5)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="bh-hex-g5" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span><button class="ob-back" data-bh-close data-i18n="a.close">Close</button></div>
     <div class="kg-card">
-    <div class="kg-progress"><span class="seg on"></span><span class="seg on"></span><span class="seg on"></span><span class="seg"></span></div>
-    <div class="bh-header"><h2 data-i18n="codes.c1.title">Send yourself code 1</h2></div>
-    <div class="code-box" id="bh-code-1-text"></div>
-    <button class="bh-copy" id="bh-code-1-copy" data-i18n="codes.copy">Copy code</button>
-    <div class="ob-words-foot" style="padding: 22px 24px 0">
-      <button class="ob-primary" id="bh-code-1-next" data-i18n="words.continue">Continue</button>
-    </div>
+      <div class="kg-progress"><span class="seg on"></span><span class="seg on"></span><span class="seg on"></span><span class="seg"></span><span class="seg"></span></div>
+      <div class="bh-header">
+        <h2 data-i18n="codes.c1.title">Send yourself Code 1</h2>
+        <p data-i18n="codes.send.sub">Send this code to yourself for example by email or messenger. Make sure you will find it, in case you need it.</p>
       </div>
+      <div class="bc-illu">
+        <div class="bc-ghost"></div>
+        <div class="bc-bubble b1 front"><span class="bc-dot">1</span><div class="bc-label">nimmesh Backup Code 1/2</div><code id="bh-code-1-text"></code></div>
+      </div>
+      <div class="ob-words-foot" style="padding: 14px 24px 0">
+        <button class="ob-primary kg" id="bh-code-1-copy"></button>
+        <button class="bh-how" data-bh-how><span data-i18n="codes.how">How to send to yourself</span> &rsaquo;</button>
+      </div>
+    </div>
+  </section>
+  <section class="ob-screen" id="bh-confirm-1" hidden>
+    <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#bh-hex-ga)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="bh-hex-ga" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span><button class="ob-back" data-bh-close data-i18n="a.close">Close</button></div>
+    <div class="kg-card">
+      <div class="kg-progress"><span class="seg on"></span><span class="seg on"></span><span class="seg on"></span><span class="seg"></span><span class="seg"></span></div>
+      <div class="bh-header"><h2 data-i18n="codes.confirm1">Did you send Code 1 to yourself?</h2></div>
+      <div class="bc-illu">
+        <div class="bc-ghost"></div>
+        <div class="bc-bubble b1 complete front"><span class="bc-dot"><svg viewBox="0 0 16 16" fill="none"><path d="M2.5 8.5L6 12l7.5-8" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><div class="bc-label">nimmesh Backup Code 1/2</div><code id="bh-cf1-code"></code></div>
+      </div>
+      <div class="ob-words-foot" style="padding: 14px 24px 0">
+        <button class="ob-primary kg" id="bh-confirm-1-yes" data-i18n="codes.yes1">Yes, continue to Code 2</button>
+        <button class="bh-noback" id="bh-confirm-1-no" data-i18n="codes.noback">No, go back</button>
+      </div>
+    </div>
   </section>
   <section class="ob-screen" id="bh-code-2" hidden>
-    <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#bh-hex-g6)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="bh-hex-g6" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span><button class="ob-back" data-bh-close>Close</button></div>
+    <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#bh-hex-g6)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="bh-hex-g6" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span><button class="ob-back" data-bh-close data-i18n="a.close">Close</button></div>
     <div class="kg-card">
-    <div class="kg-progress"><span class="seg on"></span><span class="seg on"></span><span class="seg on"></span><span class="seg on"></span></div>
-    <div class="bh-header"><h2 data-i18n="codes.c2.title">Send yourself code 2</h2><p data-i18n="codes.c2.sub">Use a different channel than for code 1</p></div>
-    <div class="code-box" id="bh-code-2-text"></div>
-    <button class="bh-copy" id="bh-code-2-copy" data-i18n="codes.copy">Copy code</button>
-    <div class="ob-words-foot" style="padding: 22px 24px 0">
-      <button class="ob-primary" id="bh-code-2-next" data-i18n="words.continue">Continue</button>
-    </div>
+      <div class="kg-progress"><span class="seg on"></span><span class="seg on"></span><span class="seg on"></span><span class="seg on"></span><span class="seg"></span></div>
+      <div class="bh-header">
+        <h2 data-i18n="codes.c2.title">Send yourself Code 2</h2>
+        <p data-i18n="codes.send.sub2">Use a different platform than for Code 1. Make sure you will find it, in case you need it.</p>
       </div>
+      <div class="bc-illu">
+        <div class="bc-ghost left"></div>
+        <div class="bc-bubble b2 front" style="margin-left:auto"><span class="bc-dot">2</span><div class="bc-label">nimmesh Backup Code 2/2</div><code id="bh-code-2-text"></code></div>
+      </div>
+      <div class="ob-words-foot" style="padding: 14px 24px 0">
+        <button class="ob-primary kg" id="bh-code-2-copy"></button>
+        <button class="bh-how" data-bh-how><span data-i18n="codes.how">How to send to yourself</span> &rsaquo;</button>
+      </div>
+    </div>
+  </section>
+  <section class="ob-screen" id="bh-confirm-2" hidden>
+    <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#bh-hex-gb)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="bh-hex-gb" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span><button class="ob-back" data-bh-close data-i18n="a.close">Close</button></div>
+    <div class="kg-card">
+      <div class="kg-progress"><span class="seg on"></span><span class="seg on"></span><span class="seg on"></span><span class="seg on"></span><span class="seg"></span></div>
+      <div class="bh-header"><h2 data-i18n="codes.confirm2">Did you send Code 2 to yourself?</h2></div>
+      <div class="bc-illu">
+        <div class="bc-ghost left"></div>
+        <div class="bc-bubble b2 complete front" style="margin-left:auto"><span class="bc-dot"><svg viewBox="0 0 16 16" fill="none"><path d="M2.5 8.5L6 12l7.5-8" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><div class="bc-label">nimmesh Backup Code 2/2</div><code id="bh-cf2-code"></code></div>
+      </div>
+      <div class="ob-words-foot" style="padding: 14px 24px 0">
+        <button class="ob-primary kg" id="bh-confirm-2-yes" data-i18n="codes.yes2">Yes, finish backup</button>
+        <button class="bh-noback" id="bh-confirm-2-no" data-i18n="codes.noback">No, go back</button>
+      </div>
+    </div>
   </section>
 
   <!-- success -->
@@ -971,12 +1060,18 @@ Keep them safe.</p>
       'hub.codes': 'Envíate dos códigos de respaldo', 'hub.codes.sub': 'Solo necesitas dos formas de escribirte, como un mensajero y un correo.',
       'hub.words': 'Anota las 24 palabras de recuperación', 'hub.words.sub': 'Solo necesitas papel, lápiz y un lugar seguro donde guardarlo.',
       'hub.later': 'Recuérdamelo después', 'val.title': 'Valida tu respaldo', 'val.hint': 'Selecciona la palabra correcta de tu lista de palabras de recuperación',
-      'codes.intro.sub': 'Los dos códigos juntos restauran tu cartera. Uno solo no sirve de nada. Envíate cada uno por un canal DIFERENTE, como un mensajero y un correo.',
+      'codes.intro.sub': 'Los códigos combinados dan acceso a tu cuenta. Envíatelos usando dos plataformas diferentes.',
       'codes.c1.title': 'Envíate el código 1', 'codes.c2.title': 'Envíate el código 2', 'codes.c2.sub': 'Usa un canal distinto al del código 1', 'codes.copy': 'Copiar código',
       'done.title': 'Respaldo completado', 'done.sub': 'Tu cartera ya se puede recuperar sin este teléfono', 'a.done': 'Listo',
       'ob.codes': 'Usar códigos de respaldo', 'ob.codes.sub': 'Restaura con tus dos códigos',
       'codes.import.title': 'Introduce tus códigos', 'codes.import.sub': 'Pega los dos códigos que te enviaste. El orden no importa.',
       'codes.restore': 'Restaurar cartera', 'codes.invalid': 'Esos códigos no coinciden. Revisa ambos e inténtalo de nuevo.',
+      'codes.warn': '¡Cualquiera con ambos códigos tendrá acceso total!\nNo los compartas y mantenlos a salvo.', 'codes.go': '¡Vamos!',
+      'codes.send.sub': 'Envíate este código por ejemplo por correo o mensajero. Asegúrate de poder encontrarlo cuando lo necesites.',
+      'codes.send.sub2': 'Usa una plataforma distinta a la del código 1. Asegúrate de poder encontrarlo cuando lo necesites.',
+      'codes.how': 'Cómo enviártelo', 'codes.how.tip': 'Envíatelo por correo o mándatelo en una app de mensajes. Usa una plataforma DIFERENTE para cada código.',
+      'codes.confirm1': '¿Te enviaste el código 1?', 'codes.confirm2': '¿Te enviaste el código 2?',
+      'codes.yes1': 'Sí, continuar al código 2', 'codes.yes2': 'Sí, terminar el respaldo', 'codes.noback': 'No, volver',
       'intro.title': '¡No hay recuperación de contraseña!', 'intro.warn': 'Las palabras de recuperación son la ÚNICA forma de restaurar tu cartera si pierdes este teléfono.',
       'intro.b1': 'Mantén tus palabras fuera de línea, no las introduzcas en ningún sitio que no sea nimmesh.', 'intro.b2': 'Crea una copia y guárdala en un lugar seguro: casa de la familia, caja fuerte, etc.', 'intro.b3': 'Cuidado con el agua y el fuego, usa una caja sellada para proteger tus palabras.',
       'intro.cta': 'Mostrar palabras', 'words.paper': 'Escribe estas 24 palabras en papel', 'words.warn': '¡Cualquiera con estas palabras puede acceder a tu cuenta!\nMantenlas a salvo.', 'unlock.title': 'Desbloquea tu respaldo', 'unlock.cta': 'Desbloquear',
@@ -1004,12 +1099,18 @@ Keep them safe.</p>
       'hub.codes': 'Schick dir zwei Backup-Codes', 'hub.codes.sub': 'Braucht nur zwei Wege, dir selbst zu schreiben, etwa Messenger + E-Mail.',
       'hub.words': 'Schreibe 24 Wiederherstellungswörter auf', 'hub.words.sub': 'Braucht Stift, Papier und einen sicheren Ort dafür.',
       'hub.later': 'Später erinnern', 'val.title': 'Validiere dein Backup', 'val.hint': 'Wähle das richtige Wort aus deiner Liste der Wiederherstellungswörter',
-      'codes.intro.sub': 'Beide Codes zusammen stellen deine Wallet wieder her. Einer allein ist nutzlos. Schick dir jeden über einen ANDEREN Kanal, etwa Messenger und E-Mail.',
+      'codes.intro.sub': 'Beide Codes zusammen geben Zugriff auf dein Konto. Schick sie dir über zwei verschiedene Plattformen.',
       'codes.c1.title': 'Schick dir Code 1', 'codes.c2.title': 'Schick dir Code 2', 'codes.c2.sub': 'Nutze einen anderen Kanal als für Code 1', 'codes.copy': 'Code kopieren',
       'done.title': 'Backup abgeschlossen', 'done.sub': 'Deine Wallet ist jetzt ohne dieses Handy wiederherstellbar', 'a.done': 'Fertig',
       'ob.codes': 'Backup-Codes verwenden', 'ob.codes.sub': 'Mit deinen zwei Codes wiederherstellen',
       'codes.import.title': 'Backup-Codes eingeben', 'codes.import.sub': 'Füge die zwei Codes ein, die du dir geschickt hast. Die Reihenfolge ist egal.',
       'codes.restore': 'Wallet wiederherstellen', 'codes.invalid': 'Diese Codes passen nicht zusammen. Prüfe beide und versuche es erneut.',
+      'codes.warn': 'Jeder mit beiden Codes hat vollen Zugriff!\nTeile sie nicht und bewahre sie sicher auf.', 'codes.go': 'Los geht’s',
+      'codes.send.sub': 'Schick dir diesen Code zum Beispiel per E-Mail oder Messenger. Stell sicher, dass du ihn wiederfindest, falls du ihn brauchst.',
+      'codes.send.sub2': 'Nutze eine andere Plattform als für Code 1. Stell sicher, dass du ihn wiederfindest, falls du ihn brauchst.',
+      'codes.how': 'So schickst du ihn dir', 'codes.how.tip': 'Maile ihn dir selbst oder schick ihn dir in einer Chat-App. Nutze für jeden Code eine ANDERE Plattform.',
+      'codes.confirm1': 'Hast du dir Code 1 geschickt?', 'codes.confirm2': 'Hast du dir Code 2 geschickt?',
+      'codes.yes1': 'Ja, weiter zu Code 2', 'codes.yes2': 'Ja, Backup abschließen', 'codes.noback': 'Nein, zurück',
       'intro.title': 'Es gibt keine Passwort-Wiederherstellung!', 'intro.warn': 'Die Wiederherstellungswörter sind der EINZIGE Weg, deine Wallet wiederherzustellen, falls dieses Handy verloren geht.',
       'intro.b1': 'Halte deine Wörter offline, gib sie nirgends ein außer in nimmesh.', 'intro.b2': 'Erstelle eine Kopie und bewahre sie sicher auf: bei der Familie, im Bankschließfach usw.', 'intro.b3': 'Denk an Wasser und Feuer, nutze eine versiegelte Box für deine Wörter.',
       'intro.cta': 'Wörter anzeigen', 'words.paper': 'Schreibe diese 24 Wörter auf Papier', 'words.warn': 'Jeder mit diesen Wörtern hat Zugriff auf dein Konto!\nBewahre sie sicher auf.', 'unlock.title': 'Entsperre dein Backup', 'unlock.cta': 'Entsperren',
@@ -1037,12 +1138,18 @@ Keep them safe.</p>
       'hub.codes': 'Envoie-toi deux codes de sauvegarde', 'hub.codes.sub': 'Il suffit de deux façons de t’écrire, comme un messager et un email.',
       'hub.words': 'Note les 24 mots de récupération', 'hub.words.sub': 'Il suffit d’un stylo, d’un papier et d’un endroit sûr.',
       'hub.later': 'Me le rappeler plus tard', 'val.title': 'Valide ta sauvegarde', 'val.hint': 'Sélectionne le bon mot dans ta liste de mots de récupération',
-      'codes.intro.sub': 'Les deux codes ensemble restaurent ton portefeuille. Un seul ne sert à rien. Envoie-toi chacun par un canal DIFFÉRENT, comme un messager et un email.',
+      'codes.intro.sub': 'Les deux codes combinés donnent accès à ton compte. Envoie-les-toi via deux plateformes différentes.',
       'codes.c1.title': 'Envoie-toi le code 1', 'codes.c2.title': 'Envoie-toi le code 2', 'codes.c2.sub': 'Utilise un canal différent de celui du code 1', 'codes.copy': 'Copier le code',
       'done.title': 'Sauvegarde terminée', 'done.sub': 'Ton portefeuille est désormais récupérable sans ce téléphone', 'a.done': 'Terminé',
       'ob.codes': 'Utiliser les codes de sauvegarde', 'ob.codes.sub': 'Restaure avec tes deux codes',
       'codes.import.title': 'Saisis tes codes de sauvegarde', 'codes.import.sub': 'Colle les deux codes que tu t’es envoyés. L’ordre n’a pas d’importance.',
       'codes.restore': 'Restaurer le portefeuille', 'codes.invalid': 'Ces codes ne correspondent pas. Vérifie les deux et réessaie.',
+      'codes.warn': 'Quiconque possède les deux codes aura un accès total !\nNe les partage pas et garde-les en sécurité.', 'codes.go': 'C’est parti',
+      'codes.send.sub': 'Envoie-toi ce code par exemple par email ou messagerie. Assure-toi de pouvoir le retrouver en cas de besoin.',
+      'codes.send.sub2': 'Utilise une plateforme différente de celle du code 1. Assure-toi de pouvoir le retrouver en cas de besoin.',
+      'codes.how': 'Comment se l’envoyer', 'codes.how.tip': 'Envoie-le-toi par email ou dans une app de messagerie. Utilise une plateforme DIFFÉRENTE pour chaque code.',
+      'codes.confirm1': 'T’es-tu envoyé le code 1 ?', 'codes.confirm2': 'T’es-tu envoyé le code 2 ?',
+      'codes.yes1': 'Oui, passer au code 2', 'codes.yes2': 'Oui, terminer la sauvegarde', 'codes.noback': 'Non, revenir',
       'intro.title': 'Il n’y a pas de récupération de mot de passe !', 'intro.warn': 'Les mots de récupération sont le SEUL moyen de restaurer ton portefeuille si tu perds ce téléphone.',
       'intro.b1': 'Garde tes mots hors ligne, ne les saisis nulle part ailleurs que dans nimmesh.', 'intro.b2': 'Fais une copie et range-la en lieu sûr : maison familiale, coffre bancaire, etc.', 'intro.b3': 'Attention à l’eau et au feu, utilise une boîte scellée pour protéger tes mots.',
       'intro.cta': 'Afficher les mots', 'words.paper': 'Écris ces 24 mots sur papier', 'words.warn': 'Quiconque possède ces mots peut accéder à ton compte !\nGarde-les en sécurité.', 'unlock.title': 'Déverrouille ta sauvegarde', 'unlock.cta': 'Déverrouiller',
@@ -1070,12 +1177,18 @@ Keep them safe.</p>
       'hub.codes': 'Envie dois códigos de backup para você', 'hub.codes.sub': 'Bastam duas formas de escrever para si, como um mensageiro e um e-mail.',
       'hub.words': 'Anote as 24 palavras de recuperação', 'hub.words.sub': 'Bastam caneta, papel e um lugar seguro para guardar.',
       'hub.later': 'Lembrar mais tarde', 'val.title': 'Valide seu backup', 'val.hint': 'Selecione a palavra correta da sua lista de palavras de recuperação',
-      'codes.intro.sub': 'Os dois códigos juntos restauram sua carteira. Um sozinho é inútil. Envie cada um por um canal DIFERENTE, como um mensageiro e um e-mail.',
+      'codes.intro.sub': 'Os códigos combinados dão acesso à sua conta. Envie-os para você por duas plataformas diferentes.',
       'codes.c1.title': 'Envie o código 1 para você', 'codes.c2.title': 'Envie o código 2 para você', 'codes.c2.sub': 'Use um canal diferente do código 1', 'codes.copy': 'Copiar código',
       'done.title': 'Backup concluído', 'done.sub': 'Sua carteira agora pode ser recuperada sem este telefone', 'a.done': 'Concluído',
       'ob.codes': 'Usar códigos de backup', 'ob.codes.sub': 'Restaure com seus dois códigos',
       'codes.import.title': 'Insira seus códigos de backup', 'codes.import.sub': 'Cole os dois códigos que você enviou para si. A ordem não importa.',
       'codes.restore': 'Restaurar carteira', 'codes.invalid': 'Esses códigos não combinam. Confira os dois e tente de novo.',
+      'codes.warn': 'Qualquer pessoa com os dois códigos terá acesso total!\nNão os compartilhe e guarde-os em segurança.', 'codes.go': 'Vamos lá',
+      'codes.send.sub': 'Envie este código para você, por exemplo por e-mail ou mensageiro. Garanta que vai encontrá-lo se precisar.',
+      'codes.send.sub2': 'Use uma plataforma diferente da do código 1. Garanta que vai encontrá-lo se precisar.',
+      'codes.how': 'Como enviar para você', 'codes.how.tip': 'Mande por e-mail para si ou envie em um app de mensagens. Use uma plataforma DIFERENTE para cada código.',
+      'codes.confirm1': 'Você enviou o código 1 para si?', 'codes.confirm2': 'Você enviou o código 2 para si?',
+      'codes.yes1': 'Sim, continuar para o código 2', 'codes.yes2': 'Sim, concluir o backup', 'codes.noback': 'Não, voltar',
       'intro.title': 'Não existe recuperação de senha!', 'intro.warn': 'As palavras de recuperação são a ÚNICA forma de restaurar sua carteira se você perder este telefone.',
       'intro.b1': 'Mantenha suas palavras offline, não as insira em lugar nenhum além do nimmesh.', 'intro.b2': 'Faça uma cópia e guarde em um lugar seguro: casa da família, cofre de banco etc.', 'intro.b3': 'Cuidado com água e fogo, use uma caixa lacrada para proteger suas palavras.',
       'intro.cta': 'Mostrar palavras', 'words.paper': 'Escreva estas 24 palavras no papel', 'words.warn': 'Qualquer pessoa com estas palavras pode acessar sua conta!\nGuarde-as em segurança.', 'unlock.title': 'Desbloqueie seu backup', 'unlock.cta': 'Desbloquear',
@@ -1099,6 +1212,8 @@ Keep them safe.</p>
     'cashlink.soon': 'Cashlinks are coming to nimmesh soon',
     'codes.invalid': 'Those codes do not match. Check both codes and try again.',
     'val.q': 'What is the {n} word?',
+    'codes.copy': 'Copy code',
+    'codes.how.tip': 'Email it to yourself, or message it to yourself in a chat app. Use a DIFFERENT platform for each code.',
   };
   let LANG = 'en';
   function T(key) { return (I18N[LANG] && I18N[LANG][key]) || I18N.en[key] || key; }
@@ -1442,7 +1557,7 @@ Keep them safe.</p>
   }
   function copyText(text, btnId) {
     try {
-      navigator.clipboard.writeText(text);
+      navigator.clipboard.writeText(text).catch(() => { /* headless/denied clipboard */ });
       const b = document.getElementById(btnId);
       if (b) { const t = b.textContent; b.textContent = T('a.copied'); setTimeout(() => { b.textContent = t; }, 1200); }
     } catch (e) { /* clipboard unavailable */ }
@@ -1507,7 +1622,7 @@ Keep them safe.</p>
   }
   // The backup flow overlay (hub -> words -> validate | codes 1..2 -> done).
   function bhShow(id) {
-    ['bh-hub', 'bh-intro', 'bh-unlock', 'bh-words', 'bh-validate', 'bh-codes-intro', 'bh-code-1', 'bh-code-2', 'bh-done'].forEach((sid) => {
+    ['bh-hub', 'bh-intro', 'bh-unlock', 'bh-words', 'bh-validate', 'bh-codes-intro', 'bh-code-1', 'bh-confirm-1', 'bh-code-2', 'bh-confirm-2', 'bh-done'].forEach((sid) => {
       const el = document.getElementById(sid); if (el) el.hidden = (sid !== id);
     });
     const flow = document.getElementById('backup-flow'); if (flow) { flow.hidden = false; flow.scrollTop = 0; }
@@ -1604,29 +1719,41 @@ Keep them safe.</p>
         };
       } catch (e) { /* no wallet */ }
     });
-    document.getElementById('bh-start-codes').addEventListener('click', async () => {
+    // The codes path, keyguard-ordered: UNLOCK -> intro -> code 1 -> confirm -> code 2 -> confirm.
+    document.getElementById('bh-start-codes').addEventListener('click', () => bhUnlock(async () => {
       try {
         const r = await nimmesh.backupCodes();
         document.getElementById('bh-code-1-text').textContent = r.code1;
+        document.getElementById('bh-cf1-code').textContent = r.code1;
         document.getElementById('bh-code-2-text').textContent = r.code2;
+        document.getElementById('bh-cf2-code').textContent = r.code2;
+        document.getElementById('bh-code-1-copy').textContent = T('codes.copy') + ' 1';
+        document.getElementById('bh-code-2-copy').textContent = T('codes.copy') + ' 2';
         bhShow('bh-codes-intro');
       } catch (e) { /* no wallet */ }
-    });
-    document.getElementById('bh-codes-go').addEventListener('click', () => bhUnlock(() => bhShow('bh-code-1')));
+    }));
     document.getElementById('bh-unlock-go').addEventListener('click', async () => {
       let ok = true;
       try { if (window.nimmesh && nimmesh.authenticate) ok = !!(await nimmesh.authenticate()).ok; } catch (e) { ok = false; }
       if (ok && bhAfterUnlock) { const next = bhAfterUnlock; bhAfterUnlock = null; next(); }
     });
-    document.getElementById('bh-code-1-copy').addEventListener('click', () =>
-      copyText(document.getElementById('bh-code-1-text').textContent, 'bh-code-1-copy'));
-    document.getElementById('bh-code-1-next').addEventListener('click', () => bhShow('bh-code-2'));
-    document.getElementById('bh-code-2-copy').addEventListener('click', () =>
-      copyText(document.getElementById('bh-code-2-text').textContent, 'bh-code-2-copy'));
-    document.getElementById('bh-code-2-next').addEventListener('click', async () => {
+    document.getElementById('bh-codes-go').addEventListener('click', () => bhShow('bh-code-1'));
+    document.getElementById('bh-code-1-copy').addEventListener('click', () => {
+      copyText(document.getElementById('bh-code-1-text').textContent, 'bh-code-1-copy');
+      setTimeout(() => bhShow('bh-confirm-1'), 600);   // keyguard: copy, then "did you send it?"
+    });
+    document.getElementById('bh-confirm-1-yes').addEventListener('click', () => bhShow('bh-code-2'));
+    document.getElementById('bh-confirm-1-no').addEventListener('click', () => bhShow('bh-code-1'));
+    document.getElementById('bh-code-2-copy').addEventListener('click', () => {
+      copyText(document.getElementById('bh-code-2-text').textContent, 'bh-code-2-copy');
+      setTimeout(() => bhShow('bh-confirm-2'), 600);
+    });
+    document.getElementById('bh-confirm-2-yes').addEventListener('click', async () => {
       await completeBackup();
       bhShow('bh-done');
     });
+    document.getElementById('bh-confirm-2-no').addEventListener('click', () => bhShow('bh-code-2'));
+    document.querySelectorAll('[data-bh-how]').forEach((b) => b.addEventListener('click', () => alert(T('codes.how.tip'))));
     // Reinstall recovery: keep the previous install's wallet, or delete it and start fresh.
     // "Start fresh" confirms first — without the 24 words the old wallet is unrecoverable.
     document.getElementById('ob-keep').addEventListener('click', async () => {
