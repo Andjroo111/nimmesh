@@ -17,7 +17,7 @@
 //! BTC-giver's re-advertised intent only reaches its partner — no accidental cross-pair matches.
 
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::mock_radio::MeshHarness;
 use crate::node::MeshNode;
@@ -87,20 +87,10 @@ fn many_complementary_pairs_all_discover_and_settle() {
                 && btc_nodes[i].swap_phase(swap_ids[i]) == Some(SwapPhase::Settled)
         })
     };
-    // Tick every node until all pairs settle (generous budget; no loss → converges quickly).
-    let mut settled = false;
-    for _ in 0..80 {
-        for n in &nodes {
-            n.poll_sync();
-        }
-        if all_settled() {
-            settled = true;
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(5));
-    }
+    // Pump every node until all pairs settle. A wall-clock convergence budget (not a fixed tick
+    // count) keeps this deterministic under CI load; it breaks the instant every pair is Settled.
     assert!(
-        settled,
+        pump_until(&nodes, all_settled),
         "every complementary pair should discover its counterparty and settle"
     );
 
@@ -215,6 +205,31 @@ fn tick_round(nim: &Arc<MeshNode>, btc: &Arc<MeshNode>) {
     std::thread::sleep(Duration::from_millis(5));
 }
 
+/// A generous wall-clock budget for the multi-node "should settle" waits. Deliberately large: the
+/// wait breaks the instant the swap settles, so this only ever bounds the *failure* path.
+const CONVERGE: Duration = Duration::from_secs(10);
+
+/// Pump every node's maintenance tick until `done` holds or [`CONVERGE`] elapses; returns whether it
+/// converged. The mock ether delivers on a worker thread, so a fixed tick count races that thread and
+/// flakes under CI load; waiting on a wall-clock deadline and breaking the instant `done` holds is
+/// deterministic in outcome and keeps the happy path sub-second. (We can't make the ether synchronous
+/// — `test_support::SpyRadio` asserts the relay's `send` never runs inside `on_packet_received`.)
+fn pump_until<F: Fn() -> bool>(nodes: &[Arc<MeshNode>], done: F) -> bool {
+    let deadline = Instant::now() + CONVERGE;
+    loop {
+        for n in nodes {
+            n.poll_sync();
+        }
+        if done() {
+            return true;
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
 #[test]
 fn a_partitioned_pair_discovers_after_the_link_heals_within_budget() {
     // G47: PARTITION a complementary pair — the BTC-giver re-advertises (G37) but the cut blocks every
@@ -240,15 +255,10 @@ fn a_partitioned_pair_discovers_after_the_link_heals_within_budget() {
         nim.swap_phase(swap_id) == Some(SwapPhase::Settled)
             && btc.swap_phase(swap_id) == Some(SwapPhase::Settled)
     };
-    let mut ok = false;
-    for _ in 0..60 {
-        tick_round(&nim, &btc);
-        if settled() {
-            ok = true;
-            break;
-        }
-    }
-    assert!(ok, "the healed pair should discover and settle");
+    assert!(
+        pump_until(&[nim.clone(), btc.clone()], settled),
+        "the healed pair should discover and settle"
+    );
 
     h.shutdown();
 }
@@ -313,16 +323,8 @@ fn a_reconnected_peer_resets_the_re_advertise_budget_and_the_pair_settles() {
         nim.swap_phase(swap_id) == Some(SwapPhase::Settled)
             && btc.swap_phase(swap_id) == Some(SwapPhase::Settled)
     };
-    let mut ok = false;
-    for _ in 0..60 {
-        tick_round(&nim, &btc);
-        if settled() {
-            ok = true;
-            break;
-        }
-    }
     assert!(
-        ok,
+        pump_until(&[nim.clone(), btc.clone()], settled),
         "after reconnect the reset re-advertise budget should discover + settle"
     );
 
