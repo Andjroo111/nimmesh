@@ -2,6 +2,21 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.39.0] — 2026-07-02
+
+### Added/Changed — unlock step + keyguard card shape (Andjroo's captures, round 2)
+
+- **"Unlock your Backup"** — the missing keyguard step 2. A dedicated screen (big lock,
+  UNLOCK capsule) that gates BOTH the words and the codes paths behind Face ID / device
+  passcode (`LocalAuthentication`, new `authenticate` bridge method,
+  `NSFaceIDUsageDescription`). Devices with no passcode pass through (nothing to unlock
+  with). The progress bar is now 4 steps on both paths.
+- **The flow is a CARD now, not full-screen** — like the real keyguard: light page with
+  the nimmesh logo header, and the navy radial card pinned to the bottom with rounded
+  top corners and a soft shadow (`.kg-card`, min-height 62vh, safe-area padding).
+- **"Keep them safe." breaks onto its own line** in the words warning (all 5 languages,
+  `white-space: pre-line`).
+
 ## [0.38.2] — 2026-07-02
 
 ### Fixed — backup flow buttons sat on the screen edge (Andjroo, on-device)

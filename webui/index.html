@@ -370,12 +370,25 @@
   .bh-success svg { width: 88px; height: 88px; color: var(--nimiq-green, #21bca5); margin-bottom: 20px; }
   .bh-success h2 { font-size: 24px; font-weight: 700; color: #fff; margin: 0 0 8px; text-align: center; }
   .bh-success p { font-size: 15px; color: rgba(255,255,255,.6); margin: 0; text-align: center; }
+  /* Keyguard page shape: LIGHT page with the navy CARD pinned to the bottom (the real
+     keyguard is a card on the grey page, not a full-screen sheet). */
+  .kg-card { margin: auto 10px 0; width: calc(100% - 20px); box-sizing: border-box; min-height: 62vh;
+    border-radius: 8px 8px 0 0; background: var(--nimiq-blue, #1f2348);
+    background-image: var(--nimiq-blue-bg, radial-gradient(100% 100% at bottom right, #260133, #1f2348));
+    color: #fff; display: flex; flex-direction: column;
+    padding: 14px 0 calc(24px + env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 8px 56px rgba(0,0,0,.11); }
+  .kg-card .kg-progress { margin: 6px 18px 14px; }
+  /* Unlock your Backup: the big keyguard lock. */
+  .kg-lock { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; padding: 24px 0; }
+  .kg-lock svg { width: 62px; height: 91px; color: rgba(255,255,255,.9); }
+
   /* Keyguard chrome: the step progress bar + the intro screen's orange notice/list. */
   .kg-progress { display: flex; gap: 8px; margin: 2px 18px 12px; }
   .kg-progress .seg { flex: 1 1 0; height: 3px; border-radius: 2px; background: rgba(255,255,255,.25); }
   .kg-progress .seg.on { background: var(--nimiq-green, #21bca5); }
   .kg-warn, .ob-words-sheet .sub.kg-warn { text-align: center; font-size: 15px; line-height: 1.45; font-weight: 600;
-    color: var(--nimiq-orange, #fc8702); margin: 10px 26px 0; }
+    color: var(--nimiq-orange, #fc8702); margin: 10px 26px 0; white-space: pre-line; }
   .kg-list { list-style: none; margin: 26px 24px 0; padding: 0; display: flex; flex-direction: column; gap: 22px; }
   .kg-list li { display: flex; align-items: flex-start; gap: 16px; font-size: 15px; line-height: 1.45; color: #fff; }
   .kg-list li svg { width: 34px; height: 34px; flex: 0 0 auto; color: var(--nimiq-orange, #fc8702); }
@@ -383,7 +396,7 @@
   .ob-primary.kg { text-transform: uppercase; letter-spacing: 1.2px; font-size: 14.5px; }
   /* The hub's circled close (the real BackupModal's inverse close button). */
   .bh-x { margin-left: auto; width: 32px; height: 32px; border: 0; border-radius: 50%; cursor: pointer;
-    background: rgba(255,255,255,.12); color: #fff; display: inline-flex; align-items: center; justify-content: center; }
+    background: rgba(31,35,72,.07); color: rgba(31,35,72,.6); display: inline-flex; align-items: center; justify-content: center; }
   .bh-x svg { width: 13px; height: 13px; }
   /* Word DISPLAY tiles (the keyguard look): filled, zero-padded grey number + white word. */
   .words-cell.tile { background: rgba(255,255,255,.08); box-shadow: none; border-radius: 6px; padding: 13px 12px; }
@@ -567,7 +580,8 @@
     <div class="ob-words-body">
       <div class="ob-words-sheet">
         <div class="h"><button class="ob-back" data-ob-back aria-label="Back"><svg width="18" height="14" viewBox="0 0 16 12" fill="none"><path d="M6 1L1 6l5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="2" y1="6" x2="15" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button><h2 data-i18n="words.paper">Write these 24 Words on Paper</h2></div>
-        <p class="sub kg-warn" style="margin:4px 0 14px" data-i18n="words.warn">Anyone with these words can access your account! Keep them safe.</p>
+        <p class="sub kg-warn" style="margin:4px 0 14px" data-i18n="words.warn">Anyone with these words can access your account!
+Keep them safe.</p>
         <div class="words-grid" id="ob-words"></div>
         <div class="ob-words-foot">
           <button class="ob-primary kg" id="ob-create-done" data-i18n="words.validate">Validate backup</button>
@@ -657,10 +671,11 @@
 
 <!-- Backup flow — the real wallet's BackupModal (two backup types) + the Keyguard's
      export flow (words -> VALIDATE) + backup codes (XOR split). Navy, like the real modal. -->
-<div class="onboard navy" id="backup-flow" hidden>
+<div class="onboard" id="backup-flow" hidden>
   <!-- hub: choose a backup type -->
   <section class="ob-screen" id="bh-hub" hidden>
     <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#bh-hex-g1)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="bh-hex-g1" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span><button class="bh-x" data-bh-close aria-label="Close"><svg viewBox="0 0 16 16" fill="none"><path d="M2 2l12 12M14 2L2 14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button></div>
+    <div class="kg-card">
     <div class="bh-header">
       <h2 data-i18n="hub.title">Important: Create a backup</h2>
       <p data-i18n="hub.sub">There is no ‘forgot password’. Create a backup to stay in control.</p>
@@ -680,12 +695,14 @@
       </button>
     </div>
     <button class="bh-later" data-bh-close data-i18n="hub.later">Remind me later</button>
+      </div>
   </section>
 
   <!-- Keyguard step 1: "There is no Password Recovery!" (verbatim structure + icons) -->
   <section class="ob-screen" id="bh-intro" hidden>
     <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#bh-hex-g8)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="bh-hex-g8" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span><button class="ob-back" data-bh-close data-i18n="a.close">Close</button></div>
-    <div class="kg-progress"><span class="seg on"></span><span class="seg"></span><span class="seg"></span></div>
+    <div class="kg-card">
+    <div class="kg-progress"><span class="seg on"></span><span class="seg"></span><span class="seg"></span><span class="seg"></span></div>
     <div class="bh-header"><h2 data-i18n="intro.title">There is no Password Recovery!</h2></div>
     <p class="kg-warn" data-i18n="intro.warn">The Recovery Words are the ONLY way to restore your wallet in case this phone is lost.</p>
     <ul class="kg-list">
@@ -693,81 +710,108 @@
       <li><svg viewBox="0 0 35 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M34.07 6.01L28.95.92c-.6-.59-1.4-.92-2.24-.92H12.33a3.17 3.17 0 0 0-3.16 3.17v5.16h-6A3.17 3.17 0 0 0 0 11.5v25.35A3.17 3.17 0 0 0 3.17 40h19.5a3.17 3.17 0 0 0 3.16-3.16v-5.17h6A3.17 3.17 0 0 0 35 28.5V8.25c0-.84-.33-1.65-.93-2.24zM22.5 35.83c0 .46-.37.84-.83.84H4.17a.83.83 0 0 1-.84-.84V12.5c0-.46.38-.83.84-.83h12.97c.22 0 .43.08.58.23l4.53 4.43c.16.16.25.37.25.6v18.9zm3.75-7.5h4.58c.46 0 .84-.37.84-.83V8.6a.83.83 0 0 0-.25-.6l-4.58-4.47a.83.83 0 0 0-.58-.24l-12.93.04a.83.83 0 0 0-.83.84v3.75c0 .23.19.41.42.41h4.63c.84 0 1.64.33 2.23.93l5.12 5.09c.6.59.93 1.4.93 2.23v11.34c0 .23.19.41.42.41z" fill="currentColor"/></svg><span data-i18n="intro.b2">Create a copy and store it in a safe place: family’s house, bank locker etc.</span></li>
       <li><svg viewBox="0 0 42 42" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M37.2 18.1c.3.1.5.3.6.6a17.1 17.1 0 0 1-16.3 21.8c-9.6.2-17.6-7-18-16v-1c0-5 2.3-9.7 6.3-12.9.2-.1.5-.2.8-.1.3 0 .5.3.6.6.4 1.3 1 2.6 1.8 3.8l.4.2c.2 0 .3-.1.4-.3a15.6 15.6 0 0 0-1-13.6.8.8 0 0 1 0-.8c.1-.3.4-.4.8-.4 10.2 1.8 18 10 18.7 20l.2.4h.5c1.2-.5 2.3-1.2 3.4-2 .2-.3.5-.3.8-.3zM16 33.7c1.3 1.3 3.1 2 5 2a7 7 0 0 0 5-2c1.3-1.2 2-3 2-4.7a6.2 6.2 0 0 0-3.6-6c-.1-.1-.2-.1-.4 0l-.2.2c-.2.7-.7 1.3-1.3 1.8 0 0-.2.1-.4 0a.4.4 0 0 1-.3-.1 7 7 0 0 1 .8-7c.2-.2.2-.4 0-.5a.5.5 0 0 0-.5-.2c-4.8 2-8 6.5-8.1 11.6 0 1.8.7 3.6 2 4.9z" fill="currentColor"/></svg><span data-i18n="intro.b3">Mind water and fire, use a sealed box to keep your Recovery Words safe.</span></li>
     </ul>
-    <div class="ob-words-foot" style="padding: 30px 24px calc(34px + env(safe-area-inset-bottom, 0px))">
+    <div class="ob-words-foot" style="padding: 30px 24px 0">
       <button class="ob-primary kg" id="bh-intro-go" data-i18n="intro.cta">Show recovery words</button>
+    </div>
+      </div>
+  </section>
+
+  <!-- Keyguard step 2: "Unlock your Backup" — Face ID / device passcode via the bridge -->
+  <section class="ob-screen" id="bh-unlock" hidden>
+    <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#bh-hex-g9)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="bh-hex-g9" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span><button class="ob-back" data-bh-close data-i18n="a.close">Close</button></div>
+    <div class="kg-card">
+      <div class="kg-progress"><span class="seg on"></span><span class="seg on"></span><span class="seg"></span><span class="seg"></span></div>
+      <div class="bh-header"><h2 data-i18n="unlock.title">Unlock your Backup</h2></div>
+      <div class="kg-lock"><svg viewBox="0 0 32 47" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M29.5 22.512V12.96C29.5 5.802 23.456 0 16 0S2.5 5.802 2.5 12.96v9.552c-4.26 6.43-2.966 14.887 3.041 19.868 6.007 4.982 14.911 4.982 20.918 0 6.008-4.981 7.302-13.438 3.041-19.868zM16 34.56c-2.209 0-4-1.72-4-3.84s1.791-3.84 4-3.84c2.21 0 4 1.72 4 3.84s-1.79 3.84-4 3.84zm8.027-17.653a.952.952 0 0 0 .473-.816V12.96c0-4.507-3.805-8.16-8.5-8.16-4.694 0-8.5 3.653-8.5 8.16v3.131c0 .332.179.641.473.816.294.175.661.192.971.045a16.437 16.437 0 0 1 14.112 0c.31.147.677.13.971-.045z" fill="currentColor"/></svg></div>
+      <div class="ob-words-foot" style="padding: 0 24px 0">
+        <button class="ob-primary kg" id="bh-unlock-go" data-i18n="unlock.cta">Unlock</button>
+      </div>
     </div>
   </section>
 
   <!-- words: show the 24 words, then Continue into the check -->
   <section class="ob-screen" id="bh-words" hidden>
     <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#bh-hex-g2)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="bh-hex-g2" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span><button class="ob-back" data-bh-close>Close</button></div>
-    <div class="kg-progress"><span class="seg on"></span><span class="seg on"></span><span class="seg"></span></div>
+    <div class="kg-card">
+    <div class="kg-progress"><span class="seg on"></span><span class="seg on"></span><span class="seg on"></span><span class="seg"></span></div>
     <div class="ob-words-body">
       <div class="ob-words-sheet" style="background:none">
         <div class="h"><h2 data-i18n="words.paper">Write these 24 Words on Paper</h2></div>
-        <p class="sub kg-warn" style="margin:4px 0 14px" data-i18n="words.warn">Anyone with these words can access your account! Keep them safe.</p>
+        <p class="sub kg-warn" style="margin:4px 0 14px" data-i18n="words.warn">Anyone with these words can access your account!
+Keep them safe.</p>
         <div class="words-grid" id="bh-words-grid"></div>
         <div class="ob-words-foot">
           <button class="ob-primary kg" id="bh-words-continue" data-i18n="words.validate">Validate backup</button>
         </div>
       </div>
     </div>
+      </div>
   </section>
 
   <!-- validate: the Keyguard check — pick the right word, 3 rounds -->
   <section class="ob-screen" id="bh-validate" hidden>
     <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#bh-hex-g3)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="bh-hex-g3" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span><button class="ob-back" data-bh-close>Close</button></div>
-    <div class="kg-progress"><span class="seg on"></span><span class="seg on"></span><span class="seg on"></span></div>
+    <div class="kg-card">
+    <div class="kg-progress"><span class="seg on"></span><span class="seg on"></span><span class="seg on"></span><span class="seg on"></span></div>
     <div class="bh-header"><h2 data-i18n="val.title">Validate your Backup</h2></div>
     <div class="val-index"></div>
     <p class="val-hint"></p>
     <div class="val-words"></div>
+      </div>
   </section>
 
   <!-- backup codes: intro -> code 1 -> code 2 -->
   <section class="ob-screen" id="bh-codes-intro" hidden>
     <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#bh-hex-g4)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="bh-hex-g4" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span><button class="ob-back" data-bh-close>Close</button></div>
-    <div class="kg-progress"><span class="seg on"></span><span class="seg"></span><span class="seg"></span></div>
+    <div class="kg-card">
+    <div class="kg-progress"><span class="seg on"></span><span class="seg"></span><span class="seg"></span><span class="seg"></span></div>
     <div class="bh-header">
       <h2 data-i18n="hub.codes">Send yourself two backup codes</h2>
       <p data-i18n="codes.intro.sub">Both codes together restore your wallet. One alone is useless. Send each one to yourself over a DIFFERENT channel, like a messenger and an email.</p>
     </div>
-    <div class="ob-words-foot" style="padding: 26px 24px calc(34px + env(safe-area-inset-bottom, 0px))">
+    <div class="ob-words-foot" style="padding: 26px 24px 0">
       <button class="ob-primary" id="bh-codes-go" data-i18n="words.continue">Continue</button>
     </div>
+      </div>
   </section>
   <section class="ob-screen" id="bh-code-1" hidden>
     <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#bh-hex-g5)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="bh-hex-g5" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span><button class="ob-back" data-bh-close>Close</button></div>
-    <div class="kg-progress"><span class="seg on"></span><span class="seg on"></span><span class="seg"></span></div>
+    <div class="kg-card">
+    <div class="kg-progress"><span class="seg on"></span><span class="seg on"></span><span class="seg on"></span><span class="seg"></span></div>
     <div class="bh-header"><h2 data-i18n="codes.c1.title">Send yourself code 1</h2></div>
     <div class="code-box" id="bh-code-1-text"></div>
     <button class="bh-copy" id="bh-code-1-copy" data-i18n="codes.copy">Copy code</button>
-    <div class="ob-words-foot" style="padding: 22px 24px calc(34px + env(safe-area-inset-bottom, 0px))">
+    <div class="ob-words-foot" style="padding: 22px 24px 0">
       <button class="ob-primary" id="bh-code-1-next" data-i18n="words.continue">Continue</button>
     </div>
+      </div>
   </section>
   <section class="ob-screen" id="bh-code-2" hidden>
     <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#bh-hex-g6)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="bh-hex-g6" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span><button class="ob-back" data-bh-close>Close</button></div>
-    <div class="kg-progress"><span class="seg on"></span><span class="seg on"></span><span class="seg on"></span></div>
+    <div class="kg-card">
+    <div class="kg-progress"><span class="seg on"></span><span class="seg on"></span><span class="seg on"></span><span class="seg on"></span></div>
     <div class="bh-header"><h2 data-i18n="codes.c2.title">Send yourself code 2</h2><p data-i18n="codes.c2.sub">Use a different channel than for code 1</p></div>
     <div class="code-box" id="bh-code-2-text"></div>
     <button class="bh-copy" id="bh-code-2-copy" data-i18n="codes.copy">Copy code</button>
-    <div class="ob-words-foot" style="padding: 22px 24px calc(34px + env(safe-area-inset-bottom, 0px))">
+    <div class="ob-words-foot" style="padding: 22px 24px 0">
       <button class="ob-primary" id="bh-code-2-next" data-i18n="words.continue">Continue</button>
     </div>
+      </div>
   </section>
 
   <!-- success -->
   <section class="ob-screen" id="bh-done" hidden>
     <div class="ob-top"><span class="ob-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#bh-hex-g7)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="bh-hex-g7" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</span><button class="ob-back" data-bh-close>Close</button></div>
+    <div class="kg-card">
     <div class="bh-success">
       <svg viewBox="0 0 64 64" fill="none" aria-hidden="true"><circle cx="32" cy="32" r="29" stroke="currentColor" stroke-width="4"/><path d="M20 33.5 28.5 42 44 25" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <h2 data-i18n="done.title">Backup complete</h2>
       <p data-i18n="done.sub">Your wallet is now recoverable without this phone</p>
     </div>
-    <div class="ob-words-foot" style="padding: 0 24px calc(34px + env(safe-area-inset-bottom, 0px))">
+    <div class="ob-words-foot" style="padding: 0 24px 0">
       <button class="ob-primary" data-bh-close data-i18n="a.done">Done</button>
     </div>
+      </div>
   </section>
 </div>
 
@@ -935,7 +979,7 @@
       'codes.restore': 'Restaurar cartera', 'codes.invalid': 'Esos códigos no coinciden. Revisa ambos e inténtalo de nuevo.',
       'intro.title': '¡No hay recuperación de contraseña!', 'intro.warn': 'Las palabras de recuperación son la ÚNICA forma de restaurar tu cartera si pierdes este teléfono.',
       'intro.b1': 'Mantén tus palabras fuera de línea, no las introduzcas en ningún sitio que no sea nimmesh.', 'intro.b2': 'Crea una copia y guárdala en un lugar seguro: casa de la familia, caja fuerte, etc.', 'intro.b3': 'Cuidado con el agua y el fuego, usa una caja sellada para proteger tus palabras.',
-      'intro.cta': 'Mostrar palabras', 'words.paper': 'Escribe estas 24 palabras en papel', 'words.warn': '¡Cualquiera con estas palabras puede acceder a tu cuenta! Mantenlas a salvo.',
+      'intro.cta': 'Mostrar palabras', 'words.paper': 'Escribe estas 24 palabras en papel', 'words.warn': '¡Cualquiera con estas palabras puede acceder a tu cuenta!\nMantenlas a salvo.', 'unlock.title': 'Desbloquea tu respaldo', 'unlock.cta': 'Desbloquear',
       'words.validate': 'Validar respaldo', 'val.q': '¿Cuál es la palabra {n}?',
     },
     de: {
@@ -968,7 +1012,7 @@
       'codes.restore': 'Wallet wiederherstellen', 'codes.invalid': 'Diese Codes passen nicht zusammen. Prüfe beide und versuche es erneut.',
       'intro.title': 'Es gibt keine Passwort-Wiederherstellung!', 'intro.warn': 'Die Wiederherstellungswörter sind der EINZIGE Weg, deine Wallet wiederherzustellen, falls dieses Handy verloren geht.',
       'intro.b1': 'Halte deine Wörter offline, gib sie nirgends ein außer in nimmesh.', 'intro.b2': 'Erstelle eine Kopie und bewahre sie sicher auf: bei der Familie, im Bankschließfach usw.', 'intro.b3': 'Denk an Wasser und Feuer, nutze eine versiegelte Box für deine Wörter.',
-      'intro.cta': 'Wörter anzeigen', 'words.paper': 'Schreibe diese 24 Wörter auf Papier', 'words.warn': 'Jeder mit diesen Wörtern hat Zugriff auf dein Konto! Bewahre sie sicher auf.',
+      'intro.cta': 'Wörter anzeigen', 'words.paper': 'Schreibe diese 24 Wörter auf Papier', 'words.warn': 'Jeder mit diesen Wörtern hat Zugriff auf dein Konto!\nBewahre sie sicher auf.', 'unlock.title': 'Entsperre dein Backup', 'unlock.cta': 'Entsperren',
       'words.validate': 'Backup validieren', 'val.q': 'Was ist das {n}. Wort?',
     },
     fr: {
@@ -1001,7 +1045,7 @@
       'codes.restore': 'Restaurer le portefeuille', 'codes.invalid': 'Ces codes ne correspondent pas. Vérifie les deux et réessaie.',
       'intro.title': 'Il n’y a pas de récupération de mot de passe !', 'intro.warn': 'Les mots de récupération sont le SEUL moyen de restaurer ton portefeuille si tu perds ce téléphone.',
       'intro.b1': 'Garde tes mots hors ligne, ne les saisis nulle part ailleurs que dans nimmesh.', 'intro.b2': 'Fais une copie et range-la en lieu sûr : maison familiale, coffre bancaire, etc.', 'intro.b3': 'Attention à l’eau et au feu, utilise une boîte scellée pour protéger tes mots.',
-      'intro.cta': 'Afficher les mots', 'words.paper': 'Écris ces 24 mots sur papier', 'words.warn': 'Quiconque possède ces mots peut accéder à ton compte ! Garde-les en sécurité.',
+      'intro.cta': 'Afficher les mots', 'words.paper': 'Écris ces 24 mots sur papier', 'words.warn': 'Quiconque possède ces mots peut accéder à ton compte !\nGarde-les en sécurité.', 'unlock.title': 'Déverrouille ta sauvegarde', 'unlock.cta': 'Déverrouiller',
       'words.validate': 'Valider la sauvegarde', 'val.q': 'Quel est le {n}e mot ?',
     },
     pt: {
@@ -1034,7 +1078,7 @@
       'codes.restore': 'Restaurar carteira', 'codes.invalid': 'Esses códigos não combinam. Confira os dois e tente de novo.',
       'intro.title': 'Não existe recuperação de senha!', 'intro.warn': 'As palavras de recuperação são a ÚNICA forma de restaurar sua carteira se você perder este telefone.',
       'intro.b1': 'Mantenha suas palavras offline, não as insira em lugar nenhum além do nimmesh.', 'intro.b2': 'Faça uma cópia e guarde em um lugar seguro: casa da família, cofre de banco etc.', 'intro.b3': 'Cuidado com água e fogo, use uma caixa lacrada para proteger suas palavras.',
-      'intro.cta': 'Mostrar palavras', 'words.paper': 'Escreva estas 24 palavras no papel', 'words.warn': 'Qualquer pessoa com estas palavras pode acessar sua conta! Guarde-as em segurança.',
+      'intro.cta': 'Mostrar palavras', 'words.paper': 'Escreva estas 24 palavras no papel', 'words.warn': 'Qualquer pessoa com estas palavras pode acessar sua conta!\nGuarde-as em segurança.', 'unlock.title': 'Desbloqueie seu backup', 'unlock.cta': 'Desbloquear',
       'words.validate': 'Validar backup', 'val.q': 'Qual é a {n}ª palavra?',
     },
   };
@@ -1463,7 +1507,7 @@
   }
   // The backup flow overlay (hub -> words -> validate | codes 1..2 -> done).
   function bhShow(id) {
-    ['bh-hub', 'bh-intro', 'bh-words', 'bh-validate', 'bh-codes-intro', 'bh-code-1', 'bh-code-2', 'bh-done'].forEach((sid) => {
+    ['bh-hub', 'bh-intro', 'bh-unlock', 'bh-words', 'bh-validate', 'bh-codes-intro', 'bh-code-1', 'bh-code-2', 'bh-done'].forEach((sid) => {
       const el = document.getElementById(sid); if (el) el.hidden = (sid !== id);
     });
     const flow = document.getElementById('backup-flow'); if (flow) { flow.hidden = false; flow.scrollTop = 0; }
@@ -1473,6 +1517,9 @@
     if (!(window.nimmesh && nimmesh.recoveryPhrase)) return;
     bhShow('bh-hub');
   }
+  // The Keyguard's "Unlock your Backup": Face ID / device passcode gates the secret screens.
+  let bhAfterUnlock = null;
+  function bhUnlock(next) { bhAfterUnlock = next; bhShow('bh-unlock'); }
 
   (function wireWalletUI() {
     if (!document.getElementById('onboard')) return;
@@ -1547,7 +1594,7 @@
         const r = await nimmesh.recoveryPhrase();
         fillWordsGrid('bh-words-grid', r.mnemonic);
         bhShow('bh-intro');   // keyguard step 1: "There is no Password Recovery!"
-        document.getElementById('bh-intro-go').onclick = () => bhShow('bh-words');
+        document.getElementById('bh-intro-go').onclick = () => bhUnlock(() => bhShow('bh-words'));
         document.getElementById('bh-words-continue').onclick = () => {
           bhShow('bh-validate');
           runValidateWords(r.mnemonic, document.getElementById('bh-validate'), async () => {
@@ -1565,7 +1612,12 @@
         bhShow('bh-codes-intro');
       } catch (e) { /* no wallet */ }
     });
-    document.getElementById('bh-codes-go').addEventListener('click', () => bhShow('bh-code-1'));
+    document.getElementById('bh-codes-go').addEventListener('click', () => bhUnlock(() => bhShow('bh-code-1')));
+    document.getElementById('bh-unlock-go').addEventListener('click', async () => {
+      let ok = true;
+      try { if (window.nimmesh && nimmesh.authenticate) ok = !!(await nimmesh.authenticate()).ok; } catch (e) { ok = false; }
+      if (ok && bhAfterUnlock) { const next = bhAfterUnlock; bhAfterUnlock = null; next(); }
+    });
     document.getElementById('bh-code-1-copy').addEventListener('click', () =>
       copyText(document.getElementById('bh-code-1-text').textContent, 'bh-code-1-copy'));
     document.getElementById('bh-code-1-next').addEventListener('click', () => bhShow('bh-code-2'));

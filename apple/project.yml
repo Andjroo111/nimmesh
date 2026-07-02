@@ -46,6 +46,8 @@ targets:
           - UIInterfaceOrientationPortrait
         # The QR scanner (Send -> scan an address / payment request)
         NSCameraUsageDescription: "nimmesh uses the camera to scan a recipient's address or payment QR code."
+        # "Unlock your Backup" (Face ID with passcode fallback) before showing recovery material
+        NSFaceIDUsageDescription: "nimmesh uses Face ID to unlock your backup before showing recovery words or backup codes."
         # Mesh needs to advertise + scan, incl. in the background (ADR-0002)
         NSBluetoothAlwaysUsageDescription: "nimmesh relays payments through nearby phones over Bluetooth so you can pay with no internet."
         NSBluetoothPeripheralUsageDescription: "nimmesh relays payments through nearby phones over Bluetooth so you can pay with no internet."

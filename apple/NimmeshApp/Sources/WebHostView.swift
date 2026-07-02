@@ -1,3 +1,4 @@
+import LocalAuthentication
 import Security
 import SwiftUI
 import UIKit
@@ -149,6 +150,8 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         setLang: function (l) { return call('setLang', { lang: l }); },
         // Native camera QR scanner (Send bar). Resolves { text } or rejects on cancel.
         scanQr: function () { return call('scanQr'); },
+        // "Unlock your Backup": Face ID / device passcode. Resolves { ok }.
+        authenticate: function () { return call('authenticate'); },
         // Backup: the wallet's two-code XOR backup + whether ANY backup was completed
         // (drives the G19 nudge off). Codes are derived natively; the phrase never crosses.
         backupCodes: function () { return call('backupCodes'); },
@@ -176,6 +179,22 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         case "headHeight", "walletBalance", "walletHistory", "sendTransaction":
             Task { let (ok, payload) = await self.handleAsync(method: method, args: args)
                 self.resolve(id: id, ok: ok, payload: payload) }
+        case "authenticate":
+            // The Keyguard's "Unlock your Backup" equivalent: Face ID / device passcode via
+            // LocalAuthentication. Devices with no passcode set have nothing to unlock WITH,
+            // so they pass through (the device itself is unprotected either way).
+            let ctx = LAContext()
+            var err: NSError?
+            guard ctx.canEvaluatePolicy(.deviceOwnerAuthentication, error: &err) else {
+                resolve(id: id, ok: true, payload: ["ok": true, "method": "none"])
+                return
+            }
+            ctx.evaluatePolicy(
+                .deviceOwnerAuthentication,
+                localizedReason: "Unlock your backup"
+            ) { success, _ in
+                self.resolve(id: id, ok: true, payload: ["ok": success])
+            }
         case "scanQr":
             // The native camera scanner (Send bar's scan button). Resolves with the decoded
             // string, or rejects on cancel / denial — the page treats that as a quiet no-op.
