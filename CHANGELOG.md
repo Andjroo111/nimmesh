@@ -2,6 +2,25 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.45.0] — 2026-07-02
+
+### Hardening — faster un-funded slot reclaim (G4 slice 2b, #75 → part of S5; closes G4)
+
+The last piece of G4. `SwapCoordinator::is_stale` reaped an un-funded negotiation only once the head passed the far `T_A` (NIM) timelock — so a `Propose` flood of never-funded swaps could squat a node's concurrency slots for the whole `T_A` window (the S5 Sybil slot-jam).
+
+- **Reap at the fund deadline, not `T_A`.** An un-funded swap is now stale once
+  `head > T_B − min_claim_window_blocks` — the instant its own `fund()` would refuse `WindowTooShort`
+  (the counterparty leg's claim window has closed), so it can never complete. In the fixtures that's
+  `5000 − 1800 = 3200`, vs the old `10_000` — the slot frees ~3× sooner. Uses `T_B` (the shorter leg)
+  with the same claim-window margin funding uses, keeping it consistent with the fund-time gate.
+- **Funds-locked swaps are still never stale** (their refund path must stay tracked) — unchanged.
+- **Tests:** coordinator `is_stale` fires at `3201` (not `3200`) and stays stale through `9_999` — well
+  before the old `T_A` deadline — while a funds-locked coordinator is never stale; the session
+  GC-tick boundary test updated to `3200`/`3201`. Node-worker head-beacon GC tests (head `10_001`) are
+  past both thresholds and unaffected.
+
+With this, **G4 (#75) is complete** (reveal-deadline guard 0.43.0 · dust/ms→s/doc 0.44.0 · this).
+
 ## [0.44.0] — 2026-07-02
 
 ### Money-path nits — dust limit, ms→s ceil, doc fix (G4 slice 2a, #75 → part of S6)

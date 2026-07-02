@@ -202,14 +202,29 @@ impl SwapCoordinator {
         Ok(())
     }
 
-    /// Whether this swap is **stale** at `head` and safe to forget: it is neither terminal nor
-    /// holding any of this node's funds, and `head` has passed its longer (`T_A`) timelock — so the
-    /// negotiation can never complete (a swap whose timelock has passed can no longer be funded or
-    /// claimed). A swap with funds locked is NEVER stale; its refund path must stay tracked until it
-    /// reaches a terminal phase. The swap's own timelock is the deadline — no wall clock needed.
+    /// Whether this swap is **stale** at `head` and safe to forget: it is neither terminal nor holding
+    /// any of this node's funds, and `head` has passed the point where the swap could still be **safely
+    /// funded** — so the negotiation can never complete. A swap with funds locked is NEVER stale; its
+    /// refund path must stay tracked until it reaches a terminal phase. No wall clock needed — the
+    /// swap's own timelocks are the deadline.
+    ///
+    /// The reap deadline is `T_B − min_claim_window_blocks` (#75 / G4), **not** the far-later `T_A`: an
+    /// un-funded swap is dead the instant its own [`fund`](Self::fund) would refuse `WindowTooShort`
+    /// (the counterparty leg's claim window has closed), so a `Propose` flood of never-funded swaps
+    /// frees its concurrency slots promptly instead of squatting until `T_A` (S5 slot-jam). Using `T_B`
+    /// (the shorter leg) with the same claim-window margin funding uses keeps this consistent with the
+    /// fund-time gate.
     pub fn is_stale(&self, head: u64) -> bool {
         let phase = self.swap.phase;
-        !phase.is_terminal() && !phase.has_funds_locked() && head > self.ctx.terms.nim_timeout
+        if phase.is_terminal() || phase.has_funds_locked() {
+            return false;
+        }
+        let last_fundable = self
+            .ctx
+            .terms
+            .counterparty_timeout
+            .saturating_sub(self.ladder.min_claim_window_blocks);
+        head > last_fundable
     }
 
     /// (Responder) handle the initiator's `Propose`: learn its claimant pubkey, accept, return the

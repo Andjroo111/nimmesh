@@ -327,6 +327,22 @@ fn initiator_at_self_funded() -> SwapCoordinator {
 }
 
 #[test]
+fn an_unfunded_swap_goes_stale_at_the_fund_window_not_the_far_t_a() {
+    // #75 / G4: an un-funded negotiation is reaped once it can no longer be safely FUNDED
+    // (head > T_B − min_claim_window = 5000 − 1800 = 3200), long before the far-later T_A (10_000)
+    // the old logic waited for — so a Propose flood frees its concurrency slots promptly (S5).
+    let bob = responder_at_accepted();
+    assert!(!bob.is_stale(3_200)); // at the boundary the swap is still fundable — keep it
+    assert!(bob.is_stale(3_201)); // fund window closed — reap now...
+    assert!(bob.is_stale(9_999)); // ...well before T_A (10_000), the previous deadline
+
+    // A funds-locked swap is NEVER stale, whatever the head — its refund path must stay tracked.
+    let alice = initiator_at_self_funded();
+    assert!(!alice.is_stale(3_201));
+    assert!(!alice.is_stale(99_999));
+}
+
+#[test]
 fn a_responder_refuses_to_fund_when_the_nim_htlc_is_absent() {
     use crate::swap_funding_verify::{FundingObservation, SimVerifier};
     let mut bob = responder_at_accepted();

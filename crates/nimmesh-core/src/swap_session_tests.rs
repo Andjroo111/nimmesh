@@ -303,8 +303,9 @@ fn an_abort_frees_the_slot() {
 
 #[test]
 fn tick_drops_a_stale_unfunded_negotiation_past_its_deadline() {
-    // A swap that accepted but never funded is dead once the head passes its T_A timelock
-    // (nim_timeout = 10_000 in the fixtures) — it can no longer be funded or claimed.
+    // A swap that accepted but never funded is dead once the head passes the point where it could
+    // still be safely funded — `T_B − min_claim_window` = 5000 − 1800 = 3200 in the fixtures (#75/G4),
+    // NOT the far-later T_A (10_000). Past there `fund()` would refuse, so the slot is reclaimed early.
     let mut bob = SwapSession::new(identity(0x22), LadderParams::default());
     let swap_id = [0x77; SWAP_ID_LEN];
     only(
@@ -316,11 +317,11 @@ fn tick_drops_a_stale_unfunded_negotiation_past_its_deadline() {
         SwapPhase::Accepted
     );
 
-    // At/under the deadline it is kept; once the head passes T_A it is GC'd — and reported as a
+    // At/under the deadline it is kept; once the head passes it the swap is GC'd — and reported as a
     // stale un-funded drop (so the node floods a teardown Abort for it).
-    assert!(bob.tick(10_000).is_empty());
+    assert!(bob.tick(3_200).is_empty());
     assert_eq!(bob.len(), 1);
-    assert_eq!(bob.tick(10_001), vec![swap_id]);
+    assert_eq!(bob.tick(3_201), vec![swap_id]);
     assert!(bob.is_empty());
 }
 
