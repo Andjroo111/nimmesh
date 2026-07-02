@@ -25,6 +25,11 @@ use crate::btc::{
     BtcEnclaveKey, BtcError, BtcHtlcParams, FundedHtlc, COMPRESSED_PUBKEY_LEN, HASH_LEN,
 };
 
+/// The conservative Bitcoin **dust limit** (sat): an output below this is non-standard and would be
+/// rejected or left unspendable. Bitcoin Core's threshold is ~294 sat for native P2WPKH and 546 for
+/// legacy P2PKH; we use the higher 546 as a safe floor for any payout script (#75 / G4).
+pub const DUST_LIMIT_SAT: u64 = 546;
+
 /// One node's view of the Bitcoin HTLC leg of a swap. Holds the public HTLC parameters (which fully
 /// determine the P2WSH address both sides can derive), this node's opaque signing key, where its
 /// claimed/refunded BTC should go, and a flat fee. The funder (responder) pays the P2WSH; the
@@ -117,12 +122,21 @@ impl BtcSwapLeg {
             .refund_tx_with_key(funded, self.payout_spk.clone(), payout, self.key.as_ref())
     }
 
-    /// The payout amount after the flat fee, erroring if the fee would exceed the funded value.
+    /// The payout amount after the flat fee, erroring if the fee would exceed the funded value or if
+    /// the payout after fees would be below the dust limit (#75 / G4) — a dust output would be
+    /// non-standard and rejected, silently burning the swap's value.
     fn payout(&self, funded: &FundedHtlc) -> Result<u64, BtcError> {
-        funded
+        let payout = funded
             .value_sat
             .checked_sub(self.fee_sat)
-            .ok_or(BtcError::FeeExceedsValue)
+            .ok_or(BtcError::FeeExceedsValue)?;
+        if payout < DUST_LIMIT_SAT {
+            return Err(BtcError::DustOutput {
+                have: payout,
+                min: DUST_LIMIT_SAT,
+            });
+        }
+        Ok(payout)
     }
 }
 
@@ -235,6 +249,60 @@ mod tests {
             leg.build_claim(&funded(), &preimage),
             Err(BtcError::FeeExceedsValue)
         );
+    }
+
+    #[test]
+    fn a_sub_dust_payout_is_rejected() {
+        // #75 / G4: a fee that leaves a payout below the 546-sat dust limit must be refused on BOTH
+        // the claim and refund paths — a dust output is non-standard and would silently burn the value.
+        let dust_fee = 100_000 - 500; // 100_000 funded → 500-sat payout, below 546
+        let claim = BtcSwapLeg::new(
+            h32(HASHLOCK),
+            h33(CLAIMANT_PK),
+            h33(FUNDER_PK),
+            CLTV,
+            Network::Signet,
+            Arc::new(InMemoryBtcEnclaveKey::from_secret(&[0x11u8; 32]).unwrap()),
+            dest_spk(),
+            dust_fee,
+        );
+        let preimage: [u8; 32] = std::array::from_fn(|i| (i + 1) as u8);
+        assert_eq!(
+            claim.build_claim(&funded(), &preimage),
+            Err(BtcError::DustOutput {
+                have: 500,
+                min: DUST_LIMIT_SAT
+            })
+        );
+        let refund = BtcSwapLeg::new(
+            h32(HASHLOCK),
+            h33(CLAIMANT_PK),
+            h33(FUNDER_PK),
+            CLTV,
+            Network::Signet,
+            Arc::new(InMemoryBtcEnclaveKey::from_secret(&[0x22u8; 32]).unwrap()),
+            dest_spk(),
+            dust_fee,
+        );
+        assert_eq!(
+            refund.build_refund(&funded()),
+            Err(BtcError::DustOutput {
+                have: 500,
+                min: DUST_LIMIT_SAT
+            })
+        );
+        // Exactly at the dust limit is allowed (546-sat payout).
+        let ok = BtcSwapLeg::new(
+            h32(HASHLOCK),
+            h33(CLAIMANT_PK),
+            h33(FUNDER_PK),
+            CLTV,
+            Network::Signet,
+            Arc::new(InMemoryBtcEnclaveKey::from_secret(&[0x22u8; 32]).unwrap()),
+            dest_spk(),
+            100_000 - DUST_LIMIT_SAT, // payout == 546
+        );
+        assert!(ok.build_refund(&funded()).is_ok());
     }
 
     // The protocol gap, closed: both sides build the SAME BTC HTLC from pubkeys exchanged over the

@@ -58,7 +58,10 @@ pub enum HashAlgorithm {
 /// `recipient_data` of the funding tx.
 ///
 /// Layout (big-endian): `sender(20) || recipient(20) || hash_algorithm(1) || hash_root(32) ||
-/// hash_count(1) || timeout(8, u64 block height)`.
+/// hash_count(1) || timeout(8, u64 Unix-ms timestamp)`.
+//
+// NB: `timeout` is a Unix **millisecond** timestamp (compared by the validator to `block_state.time`),
+// NOT a block height — see the field doc below and `nimiq::htlc` (proven live on testnet).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HtlcCreationData {
     /// The HTLC creator / refunder — reclaims the funds via the timeout path after `timeout`.

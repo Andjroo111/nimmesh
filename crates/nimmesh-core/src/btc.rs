@@ -309,6 +309,14 @@ pub enum BtcError {
     BadSignature,
     /// The fee is greater than the funded value — the spend would have a negative/dust output.
     FeeExceedsValue,
+    /// The payout after fees is below the standard dust limit — the output would be non-standard and
+    /// rejected/unspendable (#75 / G4).
+    DustOutput {
+        /// The payout the spend would create (sat).
+        have: u64,
+        /// The minimum standard output (sat).
+        min: u64,
+    },
 }
 
 impl std::fmt::Display for BtcError {
@@ -319,6 +327,9 @@ impl std::fmt::Display for BtcError {
             BtcError::Sighash => write!(f, "could not compute the BIP143 sighash"),
             BtcError::BadSignature => write!(f, "key seam returned an unparseable signature"),
             BtcError::FeeExceedsValue => write!(f, "fee exceeds the funded value"),
+            BtcError::DustOutput { have, min } => {
+                write!(f, "payout {have} sat is below the dust limit {min} sat")
+            }
         }
     }
 }

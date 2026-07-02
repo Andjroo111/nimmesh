@@ -2,6 +2,24 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.44.0] — 2026-07-02
+
+### Money-path nits — dust limit, ms→s ceil, doc fix (G4 slice 2a, #75 → part of S6)
+
+Three small mainnet-nits from G4, each with a regression test (the reveal-deadline guard shipped in 0.43.0; the un-funded slot-reclaim tweak is deferred to slice 2b):
+
+- **BTC dust limit (`swap_btc_leg.rs`).** The payout after fees is now rejected below the standard
+  546-sat dust limit (new `BtcError::DustOutput { have, min }`, `DUST_LIMIT_SAT = 546`), on both the
+  claim and refund paths — a dust output is non-standard and would silently burn the swap's value. A
+  payout exactly at 546 is allowed.
+- **ms→s CLTV rounds up (`swap_ffi.rs`).** `T_B` (Unix-ms) → BTC CLTV (seconds) now **ceils**
+  (extracted `cltv_seconds_from_ms`), not truncates: a floor'd CLTV was up to ~1 s *earlier* than the
+  agreed `T_B`, shrinking the initiator's claim window. Ceiling keeps the BTC refund available no
+  earlier than `T_B`.
+- **Doc fix (`nimiq/htlc.rs`).** The `HtlcCreationData` layout comment wrongly called `timeout` a
+  "u64 block height"; it is a Unix-**ms** timestamp (compared to `block_state.time`, proven live on
+  testnet — as the field's own doc already said). Corrected.
+
 ## [0.43.0] — 2026-07-02
 
 ### Security — reveal-deadline liveness guard (G4 slice 1, #75 → part of S6)

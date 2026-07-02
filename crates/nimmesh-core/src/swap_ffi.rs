@@ -250,6 +250,14 @@ fn parse_funded(txid: &str, vout: u32, value_sat: u64) -> Result<FundedHtlc, Swa
     })
 }
 
+/// Convert a `T_B` timeout from Unix-**ms** (the engine/ladder base) to the BTC **CLTV in seconds**,
+/// rounding **up** (#75 / G4). Truncating (`/ 1000`) would put the CLTV up to ~1 s *earlier* than the
+/// agreed `T_B`, shrinking the initiator's claim window; ceiling keeps the BTC refund available no
+/// earlier than `T_B`. Saturates into `i64` (`T_B` far exceeds any real timeout, so this never trips).
+fn cltv_seconds_from_ms(timeout_ms: u64) -> i64 {
+    i64::try_from(timeout_ms.div_ceil(1000)).unwrap_or(i64::MAX)
+}
+
 fn build_config(
     params: FfiSwapParams,
     nim_key: Arc<dyn EnclaveKey>,
@@ -268,7 +276,7 @@ fn build_config(
         fixed(&params.hashlock, "hashlock")?,
         fixed(&params.claimant_btc_pubkey, "claimant pubkey")?,
         fixed(&params.funder_btc_pubkey, "funder pubkey")?,
-        (params.counterparty_timeout_ms / 1000) as i64, // BTC CLTV = T_B in seconds
+        cltv_seconds_from_ms(params.counterparty_timeout_ms), // BTC CLTV = ceil(T_B ms → s)
         network,
         btc_key,
         payout.script_pubkey(),
@@ -496,6 +504,16 @@ mod tests {
             delta_safe_ms: 1_800_000,
             min_window_ms: 1_800_000,
         }
+    }
+
+    #[test]
+    fn cltv_seconds_rounds_up_never_earlier_than_t_b() {
+        // #75 / G4: ms→s must ceil, so the BTC CLTV is never *earlier* than the agreed T_B.
+        assert_eq!(cltv_seconds_from_ms(5_000), 5); // exact
+        assert_eq!(cltv_seconds_from_ms(5_001), 6); // 5.001 s → 6, not a truncated 5
+        assert_eq!(cltv_seconds_from_ms(5_999), 6); // still rounds up
+        assert_eq!(cltv_seconds_from_ms(0), 0);
+        assert_eq!(cltv_seconds_from_ms(1), 1); // sub-second still buys a whole second
     }
 
     fn btc_pk(seed: u8) -> Vec<u8> {
