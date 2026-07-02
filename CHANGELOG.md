@@ -2,6 +2,14 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.38.2] — 2026-07-02
+
+### Fixed — backup flow buttons sat on the screen edge (Andjroo, on-device)
+
+The flow footers (SHOW RECOVERY WORDS / codes / Done) had zero bottom padding and no
+safe-area inset, so the CTA hugged the home indicator. All five footers now pad
+`34px + env(safe-area-inset-bottom)`.
+
 ## [0.38.1] — 2026-07-02
 
 ### Changed — the 24-word backup, keyguard-EXACT (Andjroo's live captures)
