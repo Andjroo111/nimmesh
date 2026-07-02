@@ -58,6 +58,9 @@ fn arb_swap_envelope() -> impl Strategy<Value = SwapEnvelope> {
                 network_id: Some(network),
                 reason: Some(reason),
                 btc_pubkey: Some(btc_pk),
+                // S2 / #73 Propose-auth fields — round-tripped separately in swap_messages tests.
+                nim_pubkey: None,
+                propose_sig: None,
             },
         )
 }

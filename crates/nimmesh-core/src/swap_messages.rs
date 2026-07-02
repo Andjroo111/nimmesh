@@ -135,6 +135,33 @@ impl SwapProposal {
         )
         .is_ok()
     }
+
+    /// S2 / #73: build the `Propose` envelope carrying an authentication signature — the initiator's
+    /// Ed25519 `pubkey` (which must hash to `nim_address`) plus its `signature` over the Propose's
+    /// [`signing_bytes`](Self::signing_bytes), so a responder can reject a tampered or injected Propose.
+    pub fn to_signed_envelope(
+        &self,
+        pubkey: [u8; PROPOSE_PUBKEY_LEN],
+        signature: [u8; PROPOSE_SIG_LEN],
+    ) -> SwapEnvelope {
+        SwapEnvelope {
+            nim_pubkey: Some(pubkey),
+            propose_sig: Some(signature),
+            ..self.to_envelope()
+        }
+    }
+
+    /// S2 / #73: verify a decoded Propose envelope is authentic — its terms parse, it carries both a
+    /// pubkey and a signature, and [`verify_signature`](Self::verify_signature) passes over those
+    /// wire-carried fields. Returns `false` for an unsigned, tampered, or forged Propose. Panic-free.
+    pub fn verify_envelope(env: &SwapEnvelope) -> bool {
+        let (Some(proposal), Some(pubkey), Some(sig)) =
+            (Self::from_envelope(env), env.nim_pubkey, env.propose_sig)
+        else {
+            return false;
+        };
+        proposal.verify_signature(&pubkey, &sig)
+    }
 }
 
 /// The responder's acceptance — everything an `Accept` carries (its own addresses + BTC funder key).
@@ -381,5 +408,37 @@ mod tests {
         let p = signed_proposal(&[7u8; 32]);
         let (atk_pubkey, atk_sig) = p.sign(&[9u8; 32]);
         assert!(!p.verify_signature(&atk_pubkey, &atk_sig));
+    }
+
+    #[test]
+    fn a_signed_propose_survives_the_wire_and_verifies() {
+        let secret = [7u8; 32];
+        let p = signed_proposal(&secret);
+        let (pubkey, sig) = p.sign(&secret);
+        let bytes = encode_swap(&p.to_signed_envelope(pubkey, sig)).unwrap();
+        let env = decode_swap(SwapKind::Propose, &bytes).unwrap();
+        assert!(SwapProposal::verify_envelope(&env));
+        // The terms also round-trip intact.
+        assert_eq!(SwapProposal::from_envelope(&env).unwrap(), p);
+    }
+
+    #[test]
+    fn an_unsigned_propose_envelope_does_not_verify() {
+        let p = signed_proposal(&[7u8; 32]);
+        let env = decode_swap(SwapKind::Propose, &p.encode().unwrap()).unwrap();
+        assert!(!SwapProposal::verify_envelope(&env)); // carries no pubkey/signature
+    }
+
+    #[test]
+    fn tampering_a_signed_propose_on_the_wire_is_detected() {
+        let secret = [7u8; 32];
+        let p = signed_proposal(&secret);
+        let (pubkey, sig) = p.sign(&secret);
+        // A relay rewrites the amount but keeps the original signature — verification must fail.
+        let mut env = p.to_signed_envelope(pubkey, sig);
+        env.give_amount = Some(1);
+        let bytes = encode_swap(&env).unwrap();
+        let decoded = decode_swap(SwapKind::Propose, &bytes).unwrap();
+        assert!(!SwapProposal::verify_envelope(&decoded));
     }
 }

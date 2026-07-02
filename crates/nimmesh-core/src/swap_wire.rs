@@ -49,6 +49,11 @@ const T_TX_ID: u8 = 0x0B;
 const T_NETWORK_ID: u8 = 0x0C;
 const T_REASON: u8 = 0x0D;
 const T_BTC_PUBKEY: u8 = 0x0E;
+/// `0x0F` — the initiator's 32-byte Ed25519 public key (S2 / #73): authenticates a signed Propose and
+/// must hash to its `nim_address`.
+const T_PROPOSE_PUBKEY: u8 = 0x0F;
+/// `0x10` — the initiator's 64-byte Ed25519 signature over the Propose's binding terms (S2 / #73).
+const T_PROPOSE_SIG: u8 = 0x10;
 
 /// Which chain a leg / message refers to. The swap state machine and the mesh stay
 /// chain-agnostic; this byte is the only place the pair is named on the wire.
@@ -149,6 +154,12 @@ pub struct SwapEnvelope {
     /// `0x0E` — the **sender's** 33-byte compressed BTC pubkey (propose = initiator's claimant key;
     /// accept = responder's funder key). Both are needed to build the shared BTC HTLC redeem script.
     pub btc_pubkey: Option<[u8; BTC_PUBKEY_LEN]>,
+    /// `0x0F` — S2 / #73: the initiator's 32-byte Ed25519 public key on a signed Propose (must hash to
+    /// `nim_address`; verifies `propose_sig`). Absent on unsigned/other messages.
+    pub nim_pubkey: Option<[u8; 32]>,
+    /// `0x10` — S2 / #73: the initiator's 64-byte Ed25519 signature over the Propose's binding terms
+    /// ([`crate::swap_messages::SwapProposal::signing_bytes`]). Absent on unsigned/other messages.
+    pub propose_sig: Option<[u8; 64]>,
 }
 
 impl SwapEnvelope {
@@ -303,6 +314,12 @@ pub fn encode_swap(env: &SwapEnvelope) -> Result<Vec<u8>, SwapWireError> {
     if let Some(pk) = &env.btc_pubkey {
         push_tlv(&mut buf, T_BTC_PUBKEY, pk)?;
     }
+    if let Some(pk) = &env.nim_pubkey {
+        push_tlv(&mut buf, T_PROPOSE_PUBKEY, pk)?;
+    }
+    if let Some(sig) = &env.propose_sig {
+        push_tlv(&mut buf, T_PROPOSE_SIG, sig)?;
+    }
     Ok(buf)
 }
 
@@ -405,6 +422,20 @@ pub fn decode_swap(kind: SwapKind, bytes: &[u8]) -> Result<SwapEnvelope, SwapWir
             }
             T_BTC_PUBKEY => {
                 env.btc_pubkey = Some(
+                    value
+                        .try_into()
+                        .map_err(|_| SwapWireError::BadFieldLength { tlv_type, len })?,
+                );
+            }
+            T_PROPOSE_PUBKEY => {
+                env.nim_pubkey = Some(
+                    value
+                        .try_into()
+                        .map_err(|_| SwapWireError::BadFieldLength { tlv_type, len })?,
+                );
+            }
+            T_PROPOSE_SIG => {
+                env.propose_sig = Some(
                     value
                         .try_into()
                         .map_err(|_| SwapWireError::BadFieldLength { tlv_type, len })?,
