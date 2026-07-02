@@ -433,10 +433,17 @@ impl SwapEngineHandle {
         self.lock().observe_nim_funded(funded).map_err(Into::into)
     }
 
-    /// (Initiator) claim the BTC leg, revealing `S` on-chain → a BTC claim tx to broadcast.
-    pub fn reveal_and_claim_btc(&self) -> Result<FfiSwapEffect, SwapEngineError> {
+    /// (Initiator) claim the BTC leg, revealing `S` on-chain → a BTC claim tx to broadcast. Gated on
+    /// the reveal deadline at `head_ms` via the ladder (G4 / #75): refuses (and does NOT reveal `S`)
+    /// if the counterparty leg's `T_B` is within the claim window — the caller passes the current head
+    /// and the same ladder it funds with, so the enclave never publishes `S` too late to claim safely.
+    pub fn reveal_and_claim_btc(
+        &self,
+        head_ms: u64,
+        ladder: FfiLadder,
+    ) -> Result<FfiSwapEffect, SwapEngineError> {
         self.lock()
-            .reveal_and_claim_btc()
+            .reveal_and_claim_btc(head_ms, &ladder.into())
             .map(Into::into)
             .map_err(Into::into)
     }

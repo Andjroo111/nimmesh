@@ -182,9 +182,9 @@ fn full_usdc_swap_dryrun_threads_discovery_sign_submit_settlement() {
         &function_selector("withdraw(bytes32,bytes32)")[..]
     );
 
-    // Alice claims USDC (revealing S), Bob reads S off it and claims NIM.
+    // Alice claims USDC (revealing S), Bob reads S off it and claims NIM (head 0 ≪ T_B).
     assert_eq!(
-        alice.reveal_and_claim().unwrap(),
+        alice.reveal_and_claim(0, &p).unwrap(),
         SwapAction::ClaimLeg {
             leg: SwapLegId::Counterparty
         }

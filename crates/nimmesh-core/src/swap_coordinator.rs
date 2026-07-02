@@ -359,13 +359,17 @@ impl SwapCoordinator {
     }
 
     /// (Initiator) claim the counterparty (BTC) leg, revealing `S` — the node built the claim
-    /// `tx_wire` (which carries `S`). Returns the `PreimageReveal` envelope to flood.
+    /// `tx_wire` (which carries `S`). Gated on the reveal deadline at `head` (G4 / #75): if `T_B` is
+    /// within the claim window it refuses (`CoordError::Swap(RevealTooLate)`) and does NOT reveal, so
+    /// the node keeps `S` secret and refunds once `T_B` passes. Returns the `PreimageReveal` envelope
+    /// to flood on success.
     pub fn claim_and_reveal(
         &mut self,
+        head: u64,
         tx_wire: Vec<u8>,
         tx_id: [u8; HASH_LEN],
     ) -> Result<SwapEnvelope, CoordError> {
-        self.swap.reveal_and_claim()?;
+        self.swap.reveal_and_claim(head, &self.ladder)?;
         Ok(tx_envelope(
             self.ctx.swap_id,
             SwapLegId::Counterparty,

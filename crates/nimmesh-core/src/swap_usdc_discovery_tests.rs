@@ -173,9 +173,11 @@ fn a_matched_usdc_intent_pair_settles_atomically_via_the_usdc_leg() {
     let (mut alice, mut bob, mut nim_leg, mut usdc_leg, secret) = fund_both(&m);
     let head = 100;
 
-    // Alice claims the USDC leg, revealing S on Polygon.
+    // Alice claims the USDC leg, revealing S on Polygon (head 100 ≪ T_B).
     assert_eq!(
-        alice.reveal_and_claim().unwrap(),
+        alice
+            .reveal_and_claim(head, &LadderParams::default())
+            .unwrap(),
         SwapAction::ClaimLeg {
             leg: SwapLegId::Counterparty
         }

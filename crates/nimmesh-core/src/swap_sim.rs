@@ -214,8 +214,9 @@ impl SwapSim {
                 self.btc_funding = Some(funded);
             }
             3 => {
-                // Initiator claims the BTC, revealing the secret on the sim chain.
-                let eff = self.initiator.reveal_and_claim_btc()?;
+                // Initiator claims the BTC, revealing the secret on the sim chain (well within the
+                // reveal deadline — same head + ladder it funded with).
+                let eff = self.initiator.reveal_and_claim_btc(HEAD_MS, &self.ladder)?;
                 let claim = expect_broadcast(eff, SwapLegId::Counterparty)?;
                 self.last_tx_id = Some(tx_id(&claim));
                 self.secret_revealed = true;

@@ -113,9 +113,11 @@ fn happy_path_both_legs_settle() {
     let (mut alice, mut bob, mut nim_leg, mut usdc_leg, secret) = fund_both();
     let head = 100; // well before either timeout
 
-    // Alice claims the USDC leg, revealing the secret on Polygon.
+    // Alice claims the USDC leg, revealing the secret on Polygon (head 100 ≪ T_B).
     assert_eq!(
-        alice.reveal_and_claim().unwrap(),
+        alice
+            .reveal_and_claim(head, &LadderParams::default())
+            .unwrap(),
         SwapAction::ClaimLeg {
             leg: SwapLegId::Counterparty
         }

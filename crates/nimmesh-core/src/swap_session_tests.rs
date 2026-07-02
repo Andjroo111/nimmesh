@@ -144,7 +144,7 @@ fn two_sessions_route_a_full_swap_to_settled() {
         &alice
             .coordinator(&swap_id)
             .unwrap()
-            .claim_and_reveal(secret.to_vec(), [0xC3; 32])
+            .claim_and_reveal(head, secret.to_vec(), [0xC3; 32])
             .unwrap(),
     )
     .unwrap();

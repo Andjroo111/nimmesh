@@ -119,9 +119,11 @@ fn happy_path_both_legs_settle() {
     let (mut alice, mut bob, mut nim_leg, mut btc_leg, secret) = fund_both();
     let head = 100; // well before either timeout
 
-    // Alice claims the BTC leg, revealing the secret on that chain.
+    // Alice claims the BTC leg, revealing the secret on that chain (head 100 ≪ T_B).
     assert_eq!(
-        alice.reveal_and_claim().unwrap(),
+        alice
+            .reveal_and_claim(head, &LadderParams::default())
+            .unwrap(),
         SwapAction::ClaimLeg {
             leg: SwapLegId::Counterparty
         }
@@ -426,7 +428,7 @@ fn a_full_swap_is_negotiated_and_settled_via_wire_messages() {
     bob.observe_counterparty_funded().unwrap();
 
     // 5) Alice claims BTC (reveals S) → PreimageReveal carries the claim (with S) over the wire.
-    alice.reveal_and_claim().unwrap();
+    alice.reveal_and_claim(head, &p).unwrap();
     btc_leg.claim(secret, head).unwrap();
     let reveal = over_wire(
         MessageType::SwapPreimageReveal,

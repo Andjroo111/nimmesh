@@ -277,9 +277,17 @@ impl SwapEngine {
     }
 
     /// (Initiator) claim the BTC leg by **revealing the secret** → a broadcastable BTC claim tx whose
-    /// witness puts `S` on-chain (that is how the responder learns it). → `Revealed`.
-    pub fn reveal_and_claim_btc(&mut self) -> Result<SwapEffect, EngineError> {
-        self.swap.reveal_and_claim().map_err(EngineError::Swap)?;
+    /// witness puts `S` on-chain (that is how the responder learns it). → `Revealed`. Gated on the
+    /// reveal deadline at `head` (ms) via the ladder `params` (G4 / #75): if the counterparty leg's
+    /// `T_B` is within the claim window it refuses and does NOT reveal `S`, leaving the refund path.
+    pub fn reveal_and_claim_btc(
+        &mut self,
+        head: u64,
+        params: &LadderParams,
+    ) -> Result<SwapEffect, EngineError> {
+        self.swap
+            .reveal_and_claim(head, params)
+            .map_err(EngineError::Swap)?;
         let secret = self
             .secret
             .ok_or(EngineError::MissingInput("initiator has no secret"))?;
@@ -575,8 +583,8 @@ mod tests {
         assert_eq!(init.phase(), SwapPhase::BothFunded);
         assert_eq!(resp.phase(), SwapPhase::BothFunded);
 
-        // 4) Initiator claims BTC, revealing S on-chain.
-        let btc_claim = match init.reveal_and_claim_btc().unwrap() {
+        // 4) Initiator claims BTC, revealing S on-chain (well within the reveal deadline).
+        let btc_claim = match init.reveal_and_claim_btc(HEAD_MS, &p).unwrap() {
             SwapEffect::Broadcast {
                 leg: SwapLegId::Counterparty,
                 tx,

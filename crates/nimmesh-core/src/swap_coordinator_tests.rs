@@ -5,7 +5,7 @@
 //! message alone), and the S2 / #73 authenticated-Propose gate (`recv_propose` rejects an unsigned,
 //! tampered, or forged Propose and accepts a valid signed one).
 
-use crate::swap::{LadderParams, SwapError, SwapPhase, SwapTerms};
+use crate::swap::{LadderParams, RevealVerdict, SwapError, SwapPhase, SwapTerms};
 use crate::swap_coordinator::{CoordError, SwapContext, SwapCoordinator};
 use crate::swap_funding_verify::FundingRejected;
 use crate::swap_leg::sha256;
@@ -94,7 +94,9 @@ fn two_coordinators_drive_a_full_swap_by_exchanging_envelopes() {
     assert_eq!(bob.phase(), SwapPhase::BothFunded);
 
     // Alice claims BTC (reveals S) → PreimageReveal → Bob reads S, claims NIM.
-    let reveal = alice.claim_and_reveal(secret.to_vec(), [0xC3; 32]).unwrap();
+    let reveal = alice
+        .claim_and_reveal(head, secret.to_vec(), [0xC3; 32])
+        .unwrap();
     let learned = bob
         .recv_reveal(&wire(SwapKind::PreimageReveal, &reveal), secret)
         .unwrap();
@@ -105,6 +107,47 @@ fn two_coordinators_drive_a_full_swap_by_exchanging_envelopes() {
     bob.settle().unwrap();
     assert_eq!(alice.phase(), SwapPhase::Settled);
     assert_eq!(bob.phase(), SwapPhase::Settled);
+}
+
+#[test]
+fn claim_and_reveal_refuses_past_the_reveal_deadline() {
+    // G4 / #75: the reveal-deadline guard is threaded through the coordinator. Drive Alice to
+    // BothFunded, then try to reveal at a head within the claim window of T_B (5000): the coordinator
+    // must refuse (S never leaves) — proving the head reaches `Swap::reveal_and_claim`'s guard.
+    let head = 0;
+    let p = LadderParams::default();
+    let secret = [42u8; 32];
+    let (mut alice, propose) = SwapCoordinator::new_initiator(ctx(0x11, 0xA1), secret, p);
+    let mut bob = SwapCoordinator::new_responder(ctx(0x22, 0xB2), p);
+    let accept = bob
+        .recv_propose(&wire(SwapKind::Propose, &signed(&propose, 0xA1)), head)
+        .unwrap();
+    alice
+        .recv_accept(&wire(SwapKind::Accept, &accept), head)
+        .unwrap();
+    let nim_fp = alice.fund(head, vec![0x11; 248], [0xC1; 32]).unwrap();
+    bob.recv_funding_proof(&wire(SwapKind::FundingProof, &nim_fp))
+        .unwrap();
+    let btc_fp = bob.fund(head, vec![0x22; 120], [0xC2; 32]).unwrap();
+    alice
+        .recv_funding_proof(&wire(SwapKind::FundingProof, &btc_fp))
+        .unwrap();
+    assert_eq!(alice.phase(), SwapPhase::BothFunded);
+
+    // Head 4000 → window to T_B (5000) is 1000 < 1800 → refuse; the secret stays secret.
+    assert!(matches!(
+        alice.claim_and_reveal(4_000, secret.to_vec(), [0xC3; 32]),
+        Err(CoordError::Swap(SwapError::RevealTooLate(
+            RevealVerdict::DeadlineTooClose { .. }
+        )))
+    ));
+    assert_eq!(alice.phase(), SwapPhase::BothFunded);
+
+    // With room to spare (head 0) the reveal goes through.
+    alice
+        .claim_and_reveal(head, secret.to_vec(), [0xC3; 32])
+        .unwrap();
+    assert_eq!(alice.phase(), SwapPhase::Revealed);
 }
 
 #[test]
@@ -119,7 +162,9 @@ fn a_reveal_with_the_wrong_secret_is_rejected() {
     bob.recv_funding_proof(&nim_fp).unwrap();
     let btc_fp = bob.fund(head, vec![0x22; 120], [0xC2; 32]).unwrap();
     alice.recv_funding_proof(&btc_fp).unwrap();
-    let reveal = alice.claim_and_reveal(vec![0u8; 32], [0xC3; 32]).unwrap();
+    let reveal = alice
+        .claim_and_reveal(head, vec![0u8; 32], [0xC3; 32])
+        .unwrap();
     // A secret that doesn't open the hashlock is refused — bob does not advance.
     assert_eq!(
         bob.recv_reveal(&reveal, [0x99u8; 32]),

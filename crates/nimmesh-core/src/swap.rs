@@ -134,6 +134,55 @@ pub fn assess_ladder(terms: &SwapTerms, current_head: u64, params: &LadderParams
     LadderVerdict::Safe
 }
 
+/// The verdict of the reveal-deadline check (G4 / #75).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RevealVerdict {
+    /// Safe to reveal — the counterparty leg's timeout `T_B` is far enough ahead of the head that the
+    /// claim (which reveals `S`) can confirm before `T_B`.
+    Safe,
+    /// `T_B` is too close to (or behind) the head. Revealing now would publish `S` with too little
+    /// time to get the claim confirmed: the counterparty could refund its leg AND use the now-public
+    /// `S` to take the other leg. Refuse — keep `S` secret and take the refund path once `T_B` passes.
+    DeadlineTooClose {
+        /// Blocks remaining until `T_B` (`0` if already past).
+        have: u64,
+        /// The required claim window before `T_B`.
+        need: u64,
+    },
+}
+
+impl RevealVerdict {
+    /// Whether revealing is permitted under this verdict.
+    pub const fn is_safe(self) -> bool {
+        matches!(self, RevealVerdict::Safe)
+    }
+}
+
+/// The reveal-deadline gate (G4 / #75): is it still safe for the initiator to REVEAL the secret by
+/// claiming the counterparty leg at `current_head`?
+///
+/// The initiator claims the counterparty leg (timeout `T_B = counterparty_timeout`), so — exactly as
+/// at funding time — it needs at least `min_claim_window_blocks` before `T_B` for that claim to
+/// confirm. Revealing later burns the secret with too little time to claim safely. (The agenda frames
+/// this loosely as "within `Δ_safe` of `T_B`"; the mechanically-correct threshold is the claim window
+/// against the very leg being claimed — the same `min_claim_window_blocks` the fund-time
+/// `WindowTooShort` check uses. The `Δ_safe` margin `T_A − T_B` protects the *responder's* post-reveal
+/// NIM claim and is already enforced at fund time.) Pure and clock-free — `current_head` is a height.
+pub fn assess_reveal_deadline(
+    terms: &SwapTerms,
+    current_head: u64,
+    params: &LadderParams,
+) -> RevealVerdict {
+    let window = terms.counterparty_timeout.saturating_sub(current_head);
+    if window < params.min_claim_window_blocks {
+        return RevealVerdict::DeadlineTooClose {
+            have: window,
+            need: params.min_claim_window_blocks,
+        };
+    }
+    RevealVerdict::Safe
+}
+
 /// The lifecycle phase of a swap, from one node's perspective. Every phase in which this node has
 /// funds locked has a refund exit (`refund_after_timeout`), so the worst case is always a refund.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -190,6 +239,9 @@ pub enum SwapError {
     },
     /// Funding was refused because the timelock ladder is not safe at the current head.
     UnsafeLadder(LadderVerdict),
+    /// Revealing was refused because the counterparty leg's timeout `T_B` is too close to the head
+    /// (G4 / #75) — publishing `S` now would leave too little time to claim safely.
+    RevealTooLate(RevealVerdict),
     /// A refund was attempted before the relevant timeout height elapsed.
     TimeoutNotReached {
         /// The timeout height that must be passed first.
@@ -207,6 +259,9 @@ impl std::fmt::Display for SwapError {
             }
             SwapError::UnsafeLadder(v) => {
                 write!(f, "refusing to fund: unsafe timelock ladder ({v:?})")
+            }
+            SwapError::RevealTooLate(v) => {
+                write!(f, "refusing to reveal: past the reveal deadline ({v:?})")
             }
             SwapError::TimeoutNotReached { timeout, head } => {
                 write!(f, "refund not yet allowed: timeout {timeout} > head {head}")
@@ -365,9 +420,23 @@ impl Swap {
 
     /// (Initiator) claim the counterparty leg, **revealing the secret** → `Revealed`. This is the
     /// only place the secret enters play, and it enters inside a broadcast-safe claim tx.
-    pub fn reveal_and_claim(&mut self) -> Result<SwapAction, SwapError> {
+    ///
+    /// Gated on the **reveal deadline** (G4 / #75): refuses if the head is within the claim window of
+    /// the counterparty leg's timeout `T_B` (`assess_reveal_deadline`), because publishing `S` that
+    /// late risks the claim not confirming before `T_B` — the counterparty could refund AND use the
+    /// now-public `S` to take the other leg. On refusal the phase does NOT move, so `S` stays secret
+    /// and the refund path remains the safe exit once `T_B` passes.
+    pub fn reveal_and_claim(
+        &mut self,
+        current_head: u64,
+        params: &LadderParams,
+    ) -> Result<SwapAction, SwapError> {
         match (self.role, self.phase) {
             (SwapRole::Initiator, SwapPhase::BothFunded) => {
+                let verdict = assess_reveal_deadline(&self.terms, current_head, params);
+                if !verdict.is_safe() {
+                    return Err(SwapError::RevealTooLate(verdict));
+                }
                 self.phase = SwapPhase::Revealed;
                 Ok(SwapAction::ClaimLeg {
                     leg: self.claim_leg(),
@@ -378,6 +447,14 @@ impl Swap {
                 action: "reveal_and_claim",
             }),
         }
+    }
+
+    /// Telemetry (G4 / #75): blocks remaining until the counterparty leg's timeout `T_B` at
+    /// `current_head` (`0` if already past). A node logs/surfaces this before revealing so an operator
+    /// sees the reveal window shrinking; once it drops below `min_claim_window_blocks`,
+    /// [`reveal_and_claim`](Self::reveal_and_claim) refuses. Pure, cheap, read-only.
+    pub const fn reveal_deadline_margin(&self, current_head: u64) -> u64 {
+        self.terms.counterparty_timeout.saturating_sub(current_head)
     }
 
     /// (Responder) the secret was observed (from the mesh reveal or the counterparty chain) →
@@ -531,13 +608,71 @@ mod tests {
         );
         s.observe_counterparty_funded().unwrap();
         assert_eq!(
-            s.reveal_and_claim().unwrap(),
+            s.reveal_and_claim(0, &p).unwrap(),
             SwapAction::ClaimLeg {
                 leg: SwapLegId::Counterparty
             }
         );
         s.observe_settled().unwrap();
         assert_eq!(s.phase, SwapPhase::Settled);
+    }
+
+    #[test]
+    fn reveal_refuses_when_the_counterparty_timeout_is_too_close() {
+        // G4 / #75: the initiator claims the counterparty leg (T_B = 5000). If the head has crept to
+        // within the claim window (1800) of T_B, revealing burns the secret with too little time to
+        // claim safely → refuse, and keep the secret secret (phase unchanged, refund still the exit).
+        let p = LadderParams::default();
+        let mut s = Swap::new(SwapRole::Initiator, safe_terms());
+        s.accept(0, &p).unwrap();
+        s.fund(0, &p).unwrap();
+        s.observe_counterparty_funded().unwrap(); // BothFunded, secret still held
+        assert_eq!(s.reveal_deadline_margin(4_000), 1_000); // 5000 - 4000, below the 1800 window
+        assert!(matches!(
+            s.reveal_and_claim(4_000, &p),
+            Err(SwapError::RevealTooLate(RevealVerdict::DeadlineTooClose {
+                have: 1_000,
+                need: 1_800
+            }))
+        ));
+        assert_eq!(s.phase, SwapPhase::BothFunded); // never revealed
+
+        // Earlier, with room to spare, the same reveal is allowed.
+        assert_eq!(
+            s.reveal_and_claim(0, &p).unwrap(),
+            SwapAction::ClaimLeg {
+                leg: SwapLegId::Counterparty
+            }
+        );
+        assert_eq!(s.phase, SwapPhase::Revealed);
+    }
+
+    #[test]
+    fn assess_reveal_deadline_is_safe_with_room_and_close_at_the_edge() {
+        let p = LadderParams::default();
+        let terms = safe_terms(); // T_B = 5000, window need = 1800
+        assert_eq!(assess_reveal_deadline(&terms, 0, &p), RevealVerdict::Safe);
+        // Exactly at the boundary: window == need is still safe (need is a floor).
+        assert_eq!(
+            assess_reveal_deadline(&terms, 3_200, &p),
+            RevealVerdict::Safe
+        );
+        // One block past the boundary → too close.
+        assert_eq!(
+            assess_reveal_deadline(&terms, 3_201, &p),
+            RevealVerdict::DeadlineTooClose {
+                have: 1_799,
+                need: 1_800
+            }
+        );
+        // Past T_B entirely → window saturates to 0.
+        assert_eq!(
+            assess_reveal_deadline(&terms, 9_999, &p),
+            RevealVerdict::DeadlineTooClose {
+                have: 0,
+                need: 1_800
+            }
+        );
     }
 
     #[test]

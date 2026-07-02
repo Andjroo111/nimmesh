@@ -436,7 +436,7 @@ fn drive_swap(
         (SwapRole::Initiator, SwapPhase::BothFunded) => {
             if let Some((wire, id)) = secret.and_then(|s| sign_claim(st, swap_id, s)) {
                 if let Some(c) = coordinator(st, &swap_id) {
-                    if let Ok(rev) = c.claim_and_reveal(wire, id) {
+                    if let Ok(rev) = c.claim_and_reveal(head, wire, id) {
                         push_env(&mut out, MessageType::SwapPreimageReveal, &rev);
                         let _ = c.settle();
                     }

@@ -2,6 +2,34 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.43.0] — 2026-07-02
+
+### Security — reveal-deadline liveness guard (G4 slice 1, #75 → part of S6)
+
+`Swap::reveal_and_claim` advanced `BothFunded → Revealed` on role+phase alone, with **no check on the head**. The initiator reveals `S` by claiming the counterparty leg (timeout `T_B`); revealing too late risks the claim not confirming before `T_B` — letting the counterparty refund that leg *and* use the now-public `S` to take the other leg. This slice closes that.
+
+- **Gate** `reveal_and_claim(current_head, params)` on a new pure `assess_reveal_deadline`: refuse
+  (`SwapError::RevealTooLate(RevealVerdict::DeadlineTooClose { have, need })`, phase unchanged, `S`
+  never published) when `T_B − head < min_claim_window_blocks` — the same claim window the fund-time
+  `WindowTooShort` check requires against that same leg. On refusal the node keeps `S` secret and
+  refunds once `T_B` passes (worst case stays "refund, never theft").
+- **Threshold choice:** the agenda framed this loosely as "within `Δ_safe` of `T_B`"; the correct
+  quantity is the *claim window* before `T_B` (`Δ_safe = T_A − T_B` protects the responder's
+  post-reveal NIM claim and is already enforced at fund time). Recorded in
+  `docs/adr/0004-reveal-deadline-guard.md`.
+- **Threaded through every reveal path:** `SwapCoordinator::claim_and_reveal(head, …)`,
+  `SwapEngine::reveal_and_claim_btc(head, params)`, the mesh node, and the sim. **FFI signature
+  change:** `SwapEngineHandle::reveal_and_claim_btc(head_ms, ladder)` — the native app must regenerate
+  bindings and pass the current head + its ladder when revealing.
+- **Telemetry:** `Swap::reveal_deadline_margin(head)` returns blocks-until-`T_B` for a node to log as
+  the reveal window shrinks.
+- **Tests:** pure `assess_reveal_deadline` boundary (safe at `window == need`, too-close one block
+  past, saturates to 0 past `T_B`); `Swap` refuses a tight reveal and keeps the secret; a
+  coordinator-level test proving the threaded `head` reaches the guard.
+- **Deferred to G4 slice 2** (same issue #75): BTC dust-limit (≥ 546 sat), ms→s truncation
+  (`swap_ffi.rs`), the `nimiq/htlc.rs:61` doc comment, faster un-funded slot reclaim. (`swap.rs` is
+  now 792/800 lines — extract its tests to a `swap_tests.rs` sibling before adding more there.)
+
 ## [0.42.0] — 2026-07-02
 
 ### Security — per-chain confirmation-depth + reorg policy (G3 slice, #74 → part of S6)
