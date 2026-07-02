@@ -2,6 +2,25 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.35.0] — 2026-07-02
+
+### Changed — mainnet only + live balance/history (on-device feedback, round 4)
+
+- **Testnet is GONE from the app** (Andjroo: "get rid of the testnet completely… mainnet
+  needs to just be removed [as wording]"). The Send-sheet network toggle, the REAL-funds
+  warning, every testnet/mainnet string, the faucet method, and the `currentNetwork` /
+  `setNetwork` / `network` bridge methods are all removed. `NimiqRpc` is hard-pinned to
+  mainnet (`rpc.nimiqwatch.com` — verified serving getBlockNumber, getAccountByAddress,
+  getTransactionsByAddress AND sendRawTransaction). The Rust core's tests/tools remain
+  testnet-pinned; only the app surface changed. NOTE: the Keychain account key keeps its
+  historical `testnet-bip39-mnemonic` name on purpose — renaming it would orphan the
+  wallet already stored on the device.
+- **Live wallet data.** Andjroo sent 2 NIM and it never appeared: balance + history loaded
+  ONCE at launch and never refreshed. Now `refreshWalletData()` polls every 10s while the
+  app is visible, refreshes on returning to the foreground (visibilitychange), and fires
+  immediately + 4s after a successful send (~1s blocks). History re-renders only when the
+  (hash, confirmed) set actually changes, so no flicker.
+
 ## [0.34.0] — 2026-07-02
 
 ### Fixed — on-device feedback, round 3 (dialogs, flags, mainnet)

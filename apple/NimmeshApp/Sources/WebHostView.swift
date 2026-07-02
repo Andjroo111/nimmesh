@@ -7,10 +7,10 @@ import NimmeshCore
 /// Hosts the real `nimiq-ui` web wallet (`webui/index.html`, bundled as a folder
 /// reference) in a `WKWebView` and bridges it to the Rust core (A1).
 ///
-/// The bridge is **read-only**: `version`, `network`, `meshStatus`, `reachability` (G16),
+/// The bridge is **read-only**: `version`, `meshStatus`, `reachability` (G16),
 /// `backupUrgency` (G19).
 /// It signs nothing, broadcasts nothing, and never sees key/seed material — so it stays firmly
-/// non-money-path. The testnet send path (sign with the Keychain key → broadcast) is the C1c
+/// non-money-path. The send path (sign with the Keychain key → broadcast, MAINNET) is the C1c
 /// `sendTransaction` async bridge. The offline BLE mesh is the native `BleMeshRadio` (G5)
 /// driving a `MeshNode`; `meshStatus`/`reachability` read it live (0 peers on the simulator,
 /// real peers on device — the 2-phone interop test).
@@ -31,11 +31,11 @@ struct WebHostView: UIViewRepresentable {
         // C1: prove the native Keychain Ed25519 signer interoperates with the Rust verifier
         // (CryptoKit ↔ ed25519-dalek). Logged once at launch for sim/device verification.
         print("nimmesh wallet self-test: address=\(Wallet.address() ?? "?") signedOk=\(Wallet.selfTest())")
-        // C1c: prove live testnet RPC connectivity (the send path's head anchor) at launch.
+        // C1c: prove live RPC connectivity (the send path's head anchor) at launch.
         // NSLog (not print) so the async result lands in the unified log we can query post-launch.
         Task {
             let head = (try? await NimiqRpc.headHeight()).map(String.init) ?? "unreachable"
-            NSLog("nimmesh testnet head=%@", head)
+            NSLog("nimmesh head=%@", head)
         }
 
         let webView = WKWebView(frame: .zero, configuration: config)
@@ -121,7 +121,6 @@ final class Bridge: NSObject, WKScriptMessageHandler {
       window.nimmesh = {
         call: call,
         version: function () { return call('version'); },
-        network: function () { return call('network'); },
         meshStatus: function () { return call('meshStatus'); },
         // G16: the honest "will it send?" reach (online|meshed|offline). Read-only.
         reachability: function () { return call('reachability'); },
@@ -147,15 +146,11 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         // UI language preference, persisted in UserDefaults so it survives relaunches.
         getLang: function () { return call('getLang'); },
         setLang: function (l) { return call('setLang', { lang: l }); },
-        // Mainnet toggle (gated; default testnet). The app never auto-sends real funds.
-        currentNetwork: function () { return call('currentNetwork'); },
-        setNetwork: function (m) { return call('setNetwork', { mainnet: !!m }); },
-        // C1c: live testnet — head height, balance, faucet, and the real send (sign+broadcast).
+        // Live chain (MAINNET-only) — head height, balance, history, and the real send
+        // (sign with the Keychain key + broadcast). The app never auto-sends.
         headHeight: function () { return call('headHeight'); },
         walletBalance: function () { return call('walletBalance'); },
-        // C1d: this wallet's real on-chain transaction history (read-only public data).
         walletHistory: function () { return call('walletHistory'); },
-        fundFromFaucet: function () { return call('fundFromFaucet'); },
         sendTransaction: function (a) { return call('sendTransaction', a || {}); }
       };
     })();
@@ -169,7 +164,7 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         // C1c: the live-chain methods do network IO → run them off the main actor and resolve
         // when they complete. Everything else is synchronous (pure-core reads).
         switch method {
-        case "headHeight", "walletBalance", "walletHistory", "fundFromFaucet", "sendTransaction":
+        case "headHeight", "walletBalance", "walletHistory", "sendTransaction":
             Task { let (ok, payload) = await self.handleAsync(method: method, args: args)
                 self.resolve(id: id, ok: ok, payload: payload) }
         default:
@@ -178,7 +173,7 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         }
     }
 
-    /// C1c: the testnet network methods — fetch head, balance, faucet, and the real send
+    /// C1c: the live-chain network methods — fetch head, balance, history, and the real send
     /// (sign with the Keychain key → broadcast). Testnet only; the seed never crosses (only the
     /// signed blob is sent). The recipient/amount are public.
     private func handleAsync(method: String, args: Any?) async -> (Bool, Any) {
@@ -208,11 +203,6 @@ final class Bridge: NSObject, WKScriptMessageHandler {
                 ]
             }
             return (true, ["txs": txs])
-        case "fundFromFaucet":
-            guard !NimiqRpc.isMainnet else { return (false, "faucet is testnet only") }
-            guard let addr = Wallet.address() else { return (false, "no wallet") }
-            await NimiqRpc.tapFaucet(addr)
-            return (true, ["funded": true])
         case "sendTransaction":
             let a = args as? [String: Any] ?? [:]
             guard let recipient = a["recipient"] as? String, !recipient.isEmpty else {
@@ -242,13 +232,6 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         switch method {
         case "version":
             return (true, ["core": coreVersion()])
-        case "network":
-            let n = defaultNetwork()
-            return (true, [
-                "network": n == .testnet ? "testnet" : "mainnet",
-                "wireId": Int(networkWireId(network: n)),
-                "loopSafe": networkIsLoopSafe(network: n),
-            ])
         case "meshStatus":
             // G5: the live mesh reading from the BLE-backed node (constructing it here also
             // brings the radio up). Simulator: 0 peers (BLE unsupported); device: real peers.
@@ -313,15 +296,6 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             let a = args as? [String: Any] ?? [:]
             UserDefaults.standard.set((a["lang"] as? String) ?? "", forKey: Bridge.langKey)
             return (true, ["ok": true])
-        case "currentNetwork":
-            // The selected network (default testnet). Mainnet is the gated real-funds toggle.
-            return (true, ["mainnet": NimiqRpc.isMainnet, "name": NimiqRpc.isMainnet ? "mainnet" : "testnet"])
-        case "setNetwork":
-            // Deliberate, persisted network switch (default testnet). The app never auto-sends;
-            // a mainnet send is always a user action (docs/MAINNET-GATING.md).
-            let a = args as? [String: Any] ?? [:]
-            NimiqRpc.isMainnet = (a["mainnet"] as? Bool) ?? false
-            return (true, ["mainnet": NimiqRpc.isMainnet])
         case "backupUrgency":
             // G19: read-only — the Rust policy decides how hard to nudge a backup from the
             // account's public state. No key/seed is read here; only public facts cross.

@@ -280,15 +280,6 @@
   .send-status[hidden] { display: none; }
   .send-status.ok { color: #21bca5; }
   .send-status.err { color: #fc8702; }
-  /* mainnet-capable: a deliberate, default-testnet network toggle (the real-funds gate). */
-  .net-toggle { display: flex; gap: 4px; margin: 8px 24px 0; padding: 3px; border-radius: 500px;
-    background: rgba(31,35,72,.06); }
-  .net-opt { flex: 1 1 0; height: 32px; border: 0; cursor: pointer; border-radius: 500px; background: transparent;
-    font-family: inherit; font-weight: 700; font-size: 12.5px; color: rgba(31,35,72,.55); }
-  .net-opt.active { background: #fff; color: #1f2348; box-shadow: 0 2px 6px rgba(0,0,0,.08); }
-  .net-opt[data-net="mainnet"].active { background: var(--nimiq-orange); color: #fff; box-shadow: 0 2px 8px rgba(252,135,2,.3); }
-  .net-warn { text-align: center; margin: 8px 24px 0; font-size: 12.5px; font-weight: 700; color: var(--nimiq-orange); }
-  .net-warn[hidden] { display: none; }
 
   /* Account sheet: identicon + address + a plain action list (copy / backup / log out). */
   .acct-actions { display: flex; flex-direction: column; margin: 12px 24px 0; }
@@ -603,12 +594,6 @@
     <span class="dot"></span>
     <span id="send-reach-text">Relays over the mesh and reaches the network when a connected device is online</span>
   </div>
-  <!-- mainnet-capable: deliberate, default-testnet network toggle (the real-funds gate). -->
-  <div class="net-toggle" id="net-toggle">
-    <button class="net-opt active" data-net="testnet">Testnet</button>
-    <button class="net-opt" data-net="mainnet">Mainnet</button>
-  </div>
-  <div class="net-warn" id="net-warn" hidden data-i18n="net.warn">⚠ Mainnet sends REAL funds</div>
   <div class="contacts-row">
     <div class="contacts-btn">
       <svg viewBox="0 0 24 28" fill="none"><rect x="2" y="2" width="20" height="24" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="11" r="3.2" fill="currentColor"/><path d="M6.5 20.5c0-3 2.5-5 5.5-5s5.5 2 5.5 5" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>
@@ -633,7 +618,7 @@
     <input maxlength="4" inputmode="text" aria-label="address block 8">
     <input maxlength="4" inputmode="text" aria-label="address block 9">
   </div>
-  <!-- C1c: the real send — amount, then sign (Keychain key) + broadcast on testnet. -->
+  <!-- C1c: the real send — amount, then sign (Keychain key) + broadcast. -->
   <div class="send-amount">
     <input id="send-amount" inputmode="decimal" placeholder="0" aria-label="Amount in NIM">
     <span class="unit">NIM</span>
@@ -704,7 +689,6 @@
       'recv.title': 'Recibir NIM', 'recv.sub': 'Comparte tu dirección o solicita un monto exacto', 'recv.reqlabel': 'Solicitar un monto (opcional)', 'recv.reqlink': 'Crear enlace de solicitud', 'recv.requesting': 'Solicitando',
       'send.title': 'Enviar transacción', 'send.cta': 'Enviar', 'send.noaddr': '¿Sin dirección?', 'send.cashlink': 'Crea un Cashlink', 'send.contacts': 'Contactos', 'send.enteraddr': 'INTRODUCE LA DIRECCIÓN',
       'send.openapp': 'Abre la app para enviar', 'send.fulladdr': 'Introduce la dirección completa de 36 caracteres', 'send.needamount': 'Introduce un monto', 'send.signing': 'Firmando y transmitiendo…', 'send.sent': 'Enviado · tx ', 'send.failed': 'Falló: ',
-      'net.warn': '⚠ Mainnet envía fondos REALES', 'net.confirm': '¿Cambiar a MAINNET? Los envíos usarán fondos REALES.',
       'reach.default': 'Se retransmite por la malla y llega a la red cuando un dispositivo conectado está en línea', 'reach.online': 'Hay una pasarela accesible, esto se envía a la red ahora', 'reach.meshed': 'Conectado a la malla, retransmitiendo hasta llegar a la red', 'reach.offline': 'No hay dispositivos cerca todavía, en cola hasta que haya uno al alcance',
       'ob.title': 'Bienvenido a nimmesh', 'ob.sub': 'Paga con NIM incluso sin internet. Configura tu cartera para empezar.', 'ob.create': 'Crear cartera nueva', 'ob.create.sub': 'Genera una frase de recuperación', 'ob.import': 'Importar cartera', 'ob.import.sub': 'Usa tus 24 palabras de recuperación',
       'words.title': 'Tus palabras de recuperación', 'words.create.sub': 'Escribe estas 24 palabras en orden. Cualquiera con ellas controla tus fondos y nimmesh no puede recuperarlas por ti.', 'words.backup.sub': 'Escríbelas y guárdalas en un lugar seguro. Cualquiera con estas palabras controla tus fondos.', 'words.copy': 'Copiar palabras', 'words.saved': 'He escrito mis 24 palabras y las guardé en un lugar seguro', 'words.continue': 'Continuar',
@@ -724,7 +708,6 @@
       'recv.title': 'NIM empfangen', 'recv.sub': 'Teile deine Adresse oder fordere einen genauen Betrag an', 'recv.reqlabel': 'Betrag anfordern (optional)', 'recv.reqlink': 'Anfrage-Link erstellen', 'recv.requesting': 'Angefordert:',
       'send.title': 'Transaktion senden', 'send.cta': 'Senden', 'send.noaddr': 'Keine Adresse?', 'send.cashlink': 'Cashlink erstellen', 'send.contacts': 'Kontakte', 'send.enteraddr': 'ADRESSE EINGEBEN',
       'send.openapp': 'Zum Senden die App öffnen', 'send.fulladdr': 'Gib die vollständige 36-stellige Adresse ein', 'send.needamount': 'Gib einen Betrag ein', 'send.signing': 'Signieren + Senden…', 'send.sent': 'Gesendet · tx ', 'send.failed': 'Fehlgeschlagen: ',
-      'net.warn': '⚠ Mainnet sendet ECHTES Geld', 'net.confirm': 'Zu MAINNET wechseln? Sendungen verwenden ECHTES Geld.',
       'reach.default': 'Wird über das Mesh weitergereicht und erreicht das Netzwerk, sobald ein verbundenes Gerät online ist', 'reach.online': 'Ein Gateway ist erreichbar, dies wird jetzt ins Netzwerk gesendet', 'reach.meshed': 'Mit dem Mesh verbunden, wird weitergereicht bis es das Netzwerk erreicht', 'reach.offline': 'Noch keine Geräte in der Nähe, wartet bis eines in Reichweite ist',
       'ob.title': 'Willkommen bei nimmesh', 'ob.sub': 'Zahle mit NIM, auch ohne Internet. Richte deine Wallet ein, um zu starten.', 'ob.create': 'Neue Wallet erstellen', 'ob.create.sub': 'Erzeugt eine Wiederherstellungs-Phrase', 'ob.import': 'Wallet importieren', 'ob.import.sub': 'Nutze deine 24 Wiederherstellungswörter',
       'words.title': 'Deine Wiederherstellungswörter', 'words.create.sub': 'Schreibe diese 24 Wörter der Reihe nach auf. Jeder mit diesen Wörtern kontrolliert dein Guthaben, und nimmesh kann sie nicht für dich wiederherstellen.', 'words.backup.sub': 'Schreibe sie auf und bewahre sie sicher auf. Jeder mit diesen Wörtern kontrolliert dein Guthaben.', 'words.copy': 'Wörter kopieren', 'words.saved': 'Ich habe meine 24 Wörter aufgeschrieben und sicher verwahrt', 'words.continue': 'Weiter',
@@ -744,7 +727,6 @@
       'recv.title': 'Recevoir des NIM', 'recv.sub': 'Partage ton adresse ou demande un montant exact', 'recv.reqlabel': 'Demander un montant (facultatif)', 'recv.reqlink': 'Créer un lien de demande', 'recv.requesting': 'Demande de',
       'send.title': 'Envoyer une transaction', 'send.cta': 'Envoyer', 'send.noaddr': 'Adresse indisponible ?', 'send.cashlink': 'Créer un Cashlink', 'send.contacts': 'Contacts', 'send.enteraddr': 'SAISIR L’ADRESSE',
       'send.openapp': 'Ouvre l’app pour envoyer', 'send.fulladdr': 'Saisis l’adresse complète de 36 caractères', 'send.needamount': 'Saisis un montant', 'send.signing': 'Signature + diffusion…', 'send.sent': 'Envoyé · tx ', 'send.failed': 'Échec : ',
-      'net.warn': '⚠ Le mainnet envoie des fonds RÉELS', 'net.confirm': 'Passer au MAINNET ? Les envois utiliseront des fonds RÉELS.',
       'reach.default': 'Relayé par le mesh, il atteint le réseau dès qu’un appareil connecté est en ligne', 'reach.online': 'Une passerelle est joignable, l’envoi part sur le réseau maintenant', 'reach.meshed': 'Connecté au mesh, relayé jusqu’à atteindre le réseau', 'reach.offline': 'Aucun appareil à proximité pour l’instant, en file d’attente',
       'ob.title': 'Bienvenue sur nimmesh', 'ob.sub': 'Paie en NIM même sans internet. Configure ton portefeuille pour commencer.', 'ob.create': 'Créer un portefeuille', 'ob.create.sub': 'Génère une phrase de récupération', 'ob.import': 'Importer un portefeuille', 'ob.import.sub': 'Utilise tes 24 mots de récupération',
       'words.title': 'Tes mots de récupération', 'words.create.sub': 'Note ces 24 mots dans l’ordre. Quiconque les détient contrôle tes fonds, et nimmesh ne peut pas les récupérer pour toi.', 'words.backup.sub': 'Note-les et garde-les en lieu sûr. Quiconque détient ces mots contrôle tes fonds.', 'words.copy': 'Copier les mots', 'words.saved': 'J’ai noté mes 24 mots et je les ai rangés en lieu sûr', 'words.continue': 'Continuer',
@@ -764,7 +746,6 @@
       'recv.title': 'Receber NIM', 'recv.sub': 'Compartilhe seu endereço ou solicite um valor exato', 'recv.reqlabel': 'Solicitar um valor (opcional)', 'recv.reqlink': 'Criar link de cobrança', 'recv.requesting': 'Solicitando',
       'send.title': 'Enviar transação', 'send.cta': 'Enviar', 'send.noaddr': 'Sem endereço?', 'send.cashlink': 'Criar um Cashlink', 'send.contacts': 'Contatos', 'send.enteraddr': 'INSERIR ENDEREÇO',
       'send.openapp': 'Abra o app para enviar', 'send.fulladdr': 'Insira o endereço completo de 36 caracteres', 'send.needamount': 'Insira um valor', 'send.signing': 'Assinando + transmitindo…', 'send.sent': 'Enviado · tx ', 'send.failed': 'Falhou: ',
-      'net.warn': '⚠ A mainnet envia fundos REAIS', 'net.confirm': 'Mudar para MAINNET? Os envios usarão fundos REAIS.',
       'reach.default': 'Retransmitido pela mesh, chega à rede quando um aparelho conectado estiver online', 'reach.online': 'Um gateway está acessível, isto vai para a rede agora', 'reach.meshed': 'Conectado à mesh, retransmitindo até chegar à rede', 'reach.offline': 'Nenhum aparelho por perto ainda, na fila até um ficar ao alcance',
       'ob.title': 'Bem-vindo ao nimmesh', 'ob.sub': 'Pague com NIM mesmo sem internet. Configure sua carteira para começar.', 'ob.create': 'Criar carteira nova', 'ob.create.sub': 'Gera uma frase de recuperação', 'ob.import': 'Importar carteira', 'ob.import.sub': 'Use suas 24 palavras de recuperação',
       'words.title': 'Suas palavras de recuperação', 'words.create.sub': 'Anote estas 24 palavras em ordem. Qualquer pessoa com elas controla seus fundos, e o nimmesh não pode recuperá-las por você.', 'words.backup.sub': 'Anote-as e guarde-as em segurança. Qualquer pessoa com estas palavras controla seus fundos.', 'words.copy': 'Copiar palavras', 'words.saved': 'Anotei minhas 24 palavras e as guardei em segurança', 'words.continue': 'Continuar',
@@ -783,7 +764,6 @@
     'tx.recent': 'Recent', 'tx.pending': 'Pending', 'tx.empty.title': 'No transactions yet', 'tx.empty.sub': 'Fund your wallet and your payments show up here',
     'recv.requesting': 'Requesting',
     'send.openapp': 'Open in the app to send', 'send.fulladdr': 'Enter the full 36-character address', 'send.needamount': 'Enter an amount', 'send.signing': 'Signing + broadcasting…', 'send.sent': 'Sent · tx ', 'send.failed': 'Failed: ',
-    'net.confirm': 'Switch to MAINNET? Sends will use REAL funds.',
     'reach.default': 'Relays over the mesh and reaches the network when a connected device is online', 'reach.online': 'A gateway is reachable, so this sends to the network now', 'reach.meshed': 'Connected to the mesh, relaying until it reaches the network', 'reach.offline': 'No devices nearby yet, queued until one is in range',
     'import.invalid': 'That is not a valid 24-word recovery phrase. Check the words and the spelling.',
     'rec.confirm': 'Delete the wallet from this device? Without its 24 words it CANNOT be recovered.',
@@ -907,7 +887,7 @@
   }));
 
   // C1c: the real Send — read the address grid + amount, sign with the Keychain key, and
-  // broadcast on testnet via the bridge. In a plain browser (no bridge) it explains it needs
+  // broadcast via the bridge. In a plain browser (no bridge) it explains it needs
   // the app. The seed never crosses — only the recipient + amount go down, a tx hash comes back.
   const sendBtn = document.getElementById('send-btn');
   const sendStatus = document.getElementById('send-status');
@@ -928,6 +908,8 @@
     try {
       const r = await nimmesh.sendTransaction({ recipient, amountLuna });
       setSendStatus(T('send.sent') + r.txHash, 'ok');
+      // The tx is in flight — refresh now and again shortly after inclusion (~1s blocks).
+      if (window.refreshWalletData) { refreshWalletData(); setTimeout(() => refreshWalletData(), 4000); }
     } catch (e) {
       setSendStatus(T('send.failed') + (e && e.message ? e.message : e), 'err');
     } finally {
@@ -935,19 +917,6 @@
     }
   });
 
-  // mainnet-capable: the network toggle. Default testnet; switching to mainnet is deliberate
-  // (confirm) and persisted by the bridge — the real-funds gate for the on-device phone test.
-  const netOpts = [...document.querySelectorAll('.net-opt')];
-  function applyNetwork(mainnet) {
-    netOpts.forEach((o) => o.classList.toggle('active', (o.dataset.net === 'mainnet') === mainnet));
-    document.getElementById('net-warn').hidden = !mainnet;
-  }
-  netOpts.forEach((o) => o.addEventListener('click', async () => {
-    const mainnet = o.dataset.net === 'mainnet';
-    if (mainnet && !confirm(T('net.confirm'))) return;
-    if (window.nimmesh && nimmesh.setNetwork) { try { await nimmesh.setNetwork(mainnet); } catch (e) {} }
-    applyNetwork(mainnet);
-  }));
 
   // G19: drive the backup banner's insistence from the Rust backup-nudge policy. Maps a
   // BackupUrgency (none|gentle|important|critical) to the vendored component's escalating
@@ -1169,17 +1138,14 @@
         obShow('ob-recovered'); hideSplash();
       } else if (!w.exists) { obShow('ob-welcome'); hideSplash(); }
     } catch (e) { /* assume wallet exists if the probe fails */ }
-    // Reflect the selected network (default testnet) in the toggle + the mesh bar.
-    let netName = 'testnet';
-    try { const net = await nimmesh.currentNetwork(); netName = net.name; applyNetwork(net.mainnet); } catch (e) {}
     try {
       const [v, m] = await Promise.all([nimmesh.version(), nimmesh.meshStatus()]);
-      let line = `${T('mesh.state.' + m.state)} · ${m.peers} ${T('mesh.nearby')} · ${netName} · core ${v.core}`;
+      let line = `${T('mesh.state.' + m.state)} · ${m.peers} ${T('mesh.nearby')} · core ${v.core}`;
       // C1c: also show the live head we anchor sends to (proves app → chain RPC works).
       try { const h = await nimmesh.headHeight(); if (h && h.height) line += ` · head ${h.height}`; } catch (e) {}
       document.getElementById('meshbar-text').textContent = line;
       const meta = document.getElementById('acct-meta');
-      if (meta) meta.textContent = `${netName} · core ${v.core}`;
+      if (meta) meta.textContent = `core ${v.core}`;
     } catch (e) { console.error('bridge probe failed', e); }
     // G16: light up the Send sheet's "will it send?" line from the node's reach. With no
     // native radio yet (Phase D) the bridge honestly reports offline; once the shim runs a
@@ -1214,24 +1180,32 @@
         document.getElementById('account-pill').hidden = false;
       }
     } catch (e) { /* no wallet bridge (plain browser) — keep the demo address */ }
-    // C1d: the REAL balance + REAL transaction history from the chain — this replaces the
-    // design-mock numbers (the old 752 NIM + demo tx rows). Read-only public data; no key or
-    // seed crosses. A fresh wallet honestly shows 0 NIM and an empty history; funding it (or
-    // sending) updates both for real.
-    let balanceLuna = 0;
-    try {
-      const b = await nimmesh.walletBalance();
-      balanceLuna = (b && typeof b.luna === 'number') ? b.luna : 0;
-      const bal = document.getElementById('home-balance');
-      if (bal) bal.innerHTML = `${fmtNim(balanceLuna)} <span class="currency nim">NIM</span>`;
-      // testnet NIM has no market value — drop the fake fiat ($0.46) rather than invent one.
-      const fiat = document.getElementById('home-fiat');
-      if (fiat) fiat.textContent = '';
-    } catch (e) { /* keep the placeholder if balance is unavailable */ }
-    try {
-      const { txs } = await nimmesh.walletHistory();
-      await renderHistory(txs || []);
-    } catch (e) { await renderHistory([]); }
+    // C1d: the REAL balance + REAL transaction history from the chain — LIVE. Loaded now,
+    // then re-polled every 10s while visible, on returning to the foreground, and right
+    // after a send — so a payment that lands while the app is open actually shows up
+    // (previously data loaded ONCE at launch and never refreshed). Read-only public data;
+    // no key or seed crosses. History re-renders only when it actually changed (no flicker).
+    let lastHistoryKey = null;
+    window.refreshWalletData = async function refreshWalletData() {
+      let balanceLuna = 0;
+      try {
+        const b = await nimmesh.walletBalance();
+        balanceLuna = (b && typeof b.luna === 'number') ? b.luna : 0;
+        const bal = document.getElementById('home-balance');
+        if (bal) bal.innerHTML = `${fmtNim(balanceLuna)} <span class="currency nim">NIM</span>`;
+        const fiat = document.getElementById('home-fiat');
+        if (fiat) fiat.textContent = '';
+      } catch (e) { /* keep the last shown balance if the read fails */ }
+      try {
+        const { txs } = await nimmesh.walletHistory();
+        const key = JSON.stringify((txs || []).map((t) => [t.hash, t.confirmed]));
+        if (key !== lastHistoryKey) { lastHistoryKey = key; await renderHistory(txs || []); }
+      } catch (e) { if (lastHistoryKey === null) { lastHistoryKey = '[]'; await renderHistory([]); } }
+      return balanceLuna;
+    };
+    const balanceLuna = await refreshWalletData();
+    setInterval(() => { if (!document.hidden) refreshWalletData(); }, 10000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshWalletData(); });
     // G19: drive the backup nudge from the REAL balance (not the old mock 752). No key/seed
     // crosses the bridge — only the public balance + the backed-up flag.
     try {

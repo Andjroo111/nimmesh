@@ -106,7 +106,7 @@ enum Wallet {
             recipient: "NQ95 ARU6 CQ8U 38N8 B8D6 ESVQ R12V 0RAY V8D6",
             value: 100_000,
             validityStartHeight: 1,
-            network: .testnet
+            network: .mainnet   // local sign+verify only — nothing is broadcast here
         )
         guard let signed = try? signer.signTransfer(intent: intent) else { return false }
         return verifySignedTxHex(rawHex: signed.rawHex)

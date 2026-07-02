@@ -5,36 +5,19 @@ import NimmeshCore
 ///
 /// All cryptography stays in the Rust core (`AppSigner` over the Keychain `EnclaveKey`); this
 /// only does network IO — fetch the head for `validityStartHeight`, broadcast the signed blob,
-/// poll for inclusion, read a balance, tap the faucet.
+/// poll for inclusion, read a balance and history.
 ///
-/// **Network is a toggle, default MAINNET** (persisted in `UserDefaults`). Andjroo flipped the
-/// default for the real-funds phone test (2026-07-02: "we need to be on mainnet") — the owner
-/// IS the mainnet gate (`docs/MAINNET-GATING.md`), and the app still never auto-sends: a send
-/// is always a deliberate user action, the Send sheet warns on mainnet, testnet stays one tap
-/// away, and the faucet remains testnet-only.
+/// **MAINNET ONLY.** Andjroo removed the network toggle entirely (2026-07-02: "get rid of the
+/// testnet completely") — the owner IS the mainnet gate (`docs/MAINNET-GATING.md`). The app
+/// still never auto-sends: a send is always a deliberate user action. The Rust core's tests
+/// and tools remain testnet-pinned; only this app surface is mainnet.
 enum NimiqRpc {
-    private static let mainnetKey = "nimmesh.network.mainnet"
+    /// The network the signer anchors every tx to.
+    static let network: NetworkId = .mainnet
 
-    /// Whether the app is pointed at **mainnet** (real funds). Default `true` (a persisted
-    /// toggle choice wins; unset = mainnet per the owner's 2026-07-02 instruction).
-    static var isMainnet: Bool {
-        get {
-            guard UserDefaults.standard.object(forKey: mainnetKey) != nil else { return true }
-            return UserDefaults.standard.bool(forKey: mainnetKey)
-        }
-        set { UserDefaults.standard.set(newValue, forKey: mainnetKey) }
-    }
-
-    /// The selected network as the Rust `NetworkId` the signer anchors the tx to.
-    static var network: NetworkId { isMainnet ? .mainnet : .testnet }
-
-    /// The JSON-RPC endpoint for the selected network (both are nimiqwatch public nodes).
-    static var rpcURL: URL {
-        URL(string: isMainnet ? "https://rpc.nimiqwatch.com" : "https://rpc.testnet.nimiqwatch.com")!
-    }
-
-    /// The testnet faucet (testnet only — mainnet has none; fund from your own wallet).
-    static let faucetURL = URL(string: "https://faucet.pos.nimiq-testnet.com/tapit")!
+    /// The public mainnet JSON-RPC endpoint (nimiqwatch; verified: getBlockNumber,
+    /// getAccountByAddress, getTransactionsByAddress and sendRawTransaction all served).
+    static let rpcURL = URL(string: "https://rpc.nimiqwatch.com")!
 
     struct RpcError: Error { let message: String }
 
@@ -63,7 +46,7 @@ enum NimiqRpc {
         return (r is NSNull) ? nil : r
     }
 
-    /// The current testnet head height — the `validityStartHeight` a fresh tx anchors to.
+    /// The current head height — the `validityStartHeight` a fresh tx anchors to.
     static func headHeight() async throws -> UInt32 {
         guard let n = try await call("getBlockNumber", []) as? NSNumber else {
             throw RpcError(message: "getBlockNumber: unexpected result shape")
@@ -107,12 +90,4 @@ enum NimiqRpc {
         return arr
     }
 
-    /// Tap the public testnet faucet to fund `address` (~10k NIM, for the in-app demo send).
-    static func tapFaucet(_ address: String) async {
-        var req = URLRequest(url: faucetURL)
-        req.httpMethod = "POST"
-        req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        req.httpBody = "address=\(address.replacingOccurrences(of: " ", with: ""))".data(using: .utf8)
-        _ = try? await URLSession.shared.data(for: req)
-    }
 }
