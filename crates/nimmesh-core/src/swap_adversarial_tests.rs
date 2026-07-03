@@ -12,6 +12,55 @@
 use crate::test_support::{new_initiator_signed, participant_fixtures};
 
 #[test]
+fn active_swaps_lists_a_live_swap_over_ffi_and_a_blind_relay_lists_none() {
+    // G9 slice 2 (#80): the app can SEE its in-flight swaps over FFI — each a `FfiSwapMatch` of
+    // `swap_id` (hex) + phase — not just the aggregate discovery counters. The initiator lists her one
+    // swap with its live phase; the blind relay that holds no session lists nothing.
+    use crate::mock_radio::MeshHarness;
+    use crate::nimiq::hex::bytes_to_hex;
+    use crate::swap::LadderParams;
+    use crate::swap_intent::FfiSwapPhase;
+    use crate::test_support::{wait_until, SETTLE};
+
+    let (swap_id, alice_id, bob_id, alice_ctx) = participant_fixtures();
+    let mut h = MeshHarness::new();
+    let alice = h.add_participant("alice", &[1], alice_id, LadderParams::default());
+    let relay = h.add_node("relay", &[9]);
+    // Bob (the responder) must exist for the swap to settle; the harness retains him by name.
+    let _bob = h.add_participant("bob", &[2], bob_id, LadderParams::default());
+    h.connect("alice", "relay");
+    h.connect("relay", "bob");
+
+    let (coordinator, propose) =
+        new_initiator_signed(alice_ctx, [42u8; 32], LadderParams::default());
+    alice.start_swap(swap_id, coordinator, propose);
+
+    // Wait for alice's leg to settle, read via the FFI match list (not the internal `swap_phase`).
+    assert!(
+        wait_until(
+            || alice.active_swaps().first().map(|m| m.phase) == Some(FfiSwapPhase::Settled),
+            SETTLE
+        ),
+        "alice never listed her settled swap over FFI"
+    );
+    let matches = alice.active_swaps();
+    assert_eq!(matches.len(), 1, "alice should list exactly her one swap");
+    assert_eq!(
+        matches[0].swap_id,
+        bytes_to_hex(&swap_id),
+        "the listed swap_id must be the hex of the real id"
+    );
+
+    // A blind relay holds no `SwapSession`, so it never reaches a phase → nothing to list.
+    assert!(
+        relay.active_swaps().is_empty(),
+        "a blind relay must list no swaps"
+    );
+
+    h.shutdown();
+}
+
+#[test]
 fn a_blind_relay_carries_a_swap_without_learning_it() {
     // G27(a): the swap runs alice — relay — bob with the relay (a plain non-participant) carrying
     // every packet, yet it never learns the swap. A relay holds no SwapSession, so the participant

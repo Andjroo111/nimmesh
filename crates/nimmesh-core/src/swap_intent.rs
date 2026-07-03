@@ -298,6 +298,62 @@ pub struct FfiIntentMetrics {
     pub readvertised: u64,
 }
 
+/// The swap lifecycle phase, FFI mirror of [`crate::swap::SwapPhase`]. Lives here in the
+/// always-compiled discovery module (not the `bitcoin-leg` `swap_ffi` facade) so the native app can
+/// read a live swap's phase over FFI without the chain-leg feature — e.g. in the active-swap match
+/// list ([`crate::node::MeshNode::active_swaps`]). The `bitcoin-leg` `SwapEngineHandle::phase` reuses
+/// this same enum, so there is a single FFI phase type across the boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum FfiSwapPhase {
+    /// Terms on the table.
+    Proposed,
+    /// Agreed; ladder checked safe.
+    Accepted,
+    /// (Responder) saw the initiator fund.
+    InitiatorFunded,
+    /// This node funded its leg.
+    SelfFunded,
+    /// Both legs funded.
+    BothFunded,
+    /// The secret is out.
+    Revealed,
+    /// This node's claim settled (terminal success).
+    Settled,
+    /// Cancelled before funding (terminal).
+    Aborted,
+    /// Refunded via timeout (terminal).
+    Refunded,
+}
+
+impl From<crate::swap::SwapPhase> for FfiSwapPhase {
+    fn from(p: crate::swap::SwapPhase) -> Self {
+        use crate::swap::SwapPhase;
+        match p {
+            SwapPhase::Proposed => FfiSwapPhase::Proposed,
+            SwapPhase::Accepted => FfiSwapPhase::Accepted,
+            SwapPhase::InitiatorFunded => FfiSwapPhase::InitiatorFunded,
+            SwapPhase::SelfFunded => FfiSwapPhase::SelfFunded,
+            SwapPhase::BothFunded => FfiSwapPhase::BothFunded,
+            SwapPhase::Revealed => FfiSwapPhase::Revealed,
+            SwapPhase::Settled => FfiSwapPhase::Settled,
+            SwapPhase::Aborted => FfiSwapPhase::Aborted,
+            SwapPhase::Refunded => FfiSwapPhase::Refunded,
+        }
+    }
+}
+
+/// One live swap this node participates in, as an FFI record: its `swap_id` (16-byte id, lowercase
+/// hex) and current [`FfiSwapPhase`]. The app reads a `Vec` of these via
+/// [`crate::node::MeshNode::active_swaps`] to render its in-flight swaps, without reaching into the
+/// worker-thread-local session.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct FfiSwapMatch {
+    /// The 16-byte swap id, lowercase hex.
+    pub swap_id: String,
+    /// This node's current phase for the swap.
+    pub phase: FfiSwapPhase,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

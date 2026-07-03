@@ -2,7 +2,31 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
-<<<<<<< HEAD
+## [0.48.0] — 2026-07-02
+
+### App integration — active-swap match list over UniFFI (G9 slice 2, #80)
+
+The native app can now **see its in-flight swaps** across the FFI boundary, not just the aggregate
+discovery counters (slice 1).
+
+- **`MeshNode::active_swaps() -> Vec<FfiSwapMatch>`** (`#[uniffi::export]`) — one `FfiSwapMatch`
+  (`swap_id` in lowercase hex + current `FfiSwapPhase`) per swap this node participates in, sorted by
+  id for a stable order. Reads the observable phase mirror (`ctx.swaps`), so it is read-only and
+  non-blocking; a plain relay that holds no `SwapSession` returns an empty list.
+- **`FfiSwapPhase` is now a single, always-compiled FFI type.** It moved out of the `bitcoin-leg`
+  `swap_ffi` facade into the always-compiled `swap_intent` module (beside slice 1's
+  `FfiIntentMetrics`), so the discovery-only app build can read a swap's phase without the chain-leg
+  feature. The `bitcoin-leg` `SwapEngineHandle::phase` reuses the same enum — no duplicate mirror, and
+  `SwapPhase` (`swap.rs`) stays a pure domain type with no FFI derive.
+- **`FfiSwapMatch`** (`uniffi::Record`) — the new match record, also in `swap_intent`.
+- **Bindings regenerated** (Swift + Kotlin) — `activeSwaps()`, the `FfiSwapMatch` record, and the
+  relocated `FfiSwapPhase` appear in both and compile. (Generated bindings are git-ignored artifacts.)
+- **Tests:** a settled initiator lists exactly her one swap with `swap_id` = hex and phase `Settled`
+  over FFI; a blind relay that holds no session lists none.
+
+Remaining G9 slice (follow-up): the **advertise/stop-advert** write API needs a production
+participant/session path (all `new_participant*` are `#[cfg(test)]`), co-developed with G10/G11.
+
 ## [0.47.1] — 2026-07-02
 
 ### Changed — real coin logos in the swap pair (Andjroo)
@@ -10,6 +34,7 @@ All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entr
 The lettered placeholder circles are gone: NIM is its gold hexagon, and BTC/USDC are the
 wallet's official coin SVGs (verbatim `BitcoinIcon`/`UsdcIcon`, canonical brand colors via
 currentColor). The receive coin switches with the asset toggle.
+
 ## [0.47.0] — 2026-07-02
 
 ### App integration — discovery metrics over UniFFI (G9 slice 1, #80)

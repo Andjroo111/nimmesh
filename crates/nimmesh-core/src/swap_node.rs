@@ -747,6 +747,23 @@ fn readvertise_intent(ctx: &WorkerCtx, st: &mut WorkerState, head: u64) {
     }
 }
 
+/// The live swaps this node participates in, as FFI [`crate::swap_intent::FfiSwapMatch`] records
+/// (`swap_id` hex + phase), sorted by id. Reads the observable phase mirror (kept current by
+/// [`sync_swap_phases`]) so the app lists in-flight swaps without touching the worker session.
+pub(crate) fn active_swaps(ctx: &WorkerCtx) -> Vec<crate::swap_intent::FfiSwapMatch> {
+    use crate::swap_intent::FfiSwapMatch;
+    let map = ctx.swaps.lock().unwrap();
+    let mut out: Vec<FfiSwapMatch> = map
+        .iter()
+        .map(|(id, phase)| FfiSwapMatch {
+            swap_id: crate::nimiq::hex::bytes_to_hex(id),
+            phase: (*phase).into(),
+        })
+        .collect();
+    out.sort_by(|a, b| a.swap_id.cmp(&b.swap_id));
+    out
+}
+
 /// This node's current phase for a swap it participates in (test/observability hook).
 #[cfg(test)]
 pub(crate) fn swap_phase(

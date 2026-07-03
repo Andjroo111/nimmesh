@@ -17,11 +17,12 @@ use bitcoin::{Address as BtcAddress, Network, Txid};
 
 use crate::btc::{BtcEnclaveKey, FundedHtlc};
 use crate::nimiq::signer::EnclaveKey;
-use crate::swap::{LadderParams, SwapPhase, SwapRole, SwapTerms};
+use crate::swap::{LadderParams, SwapRole, SwapTerms};
 use crate::swap_btc_leg::BtcSwapLeg;
 use crate::swap_builder::NimiqLeg;
 use crate::swap_engine::{EngineError, SwapConfig, SwapEffect, SwapEngine};
 use crate::swap_funding_verify::FundingObservation;
+use crate::swap_intent::FfiSwapPhase;
 use crate::swap_wire::SwapLegId;
 
 /// The BTC network a swap runs on. Mainnet is intentionally absent (gated).
@@ -74,45 +75,6 @@ impl From<SwapLegId> for FfiLeg {
         match l {
             SwapLegId::Nim => FfiLeg::Nim,
             SwapLegId::Counterparty => FfiLeg::Counterparty,
-        }
-    }
-}
-
-/// The swap lifecycle phase, FFI mirror of [`SwapPhase`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
-pub enum FfiSwapPhase {
-    /// Terms on the table.
-    Proposed,
-    /// Agreed; ladder checked safe.
-    Accepted,
-    /// (Responder) saw the initiator fund.
-    InitiatorFunded,
-    /// This node funded its leg.
-    SelfFunded,
-    /// Both legs funded.
-    BothFunded,
-    /// The secret is out.
-    Revealed,
-    /// This node's claim settled (terminal success).
-    Settled,
-    /// Cancelled before funding (terminal).
-    Aborted,
-    /// Refunded via timeout (terminal).
-    Refunded,
-}
-
-impl From<SwapPhase> for FfiSwapPhase {
-    fn from(p: SwapPhase) -> Self {
-        match p {
-            SwapPhase::Proposed => FfiSwapPhase::Proposed,
-            SwapPhase::Accepted => FfiSwapPhase::Accepted,
-            SwapPhase::InitiatorFunded => FfiSwapPhase::InitiatorFunded,
-            SwapPhase::SelfFunded => FfiSwapPhase::SelfFunded,
-            SwapPhase::BothFunded => FfiSwapPhase::BothFunded,
-            SwapPhase::Revealed => FfiSwapPhase::Revealed,
-            SwapPhase::Settled => FfiSwapPhase::Settled,
-            SwapPhase::Aborted => FfiSwapPhase::Aborted,
-            SwapPhase::Refunded => FfiSwapPhase::Refunded,
         }
     }
 }
