@@ -2,6 +2,15 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.48.5] — 2026-07-02
+
+### Changed — the real loading animation (Andjroo's hub capture)
+
+The launch splash now IS the hub's loading page: the official Nimiq hexagon
+loading-spinner (the pixel-verified registry component — two-tone stroke, the 4s dash
+animation, navy via currentColor) centered on the light page with the nimmesh logo
+top-left, replacing the static gold hexagon.
+
 ## [0.48.4] — 2026-07-02
 
 ### Changed — the scanner, wallet-exact (Andjroo's captures)
