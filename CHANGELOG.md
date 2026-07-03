@@ -2,6 +2,23 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.49.10] — 2026-07-03
+
+### Changed — the swap sheet IS the wallet's "Swap Currencies" modal (Andjroo's captures)
+
+Matched to Andjroo's live wallet captures of the real Swap Currencies modal:
+
+- Title "Swap Currencies"; the pair as the wallet's dropdown pills (NIM ⇄ BTC/USDC — the
+  right pill toggles the asset); the fee line underneath ("0.00 $ fee · <your balance>").
+- The balance bar is now ADDRESS-COLORED like the wallet (the left segment takes your
+  identicon's color, read from the rendered identicon; navy fallback) and the connector
+  curves between the labels and the bar ends are back (verbatim upstream paths).
+- The wallet's dual amount boxes: −NIM (editable, auto-width) with fiat under, +BTC/USDC
+  in the green box with green fiat under — the incoming amount is INDICATIVE from live
+  CoinGecko prices (NIM+BTC+USDC fetched together); the "rate agreed with your partner"
+  note and the simulation label stay honest.
+- CONFIRM (uppercase, the wallet's) replaces "Find a swap partner"; localized ×5.
+
 ## [0.49.9] — 2026-07-03
 
 ### Changed — the swap sheet gets the wallet's SwapBalanceBar (Andjroo)
