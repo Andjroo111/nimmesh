@@ -2,6 +2,28 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+<<<<<<< HEAD
+## [0.46.1] — 2026-07-02
+
+### Added — the mesh HTLC swap UI, slice 1 (Andjroo's new goal)
+
+The user-facing face of the merged mesh-swap engine: a **Swap** entry in the action bar
+(the wallet's official SwapIcon, round button between Receive and Send) opening a swap
+sheet built on the wallet's swap anatomy plus the mesh-native step:
+
+- **Setup**: NIM -> BTC or USDC pair (asset toggle), the real amount-input treatment, the
+  honest peer-to-peer rate note ("agreed directly with your swap partner").
+- **Discovery** — the NEW, mesh-native beat: "Finding a swap partner on the mesh", your
+  intent relayed phone to phone (what Fastspot-based wallets don't have).
+- **The HTLC phase timeline**, mirroring the real SwapEngine state machine: proposal sent ->
+  partner accepted -> NIM HTLC funded -> partner HTLC funded (BTC/USDC) -> secret
+  revealed -> settled, per-leg tags, green check dots.
+- Clearly labeled **"Simulation: no real funds move yet"** — slice 2 wires the
+  already-exposed SwapEngine FFI through the Swift bridge; slice 3 adds real signers
+  (money-path gated).
+
+All five languages; Playwright end-to-end; `nq lint` 0 errors.
+=======
 ## [0.46.0] — 2026-07-02
 
 ### Test harness — deterministic mesh-drain re-enables the discovery-stress tests (#84)
@@ -31,6 +53,7 @@ quiescence** (ADR-0005) — no timing in the convergence path.
 - **Zero production-behaviour change.** The fences are `cfg(test)`; the only always-compiled addition
   is the ether's `enqueued` counter (one relaxed `fetch_add` per transmit on a test/example substrate
   the real BLE path never uses). Removes `pump_until`/`CONVERGE`.
+>>>>>>> origin/main
 
 ## [0.45.0] — 2026-07-02
 
@@ -158,6 +181,28 @@ authentication gap the security review flagged).
   meaningful in the one-sided discovery model — a responder has no committed expectation of the
   initiator's identity — so the self-certifying signature (pubkey → `nim_address` + signed terms) is
   the delivered guarantee. Funding authenticity remains G1's on-chain check.
+
+## [0.42.0] — 2026-07-02
+
+### Added — the mesh HTLC swap UI, slice 1 (Andjroo's new goal)
+
+The user-facing face of the merged mesh-swap engine (G-track): a **Swap** entry in the
+action bar (the wallet's official SwapIcon, round button between Receive and Send) opening
+a swap sheet built on the wallet's swap anatomy plus the mesh-native step:
+
+- **Setup**: NIM -> BTC or USDC pair (asset toggle), the real amount-input treatment, the
+  honest peer-to-peer rate note ("agreed directly with your swap partner").
+- **Discovery** — the NEW, mesh-native beat: "Finding a swap partner on the mesh", your
+  intent relayed phone to phone (this is what Fastspot-based wallets don't have).
+- **The HTLC phase timeline**, mirroring the real SwapEngine state machine: proposal sent ->
+  partner accepted -> NIM HTLC funded -> partner HTLC funded (BTC/USDC) -> secret
+  revealed -> settled, with per-leg tags and green check dots.
+- Clearly labeled **"Simulation: no real funds move yet"** on every screen — slice 2 wires
+  the already-exposed SwapEngine FFI (initiator/responder, fund/observe/reveal/refund)
+  through the Swift bridge; slice 3 adds the real signers (money-path gated).
+
+All five languages; Playwright end-to-end (pair toggle, amount, search beat, full timeline
+to settled); `nq lint` 0 errors.
 
 ## [0.41.2] — 2026-07-02
 

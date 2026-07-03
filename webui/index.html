@@ -180,6 +180,12 @@
     box-shadow: 0 8px 24px rgba(5,130,202,.25); }
   .ab-receive:active, .ab-send:active { transform: translateY(1px); }
   .ab-send:hover { transform: translateY(-2px); box-shadow: 0 14px 34px rgba(5,130,202,.32); }
+  /* The wallet's round swap button (official SwapIcon) between Receive and Send. */
+  .ab-swap { flex: 0 0 auto; width: 50px; height: 50px; border-radius: 50%; border: 0; cursor: pointer;
+    background: #fff; box-shadow: inset 0 0 0 1.5px rgba(31,35,72,.12);
+    color: rgba(31,35,72,.6); display: inline-flex; align-items: center; justify-content: center; }
+  .ab-swap:active { transform: translateY(1px); }
+  .ab-swap svg { width: 15px; height: 20px; }
   .ab-scan { flex: 0 0 auto; width: 50px; height: 50px; border-radius: 50%; background: transparent;
     color: rgba(31,35,72,.5); display: inline-flex; align-items: center; justify-content: center; }
   .actionbar svg { width: 18px; height: 18px; }
@@ -294,6 +300,49 @@
   .send-status[hidden] { display: none; }
   .send-status.ok { color: #21bca5; }
   .send-status.err { color: #fc8702; }
+
+  /* ---- Swap sheet (slice 1): pair -> amount -> mesh discovery -> HTLC phase timeline ---- */
+  .swap-pair { display: flex; align-items: center; justify-content: center; gap: 14px; margin: 18px 24px 0; }
+  .swap-side { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 6px;
+    font-weight: 700; font-size: 15px; color: #1f2348; }
+  .swap-side .coin { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center;
+    justify-content: center; color: #fff; font-weight: 800; font-size: 13px; }
+  .swap-side .coin.nim { background-image: var(--nimiq-gold-bg, radial-gradient(100% 100% at bottom right, #EC991C, #E9B213)); }
+  .swap-side .coin.btc { background: #F7931A; }
+  .swap-side .coin.usdc { background: #2775CA; }
+  .swap-arrow { color: rgba(31,35,72,.4); }
+  .swap-arrow svg { width: 18px; height: 24px; }
+  .swap-flip { border: 0; background: none; cursor: pointer; padding: 8px; color: rgba(31,35,72,.4); }
+  /* which asset you RECEIVE: segmented pill like the app's own toggles */
+  .swap-asset-toggle { display: flex; gap: 4px; margin: 16px 24px 0; padding: 3px; border-radius: 500px;
+    background: rgba(31,35,72,.06); }
+  .swap-asset-toggle button { flex: 1 1 0; height: 32px; border: 0; cursor: pointer; border-radius: 500px;
+    background: transparent; font-family: inherit; font-weight: 700; font-size: 12.5px; color: rgba(31,35,72,.55); }
+  .swap-asset-toggle button.active { background: #fff; color: #1f2348; box-shadow: 0 2px 6px rgba(0,0,0,.08); }
+  .swap-rate { text-align: center; font-size: 13px; font-weight: 600; color: rgba(31,35,72,.5); margin: 14px 24px 0; }
+  /* mesh discovery state: the mesh glyph + honest copy (this is the NEW, mesh-native part) */
+  .swap-discovery { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 30px 28px; text-align: center; }
+  .swap-discovery[hidden], .swap-phases[hidden], #swap-setup[hidden], #swap-progress[hidden], #swap-done[hidden] { display: none !important; }
+  .swap-discovery svg { width: 44px; height: 44px; color: var(--nimiq-green, #21bca5); }
+  .swap-discovery h3 { margin: 0; font-size: 18px; font-weight: 700; color: #1f2348; }
+  .swap-discovery p { margin: 0; font-size: 14.5px; line-height: 1.45; color: rgba(31,35,72,.55); }
+  .swap-sim-note { margin: 6px 24px 0; text-align: center; font-size: 12px; font-weight: 700;
+    color: var(--nimiq-orange, #fc8702); }
+  /* the HTLC phase timeline */
+  .swap-phases { margin: 8px 24px 0; display: flex; flex-direction: column; }
+  .swap-phase { display: flex; align-items: center; gap: 12px; padding: 11px 4px;
+    border-top: 1.5px solid rgba(31,35,72,.06); font-size: 14.5px; font-weight: 600; color: rgba(31,35,72,.45); }
+  .swap-phase:first-child { border-top: 0; }
+  .swap-phase .ph-dot { width: 22px; height: 22px; border-radius: 50%; flex: 0 0 auto;
+    box-shadow: inset 0 0 0 2px rgba(31,35,72,.15); display: flex; align-items: center; justify-content: center; color: #fff; }
+  .swap-phase.done { color: #1f2348; }
+  .swap-phase.done .ph-dot { box-shadow: none; background-image: var(--nimiq-green-bg, radial-gradient(100% 100% at bottom right, #41A38E, #21BCA5)); }
+  .swap-phase.done .ph-dot svg { width: 11px; height: 11px; }
+  .swap-phase.active { color: #1f2348; }
+  .swap-phase.active .ph-dot { box-shadow: inset 0 0 0 2px var(--nimiq-light-blue, #0582ca); }
+  .swap-phase .ph-leg { margin-left: auto; font-size: 11.5px; font-weight: 700; letter-spacing: .5px;
+    color: rgba(31,35,72,.35); }
+  .swap-status-line { text-align: center; margin: 14px 24px 0; font-size: 13px; font-weight: 600; color: rgba(31,35,72,.6); }
 
   /* Account sheet: identicon + address + a plain action list (copy / backup / log out). */
   .acct-actions { display: flex; flex-direction: column; margin: 12px 24px 0; }
@@ -578,6 +627,9 @@
     <button class="ab-receive" id="open-receive">
       <svg viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3.5 8.5L8 13l4.5-4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <span data-i18n="bar.receive">Receive</span>
+    </button>
+    <button class="ab-swap" id="open-swap" aria-label="Swap" data-i18n-aria="swap.title">
+      <svg viewBox="0 0 12 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><g stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m4.25 15-3-3 3-3M2.43 11.863h7.071M7.25 1l3 3-3 3M9.07 4.133H1.999"/></g></svg>
     </button>
     <button class="ab-send" id="open-send">
       <svg viewBox="0 0 16 16" fill="none"><path d="M8 13V3M3.5 7.5L8 3l4.5 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -1012,6 +1064,46 @@ Don't share them and keep them safe.</p>
   <div class="cashlink-row"><button class="cashlink-pill" id="cashlink-btn" data-i18n="send.cashlink">Create a Cashlink</button></div>
 </section>
 
+<!-- Swap sheet (slice 1): the wallet's swap anatomy + the mesh-native discovery step.
+     SIM-driven phase timeline until the SwapEngine bridge lands (slice 2). -->
+<section class="sheet" id="swap-sheet" aria-label="Swap">
+  <div class="sheet-header">
+    <button class="s-back sheet-close" aria-label="Back"><svg viewBox="0 0 16 12" fill="none"><path d="M6 1L1 6l5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="2" y1="6" x2="15" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+    <div class="title" data-i18n="swap.title">Swap</div>
+    <button class="s-close sheet-close" aria-label="Close"><svg viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+  </div>
+  <div id="swap-setup">
+    <p class="sheet-sub" data-i18n="swap.sub">Swap NIM with a partner found over the mesh, settled by an atomic HTLC</p>
+    <div class="swap-pair">
+      <div class="swap-side"><span class="coin nim">NIM</span><span data-i18n="swap.yousend">You send</span></div>
+      <span class="swap-arrow"><svg viewBox="0 0 12 16" fill="none"><g stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m4.25 15-3-3 3-3M2.43 11.863h7.071M7.25 1l3 3-3 3M9.07 4.133H1.999"/></g></svg></span>
+      <div class="swap-side"><span class="coin btc" id="swap-recv-coin">BTC</span><span data-i18n="swap.youget">You receive</span></div>
+    </div>
+    <div class="swap-asset-toggle" id="swap-asset-toggle">
+      <button class="active" data-asset="btc">BTC</button>
+      <button data-asset="usdc">USDC</button>
+    </div>
+    <div class="amount-input" id="swap-amount-wrap">
+      <input id="swap-amount" inputmode="decimal" placeholder="0" aria-label="Amount in NIM">
+      <span class="nim">NIM</span>
+    </div>
+    <p class="swap-rate" id="swap-rate" data-i18n="swap.rate">Rate and fees are agreed directly with your swap partner</p>
+    <button class="send-btn" id="swap-start" data-i18n="swap.cta">Find a swap partner</button>
+    <p class="swap-sim-note" data-i18n="swap.simnote">Simulation: no real funds move yet</p>
+  </div>
+  <div id="swap-progress" hidden>
+    <div class="swap-discovery" id="swap-discovery">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="5" cy="18" r="2.4" fill="currentColor"/><circle cx="19" cy="18" r="2.4" fill="currentColor"/><circle cx="12" cy="5" r="2.4" fill="currentColor"/><path d="M6.4 16.3 10.7 6.9M13.3 6.9l4.3 9.4M7.2 18h9.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      <h3 data-i18n="swap.searching">Finding a swap partner on the mesh</h3>
+      <p data-i18n="swap.searching.sub">Your swap intent is relayed phone to phone until a matching partner answers. This can take a moment.</p>
+    </div>
+    <div class="swap-phases" id="swap-phases" hidden></div>
+    <div class="swap-status-line" id="swap-status"></div>
+    <button class="send-btn" id="swap-done" data-i18n="a.done" hidden>Done</button>
+    <p class="swap-sim-note" data-i18n="swap.simnote">Simulation: no real funds move yet</p>
+  </div>
+</section>
+
 <!-- Account sheet: the wallet-pill replacement — your identicon opens YOUR account
      (address / copy / backup / log out), like the real wallet's account menu. -->
 <section class="sheet" id="account-sheet" aria-label="My account">
@@ -1097,6 +1189,13 @@ Don't share them and keep them safe.</p>
       'codes.how': 'Cómo enviártelo', 'codes.how.tip': 'Envíatelo por correo o mándatelo en una app de mensajes. Usa una plataforma DIFERENTE para cada código.',
       'codes.confirm1': '¿Te enviaste el código 1?', 'codes.confirm2': '¿Enviaste el código 2 por un método distinto al del código 1?',
       'codes.yes1': 'Sí, continuar al código 2', 'codes.yes2': 'Sí, todo listo', 'codes.noback': 'No, volver', 'codes.allset': '¿Todo listo?', 'codes.allset.sub': 'Ahora deberías tener ambos códigos, guardados como mensajes en dos plataformas distintas.', 'codes.allset.info': 'Si algún día pierdes este teléfono, puedes restaurar tu cartera introduciendo ambos códigos.',
+      'swap.title': 'Intercambiar', 'swap.sub': 'Intercambia NIM con un socio encontrado en la malla, liquidado con un HTLC atómico',
+      'swap.yousend': 'Envías', 'swap.youget': 'Recibes', 'swap.rate': 'La tasa y las comisiones se acuerdan directamente con tu socio',
+      'swap.cta': 'Buscar un socio', 'swap.simnote': 'Simulación: todavía no se mueven fondos reales',
+      'swap.searching': 'Buscando un socio en la malla', 'swap.searching.sub': 'Tu intención de intercambio se retransmite de teléfono en teléfono hasta que un socio compatible responde. Puede tardar un momento.',
+      'swap.matched': 'Socio encontrado, negociando…', 'swap.settled': 'Intercambio liquidado',
+      'swap.ph.propose': 'Propuesta enviada', 'swap.ph.accept': 'Socio aceptó', 'swap.ph.fundnim': 'HTLC de NIM fondeado',
+      'swap.ph.fundother': 'HTLC del socio fondeado', 'swap.ph.reveal': 'Secreto revelado', 'swap.ph.settled': 'Liquidado',
       'intro.title': '¡No hay recuperación de contraseña!', 'intro.warn': 'Las palabras de recuperación son la ÚNICA forma de restaurar tu cartera si pierdes este teléfono.',
       'intro.b1': 'Mantén tus palabras fuera de línea, no las introduzcas en ningún sitio que no sea nimmesh.', 'intro.b2': 'Crea una copia y guárdala en un lugar seguro: casa de la familia, caja fuerte, etc.', 'intro.b3': 'Cuidado con el agua y el fuego, usa una caja sellada para proteger tus palabras.',
       'intro.cta': 'Mostrar palabras', 'words.paper': 'Escribe estas 24 palabras en papel', 'words.warn': '¡Cualquiera con estas palabras puede acceder a tu cuenta!\nMantenlas a salvo.', 'unlock.title': 'Desbloquea tu respaldo', 'unlock.cta': 'Desbloquear',
@@ -1136,6 +1235,13 @@ Don't share them and keep them safe.</p>
       'codes.how': 'So schickst du ihn dir', 'codes.how.tip': 'Maile ihn dir selbst oder schick ihn dir in einer Chat-App. Nutze für jeden Code eine ANDERE Plattform.',
       'codes.confirm1': 'Hast du dir Code 1 geschickt?', 'codes.confirm2': 'Hast du Code 2 mit einer anderen Methode als Code 1 geschickt?',
       'codes.yes1': 'Ja, weiter zu Code 2', 'codes.yes2': 'Ja, alles erledigt', 'codes.noback': 'Nein, zurück', 'codes.allset': 'Alles eingerichtet?', 'codes.allset.sub': 'Du solltest jetzt beide Codes haben, gespeichert als Nachrichten auf zwei verschiedenen Plattformen.', 'codes.allset.info': 'Falls du dieses Handy je verlierst, kannst du deine Wallet mit beiden Codes wiederherstellen.',
+      'swap.title': 'Tauschen', 'swap.sub': 'Tausche NIM mit einem über das Mesh gefundenen Partner, abgewickelt per atomarem HTLC',
+      'swap.yousend': 'Du sendest', 'swap.youget': 'Du erhältst', 'swap.rate': 'Kurs und Gebühren werden direkt mit deinem Partner vereinbart',
+      'swap.cta': 'Partner finden', 'swap.simnote': 'Simulation: noch bewegen sich keine echten Gelder',
+      'swap.searching': 'Suche einen Tauschpartner im Mesh', 'swap.searching.sub': 'Deine Tauschabsicht wird von Handy zu Handy weitergereicht, bis ein passender Partner antwortet. Das kann einen Moment dauern.',
+      'swap.matched': 'Partner gefunden, verhandle…', 'swap.settled': 'Tausch abgewickelt',
+      'swap.ph.propose': 'Vorschlag gesendet', 'swap.ph.accept': 'Partner hat angenommen', 'swap.ph.fundnim': 'NIM-HTLC finanziert',
+      'swap.ph.fundother': 'Partner-HTLC finanziert', 'swap.ph.reveal': 'Geheimnis enthüllt', 'swap.ph.settled': 'Abgewickelt',
       'intro.title': 'Es gibt keine Passwort-Wiederherstellung!', 'intro.warn': 'Die Wiederherstellungswörter sind der EINZIGE Weg, deine Wallet wiederherzustellen, falls dieses Handy verloren geht.',
       'intro.b1': 'Halte deine Wörter offline, gib sie nirgends ein außer in nimmesh.', 'intro.b2': 'Erstelle eine Kopie und bewahre sie sicher auf: bei der Familie, im Bankschließfach usw.', 'intro.b3': 'Denk an Wasser und Feuer, nutze eine versiegelte Box für deine Wörter.',
       'intro.cta': 'Wörter anzeigen', 'words.paper': 'Schreibe diese 24 Wörter auf Papier', 'words.warn': 'Jeder mit diesen Wörtern hat Zugriff auf dein Konto!\nBewahre sie sicher auf.', 'unlock.title': 'Entsperre dein Backup', 'unlock.cta': 'Entsperren',
@@ -1175,6 +1281,13 @@ Don't share them and keep them safe.</p>
       'codes.how': 'Comment se l’envoyer', 'codes.how.tip': 'Envoie-le-toi par email ou dans une app de messagerie. Utilise une plateforme DIFFÉRENTE pour chaque code.',
       'codes.confirm1': 'T’es-tu envoyé le code 1 ?', 'codes.confirm2': 'As-tu envoyé le code 2 par une méthode différente du code 1 ?',
       'codes.yes1': 'Oui, passer au code 2', 'codes.yes2': 'Oui, tout est fait', 'codes.noback': 'Non, revenir', 'codes.allset': 'Tout est prêt ?', 'codes.allset.sub': 'Tu devrais maintenant avoir les deux codes, enregistrés comme messages sur deux plateformes différentes.', 'codes.allset.info': 'Si tu perds ce téléphone un jour, tu peux restaurer ton portefeuille en saisissant les deux codes.',
+      'swap.title': 'Échanger', 'swap.sub': 'Échange des NIM avec un partenaire trouvé sur le mesh, réglé par un HTLC atomique',
+      'swap.yousend': 'Tu envoies', 'swap.youget': 'Tu reçois', 'swap.rate': 'Le taux et les frais se négocient directement avec ton partenaire',
+      'swap.cta': 'Trouver un partenaire', 'swap.simnote': 'Simulation : aucun fonds réel ne bouge encore',
+      'swap.searching': 'Recherche d’un partenaire sur le mesh', 'swap.searching.sub': 'Ton intention d’échange est relayée de téléphone en téléphone jusqu’à ce qu’un partenaire compatible réponde. Cela peut prendre un moment.',
+      'swap.matched': 'Partenaire trouvé, négociation…', 'swap.settled': 'Échange réglé',
+      'swap.ph.propose': 'Proposition envoyée', 'swap.ph.accept': 'Partenaire a accepté', 'swap.ph.fundnim': 'HTLC NIM financé',
+      'swap.ph.fundother': 'HTLC du partenaire financé', 'swap.ph.reveal': 'Secret révélé', 'swap.ph.settled': 'Réglé',
       'intro.title': 'Il n’y a pas de récupération de mot de passe !', 'intro.warn': 'Les mots de récupération sont le SEUL moyen de restaurer ton portefeuille si tu perds ce téléphone.',
       'intro.b1': 'Garde tes mots hors ligne, ne les saisis nulle part ailleurs que dans nimmesh.', 'intro.b2': 'Fais une copie et range-la en lieu sûr : maison familiale, coffre bancaire, etc.', 'intro.b3': 'Attention à l’eau et au feu, utilise une boîte scellée pour protéger tes mots.',
       'intro.cta': 'Afficher les mots', 'words.paper': 'Écris ces 24 mots sur papier', 'words.warn': 'Quiconque possède ces mots peut accéder à ton compte !\nGarde-les en sécurité.', 'unlock.title': 'Déverrouille ta sauvegarde', 'unlock.cta': 'Déverrouiller',
@@ -1214,6 +1327,13 @@ Don't share them and keep them safe.</p>
       'codes.how': 'Como enviar para você', 'codes.how.tip': 'Mande por e-mail para si ou envie em um app de mensagens. Use uma plataforma DIFERENTE para cada código.',
       'codes.confirm1': 'Você enviou o código 1 para si?', 'codes.confirm2': 'Você enviou o código 2 por um método diferente do código 1?',
       'codes.yes1': 'Sim, continuar para o código 2', 'codes.yes2': 'Sim, tudo pronto', 'codes.noback': 'Não, voltar', 'codes.allset': 'Tudo pronto?', 'codes.allset.sub': 'Agora você deve ter os dois códigos, guardados como mensagens em duas plataformas separadas.', 'codes.allset.info': 'Se você perder este telefone, pode restaurar sua carteira inserindo os dois códigos.',
+      'swap.title': 'Trocar', 'swap.sub': 'Troque NIM com um parceiro encontrado na mesh, liquidado por um HTLC atômico',
+      'swap.yousend': 'Você envia', 'swap.youget': 'Você recebe', 'swap.rate': 'A taxa e as tarifas são combinadas diretamente com seu parceiro',
+      'swap.cta': 'Encontrar um parceiro', 'swap.simnote': 'Simulação: nenhum fundo real se move ainda',
+      'swap.searching': 'Procurando um parceiro na mesh', 'swap.searching.sub': 'Sua intenção de troca é retransmitida de telefone em telefone até um parceiro compatível responder. Pode levar um momento.',
+      'swap.matched': 'Parceiro encontrado, negociando…', 'swap.settled': 'Troca liquidada',
+      'swap.ph.propose': 'Proposta enviada', 'swap.ph.accept': 'Parceiro aceitou', 'swap.ph.fundnim': 'HTLC de NIM financiado',
+      'swap.ph.fundother': 'HTLC do parceiro financiado', 'swap.ph.reveal': 'Segredo revelado', 'swap.ph.settled': 'Liquidado',
       'intro.title': 'Não existe recuperação de senha!', 'intro.warn': 'As palavras de recuperação são a ÚNICA forma de restaurar sua carteira se você perder este telefone.',
       'intro.b1': 'Mantenha suas palavras offline, não as insira em lugar nenhum além do nimmesh.', 'intro.b2': 'Faça uma cópia e guarde em um lugar seguro: casa da família, cofre de banco etc.', 'intro.b3': 'Cuidado com água e fogo, use uma caixa lacrada para proteger suas palavras.',
       'intro.cta': 'Mostrar palavras', 'words.paper': 'Escreva estas 24 palavras no papel', 'words.warn': 'Qualquer pessoa com estas palavras pode acessar sua conta!\nGuarde-as em segurança.', 'unlock.title': 'Desbloqueie seu backup', 'unlock.cta': 'Desbloquear',
@@ -1239,6 +1359,9 @@ Don't share them and keep them safe.</p>
     'val.q': 'What is the {n} word?',
     'codes.copy': 'Copy code',
     'codes.how.tip': 'Email it to yourself, or message it to yourself in a chat app. Use a DIFFERENT platform for each code.',
+    'swap.matched': 'Partner found, negotiating…', 'swap.settled': 'Swap settled',
+    'swap.ph.propose': 'Proposal sent', 'swap.ph.accept': 'Partner accepted', 'swap.ph.fundnim': 'NIM HTLC funded',
+    'swap.ph.fundother': 'Partner HTLC funded', 'swap.ph.reveal': 'Secret revealed', 'swap.ph.settled': 'Settled',
   };
   let LANG = 'en';
   function T(key) { return (I18N[LANG] && I18N[LANG][key]) || I18N.en[key] || key; }
@@ -1282,6 +1405,7 @@ Don't share them and keep them safe.</p>
   const sheets = {
     receive: document.getElementById('receive-sheet'), send: document.getElementById('send-sheet'),
     account: document.getElementById('account-sheet'), lang: document.getElementById('lang-sheet'),
+    swap: document.getElementById('swap-sheet'),
   };
   const open = (k) => { backdrop.classList.add('open'); sheets[k].classList.add('open'); };
   const close = () => { backdrop.classList.remove('open'); Object.values(sheets).forEach(s => s.classList.remove('open')); };
@@ -1358,6 +1482,75 @@ Don't share them and keep them safe.</p>
     c.value = c.value.toUpperCase();
     if (c.value.length >= 4 && i < cells.length - 1) cells[i + 1].focus();
   }));
+
+  // ---- Swap (slice 1): the wallet's swap anatomy + the mesh discovery step. The phase
+  // timeline mirrors the REAL SwapEngine state machine (Proposed -> Accepted -> NIM HTLC
+  // funded -> BTC HTLC funded -> secret revealed -> settled) but is SIM-driven until the
+  // SwapEngine FFI bridge lands (slice 2). Honest labeling on every screen.
+  const SWAP_PHASES = [
+    { key: 'swap.ph.propose', leg: 'MESH' },
+    { key: 'swap.ph.accept', leg: 'MESH' },
+    { key: 'swap.ph.fundnim', leg: 'NIM' },
+    { key: 'swap.ph.fundother', leg: '' },       // leg label set per selected asset
+    { key: 'swap.ph.reveal', leg: '' },
+    { key: 'swap.ph.settled', leg: '' },
+  ];
+  let swapAsset = 'btc';
+  let swapTimer = null;
+  function renderSwapPhases(step) {
+    const box = document.getElementById('swap-phases');
+    const CHECK = '<svg viewBox="0 0 16 16" fill="none"><path d="M2.5 8.5L6 12l7.5-8" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    box.innerHTML = SWAP_PHASES.map((ph, i) => {
+      const cls = i < step ? 'done' : (i === step ? 'active' : '');
+      const leg = ph.leg || (i === 3 ? swapAsset.toUpperCase() : (i >= 4 ? 'HTLC' : ''));
+      return `<div class="swap-phase ${cls}"><span class="ph-dot">${i < step ? CHECK : ''}</span>` +
+        `<span>${T(ph.key)}</span><span class="ph-leg">${leg}</span></div>`;
+    }).join('');
+  }
+  function resetSwapSheet() {
+    if (swapTimer) { clearTimeout(swapTimer); swapTimer = null; }
+    document.getElementById('swap-setup').hidden = false;
+    document.getElementById('swap-progress').hidden = true;
+    document.getElementById('swap-discovery').hidden = false;
+    document.getElementById('swap-phases').hidden = true;
+    document.getElementById('swap-done').hidden = true;
+    document.getElementById('swap-status').textContent = '';
+  }
+  document.getElementById('open-swap').addEventListener('click', () => { resetSwapSheet(); open('swap'); });
+  document.querySelectorAll('#swap-asset-toggle button').forEach((b) => b.addEventListener('click', () => {
+    swapAsset = b.dataset.asset;
+    document.querySelectorAll('#swap-asset-toggle button').forEach((x) => x.classList.toggle('active', x === b));
+    const coin = document.getElementById('swap-recv-coin');
+    coin.textContent = swapAsset.toUpperCase();
+    coin.className = 'coin ' + swapAsset;
+  }));
+  wireAmountInput('swap-amount-wrap');
+  document.getElementById('swap-start').addEventListener('click', () => {
+    const nim = parseFloat(document.getElementById('swap-amount').value);
+    if (!(nim > 0)) { alert(T('send.needamount')); return; }
+    document.getElementById('swap-setup').hidden = true;
+    document.getElementById('swap-progress').hidden = false;
+    // SIM: discovery finds a partner after a moment, then the phases advance on the same
+    // rhythm the real engine reports them (slice 2 swaps this driver for SwapEngine state).
+    let step = -1;
+    const tick = () => {
+      step += 1;
+      if (step === 0) {
+        document.getElementById('swap-discovery').hidden = true;
+        document.getElementById('swap-phases').hidden = false;
+        document.getElementById('swap-status').textContent = T('swap.matched');
+      }
+      renderSwapPhases(step);
+      if (step >= SWAP_PHASES.length) {
+        document.getElementById('swap-status').textContent = T('swap.settled');
+        document.getElementById('swap-done').hidden = false;
+        return;
+      }
+      swapTimer = setTimeout(tick, step === 0 ? 900 : 1400);
+    };
+    swapTimer = setTimeout(tick, 2600);   // the mesh-search beat
+  });
+  document.getElementById('swap-done').addEventListener('click', () => { close(); resetSwapSheet(); });
 
   // The amount-input component's behavior: grey at rest -> navy with a value -> light-blue
   // while focused, and the input's width tracks its content (the upstream width-finder idea,
