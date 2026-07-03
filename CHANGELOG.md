@@ -2,6 +2,21 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.49.9] — 2026-07-03
+
+### Changed — the swap sheet gets the wallet's SwapBalanceBar (Andjroo)
+
+The two-circle "You send / You receive" pair is replaced with the REAL wallet's
+swap-balance-bar (the registry's pixel-verified port of the wallet's signature swap
+element), fully live:
+
+- Your identicon + wallet name + live NIM balance on the left; Bitcoin or USD Coin on the
+  right (the asset toggle re-skins the bar with the component's native colors).
+- DRAG the white handle to choose how much NIM to swap — the amount field follows; type
+  an amount and the bar follows. The incoming side renders as the wallet's diagonal
+  hatch; the percent scale updates live.
+- The connector curves are omitted honestly (upstream precomputes them per split) rather
+  than approximated.
 ## [0.49.8] — 2026-07-03
 
 ### Added — the gateway-backed USDC funding verifier (#72 tail, slice 1 — offline half)

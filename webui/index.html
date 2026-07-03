@@ -18,6 +18,7 @@
 <link rel="stylesheet" href="address-display/address-display.css">
 <link rel="stylesheet" href="copyable/copyable.css">
 <link rel="stylesheet" href="loading-spinner/loading-spinner.css">
+<link rel="stylesheet" href="swap-balance-bar/swap-balance-bar.css">
 <style>
   /* legacy @nimiq/style sets html{font-size:8px}; custom CSS in px. */
   body { font-family: 'Mulish','Muli',system-ui,sans-serif !important; background: #f8f8f8; margin: 0; color: #1f2348; }
@@ -484,6 +485,13 @@
   .swap-arrow svg { width: 18px; height: 24px; }
   .swap-flip { border: 0; background: none; cursor: pointer; padding: 8px; color: rgba(31,35,72,.4); }
   /* which asset you RECEIVE: segmented pill like the app's own toggles */
+  /* the SwapBalanceBar inside the sheet (component sizes via container; 8px-root rem page) */
+  #swap-bar { margin: 20px 24px 0; }
+  #swap-bar .balance-bar-header .identicon img { width: 100%; height: 100%; }
+  #swap-bar-right .coin-btc, #swap-bar-right .coin-usdc { width: 42px; height: 42px; }
+  #swap-bar-right[data-asset="btc"] .coin-usdc { display: none; }
+  #swap-bar-right[data-asset="usdc"] .coin-btc { display: none; }
+  #swap-bar .balance-bar { touch-action: none; }
   .swap-asset-toggle { display: flex; gap: 4px; margin: 16px 24px 0; padding: 3px; border-radius: 500px;
     background: rgba(31,35,72,.06); }
   .swap-asset-toggle button { flex: 1 1 0; height: 32px; border: 0; cursor: pointer; border-radius: 500px;
@@ -1370,10 +1378,35 @@ Don't share them and keep them safe.</p>
   </div>
   <div id="swap-setup">
     <p class="sheet-sub" data-i18n="swap.sub">Swap NIM with a partner found over the mesh, settled by an atomic HTLC</p>
-    <div class="swap-pair">
-      <div class="swap-side"><span class="coin nim"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#swap-nim-grad)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="swap-nim-grad" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg></span><span data-i18n="swap.yousend">You send</span></div>
-      <span class="swap-arrow"><svg viewBox="0 0 12 16" fill="none"><g stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m4.25 15-3-3 3-3M2.43 11.863h7.071M7.25 1l3 3-3 3M9.07 4.133H1.999"/></g></svg></span>
-      <div class="swap-side"><span class="coin" id="swap-recv-coin" data-asset="btc"><svg class="coin-btc" viewBox="0 0 42 42" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle fill="#fff" cx="21" cy="21" r="18"/><path fill-rule="evenodd" clip-rule="evenodd" d="M15.918 41.371c11.253 2.805 22.649-4.04 25.454-15.291C44.176 14.83 37.33 3.433 26.077.628 14.828-2.176 3.433 4.67.629 15.922c-2.806 11.25 4.041 22.645 15.289 25.45zm10.31-29.01c3.041.997 5.265 2.49 4.828 5.27-.316 2.033-1.501 3.018-3.075 3.364 2.161 1.07 3.26 2.712 2.213 5.557-1.3 3.533-4.388 3.831-8.495 3.092l-.998 3.8-2.407-.571.983-3.75a96.07 96.07 0 01-1.919-.474l-.986 3.768-2.406-.571.997-3.807-.652-.161c-.351-.087-.706-.175-1.065-.26l-3.135-.744 1.196-2.623s1.775.448 1.75.415c.682.16.985-.262 1.104-.544l1.575-6.007.255.06a2.197 2.197 0 00-.25-.076l1.123-4.288c.03-.487-.147-1.101-1.122-1.333.038-.024-1.75-.413-1.75-.413l.641-2.448 3.322.79-.003.011c.5.118 1.014.23 1.538.344L20.477 7l2.407.571-.967 3.69c.644.137 1.288.281 1.93.431l.96-3.664 2.408.57-.986 3.764zm-7.622 13.646c1.964.494 6.264 1.575 6.947-1.037.7-2.667-3.463-3.556-5.496-3.991-.229-.049-.43-.092-.594-.13l-1.323 5.043c.134.031.291.07.466.115zm1.857-7.369c1.638.416 5.212 1.324 5.835-1.048.636-2.428-2.838-3.159-4.535-3.516-.19-.04-.359-.076-.496-.108l-1.2 4.574c.114.027.247.06.396.098z"/></svg><svg class="coin-usdc" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 2000" aria-hidden="true"><path d="M1000 2000c554 0 1000-446 1000-1000S1554 0 1000 0 0 446 0 1000s446 1000 1000 1000z" fill="currentColor"/><path d="M1275 1158c0-146-87-196-262-216-125-17-150-50-150-109s41-96 125-96c75 0 116 25 137 88 4 12 17 21 29 21h67c17 0 29-13 29-29v-5c-17-91-92-162-187-170V542c0-17-13-30-34-34h-62c-17 0-29 13-34 34v95c-125 17-204 101-204 205 0 137 84 191 259 212 116 21 154 46 154 113s-59 112-138 112c-108 0-146-46-158-108-4-17-17-25-29-25h-71c-17 0-29 12-29 29v4c16 104 83 179 221 200v100c0 17 12 29 33 34h62c17 0 30-13 34-34v-100c125-21 208-108 208-221z" fill="#fff"/><path d="M788 1596a620 620 0 0 1-371-800 616 616 0 0 1 371-371c16-8 25-21 25-42v-58c0-17-9-29-25-33-5 0-13 0-17 4a749 749 0 0 0 0 1429c17 8 33 0 37-17 5-4 5-8 5-16v-59c0-12-13-29-25-37zm441-1300c-16-9-33 0-37 16-4 5-4 9-4 17v58c0 17 12 34 25 42a620 620 0 0 1 370 800 616 616 0 0 1-371 371c-16 8-24 21-24 42v58c0 17 8 29 25 33 4 0 12 0 16-4a749 749 0 0 0 488-942 756 756 0 0 0-488-491z" fill="#fff"/></svg></span><span data-i18n="swap.youget">You receive</span></div>
+    <!-- The wallet's SwapBalanceBar (registry, pixel-verified): drag the handle to pick
+         how much NIM to swap; the hatched side is the incoming asset. Connector curves are
+         upstream-precomputed per split, so they are omitted rather than approximated. -->
+    <div class="swap-balance-bar flex-column" id="swap-bar">
+      <div class="balance-bar-header flex-row">
+        <button class="reset left nimiq currency single" type="button">
+          <div class="identicon-stack">
+            <div class="identicon primary" data-wallet data-address="NQ30 AM32 NHXL 29F7 XUY0 HR3R 7XHF EF4L LYBS"><img src='data:image/svg+xml,<svg width="64" height="64" viewBox="0 -4 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path opacity=".1" d="M62.3 25.4L49.2 2.6A5.3 5.3 0 0 0 44.6 0H18.4c-1.9 0-3.6 1-4.6 2.6L.7 25.4c-1 1.6-1 3.6 0 5.2l13.1 22.8c1 1.6 2.7 2.6 4.6 2.6h26.2c1.9 0 3.6-1 4.6-2.6l13-22.8c1-1.6 1-3.6.1-5.2z" fill="url(%23identicon_radial)"/><defs><radialGradient id="identicon_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(-63.0033 0 0 -56 63 56)"><stop stop-color="%23260133"/><stop offset="1" stop-color="%231F2348"/></radialGradient></defs></svg>' alt="Nimiq identicon"></div>
+          </div>
+          <label data-wallet-label>Mesh Wallet</label>
+          <span class="amount" id="swap-bar-nim">0 <span class="currency nim">NIM</span></span>
+        </button>
+        <div class="currency right bitcoin" id="swap-bar-right" data-asset="btc">
+          <label id="swap-bar-right-label">Bitcoin</label>
+          <span class="amount">0.00 <span class="currency btc" id="swap-bar-right-cur">BTC</span></span>
+          <svg class="coin-btc" width="42" height="42" viewBox="0 0 42 42" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle fill="#fff" cx="21" cy="21" r="18"/><path fill-rule="evenodd" clip-rule="evenodd" d="M15.918 41.371c11.253 2.805 22.649-4.04 25.454-15.291C44.176 14.83 37.33 3.433 26.077.628 14.828-2.176 3.433 4.67.629 15.922c-2.806 11.25 4.041 22.645 15.289 25.45zm10.31-29.01c3.041.997 5.265 2.49 4.828 5.27-.316 2.033-1.501 3.018-3.075 3.364 2.161 1.07 3.26 2.712 2.213 5.557-1.3 3.533-4.388 3.831-8.495 3.092l-.998 3.8-2.407-.571.983-3.75a96.07 96.07 0 01-1.919-.474l-.986 3.768-2.406-.571.997-3.807-.652-.161c-.351-.087-.706-.175-1.065-.26l-3.135-.744 1.196-2.623s1.775.448 1.75.415c.682.16.985-.262 1.104-.544l1.575-6.007.255.06a2.197 2.197 0 00-.25-.076l1.123-4.288c.03-.487-.147-1.101-1.122-1.333.038-.024-1.75-.413-1.75-.413l.641-2.448 3.322.79-.003.011c.5.118 1.014.23 1.538.344L20.477 7l2.407.571-.967 3.69c.644.137 1.288.281 1.93.431l.96-3.664 2.408.57-.986 3.764zm-7.622 13.646c1.964.494 6.264 1.575 6.947-1.037.7-2.667-3.463-3.556-5.496-3.991-.229-.049-.43-.092-.594-.13l-1.323 5.043c.134.031.291.07.466.115zm1.857-7.369c1.638.416 5.212 1.324 5.835-1.048.636-2.428-2.838-3.159-4.535-3.516-.19-.04-.359-.076-.496-.108l-1.2 4.574c.114.027.247.06.396.098z"/></svg><svg class="coin-usdc" width="42" height="42" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 2000" aria-hidden="true"><path d="M1000 2000c554 0 1000-446 1000-1000S1554 0 1000 0 0 446 0 1000s446 1000 1000 1000z" fill="currentColor"/><path d="M1275 1158c0-146-87-196-262-216-125-17-150-50-150-109s41-96 125-96c75 0 116 25 137 88 4 12 17 21 29 21h67c17 0 29-13 29-29v-5c-17-91-92-162-187-170V542c0-17-13-30-34-34h-62c-17 0-29 13-34 34v95c-125 17-204 101-204 205 0 137 84 191 259 212 116 21 154 46 154 113s-59 112-138 112c-108 0-146-46-158-108-4-17-17-25-29-25h-71c-17 0-29 12-29 29v4c16 104 83 179 221 200v100c0 17 12 29 33 34h62c17 0 30-13 34-34v-100c125-21 208-108 208-221z" fill="#fff"/><path d="M788 1596a620 620 0 0 1-371-800 616 616 0 0 1 371-371c16-8 25-21 25-42v-58c0-17-9-29-25-33-5 0-13 0-17 4a749 749 0 0 0 0 1429c17 8 33 0 37-17 5-4 5-8 5-16v-59c0-12-13-29-25-37zm441-1300c-16-9-33 0-37 16-4 5-4 9-4 17v58c0 17 12 34 25 42a620 620 0 0 1 370 800 616 616 0 0 1-371 371c-16 8-24 21-24 42v58c0 17 8 29 25 33 4 0 12 0 16-4a749 749 0 0 0 488-942 756 756 0 0 0-488-491z" fill="#fff"/></svg>
+        </div>
+      </div>
+      <div class="balance-bar flex-row" id="swap-bar-track">
+        <div class="bar left flex-row active nq-blue" id="swap-bar-left-seg" style="width: 94.05%;"><div class="change" style="width: 0%;"></div></div>
+        <div class="separator nq-light-blue-bg"><div class="handle" id="swap-bar-handle"></div></div>
+        <div class="bar right flex-row active bitcoin" id="swap-bar-right-seg" style="width: 4.95%;"><div class="change" style="width: 100%;"></div></div>
+      </div>
+      <div class="scale flex-row">
+        <div class="tenth"><div class="left-total-percent" id="swap-bar-pl">95%</div></div>
+        <div class="tenth"></div><div class="tenth"></div><div class="tenth"></div><div class="tenth"></div>
+        <div class="tenth"></div><div class="tenth"></div><div class="tenth"></div><div class="tenth"></div>
+        <div class="tenth"><div class="right-total-percent" id="swap-bar-pr">5%</div></div>
+      </div>
     </div>
     <div class="swap-asset-toggle" id="swap-asset-toggle">
       <button class="active" data-asset="btc">BTC</button>
@@ -1890,6 +1923,8 @@ Don't share them and keep them safe.</p>
   }
   function resetSwapSheet() {
     if (swapTimer) { clearTimeout(swapTimer); swapTimer = null; }
+    swapPct = 95;
+    if (typeof swapBarPaint === 'function') { try { swapBarPaint(); } catch (e) {} }
     document.getElementById('swap-setup').hidden = false;
     document.getElementById('swap-progress').hidden = true;
     document.getElementById('swap-discovery').hidden = false;
@@ -1898,10 +1933,59 @@ Don't share them and keep them safe.</p>
     document.getElementById('swap-status').textContent = '';
   }
   document.getElementById('open-swap').addEventListener('click', () => { resetSwapSheet(); open('swap'); });
+
+  // ---- the SwapBalanceBar behavior (the wallet's): drag the handle to choose how much
+  // NIM leaves; the amount field and the bar stay in sync both ways. Bars sum to 99%
+  // (upstream geometry); the incoming side stays fully hatched (all of it is change).
+  let swapPct = 95;   // % of the balance that STAYS as NIM
+  function swapBarPaint() {
+    const balance = window.__lastLuna || 0;
+    document.getElementById('swap-bar-left-seg').style.width = `${(swapPct * 0.99).toFixed(2)}%`;
+    document.getElementById('swap-bar-right-seg').style.width = `${((100 - swapPct) * 0.99).toFixed(2)}%`;
+    document.getElementById('swap-bar-pl').textContent = `${Math.round(swapPct)}%`;
+    document.getElementById('swap-bar-pr').textContent = `${100 - Math.round(swapPct)}%`;
+    document.getElementById('swap-bar-nim').innerHTML = `${fmtNim(balance)} <span class="currency nim">NIM</span>`;
+  }
+  function swapBarSetFromAmount(nim) {
+    const balance = (window.__lastLuna || 0) / 1e5;
+    if (!(balance > 0) || !(nim >= 0)) { swapPct = 95; swapBarPaint(); return; }
+    swapPct = Math.min(99, Math.max(1, 100 - (nim / balance) * 100));
+    swapBarPaint();
+  }
+  (function wireSwapBarDrag() {
+    const track = document.getElementById('swap-bar-track');
+    const amountEl = document.getElementById('swap-amount');
+    let dragging = false;
+    const moveTo = (clientX) => {
+      const r = track.getBoundingClientRect();
+      swapPct = Math.min(99, Math.max(1, ((clientX - r.left) / r.width) * 100));
+      swapBarPaint();
+      const balance = (window.__lastLuna || 0) / 1e5;
+      const nim = Math.max(0, Math.round(balance * (100 - swapPct) / 100));
+      amountEl.value = nim ? String(nim) : '';
+      amountEl.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    track.addEventListener('pointerdown', (e) => { dragging = true; track.setPointerCapture(e.pointerId); moveTo(e.clientX); });
+    track.addEventListener('pointermove', (e) => { if (dragging) moveTo(e.clientX); });
+    const stop = () => { dragging = false; };
+    track.addEventListener('pointerup', stop);
+    track.addEventListener('pointercancel', stop);
+    amountEl.addEventListener('input', () => { if (!dragging) swapBarSetFromAmount(parseFloat(amountEl.value) || 0); });
+  })();
+
   document.querySelectorAll('#swap-asset-toggle button').forEach((b) => b.addEventListener('click', () => {
     swapAsset = b.dataset.asset;
     document.querySelectorAll('#swap-asset-toggle button').forEach((x) => x.classList.toggle('active', x === b));
-    document.getElementById('swap-recv-coin').dataset.asset = swapAsset;
+    const right = document.getElementById('swap-bar-right');
+    right.dataset.asset = swapAsset;
+    right.classList.toggle('bitcoin', swapAsset === 'btc');
+    right.classList.toggle('usdc', swapAsset === 'usdc');
+    document.getElementById('swap-bar-right-seg').classList.toggle('bitcoin', swapAsset === 'btc');
+    document.getElementById('swap-bar-right-seg').classList.toggle('usdc', swapAsset === 'usdc');
+    document.getElementById('swap-bar-right-label').textContent = swapAsset === 'btc' ? 'Bitcoin' : 'USD Coin';
+    const cur = document.getElementById('swap-bar-right-cur');
+    cur.textContent = swapAsset === 'btc' ? 'BTC' : 'USDC';
+    cur.className = `currency ${swapAsset}`;
   }));
   wireAmountInput('swap-amount-wrap');
   document.getElementById('swap-start').addEventListener('click', () => {
