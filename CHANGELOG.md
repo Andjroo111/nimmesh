@@ -2,6 +2,14 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.49.22] — 2026-07-03
+
+### Fixed — the map pan feels native now (Andjroo)
+
+The drag was raw 1:1 with a dead stop on release. It now tracks flick velocity
+(low-pass filtered) and continues with a momentum fling + friction after you let go,
+like a native scroller — quick flicks glide across the world.
+
 ## [0.49.21] — 2026-07-03
 
 ### Fixed — the Network map pans by touch for real now (Andjroo)

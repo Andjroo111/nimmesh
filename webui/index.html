@@ -1842,16 +1842,36 @@ Don't share them and keep them safe.</p>
   (function wireMapDrag() {
     const pan = document.getElementById('nw-map-pan');
     if (!pan) return;
-    let startX = null, startLeft = 0;
+    let startX = null, startLeft = 0, lastX = 0, lastT = 0, vel = 0, raf = null;
     pan.addEventListener('pointerdown', (e) => {
-      startX = e.clientX; startLeft = pan.scrollLeft;
+      if (raf) { cancelAnimationFrame(raf); raf = null; }
+      startX = lastX = e.clientX; startLeft = pan.scrollLeft;
+      lastT = performance.now(); vel = 0;
       try { pan.setPointerCapture(e.pointerId); } catch (err) {}
     });
     pan.addEventListener('pointermove', (e) => {
       if (startX == null) return;
+      const now = performance.now();
+      const dt = Math.max(1, now - lastT);
+      // px per frame (16ms), low-pass filtered for a stable fling
+      vel = 0.75 * vel + 0.25 * (-(e.clientX - lastX) / dt) * 16;
+      lastX = e.clientX; lastT = now;
       pan.scrollLeft = startLeft - (e.clientX - startX);
     });
-    const end = () => { startX = null; };
+    const end = () => {
+      if (startX == null) return;
+      startX = null;
+      // momentum fling with friction, like a native scroller
+      const step = () => {
+        pan.scrollLeft += vel;
+        vel *= 0.94;
+        const max = pan.scrollWidth - pan.clientWidth;
+        if (Math.abs(vel) > 0.4 && pan.scrollLeft > 0 && pan.scrollLeft < max) {
+          raf = requestAnimationFrame(step);
+        } else { raf = null; }
+      };
+      raf = requestAnimationFrame(step);
+    };
     pan.addEventListener('pointerup', end);
     pan.addEventListener('pointercancel', end);
   })();
