@@ -2,6 +2,16 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.49.19] — 2026-07-03
+
+### Fixed — the Network map sized to its corner + the explainer auto-opens (Andjroo)
+
+- The world map now sits in the TOP-RIGHT area beside the stat stack (the original
+  wallet composition) instead of spanning the whole card — clear of the stats and of
+  the explainer. Still dense, still pannable, still centered on your gold node.
+- The "With nimmesh, you ARE the network" card now opens AUTOMATICALLY (closable with
+  its x; the info button brings it back).
+
 ## [0.49.18] — 2026-07-03
 
 ### Changed — the Network screen, wallet-shaped: one screen, dense pannable map (Andjroo)
