@@ -43,3 +43,26 @@ jobs:
 
       - name: file-size guard (< 800 lines)
         run: bash scripts/size-guard.sh
+
+  # contracts — the Solidity HTLC gate (G5, #76). Self-contained Foundry project under
+  # contracts/ (no submodules to check out); Foundry pinned to the Mini's local version.
+  contracts:
+    name: contracts (solidity)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
+
+      - name: forge fmt --check
+        run: forge fmt --check
+
+      - name: forge test
+        run: forge test -vv

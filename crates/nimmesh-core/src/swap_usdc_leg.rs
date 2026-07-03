@@ -16,8 +16,8 @@
 //! ```solidity
 //! // newSwap pulls `amount` micro-USDC from msg.sender into escrow under a fresh swapId.
 //! function newSwap(address receiver, uint256 amount, bytes32 hashlock, uint256 timelock) returns (bytes32 swapId)
-//! function withdraw(bytes32 swapId, bytes32 secret)  // require(sha256(secret) == hashlock && block.timestamp < timelock)
-//! function refund(bytes32 swapId)                     // require(block.timestamp >= timelock)
+//! function withdraw(bytes32 swapId, bytes32 secret)  // require(sha256(secret) == hashlock && block.timestamp <= timelock)
+//! function refund(bytes32 swapId)                     // require(block.timestamp > timelock)
 //! ```
 //!
 //! `swapId` is derived ON-CHAIN (never trusted from the caller) as
@@ -306,6 +306,20 @@ mod tests {
         let mut leg = UsdcLeg::new(ALICE, BOB);
         leg.fund(params(hashlock, 5_000)).unwrap();
         assert_eq!(leg.swap_id(), Some(id));
+    }
+
+    #[test]
+    fn usdc_swap_id_matches_the_contract_vector() {
+        // The published cross-implementation vector (G5 #76): the REAL contract derives EXACTLY
+        // this id from the same inputs — asserted on-chain-side by
+        // `contracts/test/NimmeshHtlc.t.sol::test_SwapIdMatchesTheRustVector`. If either
+        // implementation drifts byte-wise, its CI fails.
+        let id = usdc_swap_id(&[0x11; 20], &[0x22; 20], 25_000_000, &[0xC7; 32], 5_000);
+        let hex: String = id.iter().map(|b| format!("{b:02x}")).collect();
+        assert_eq!(
+            hex,
+            "81137ded176c774f8dbc1b69583fa8232031e4a2810ba97231a69becf44131e0"
+        );
     }
 
     #[test]

@@ -39,6 +39,10 @@ crates/nimmesh-core/generated/
 *.jks
 .cxx/
 
+# Foundry (contracts/)
+contracts/out/
+contracts/cache/
+
 # Node (tooling only, if any)
 node_modules/
 

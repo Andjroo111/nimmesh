@@ -2,6 +2,29 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.49.0] — 2026-07-02
+
+### Added — the real USDC HTLC contract (G5, #76) — Foundry unblocked
+
+- **`contracts/src/NimmeshHtlc.sol`** — the Solidity escrow the Rust model
+  (`swap_usdc_leg.rs`) has mirrored in sim since P2, now real: `newSwap` (byte-compatible with
+  `evm_abi::htlc_new_swap`), **`newSwapWithPermit`** (EIP-2612 single-transaction funding,
+  front-run-tolerant — closes S4's approve→transferFrom race), `withdraw(S)` on the **SHA-256
+  precompile** (the cross-chain lock), `refund`, keccak-derived swap-id single-occupancy, and
+  a minimal immutable-forwarder **ERC-2771** seam for relayer-sponsored funding (ADR-0006).
+  `withdraw`/`refund` are caller-open with fixed payouts (the self-funded fallback needs no
+  forwarder machinery). Semantic edges recorded in **ADR-0007**.
+- **Foundry suite** (`contracts/test/`, self-contained — no submodules): escrow/claim/refund,
+  both boundary seconds (claim ≤ timelock, refund > — matches the Rust model's code; the stale
+  module doc-comment in `swap_usdc_leg.rs` is fixed to say so), keccak-lock rejection,
+  duplicate-slot + double-resolve rejection, permit + front-run tolerance, forwarder
+  attribution. **Byte-match anchor**: the published vector `0x81137ded…31e0` is asserted by
+  both the Solidity test and a new Rust test (`usdc_swap_id_matches_the_contract_vector`).
+- **CI**: new `contracts (solidity)` job (pinned Foundry v1.7.1) — `forge fmt --check` +
+  `forge test`.
+- Deployment to Amoy + real-RPC integration = **G6 (#77)**, still gated on an RPC URL + funded
+  testnet key.
+
 ## [0.48.5] — 2026-07-02
 
 ### Changed — the real loading animation (Andjroo's hub capture)
