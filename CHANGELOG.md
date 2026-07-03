@@ -2,6 +2,15 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.49.17] — 2026-07-03
+
+### Fixed — the hex world map no longer reads as cropped (Andjroo, round 2)
+
+The map's top rows were near-solid strips of hexes, which read as an image sliced off
+mid-continent. The land mask now TAPERS at the top — a fringe of scattered arctic
+islands, then a broken coastline, then the continents (171 cells) — so the map has a
+natural silhouette instead of a torn edge.
+
 ## [0.49.16] — 2026-07-03
 
 ### Fixed — the hex world map's top row was cut off (Andjroo)
