@@ -84,3 +84,4 @@ _(one line per completed cycle: date · goal · PR · result)_
 - 2026-07-02 · loop maintenance — `node.rs` 799→785: inline tests → `node_tests.rs` sibling (headroom for G9 slice 3); cycle-log backfill · PR #118 · merged (v0.48.2)
 - 2026-07-02 · G7 #78 decision — ADR-0006: relayer-sponsored gas (EIP-2771) + mandatory self-funded fallback; impl gated on G6 · PR #119 · merged (v0.48.3)
 - 2026-07-02 · G5 #76 — the real USDC HTLC contract (`contracts/`): SHA-256 lock, permit single-tx funding, ERC-2771 seam, byte-match vector vs `usdc_swap_id`, 17 Foundry tests + `contracts (solidity)` CI job · PR #122 · merged (v0.49.0)
+- 2026-07-03 · loop maintenance — `swap_node.rs` 799→741: `#[cfg(test)]` hooks → `swap_node_test_hooks.rs` child mod (headroom, companion to #118) · PR #130 · merged (v0.49.6)

@@ -2,6 +2,16 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.49.6] — 2026-07-03
+
+### Changed — size headroom: extract `swap_node.rs`'s test-only hooks (loop maintenance)
+
+- `swap_node.rs` sat at 799/800 (flagged since #116). Its four `#[cfg(test)]`-only items —
+  `IntentMetricsSnapshot`, `IntentMetrics::snapshot()`, `swap_phase`, `start_swap` — move to a
+  `swap_node_test_hooks.rs` **child module** (`#[path]` + `pub(crate)` re-exports, so every
+  caller keeps its `crate::swap_node::…` path and the hooks keep their access to the module's
+  private internals). Behavior-neutral — production code untouched.
+
 ## [0.49.5] — 2026-07-03
 
 ### Changed — REBUILD Phase 5: the final diff-everything pass

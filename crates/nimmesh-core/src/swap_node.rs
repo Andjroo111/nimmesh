@@ -240,20 +240,11 @@ pub(crate) struct IntentMetrics {
     readvertised: AtomicUsize,
 }
 
-/// A point-in-time read of [`IntentMetrics`] (G42, test/observability). Internal counts stay `usize`
-/// so [`crate::swap_health::discovery_health`] can do its arithmetic directly; the FFI boundary uses
-/// the `u64` [`FfiIntentMetrics`] mirror.
 #[cfg(test)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(crate) struct IntentMetricsSnapshot {
-    pub(crate) seen: usize,
-    pub(crate) matched: usize,
-    pub(crate) dropped_rate: usize,
-    pub(crate) dropped_expiry: usize,
-    pub(crate) dropped_throttle: usize,
-    pub(crate) dropped_signature: usize,
-    pub(crate) readvertised: usize,
-}
+#[path = "swap_node_test_hooks.rs"]
+mod test_hooks;
+#[cfg(test)]
+pub(crate) use test_hooks::{start_swap, swap_phase, IntentMetricsSnapshot};
 
 impl IntentMetrics {
     pub(crate) fn note_seen(&self) {
@@ -276,21 +267,6 @@ impl IntentMetrics {
     }
     pub(crate) fn note_readvertised(&self) {
         self.readvertised.fetch_add(1, Ordering::Relaxed);
-    }
-
-    /// A consistent read of all counters (G42, test/health).
-    #[cfg(test)]
-    pub(crate) fn snapshot(&self) -> IntentMetricsSnapshot {
-        let g = |c: &AtomicUsize| c.load(Ordering::Relaxed);
-        IntentMetricsSnapshot {
-            seen: g(&self.seen),
-            matched: g(&self.matched),
-            dropped_rate: g(&self.dropped_rate),
-            dropped_expiry: g(&self.dropped_expiry),
-            dropped_throttle: g(&self.dropped_throttle),
-            dropped_signature: g(&self.dropped_signature),
-            readvertised: g(&self.readvertised),
-        }
     }
 
     /// G9 (#80): the same consistent read as an FFI-boundary
@@ -762,38 +738,4 @@ pub(crate) fn active_swaps(ctx: &WorkerCtx) -> Vec<crate::swap_intent::FfiSwapMa
         .collect();
     out.sort_by(|a, b| a.swap_id.cmp(&b.swap_id));
     out
-}
-
-/// This node's current phase for a swap it participates in (test/observability hook).
-#[cfg(test)]
-pub(crate) fn swap_phase(
-    ctx: &WorkerCtx,
-    swap_id: [u8; crate::swap_wire::SWAP_ID_LEN],
-) -> Option<crate::swap::SwapPhase> {
-    ctx.swaps.lock().unwrap().get(&swap_id).copied()
-}
-
-/// G14 (test origination): register an initiator coordinator this node started and flood its
-/// `Propose`. The real money-path origination API (build the funding txs, sign offline) is a later,
-/// gated goal — this drives the negotiation half over the real node loop.
-#[cfg(test)]
-pub(crate) fn start_swap(
-    ctx: &WorkerCtx,
-    swap_id: [u8; crate::swap_wire::SWAP_ID_LEN],
-    coordinator: crate::swap_coordinator::SwapCoordinator,
-    propose: crate::swap_wire::SwapEnvelope,
-    st: &mut WorkerState,
-) {
-    let Some(session) = st.swap.as_mut() else {
-        return; // not a participant — nothing to originate.
-    };
-    session.add_initiator(swap_id, coordinator);
-    sync_swap_phases(ctx, st);
-    if let Ok(payload) = crate::swap_wire::encode_swap(&propose) {
-        // G20: remember the Propose so the tick retransmits it if the first flood is lost.
-        if let Some(session) = st.swap.as_mut() {
-            session.record_action(swap_id, MessageType::SwapPropose, payload.clone());
-        }
-        flood_swap_reply(ctx, MessageType::SwapPropose, payload, st);
-    }
 }
