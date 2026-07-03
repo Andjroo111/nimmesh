@@ -2,7 +2,31 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
-<<<<<<< HEAD
+## [0.47.0] — 2026-07-02
+
+### App integration — discovery metrics over UniFFI (G9 slice 1, #80)
+
+First slice of G9 (discovery over UniFFI). The native app can now **read its node's discovery
+state** across the FFI boundary.
+
+- **`MeshNode::discovery_metrics() -> FfiIntentMetrics`** (`#[uniffi::export]`) — a snapshot of the
+  G42 discovery counters: intents `seen`, swaps `matched`, and the per-gate drop tallies
+  (`dropped_rate`/`expiry`/`throttle`/`signature`) + `readvertised`. Read-only, non-blocking; a plain
+  relay node that runs no `SwapSession` reports all-zero.
+- **`FfiIntentMetrics`** (`uniffi::Record`, `u64` counts) lives in the always-compiled `swap_intent`
+  module — discovery has no chain-leg dependency, so it is *not* behind the `bitcoin-leg` `swap_ffi`
+  facade. The internal `usize` `IntentMetricsSnapshot` (consumed by `swap_health`) is unchanged; the
+  FFI record is a distinct `u64` mirror (`IntentMetrics::ffi_snapshot`), matching the repo's `Ffi*`
+  boundary-type convention.
+- **Bindings regenerated** (Swift + Kotlin) — `discoveryMetrics()` + the `FfiIntentMetrics` record
+  appear in both and compile. (Generated bindings are git-ignored build artifacts.)
+- **Tests:** a matched NIM-giver reports `seen`/`matched ≥ 1` via the exported accessor; a plain relay
+  reports all-zero (proving the reader never panics off the participant path).
+
+Remaining G9 slices (follow-ups): expose the active-swap **match list** (needs an always-compiled
+phase enum) and the **advertise/stop-advert** write API (needs a production participant/session path,
+co-developed with G10/G11). This slice is the read/observability half.
+
 ## [0.46.1] — 2026-07-02
 
 ### Added — the mesh HTLC swap UI, slice 1 (Andjroo's new goal)
@@ -23,7 +47,7 @@ sheet built on the wallet's swap anatomy plus the mesh-native step:
   (money-path gated).
 
 All five languages; Playwright end-to-end; `nq lint` 0 errors.
-=======
+
 ## [0.46.0] — 2026-07-02
 
 ### Test harness — deterministic mesh-drain re-enables the discovery-stress tests (#84)
@@ -53,7 +77,6 @@ quiescence** (ADR-0005) — no timing in the convergence path.
 - **Zero production-behaviour change.** The fences are `cfg(test)`; the only always-compiled addition
   is the ether's `enqueued` counter (one relaxed `fetch_add` per transmit on a test/example substrate
   the real BLE path never uses). Removes `pump_until`/`CONVERGE`.
->>>>>>> origin/main
 
 ## [0.45.0] — 2026-07-02
 

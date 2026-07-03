@@ -274,6 +274,30 @@ pub fn decode_intent(bytes: &[u8]) -> Result<SwapIntent, IntentError> {
     })
 }
 
+/// G9 (#80): the FFI-visible mirror of the discovery-layer counters ([`crate::swap_node::IntentMetrics`]),
+/// so the native app can read how its node's discovery is doing — intents `seen`, swaps `matched`, and
+/// the per-gate drop tallies — via [`crate::node::MeshNode::discovery_metrics`]. Counts are `u64`
+/// (FFI-stable; the internal atomics are `usize`). A plain relay node that runs no `SwapSession`
+/// reports all-zero. Lives here (the always-compiled discovery module) rather than the `bitcoin-leg`
+/// `swap_ffi` facade, since discovery has no chain-leg dependency.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, uniffi::Record)]
+pub struct FfiIntentMetrics {
+    /// Intents this node observed on the discovery stream.
+    pub seen: u64,
+    /// Crossing intents that produced a swap (a discovered swap actually started).
+    pub matched: u64,
+    /// Intents dropped at the rate/amount-band gate (G40).
+    pub dropped_rate: u64,
+    /// Intents dropped because they had already expired against the cached head (G35).
+    pub dropped_expiry: u64,
+    /// Intents dropped by the per-sender match-attempt throttle (G36).
+    pub dropped_throttle: u64,
+    /// Intents dropped because their advertisement signature did not verify (G41).
+    pub dropped_signature: u64,
+    /// Times this node re-advertised its own standing intent (G37).
+    pub readvertised: u64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

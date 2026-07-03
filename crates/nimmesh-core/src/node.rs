@@ -425,6 +425,15 @@ impl MeshNode {
         })
     }
 
+    /// G9 (#80): a snapshot of this node's discovery-layer counters — intents seen, swaps matched,
+    /// and the per-gate drop tallies (G42) — as an FFI-boundary
+    /// [`crate::swap_intent::FfiIntentMetrics`]. Lets the app show how discovery is doing (and surface
+    /// a stuck matcher). Read-only, non-blocking; a plain relay node that runs no `SwapSession` reports
+    /// all-zero. The counters are monotonic + `Relaxed`, so this is a best-effort consistent read.
+    pub fn discovery_metrics(&self) -> crate::swap_intent::FfiIntentMetrics {
+        self.ctx.intent_metrics.ffi_snapshot()
+    }
+
     /// Tear the node down: stop the worker and release the radio. Idempotent; also runs
     /// on drop (the weak edge that breaks the refcount cycle — ADR-0002 gotcha d).
     pub fn shutdown(&self) {
@@ -645,7 +654,8 @@ impl MeshNode {
         crate::swap_node::swap_phase(&self.ctx, swap_id)
     }
 
-    /// G42 (test/observability): a snapshot of this node's discovery-layer counters.
+    /// G42 (test/observability): the internal `usize` discovery-counter snapshot (the FFI-boundary
+    /// `u64` view is [`MeshNode::discovery_metrics`]). Used by the metrics + health tests.
     #[cfg(test)]
     pub(crate) fn intent_metrics(&self) -> crate::swap_node::IntentMetricsSnapshot {
         self.ctx.intent_metrics.snapshot()

@@ -128,6 +128,16 @@ fn many_complementary_pairs_all_discover_and_settle() {
         "every complementary pair should discover its counterparty and settle"
     );
 
+    // G9 (#80): the discovery counters are readable through the FFI-exported accessor — each NIM-giver
+    // that matched its counterparty reports it, so the app can surface live discovery state.
+    for nim in &nim_nodes {
+        let m = nim.discovery_metrics();
+        assert!(
+            m.matched >= 1 && m.seen >= 1,
+            "a matched NIM-giver should report seen/matched discovery metrics over FFI"
+        );
+    }
+
     h.shutdown();
 }
 
@@ -405,5 +415,20 @@ fn a_reconnected_peer_resets_the_re_advertise_budget_and_the_pair_settles() {
         "after reconnect the reset re-advertise budget should discover + settle"
     );
 
+    h.shutdown();
+}
+
+#[test]
+fn a_plain_relay_reports_zeroed_discovery_metrics_over_ffi() {
+    // G9 (#80): the FFI-exported `discovery_metrics` reader works on ANY node — a plain relay runs no
+    // `SwapSession`, so it does no discovery and every counter reads zero. Proves the exported
+    // accessor never panics off the participant path (the app calls it on a fresh node).
+    let mut h = MeshHarness::new();
+    let relay = h.add_node("relay", &[0x01]);
+    assert_eq!(
+        relay.discovery_metrics(),
+        crate::swap_intent::FfiIntentMetrics::default(),
+        "a non-participant node reports all-zero discovery metrics"
+    );
     h.shutdown();
 }

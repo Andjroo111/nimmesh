@@ -240,7 +240,9 @@ pub(crate) struct IntentMetrics {
     readvertised: AtomicUsize,
 }
 
-/// A point-in-time read of [`IntentMetrics`] (G42, test/observability).
+/// A point-in-time read of [`IntentMetrics`] (G42, test/observability). Internal counts stay `usize`
+/// so [`crate::swap_health::discovery_health`] can do its arithmetic directly; the FFI boundary uses
+/// the `u64` [`FfiIntentMetrics`] mirror.
 #[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) struct IntentMetricsSnapshot {
@@ -276,11 +278,27 @@ impl IntentMetrics {
         self.readvertised.fetch_add(1, Ordering::Relaxed);
     }
 
-    /// A consistent read of all counters (G42).
+    /// A consistent read of all counters (G42, test/health).
     #[cfg(test)]
     pub(crate) fn snapshot(&self) -> IntentMetricsSnapshot {
         let g = |c: &AtomicUsize| c.load(Ordering::Relaxed);
         IntentMetricsSnapshot {
+            seen: g(&self.seen),
+            matched: g(&self.matched),
+            dropped_rate: g(&self.dropped_rate),
+            dropped_expiry: g(&self.dropped_expiry),
+            dropped_throttle: g(&self.dropped_throttle),
+            dropped_signature: g(&self.dropped_signature),
+            readvertised: g(&self.readvertised),
+        }
+    }
+
+    /// G9 (#80): the same consistent read as an FFI-boundary
+    /// [`FfiIntentMetrics`](crate::swap_intent::FfiIntentMetrics) (counts widened to `u64`). Exposed
+    /// to the app via [`crate::node::MeshNode::discovery_metrics`].
+    pub(crate) fn ffi_snapshot(&self) -> crate::swap_intent::FfiIntentMetrics {
+        let g = |c: &AtomicUsize| c.load(Ordering::Relaxed) as u64;
+        crate::swap_intent::FfiIntentMetrics {
             seen: g(&self.seen),
             matched: g(&self.matched),
             dropped_rate: g(&self.dropped_rate),
