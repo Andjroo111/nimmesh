@@ -2,6 +2,15 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.49.15] — 2026-07-03
+
+### Changed — the Network screen's hexagons became a real hex WORLD MAP (Andjroo)
+
+The decorative random hex scatter is now a recognizable hexagon world map spanning the
+stat card (the wallet's network-map concept, 162 cells from an equirectangular land
+mask), and it shows LIVE mesh data: your hex lights light-blue when the radio is on and
+one green cell lights per nearby peer (counts real; positions abstract).
+
 ## [0.49.14] — 2026-07-03
 
 ### Fixed — the hamburger icon (Andjroo)
