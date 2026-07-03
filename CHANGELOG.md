@@ -2,6 +2,16 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.49.24] — 2026-07-03
+
+### Changed — the Network map uses the wallet's REAL world bitmap (Andjroo)
+
+The hand-drawn land mask is replaced with the real wallet's own NetworkBitMap
+(nimiq/wallet src/data/NetworkBitMap.ts, 129x52 grid, 2080 land cells, column-staggered
+like upstream) — the map is geographically correct now, same source of truth as
+wallet.nimiq.com's network map. Your gold node sits in the central US with the peer
+cells and arcs around it; pan, momentum and live highlights unchanged.
+
 ## [0.49.23] — 2026-07-03
 
 ### Fixed — the map drag starts reliably now (Andjroo)
