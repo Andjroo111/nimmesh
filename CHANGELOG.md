@@ -2,6 +2,13 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.49.14] — 2026-07-03
+
+### Fixed — the hamburger icon (Andjroo)
+
+The menu icon's three lines now DECREASE in length like the wallet's (long, medium,
+short) — ours had the middle line longest. Fixed on both the home and Network topbars.
+
 ## [0.49.13] — 2026-07-03
 
 ### Fixed — Andjroo's dock + type round
