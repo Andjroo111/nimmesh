@@ -2,6 +2,25 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.49.2] — 2026-07-03
+
+### Changed — REBUILD Phase 2: the navy side menu
+
+The hamburger now opens the wallet's navy slide-out menu (reference:
+sweep/andjroo-side-menu.png):
+
+- The nimmesh logo, the 24H chip, and REAL NIM + BTC 24h sparkline charts (CoinGecko
+  market_chart in the language's currency, ~10 min cache, honest-empty offline) with
+  trailing-symbol prices and green/red percent change.
+- The portfolio donut (gold ring, NIM 100% / USDC 0% / BTC 0% legend) + the Swap pill
+  (opens the swap sheet). Buy/Sell intentionally omitted (no fiat ramps).
+- The account row (identicon + name -> account sheet), Network (honest coming-soon until
+  P4), and Settings.
+- NEW Settings sheet: language (flag + opens the language sheet), Backup (-> the backup
+  hub), Log out, and the version line. The provisional account pill is gone from the home
+  chrome (the menu provides account access now); the language flag pill STAYS top-right
+  (Andjroo's keep).
+
 ## [0.49.1] — 2026-07-03
 
 ### Changed — REBUILD Phase 1: the wallet's portfolio home + address drill-in

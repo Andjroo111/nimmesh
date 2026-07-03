@@ -72,7 +72,7 @@ One phase-slice per cycle, autonomous, merge-on-green (Andjroo's standing grant)
    verify the DEPLOYED manifest by reading the bundle-version line.
 5. Tick the phase below, reschedule the next cycle.
 
-Progress: [x] P1 home overview + address drill-in (v-P1, 2026-07-03) · [ ] P2 side menu · [ ] P3 account
+Progress: [x] P1 home overview + address drill-in (v-P1, 2026-07-03) · [x] P2 side menu (2026-07-03) · [ ] P3 account
 modal · [ ] P4 mesh Network screen · [ ] P5 final diff-everything polish pass.
 
 ## Rules

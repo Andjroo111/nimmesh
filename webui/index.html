@@ -26,6 +26,58 @@
   .topbar { display: flex; align-items: center; gap: 8px; padding: 16px 12px 4px; }
   .topbar .logo { display: flex; align-items: center; gap: 7px; flex: 0 0 auto; }
   .topbar .wordmark { font-weight: 700; font-size: 19px; color: #1f2348; }
+  /* ---- P2: the wallet's navy side menu ---- */
+  #menu-backdrop { position: fixed; inset: 0; z-index: 44; background: rgba(31,35,72,.6);
+    opacity: 0; visibility: hidden; transition: opacity .3s, visibility .3s; }
+  #menu-backdrop.open { opacity: 1; visibility: visible; }
+  .side-menu { position: fixed; top: 0; bottom: 0; left: 0; width: 216px; z-index: 45;
+    background: var(--nimiq-blue, #1f2348); background-image: var(--nimiq-blue-bg, radial-gradient(100% 100% at bottom right, #260133, #1f2348));
+    color: #fff; transform: translateX(-100%); transition: transform .32s cubic-bezier(.25,0,0,1);
+    display: flex; flex-direction: column; padding: calc(18px + env(safe-area-inset-top, 0px)) 0 calc(18px + env(safe-area-inset-bottom, 0px));
+    overflow-y: auto; }
+  .side-menu.open { transform: translateX(0); }
+  .sm-logo { display: flex; align-items: center; gap: 9px; padding: 6px 20px 18px;
+    font-weight: 700; font-size: 19px; letter-spacing: .5px; color: #fff; }
+  .sm-logo svg { width: 26px; height: auto; }
+  .sm-chart { padding: 6px 20px 14px; }
+  .sm-chart .chip { position: static; height: auto; width: auto; box-shadow: none; display: inline-block;
+    background: rgba(255,255,255,.14); color: rgba(255,255,255,.8); font-size: 11px; font-weight: 700;
+    padding: 2px 7px; border-radius: 4px; margin-bottom: 2px; }
+  .sm-chart svg.spark { display: block; width: 100%; height: 52px; color: rgba(255,255,255,.55); }
+  .sm-chart .row { display: flex; align-items: baseline; justify-content: space-between; margin-top: 4px;
+    font-weight: 700; font-size: 14.5px; color: #fff; }
+  .sm-chart .pc { display: block; text-align: right; font-size: 13px; font-weight: 700; margin-top: 1px; }
+  .sm-chart .pc.up { color: var(--nimiq-green, #21bca5); }
+  .sm-chart .pc.down { color: #ff8189; }
+  .sm-donut { display: flex; align-items: center; gap: 14px; padding: 12px 20px 6px; }
+  .sm-donut svg { width: 64px; height: 64px; flex: 0 0 auto; }
+  .sm-donut table { border-collapse: collapse; font-size: 13.5px; font-weight: 700; color: #fff; }
+  .sm-donut td { padding: 1px 0; }
+  .sm-donut td:last-child { padding-left: 14px; text-align: right; }
+  .sm-pill { display: block; margin: 12px 20px 0; height: 38px; border: 0; border-radius: 500px; cursor: pointer;
+    background: rgba(255,255,255,.14); color: #fff; font-family: inherit; font-weight: 700; font-size: 14.5px; width: calc(100% - 40px); }
+  .sm-pill:active { transform: translateY(1px); }
+  .sm-spacer { flex: 1 1 auto; }
+  .sm-account { display: flex; align-items: center; gap: 10px; margin: 14px 14px 4px; padding: 10px 12px;
+    border: 0; border-radius: 10px; cursor: pointer; background: rgba(255,255,255,.12);
+    color: #fff; font-family: inherit; font-weight: 700; font-size: 14.5px; text-align: left; width: calc(100% - 28px); }
+  .sm-account .identicon { width: 34px; height: 34px; flex: 0 0 auto; }
+  .sm-account .identicon img { width: 100%; height: 100%; }
+  .sm-row { display: flex; align-items: center; gap: 13px; padding: 13px 20px; border: 0; background: none;
+    cursor: pointer; color: rgba(255,255,255,.85); font-family: inherit; font-weight: 600; font-size: 15.5px;
+    text-align: left; width: 100%; }
+  .sm-row svg { width: 21px; height: 21px; flex: 0 0 auto; color: rgba(255,255,255,.6); }
+  .sm-row:active { background: rgba(255,255,255,.06); }
+
+  /* the settings sheet (language + log out live here now) */
+  .set-list { display: flex; flex-direction: column; margin: 8px 24px 4px; }
+  .set-list button { display: flex; align-items: center; gap: 13px; padding: 15px 8px; border: 0;
+    border-top: 1.5px solid rgba(31,35,72,.08); background: none; cursor: pointer;
+    font-family: inherit; font-weight: 700; font-size: 15.5px; color: #1f2348; text-align: left; }
+  .set-list button:first-child { border-top: 0; }
+  .set-list button svg, .set-list button img { width: 22px; height: 22px; flex: 0 0 auto; color: rgba(31,35,72,.45); }
+  .set-list button.danger, .set-list button.danger svg { color: var(--nimiq-red); }
+
   /* ---- P1: the wallet's portfolio home ---- */
   .view[hidden] { display: none !important; }
   .home-topbar { display: flex; align-items: center; padding: 14px 16px 0; }
@@ -610,9 +662,6 @@
         <img id="lang-pill-flag" src="flags/en.svg" width="24" height="22" alt="">
         <svg class="chev" viewBox="0 0 10 6" fill="none"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
-      <button class="chip acct" id="account-pill" aria-label="My account" data-i18n-aria="acct.title" hidden>
-        <span class="identicon" data-wallet data-address="NQ30 AM32 NHXL 29F7 XUY0 HR3R 7XHF EF4L LYBS"><img src='data:image/svg+xml,<svg width="64" height="64" viewBox="0 -4 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path opacity=".1" d="M62.3 25.4L49.2 2.6A5.3 5.3 0 0 0 44.6 0H18.4c-1.9 0-3.6 1-4.6 2.6L.7 25.4c-1 1.6-1 3.6 0 5.2l13.1 22.8c1 1.6 2.7 2.6 4.6 2.6h26.2c1.9 0 3.6-1 4.6-2.6l13-22.8c1-1.6 1-3.6.1-5.2z" fill="url(%23identicon_radial)"/><defs><radialGradient id="identicon_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(-63.0033 0 0 -56 63 56)"><stop stop-color="%23260133"/><stop offset="1" stop-color="%231F2348"/></radialGradient></defs></svg>' alt="Your account identicon"></span>
-      </button>
     </div>
     </div>
 <!-- Real Nimiq backup banner — the component's "words" variant verbatim (orange warning
@@ -768,6 +817,47 @@
     </button>
   </div>
 </div>
+
+<!-- P2: the wallet's navy side menu (andjroo-side-menu.png) -->
+<div id="menu-backdrop"></div>
+<nav class="side-menu" id="side-menu" aria-label="Menu">
+  <div class="sm-logo"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#sm-hex-grad)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="sm-hex-grad" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> nimmesh</div>
+  <div class="sm-chart" id="chart-nim">
+    <span class="chip">24H</span>
+    <svg class="spark" viewBox="0 0 176 52" preserveAspectRatio="none"><polyline points="" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+    <div class="row"><span>NIM</span><span class="pr"></span></div><span class="pc"></span>
+  </div>
+  <div class="sm-chart" id="chart-btc">
+    <svg class="spark" viewBox="0 0 176 52" preserveAspectRatio="none"><polyline points="" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+    <div class="row"><span>BTC</span><span class="pr"></span></div><span class="pc"></span>
+  </div>
+  <div class="sm-donut">
+    <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="26" fill="none" stroke="url(#donut-gold)" stroke-width="7"/><defs><linearGradient id="donut-gold" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#EC991C"/><stop offset="1" stop-color="#E9B213"/></linearGradient></defs></svg>
+    <table><tr><td>NIM</td><td>100%</td></tr><tr><td style="color:rgba(255,255,255,.6)">USDC</td><td style="color:rgba(255,255,255,.6)">0%</td></tr><tr><td style="color:rgba(255,255,255,.6)">BTC</td><td style="color:rgba(255,255,255,.6)">0%</td></tr></table>
+  </div>
+  <button class="sm-pill" id="menu-swap" data-i18n="swap.title">Swap</button>
+  <div class="sm-spacer"></div>
+  <button class="sm-account" id="menu-account">
+    <span class="identicon" data-wallet data-address="NQ30 AM32 NHXL 29F7 XUY0 HR3R 7XHF EF4L LYBS"><img src='data:image/svg+xml,<svg width="64" height="64" viewBox="0 -4 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path opacity=".1" d="M62.3 25.4L49.2 2.6A5.3 5.3 0 0 0 44.6 0H18.4c-1.9 0-3.6 1-4.6 2.6L.7 25.4c-1 1.6-1 3.6 0 5.2l13.1 22.8c1 1.6 2.7 2.6 4.6 2.6h26.2c1.9 0 3.6-1 4.6-2.6l13-22.8c1-1.6 1-3.6.1-5.2z" fill="url(%23identicon_radial)"/><defs><radialGradient id="identicon_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(-63.0033 0 0 -56 63 56)"><stop stop-color="%23260133"/><stop offset="1" stop-color="%231F2348"/></radialGradient></defs></svg>' alt="Account identicon"></span>
+    <span data-i18n="home.label">Mesh Wallet</span>
+  </button>
+  <button class="sm-row" id="menu-network"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 12h17M12 3.2c-5.6 5.4-5.6 12.2 0 17.6M12 3.2c5.6 5.4 5.6 12.2 0 17.6" stroke="currentColor" stroke-width="1.6"/></svg><span data-i18n="menu.network">Network</span></button>
+  <button class="sm-row" id="menu-settings"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.8"/><path d="M12 2.8l1.2 2.6 2.8-.6 1 2.7 2.8.7-.6 2.8 2 2-2 2 .6 2.8-2.8.7-1 2.7-2.8-.6L12 21.2l-1.2-2.6-2.8.6-1-2.7-2.8-.7.6-2.8-2-2 2-2-.6-2.8 2.8-.7 1-2.7 2.8.6z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg><span data-i18n="set.title">Settings</span></button>
+</nav>
+
+<!-- P2: the settings sheet (language + log out live here now) -->
+<section class="sheet" id="settings-sheet" aria-label="Settings">
+  <div class="sheet-header">
+    <div class="title" data-i18n="set.title">Settings</div>
+    <button class="s-close sheet-close" aria-label="Close"><svg viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+  </div>
+  <div class="set-list">
+    <button id="set-lang"><img id="set-lang-flag" src="flags/en.svg" width="22" height="20" alt=""><span data-i18n="a.lang">Language</span></button>
+    <button id="set-backup"><svg viewBox="0 0 20 20" fill="none"><rect x="3" y="2.5" width="14" height="15" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M6.5 7h7M6.5 10.5h7M6.5 14h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span data-i18n="acct.backup">Backup</span></button>
+    <button id="set-logout" class="danger"><svg viewBox="0 0 20 20" fill="none"><path d="M12.5 6.5V4.75A1.75 1.75 0 0 0 10.75 3h-6A1.75 1.75 0 0 0 3 4.75v10.5A1.75 1.75 0 0 0 4.75 17h6a1.75 1.75 0 0 0 1.75-1.75V13.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M8 10h9.5M14.5 7l3 3-3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="acct.logout">Log out of this device</span></button>
+  </div>
+  <div class="acct-meta" id="set-meta"></div>
+</section>
 
 <!-- A3: shared backdrop + the two bottom sheets -->
 <div class="backdrop" id="backdrop"></div>
@@ -1300,7 +1390,7 @@ Don't share them and keep them safe.</p>
       'confirm.title': 'Confirma tu dirección', 'confirm.sub': 'Esta es la dirección que nimmesh derivó de tu frase.', 'confirm.warn': 'Comprueba que coincide exactamente con tu cartera antes de enviarle fondos.', 'confirm.mine': 'Esta es mi cartera', 'confirm.retry': 'No es correcta, intentar de nuevo',
       'rec.title': 'Cartera encontrada en este dispositivo', 'rec.sub': 'Una cartera de una instalación anterior sigue en el almacenamiento seguro del dispositivo. Esta es su dirección:', 'rec.keep': 'Conservar esta cartera', 'rec.fresh': 'Borrarla y empezar de cero', 'rec.confirm': '¿Borrar la cartera de este dispositivo? Sin sus 24 palabras NO se puede recuperar.',
       'acct.title': 'Mi cuenta', 'acct.copy': 'Copiar dirección', 'acct.backup': 'Respaldo', 'acct.logout': 'Cerrar sesión en este dispositivo', 'acct.logout.confirm': '¿Eliminar la cartera de este dispositivo? Sin tus 24 palabras NO se puede recuperar. Asegúrate de tenerlas guardadas.',
-      'home.total': 'Saldo total', 'a.help': 'Ayuda', 'help.text': 'nimmesh es una cartera de NIM que retransmite pagos de teléfono a teléfono por Bluetooth, sin internet. Envía, recibe e intercambia; tus llaves nunca salen de este teléfono.', 'mesh.banner.sub': 'Retransmite pagos de teléfono a teléfono, sin internet', 'tx.thismonth': 'Este mes', 'lang.title': 'Idioma', 'create.failed': 'No se pudo crear la cartera: ', 'scan.invalid': 'Eso no es una dirección Nimiq ni una solicitud de pago', 'cashlink.soon': 'Los Cashlinks llegarán pronto a nimmesh',
+      'menu.network': 'Red', 'set.title': 'Ajustes', 'menu.network.soon': 'La pantalla de Red mesh llega en la próxima actualización', 'home.total': 'Saldo total', 'a.help': 'Ayuda', 'help.text': 'nimmesh es una cartera de NIM que retransmite pagos de teléfono a teléfono por Bluetooth, sin internet. Envía, recibe e intercambia; tus llaves nunca salen de este teléfono.', 'mesh.banner.sub': 'Retransmite pagos de teléfono a teléfono, sin internet', 'tx.thismonth': 'Este mes', 'lang.title': 'Idioma', 'create.failed': 'No se pudo crear la cartera: ', 'scan.invalid': 'Eso no es una dirección Nimiq ni una solicitud de pago', 'cashlink.soon': 'Los Cashlinks llegarán pronto a nimmesh',
       'hub.title': 'Importante: crea un respaldo', 'hub.sub': 'No existe ‘olvidé mi contraseña’. Crea un respaldo para mantener el control.',
       'hub.codes': 'Envíate dos códigos de respaldo', 'hub.codes.sub': 'Solo necesitas dos formas de escribirte, como un mensajero y un correo.',
       'hub.words': 'Anota las 24 palabras de recuperación', 'hub.words.sub': 'Solo necesitas papel, lápiz y un lugar seguro donde guardarlo.',
@@ -1346,7 +1436,7 @@ Don't share them and keep them safe.</p>
       'confirm.title': 'Bestätige deine Adresse', 'confirm.sub': 'Das ist die Adresse, die nimmesh aus deiner Phrase abgeleitet hat.', 'confirm.warn': 'Prüfe genau, dass sie mit deiner bestehenden Wallet übereinstimmt, bevor du Geld darauf sendest.', 'confirm.mine': 'Das ist meine Wallet', 'confirm.retry': 'Stimmt nicht, nochmal versuchen',
       'rec.title': 'Wallet auf diesem Gerät gefunden', 'rec.sub': 'Eine Wallet einer früheren Installation liegt noch im sicheren Speicher des Geräts. Das ist ihre Adresse:', 'rec.keep': 'Diese Wallet behalten', 'rec.fresh': 'Löschen und neu anfangen', 'rec.confirm': 'Wallet von diesem Gerät löschen? Ohne ihre 24 Wörter ist sie NICHT wiederherstellbar.',
       'acct.title': 'Mein Konto', 'acct.copy': 'Adresse kopieren', 'acct.backup': 'Backup', 'acct.logout': 'Von diesem Gerät abmelden', 'acct.logout.confirm': 'Wallet von diesem Gerät entfernen? Ohne deine 24 Wörter ist sie NICHT wiederherstellbar. Stelle sicher, dass du sie gesichert hast.',
-      'home.total': 'Gesamtguthaben', 'a.help': 'Hilfe', 'help.text': 'nimmesh ist eine NIM-Wallet, die Zahlungen per Bluetooth von Handy zu Handy weiterreicht, ohne Internet. Senden, empfangen, tauschen; deine Schlüssel verlassen dieses Handy nie.', 'mesh.banner.sub': 'Leitet Zahlungen offline von Handy zu Handy weiter', 'tx.thismonth': 'Diesen Monat', 'lang.title': 'Sprache', 'create.failed': 'Wallet konnte nicht erstellt werden: ', 'scan.invalid': 'Das ist keine Nimiq-Adresse und keine Zahlungsanforderung', 'cashlink.soon': 'Cashlinks kommen bald zu nimmesh',
+      'menu.network': 'Netzwerk', 'set.title': 'Einstellungen', 'menu.network.soon': 'Der Mesh-Netzwerk-Bildschirm kommt im nächsten Update', 'home.total': 'Gesamtguthaben', 'a.help': 'Hilfe', 'help.text': 'nimmesh ist eine NIM-Wallet, die Zahlungen per Bluetooth von Handy zu Handy weiterreicht, ohne Internet. Senden, empfangen, tauschen; deine Schlüssel verlassen dieses Handy nie.', 'mesh.banner.sub': 'Leitet Zahlungen offline von Handy zu Handy weiter', 'tx.thismonth': 'Diesen Monat', 'lang.title': 'Sprache', 'create.failed': 'Wallet konnte nicht erstellt werden: ', 'scan.invalid': 'Das ist keine Nimiq-Adresse und keine Zahlungsanforderung', 'cashlink.soon': 'Cashlinks kommen bald zu nimmesh',
       'hub.title': 'Wichtig: Erstelle ein Backup', 'hub.sub': 'Es gibt kein ‘Passwort vergessen’. Erstelle ein Backup und behalte die Kontrolle.',
       'hub.codes': 'Schick dir zwei Backup-Codes', 'hub.codes.sub': 'Braucht nur zwei Wege, dir selbst zu schreiben, etwa Messenger + E-Mail.',
       'hub.words': 'Schreibe 24 Wiederherstellungswörter auf', 'hub.words.sub': 'Braucht Stift, Papier und einen sicheren Ort dafür.',
@@ -1392,7 +1482,7 @@ Don't share them and keep them safe.</p>
       'confirm.title': 'Confirme ton adresse', 'confirm.sub': 'Voici l’adresse que nimmesh a dérivée de ta phrase.', 'confirm.warn': 'Vérifie qu’elle correspond exactement à ton portefeuille avant d’y envoyer des fonds.', 'confirm.mine': 'C’est mon portefeuille', 'confirm.retry': 'Ce n’est pas ça, réessayer',
       'rec.title': 'Portefeuille trouvé sur cet appareil', 'rec.sub': 'Un portefeuille d’une installation précédente est encore dans le stockage sécurisé. Voici son adresse :', 'rec.keep': 'Garder ce portefeuille', 'rec.fresh': 'Le supprimer et repartir de zéro', 'rec.confirm': 'Supprimer le portefeuille de cet appareil ? Sans ses 24 mots il est IRRÉCUPÉRABLE.',
       'acct.title': 'Mon compte', 'acct.copy': 'Copier l’adresse', 'acct.backup': 'Sauvegarde', 'acct.logout': 'Se déconnecter de cet appareil', 'acct.logout.confirm': 'Supprimer le portefeuille de cet appareil ? Sans tes 24 mots il est IRRÉCUPÉRABLE. Assure-toi de les avoir sauvegardés.',
-      'home.total': 'Solde total', 'a.help': 'Aide', 'help.text': 'nimmesh est un portefeuille NIM qui relaie les paiements de téléphone en téléphone par Bluetooth, sans internet. Envoie, reçois, échange ; tes clés ne quittent jamais ce téléphone.', 'mesh.banner.sub': 'Relaie les paiements de téléphone en téléphone, hors ligne', 'tx.thismonth': 'Ce mois-ci', 'lang.title': 'Langue', 'create.failed': 'Impossible de créer le portefeuille : ', 'scan.invalid': 'Ce n’est pas une adresse Nimiq ni une demande de paiement', 'cashlink.soon': 'Les Cashlinks arrivent bientôt sur nimmesh',
+      'menu.network': 'Réseau', 'set.title': 'Réglages', 'menu.network.soon': 'L’écran Réseau mesh arrive dans la prochaine mise à jour', 'home.total': 'Solde total', 'a.help': 'Aide', 'help.text': 'nimmesh est un portefeuille NIM qui relaie les paiements de téléphone en téléphone par Bluetooth, sans internet. Envoie, reçois, échange ; tes clés ne quittent jamais ce téléphone.', 'mesh.banner.sub': 'Relaie les paiements de téléphone en téléphone, hors ligne', 'tx.thismonth': 'Ce mois-ci', 'lang.title': 'Langue', 'create.failed': 'Impossible de créer le portefeuille : ', 'scan.invalid': 'Ce n’est pas une adresse Nimiq ni une demande de paiement', 'cashlink.soon': 'Les Cashlinks arrivent bientôt sur nimmesh',
       'hub.title': 'Important : crée une sauvegarde', 'hub.sub': 'Il n’y a pas de ‘mot de passe oublié’. Crée une sauvegarde pour garder le contrôle.',
       'hub.codes': 'Envoie-toi deux codes de sauvegarde', 'hub.codes.sub': 'Il suffit de deux façons de t’écrire, comme un messager et un email.',
       'hub.words': 'Note les 24 mots de récupération', 'hub.words.sub': 'Il suffit d’un stylo, d’un papier et d’un endroit sûr.',
@@ -1438,7 +1528,7 @@ Don't share them and keep them safe.</p>
       'confirm.title': 'Confirme seu endereço', 'confirm.sub': 'Este é o endereço que o nimmesh derivou da sua frase.', 'confirm.warn': 'Confira se corresponde exatamente à sua carteira antes de enviar fundos para ela.', 'confirm.mine': 'Esta é a minha carteira', 'confirm.retry': 'Não está certo, tentar de novo',
       'rec.title': 'Carteira encontrada neste aparelho', 'rec.sub': 'Uma carteira de uma instalação anterior ainda está no armazenamento seguro do aparelho. Este é o endereço dela:', 'rec.keep': 'Manter esta carteira', 'rec.fresh': 'Apagá-la e começar do zero', 'rec.confirm': 'Apagar a carteira deste aparelho? Sem as 24 palavras ela NÃO pode ser recuperada.',
       'acct.title': 'Minha conta', 'acct.copy': 'Copiar endereço', 'acct.backup': 'Backup', 'acct.logout': 'Sair deste aparelho', 'acct.logout.confirm': 'Remover a carteira deste aparelho? Sem suas 24 palavras ela NÃO pode ser recuperada. Garanta que você as guardou.',
-      'home.total': 'Saldo total', 'a.help': 'Ajuda', 'help.text': 'O nimmesh é uma carteira NIM que retransmite pagamentos de telefone em telefone por Bluetooth, sem internet. Envie, receba e troque; suas chaves nunca saem deste telefone.', 'mesh.banner.sub': 'Retransmite pagamentos de telefone em telefone, offline', 'tx.thismonth': 'Este mês', 'lang.title': 'Idioma', 'create.failed': 'Não foi possível criar a carteira: ', 'scan.invalid': 'Isso não é um endereço Nimiq nem uma cobrança', 'cashlink.soon': 'Os Cashlinks chegam em breve ao nimmesh',
+      'menu.network': 'Rede', 'set.title': 'Ajustes', 'menu.network.soon': 'A tela de Rede mesh chega na próxima atualização', 'home.total': 'Saldo total', 'a.help': 'Ajuda', 'help.text': 'O nimmesh é uma carteira NIM que retransmite pagamentos de telefone em telefone por Bluetooth, sem internet. Envie, receba e troque; suas chaves nunca saem deste telefone.', 'mesh.banner.sub': 'Retransmite pagamentos de telefone em telefone, offline', 'tx.thismonth': 'Este mês', 'lang.title': 'Idioma', 'create.failed': 'Não foi possível criar a carteira: ', 'scan.invalid': 'Isso não é um endereço Nimiq nem uma cobrança', 'cashlink.soon': 'Os Cashlinks chegam em breve ao nimmesh',
       'hub.title': 'Importante: crie um backup', 'hub.sub': 'Não existe ‘esqueci a senha’. Crie um backup para manter o controle.',
       'hub.codes': 'Envie dois códigos de backup para você', 'hub.codes.sub': 'Bastam duas formas de escrever para si, como um mensageiro e um e-mail.',
       'hub.words': 'Anote as 24 palavras de recuperação', 'hub.words.sub': 'Bastam caneta, papel e um lugar seguro para guardar.',
@@ -1487,6 +1577,7 @@ Don't share them and keep them safe.</p>
     'val.q': 'What is the {n} word?',
     'help.text': 'nimmesh is a NIM wallet that relays payments phone to phone over Bluetooth, no internet needed. Send, receive and swap; your keys never leave this phone.',
     'tx.thismonth': 'This month',
+    'menu.network.soon': 'The mesh Network screen arrives in the next update',
     'codes.copy': 'Copy code',
     'codes.how.tip': 'Email it to yourself, or message it to yourself in a chat app. Use a DIFFERENT platform for each code.',
     'swap.matched': 'Partner found, negotiating…', 'swap.settled': 'Swap settled',
@@ -1511,6 +1602,8 @@ Don't share them and keep them safe.</p>
     }
     const flag = document.getElementById('lang-pill-flag');
     if (flag) flag.src = `flags/${LANG}.svg`;   // the fleet flag-hex (local, offline)
+    const sflag = document.getElementById('set-lang-flag');
+    if (sflag) sflag.src = `flags/${LANG}.svg`;
   }
   async function switchLang(l) {
     if (!LANGS[l] || l === LANG) return;
@@ -1535,7 +1628,7 @@ Don't share them and keep them safe.</p>
   const sheets = {
     receive: document.getElementById('receive-sheet'), send: document.getElementById('send-sheet'),
     account: document.getElementById('account-sheet'), lang: document.getElementById('lang-sheet'),
-    swap: document.getElementById('swap-sheet'),
+    swap: document.getElementById('swap-sheet'), settings: document.getElementById('settings-sheet'),
   };
   const open = (k) => { backdrop.classList.add('open'); sheets[k].classList.add('open'); };
   const close = () => { backdrop.classList.remove('open'); Object.values(sheets).forEach(s => s.classList.remove('open')); };
@@ -1556,9 +1649,53 @@ Don't share them and keep them safe.</p>
     document.getElementById('lang-pill').addEventListener('click', () => open('lang'));
   })();
 
-  // The account pill (identicon) opens the account sheet: address / copy / backup / log out.
-  // Revealed by the boot block once the bridge confirms a wallet exists.
-  document.getElementById('account-pill').addEventListener('click', () => open('account'));
+  // ---- P2: the navy side menu ----
+  const sideMenu = document.getElementById('side-menu');
+  const menuBackdrop = document.getElementById('menu-backdrop');
+  function openMenu() { sideMenu.classList.add('open'); menuBackdrop.classList.add('open'); refreshCharts(); }
+  function closeMenu() { sideMenu.classList.remove('open'); menuBackdrop.classList.remove('open'); }
+  menuBackdrop.addEventListener('click', closeMenu);
+  document.getElementById('menu-swap').addEventListener('click', () => { closeMenu(); resetSwapSheet(); open('swap'); });
+  document.getElementById('menu-account').addEventListener('click', () => { closeMenu(); open('account'); });
+  document.getElementById('menu-network').addEventListener('click', () => alert(T('menu.network.soon')));
+  document.getElementById('menu-settings').addEventListener('click', () => { closeMenu(); open('settings'); });
+  document.getElementById('set-lang').addEventListener('click', () => open('lang'));
+  document.getElementById('set-backup').addEventListener('click', () => { close(); openBackupHub(); });
+  document.getElementById('set-logout').addEventListener('click', async () => {
+    if (!(window.nimmesh && nimmesh.deleteWallet)) return;
+    if (!confirm(T('acct.logout.confirm'))) return;
+    try { await nimmesh.deleteWallet(); location.reload(); } catch (e) {}
+  });
+
+  // The wallet's 24h sparklines (CoinGecko market_chart), in the language's currency;
+  // cached ~10 min, fetched when the menu opens, honest-empty offline.
+  let chartsAt = 0;
+  async function refreshCharts() {
+    if (Date.now() - chartsAt < 10 * 60 * 1000) return;
+    const cfg = FIAT[LANG] || FIAT.en;
+    for (const [el, coin] of [['chart-nim', 'nimiq-2'], ['chart-btc', 'bitcoin']]) {
+      try {
+        const r = await fetch(`https://api.coingecko.com/api/v3/coins/${coin}/market_chart?vs_currency=${cfg.currency}&days=1`);
+        const j = await r.json();
+        const prices = (j.prices || []).map((x) => x[1]);
+        if (prices.length < 2) continue;
+        const step = Math.max(1, Math.floor(prices.length / 44));
+        const pts = prices.filter((_, i) => i % step === 0);
+        const min = Math.min(...pts), max = Math.max(...pts), span = (max - min) || 1;
+        const poly = pts.map((v, i) => `${(i / (pts.length - 1)) * 176},${48 - ((v - min) / span) * 44 + 2}`).join(' ');
+        const box = document.getElementById(el);
+        box.querySelector('polyline').setAttribute('points', poly);
+        const last = prices[prices.length - 1], first = prices[0];
+        const pct = ((last - first) / first) * 100;
+        const dp = last < 0.01 ? 6 : 2;
+        box.querySelector('.pr').textContent = `${last.toFixed(dp)} ${(new Intl.NumberFormat(cfg.locale, { style: 'currency', currency: cfg.currency.toUpperCase() }).formatToParts(1).find((x) => x.type === 'currency') || {}).value || ''}`;
+        const pc = box.querySelector('.pc');
+        pc.textContent = `${pct >= 0 ? '+ ' : '- '}${Math.abs(pct).toFixed(1)}%`;
+        pc.className = 'pc ' + (pct >= 0 ? 'up' : 'down');
+        chartsAt = Date.now();
+      } catch (e) { /* offline: charts stay empty */ }
+    }
+  }
   document.getElementById('acct-copy').addEventListener('click', () => {
     const compact = window.RECEIVE_ADDR || '';
     const spaced = (compact.match(/.{1,4}/g) || []).join(' ');
@@ -1690,8 +1827,7 @@ Don't share them and keep them safe.</p>
   document.getElementById('open-address').addEventListener('click', () => showView('view-address'));
   document.getElementById('addr-back').addEventListener('click', () => showView('view-home'));
   document.getElementById('addr-dots').addEventListener('click', () => open('account'));
-  // until the side menu (P2) exists, the hamburger opens the account sheet
-  document.getElementById('open-menu').addEventListener('click', () => open('account'));
+  document.getElementById('open-menu').addEventListener('click', () => openMenu());
   document.getElementById('help-pill').addEventListener('click', () => alert(T('help.text')));
   // the wallet's swap circles preselect the receive asset, then open the swap sheet
   document.querySelectorAll('.swap-circle').forEach((b) => b.addEventListener('click', () => {
@@ -2232,6 +2368,8 @@ Don't share them and keep them safe.</p>
       if (mb1) mb1.textContent = `${T('mesh.state.' + m.state)} · ${m.peers} ${T('mesh.nearby')}`;
       const meta = document.getElementById('acct-meta');
       if (meta) meta.textContent = `core ${v.core}`;
+      const smeta = document.getElementById('set-meta');
+      if (smeta) smeta.textContent = `nimmesh · core ${v.core}`;
     } catch (e) { console.error('bridge probe failed', e); }
     // G16: light up the Send sheet's "will it send?" line from the node's reach. With no
     // native radio yet (Phase D) the bridge honestly reports offline; once the shim runs a
@@ -2262,8 +2400,7 @@ Don't share them and keep them safe.</p>
           el.dataset.address = spaced;
           try { el.querySelector('img').src = await Iqons.toDataUrl(spaced); } catch (e) {}
         }
-        // The account pill (the wallet-pill replacement) shows once the wallet is real.
-        document.getElementById('account-pill').hidden = false;
+
       }
     } catch (e) { /* no wallet bridge (plain browser) — keep the demo address */ }
     // C1d: the REAL balance + REAL transaction history from the chain — LIVE. Loaded now,
