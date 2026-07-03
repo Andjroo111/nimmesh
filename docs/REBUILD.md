@@ -47,6 +47,34 @@ Pixel-verified components: the `nq` registry (40). Upstream truth: `nimiq/wallet
    "you helped N payments" (G20 relay stats over FFI), the explainer card rewritten for
    the mesh ("With nimmesh, you ARE the network").
 
+## Andjroo's keeps (2026-07-02)
+
+- **The mesh status line stays** — `mesh offline · 0 nearby · core X · head N` — it is the
+  product's identity. It lives above the bottom action bar on every main screen (home +
+  address detail), where the wallet has nothing comparable.
+- **The language selector stays and stays visible** — the flag pill goes top-right on the
+  home, in exactly the slot where the real wallet shows its globe/language icon. Same
+  offline flag-hex pill, same language sheet.
+- **The account/profile pill at the top is PROVISIONAL** — keep it until the side menu
+  (Phase 3) + account modal (Phase 4) provide account access the wallet's way, then remove
+  it from the home chrome.
+
+## The loop
+
+One phase-slice per cycle, autonomous, merge-on-green (Andjroo's standing grant):
+
+1. Branch from fresh `origin/main` in the `nimiq.nimmesh-ui` worktree.
+2. Build the slice; verify = Playwright 390px screenshot-diff vs the mapped reference +
+   `nq lint` 0 errors + `node --check` on the module script.
+3. `build-adhoc.sh` (full, so the core version string matches), refresh `ota/`
+   (align the version to main+1 RIGHT before commit — the swap track ships constantly).
+4. PR → CI green (rerun once if the flaky swap stress test trips) → squash-merge →
+   verify the DEPLOYED manifest by reading the bundle-version line.
+5. Tick the phase below, reschedule the next cycle.
+
+Progress: [ ] P1 home overview + address drill-in · [ ] P2 side menu · [ ] P3 account
+modal · [ ] P4 mesh Network screen · [ ] P5 final diff-everything polish pass.
+
 ## Rules
 
 - Every screen ships only after a screenshot-diff against its reference (390px, the
