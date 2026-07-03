@@ -259,6 +259,99 @@ pub fn parse_eth_call(resp: &serde_json::Value) -> Result<String, EvmRpcError> {
         })
 }
 
+/// `eth_blockNumber()` — the current head height. Request builder + parser.
+pub fn block_number_request(id: u64) -> serde_json::Value {
+    json_rpc_request("eth_blockNumber", serde_json::json!([]), id)
+}
+
+/// Parse an `eth_blockNumber` response → the head height.
+pub fn parse_block_number(resp: &serde_json::Value) -> Result<u64, EvmRpcError> {
+    let r = parse_result("eth_blockNumber", resp)?;
+    r.as_str()
+        .and_then(parse_quantity)
+        .ok_or(EvmRpcError::BadResponse {
+            method: "eth_blockNumber".to_string(),
+        })
+}
+
+/// `eth_getLogs` filtered to one contract + an event signature (topic 0) + an optional indexed
+/// topic 3 — how the Polygon funding verifier (#72 tail) finds `NewSwap` escrows paying OUR
+/// recipient. Request builder + parser.
+pub fn get_logs_request(
+    address: &str,
+    topic0: &str,
+    topic3: Option<&str>,
+    from_block: u64,
+    id: u64,
+) -> serde_json::Value {
+    json_rpc_request(
+        "eth_getLogs",
+        serde_json::json!([{
+            "address": address,
+            "fromBlock": quantity_hex(from_block),
+            "toBlock": "latest",
+            "topics": [topic0, serde_json::Value::Null, serde_json::Value::Null, topic3],
+        }]),
+        id,
+    )
+}
+
+/// One log entry, decoded to the slice the verifier needs: the first indexed argument
+/// (topic 1 — the swap id for `NewSwap`), the raw data words, and the inclusion block.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EvmLog {
+    /// The event's first indexed argument (topic 1).
+    pub topic1: [u8; 32],
+    /// The non-indexed data words, decoded from hex.
+    pub data: Vec<u8>,
+    /// The block the event was emitted in.
+    pub block_number: u64,
+}
+
+/// Parse an `eth_getLogs` response → the decoded entries. Entries missing a topic 1, with
+/// non-hex fields, or with a malformed block number are skipped (panic-free on any JSON).
+pub fn parse_logs(resp: &serde_json::Value) -> Result<Vec<EvmLog>, EvmRpcError> {
+    let r = parse_result("eth_getLogs", resp)?;
+    let arr = r.as_array().ok_or(EvmRpcError::BadResponse {
+        method: "eth_getLogs".to_string(),
+    })?;
+    let mut out = Vec::with_capacity(arr.len());
+    for entry in arr {
+        let Some(t1) = entry
+            .get("topics")
+            .and_then(|t| t.as_array())
+            .and_then(|t| t.get(1))
+            .and_then(|t| t.as_str())
+            .and_then(|t| decode_hex(t.strip_prefix("0x").unwrap_or(t)))
+        else {
+            continue;
+        };
+        let Ok(topic1) = <[u8; 32]>::try_from(t1.as_slice()) else {
+            continue;
+        };
+        let Some(data) = entry
+            .get("data")
+            .and_then(|d| d.as_str())
+            .and_then(|d| decode_hex(d.strip_prefix("0x").unwrap_or(d)))
+        else {
+            continue;
+        };
+        let Some(block_number) = entry
+            .get("blockNumber")
+            .and_then(|b| b.as_str())
+            .and_then(parse_quantity)
+        else {
+            continue;
+        };
+        out.push(EvmLog {
+            topic1,
+            data,
+            block_number,
+        });
+    }
+    Ok(out)
+}
+
 // --- HttpPolygonRpc: the real blocking HTTP client (live calls owner-gated) -----------------------
 
 /// The live blocking Polygon JSON-RPC client over `ureq` (no tokio). **Amoy-guarded at construction**.
@@ -352,6 +445,24 @@ impl HttpPolygonRpc {
     pub fn eth_call(&self, to: &str, data: &str) -> Result<String, EvmRpcError> {
         let req = eth_call_request(to, data, self.next_id());
         parse_eth_call(&self.post(req, "eth_call")?)
+    }
+
+    /// The current head height (LIVE — read-only).
+    pub fn block_number(&self) -> Result<u64, EvmRpcError> {
+        let req = block_number_request(self.next_id());
+        parse_block_number(&self.post(req, "eth_blockNumber")?)
+    }
+
+    /// Filtered event logs (LIVE — read-only). See [`get_logs_request`].
+    pub fn get_logs(
+        &self,
+        address: &str,
+        topic0: &str,
+        topic3: Option<&str>,
+        from_block: u64,
+    ) -> Result<Vec<EvmLog>, EvmRpcError> {
+        let req = get_logs_request(address, topic0, topic3, from_block, self.next_id());
+        parse_logs(&self.post(req, "eth_getLogs")?)
     }
 }
 
@@ -485,6 +596,41 @@ mod tests {
         assert_eq!(parse_quantity("0x5208"), Some(21_000));
         assert_eq!(parse_quantity("not-hex"), None); // panic-free on junk
         assert_eq!(parse_quantity("0xZZ"), None);
+    }
+
+    #[test]
+    fn logs_and_block_number_codecs_round_trip() {
+        assert_eq!(block_number_request(4)["method"], "eth_blockNumber");
+        let head = json!({ "jsonrpc": "2.0", "id": 4, "result": "0x2753924" });
+        assert_eq!(parse_block_number(&head).unwrap(), 0x2753924);
+
+        let req = get_logs_request("0xdead", "0xt0", Some("0xt3"), 7, 5);
+        assert_eq!(req["method"], "eth_getLogs");
+        assert_eq!(req["params"][0]["fromBlock"], "0x7");
+        assert_eq!(req["params"][0]["topics"][0], "0xt0");
+        assert_eq!(req["params"][0]["topics"][3], "0xt3");
+        assert!(req["params"][0]["topics"][1].is_null());
+
+        // A realistic entry (the shape Amoy returned for the deployed HTLC's NewSwap), plus a
+        // malformed sibling that must be skipped, not panicked on.
+        let resp = json!({ "jsonrpc": "2.0", "id": 5, "result": [
+            {
+                "topics": ["0xaaaa", format!("0x{}", "11".repeat(32)), "0xbb", "0xcc"],
+                "data": format!("0x{}", "22".repeat(96)),
+                "blockNumber": "0x64"
+            },
+            { "topics": [], "data": 7, "blockNumber": null }
+        ]});
+        let logs = parse_logs(&resp).unwrap();
+        assert_eq!(logs.len(), 1);
+        assert_eq!(logs[0].topic1, [0x11; 32]);
+        assert_eq!(logs[0].data, vec![0x22; 96]);
+        assert_eq!(logs[0].block_number, 100);
+        // And a node error is terminal, not a panic.
+        assert!(
+            parse_logs(&json!({ "jsonrpc": "2.0", "id": 5, "error": { "message": "nope" } }))
+                .is_err()
+        );
     }
 
     #[test]

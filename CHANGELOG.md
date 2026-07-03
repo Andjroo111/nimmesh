@@ -2,6 +2,26 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.49.8] — 2026-07-03
+
+### Added — the gateway-backed USDC funding verifier (#72 tail, slice 1 — offline half)
+
+- **`polygon_verifier`** (behind `polygon-gateway`): the first REAL-chain implementation of the
+  G1 funding-verification seam. `PolygonHtlcVerifier` finds `NewSwap` escrows on the deployed
+  `NimmeshHtlc` **indexed by our recipient** (`eth_getLogs` topic 3), requires the hashlock
+  match + a `getSwap` **Live** state (a claimed/refunded slot is not funding), takes the
+  deepest live candidate (the `LedgerVerifier` mirror), and reports depth from
+  `eth_blockNumber` — so `require_funded`'s per-chain `ConfirmationPolicy` floor and the
+  stateless reorg re-check (#74/G3) apply unchanged on the real chain. **Fail-closed**: any
+  RPC failure reads `Absent` — a transport blip can delay a swap, never authorize one.
+  Logic tested offline against a `PolygonReads` fake (found/depth, reorg-reburial refusal,
+  wrong-hashlock mismatch, resolved-slot, deepest-wins, transport/foreign-leg/malformed-
+  recipient fail-closed) + the `NewSwap` topic-0 cast vector.
+- **`polygon_gateway`**: `eth_blockNumber` + `eth_getLogs` request/parse codecs (`EvmLog`) with
+  fixture tests, and the two `HttpPolygonRpc` methods.
+- Still OPEN on #72: the live Amoy proof of this verifier (rides the G6 deployment) and the
+  NIM/BTC gateway verifiers.
+
 ## [0.49.7] — 2026-07-03
 
 ### Added — the Rust side of single-transaction permit funding (feeds G6/G7)

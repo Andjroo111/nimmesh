@@ -184,6 +184,13 @@ pub mod evm_signer;
 #[cfg(feature = "polygon-gateway")]
 pub mod polygon_gateway;
 
+// Mesh swap (#72 tail, slice 1): the gateway-backed USDC-leg FundingVerifier, behind
+// `polygon-gateway`. `polygon_verifier` reads the DEPLOYED NimmeshHtlc (NewSwap logs indexed by
+// our recipient + a getSwap live-check + head depth) and feeds the G1 gate. Fail-closed: RPC
+// errors read Absent. Logic tested offline against a reads-fake; the live Amoy proof rides G6.
+#[cfg(feature = "polygon-gateway")]
+pub mod polygon_verifier;
+
 // Mesh swap: the REAL Bitcoin swap leg (behind `bitcoin-leg`) — the BTC-native analog of
 // `swap_builder::NimiqLeg`. Wraps `btc::BtcHtlcParams` + signs through the `btc::BtcEnclaveKey`
 // seam, exposing `htlc_address` / `build_claim` / `build_refund`. Supersedes the BTC half of the
