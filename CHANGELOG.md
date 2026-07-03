@@ -2,6 +2,14 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+<<<<<<< HEAD
+## [0.47.1] — 2026-07-02
+
+### Changed — real coin logos in the swap pair (Andjroo)
+
+The lettered placeholder circles are gone: NIM is its gold hexagon, and BTC/USDC are the
+wallet's official coin SVGs (verbatim `BitcoinIcon`/`UsdcIcon`, canonical brand colors via
+currentColor). The receive coin switches with the asset toggle.
 ## [0.47.0] — 2026-07-02
 
 ### App integration — discovery metrics over UniFFI (G9 slice 1, #80)
