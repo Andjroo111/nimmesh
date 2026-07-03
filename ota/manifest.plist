@@ -15,7 +15,7 @@
       <key>metadata</key>
       <dict>
         <key>bundle-identifier</key><string>com.nimmesh.app</string>
-        <key>bundle-version</key><string>0.49.19</string>
+        <key>bundle-version</key><string>0.49.20</string>
         <key>kind</key><string>software</string>
         <key>title</key><string>nimmesh</string>
       </dict>

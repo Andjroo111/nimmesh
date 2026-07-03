@@ -56,7 +56,7 @@
   .nw-map-pan { position: absolute; top: 64px; left: 52%; right: 10px; height: 42%;
     overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
   .nw-map-pan::-webkit-scrollbar { display: none; }
-  .nw-hexmap { display: block; height: 100%; width: auto; color: rgba(255,255,255,.08); }
+  .nw-hexmap { display: block; height: 100%; color: rgba(255,255,255,.08); }
   .nw-hexmap #nw-you-hex.on { fill: var(--nimiq-gold, #E9B213); }
   .nw-hexmap [data-peer-cell].on { fill: var(--nimiq-light-blue-on-dark, #0CA6FE); }
   .nw-hexmap [data-peer-arc] { visibility: hidden; }
@@ -1825,7 +1825,12 @@ Don't share them and keep them safe.</p>
       const svg = pan && pan.querySelector('svg');
       if (!pan || !you || !svg) return;
       const vb = svg.viewBox.baseVal;
-      const scale = svg.getBoundingClientRect().width / vb.width;
+      // WebKit collapses width:auto SVGs to the container: set the intrinsic width
+      // explicitly so the FULL world (both hemispheres) renders at the area's height
+      // and the overflow actually pans left-right.
+      const w = pan.clientHeight * (vb.width / vb.height);
+      svg.style.width = `${w}px`;
+      const scale = w / vb.width;
       const tf = you.transform.baseVal.getItem(0).matrix;
       pan.scrollLeft = tf.e * scale - pan.clientWidth / 2;
     });

@@ -2,6 +2,15 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.49.20] — 2026-07-03
+
+### Fixed — the Network map pans again + the full world fits its corner (Andjroo)
+
+WebKit collapses a width:auto SVG to its container, which killed the horizontal pan and
+squeezed the map (North America looked cut off). The map's intrinsic width is now set
+explicitly from the viewBox aspect when the screen opens: the full north-south extent
+fits the corner area and the map scrolls left-right, opening centered on your node.
+
 ## [0.49.19] — 2026-07-03
 
 ### Fixed — the Network map sized to its corner + the explainer auto-opens (Andjroo)
