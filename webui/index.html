@@ -16,6 +16,7 @@
 <link rel="stylesheet" href="fiat-amount/fiat-amount.css">
 <link rel="stylesheet" href="identicon/identicon.css">
 <link rel="stylesheet" href="address-display/address-display.css">
+<link rel="stylesheet" href="copyable/copyable.css">
 <style>
   /* legacy @nimiq/style sets html{font-size:8px}; custom CSS in px. */
   body { font-family: 'Mulish','Muli',system-ui,sans-serif !important; background: #f8f8f8; margin: 0; color: #1f2348; }
@@ -156,6 +157,9 @@
   .account-header .active-address .identicon { height: 6rem; width: 6rem; margin: 0; }
   .account-header .active-address .address {
     mask: linear-gradient(90deg, #000 0, #000 calc(100% - 3rem), transparent); }
+  /* the home address is a real Copyable (tap -> copy + the wallet's blue Copied tooltip) */
+  .account-header .copyable { padding: 0.5rem 0.75rem; margin: -0.5rem -0.75rem; min-width: 0; }
+  .account-header .copyable .tooltip { top: -4.5rem; }
   /* A3: Send/Receive moved to the bottom action bar (matches the real mobile wallet),
      so the header actions row is just the full-width search. */
   .account-header .actions { margin: 0 2rem 0; padding: 0; }
@@ -560,8 +564,8 @@
             <span class="amount" id="home-balance">752 <span class="currency nim">NIM</span></span>
           </div>
           <div class="flex-row">
-            <div class="copyable"><div class="address" data-wallet-address title="NQ30 AM32 NHXL 29F7 XUY0 HR3R 7XHF EF4L LYBS">NQ30 AM32 NHXL 29F7 XUY0 HR3R 7XHF EF4L LYBS</div></div>
-            <span class="fiat-amount" id="home-fiat">$0.46</span>
+            <div class="copyable" id="home-copyable" tabindex="0"><div class="background"></div><div class="address" data-wallet-address title="NQ30 AM32 NHXL 29F7 XUY0 HR3R 7XHF EF4L LYBS">NQ30 AM32 NHXL 29F7 XUY0 HR3R 7XHF EF4L LYBS</div><div class="tooltip" data-i18n="a.copied">Copied</div></div>
+            <span class="fiat-amount" id="home-fiat"></span>
           </div>
         </div>
       </div>
@@ -1554,6 +1558,56 @@ Don't share them and keep them safe.</p>
   });
   document.getElementById('swap-done').addEventListener('click', () => { close(); resetSwapSheet(); });
 
+  // The home address is a real Copyable: tap -> copy the full spaced address, show the
+  // wallet's blue "Copied" tooltip for ~800ms (upstream Copyable's DISPLAY_TIME).
+  (function wireHomeCopyable() {
+    const el = document.getElementById('home-copyable');
+    if (!el) return;
+    let t = null;
+    const doCopy = () => {
+      const compact = (window.RECEIVE_ADDR || '').replace(/\s+/g, '');
+      const spaced = (compact.match(/.{1,4}/g) || []).join(' ');
+      try { navigator.clipboard.writeText(spaced).catch(() => {}); } catch (e) {}
+      el.classList.add('copied');
+      clearTimeout(t);
+      t = setTimeout(() => el.classList.remove('copied'), 800);
+    };
+    el.addEventListener('click', doCopy);
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); doCopy(); } });
+  })();
+
+  // Live fiat value in the LANGUAGE'S currency (the fleet flag mapping: en-US -> USD,
+  // es-MX -> MXN, de/fr -> EUR, pt-BR -> BRL), price from CoinGecko, cached ~5 min and
+  // refreshed on the same beat as the balance. Formatting via Intl (locale-correct symbol
+  // placement, e.g. "0,44 €"). Offline/unreachable -> the fiat line simply stays empty.
+  const FIAT = {
+    en: { currency: 'usd', locale: 'en-US' },
+    es: { currency: 'mxn', locale: 'es-MX' },
+    de: { currency: 'eur', locale: 'de-DE' },
+    fr: { currency: 'eur', locale: 'fr-FR' },
+    pt: { currency: 'brl', locale: 'pt-BR' },
+  };
+  let nimPrice = null;    // in the active language's currency
+  let nimPriceAt = 0;
+  async function refreshNimPrice() {
+    if (Date.now() - nimPriceAt < 5 * 60 * 1000) return;
+    const cfg = FIAT[LANG] || FIAT.en;
+    try {
+      const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=nimiq-2&vs_currencies=' + cfg.currency);
+      const j = await r.json();
+      const p = j && j['nimiq-2'] && j['nimiq-2'][cfg.currency];
+      if (typeof p === 'number' && p > 0) { nimPrice = p; nimPriceAt = Date.now(); }
+    } catch (e) { /* offline: no fiat line */ }
+  }
+  function fiatText(luna) {
+    if (nimPrice == null) return '';
+    const cfg = FIAT[LANG] || FIAT.en;
+    const value = (luna / 1e5) * nimPrice;
+    try {
+      return new Intl.NumberFormat(cfg.locale, { style: 'currency', currency: cfg.currency.toUpperCase() }).format(value);
+    } catch (e) { return ''; }
+  }
+
   // The amount-input component's behavior: grey at rest -> navy with a value -> light-blue
   // while focused, and the input's width tracks its content (the upstream width-finder idea,
   // done with ch units since the value is digits only).
@@ -2069,8 +2123,9 @@ Don't share them and keep them safe.</p>
         balanceLuna = (b && typeof b.luna === 'number') ? b.luna : 0;
         const bal = document.getElementById('home-balance');
         if (bal) bal.innerHTML = `${fmtNim(balanceLuna)} <span class="currency nim">NIM</span>`;
+        await refreshNimPrice();
         const fiat = document.getElementById('home-fiat');
-        if (fiat) fiat.textContent = '';
+        if (fiat) fiat.textContent = fiatText(balanceLuna);
       } catch (e) { /* keep the last shown balance if the read fails */ }
       try {
         const { txs } = await nimmesh.walletHistory();

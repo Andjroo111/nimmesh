@@ -1,0 +1,18 @@
+<!-- Copyable (resting state). Add class "copied" for ~800ms after a copy to show the tooltip. -->
+<div class="copyable" tabindex="0" onclick="copyableCopy(this)">
+    <div class="background"></div>
+    NQ07 0000 ...
+    <div class="tooltip">Copied</div>
+</div>
+
+<script>
+// Minimal copy behavior matching upstream Copyable (slot text minus tooltip label).
+function copyableCopy(el) {
+    var label = el.querySelector('.tooltip').textContent;
+    var text = el.innerText.replace(new RegExp('\\s*' + label + '$'), '');
+    navigator.clipboard && navigator.clipboard.writeText(text);
+    el.classList.add('copied');
+    clearTimeout(el._copiedResetTimeout);
+    el._copiedResetTimeout = setTimeout(function () { el.classList.remove('copied'); }, 800);
+}
+</script>

@@ -2,6 +2,18 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.48.1] — 2026-07-02
+
+### Added — live fiat value + tap-to-copy address (Andjroo)
+
+- **The home balance now shows its fiat value in the LANGUAGE'S currency** (the fleet flag
+  mapping: EN→USD, ES→MXN, DE/FR→EUR, PT→BRL), price from CoinGecko cached ~5 min and
+  refreshed on the balance beat, formatted locale-correctly via Intl ("$0.44" / "0,44 €" /
+  "R$ 2,48"). Offline the line stays empty rather than faking a number.
+- **The home address is a real Copyable** (the registry component, vendored): tap → the
+  full spaced address on the clipboard, light-blue tint + the wallet's blue "Copied"
+  tooltip (~800ms, upstream timing), keyboard-accessible, localized label.
+
 ## [0.48.0] — 2026-07-02
 
 ### App integration — active-swap match list over UniFFI (G9 slice 2, #80)
