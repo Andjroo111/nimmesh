@@ -2,6 +2,15 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.49.21] — 2026-07-03
+
+### Fixed — the Network map pans by touch for real now (Andjroo)
+
+WKWebView was swallowing native horizontal scrolling on the map area, so swipes did
+nothing on device. The map now pans via pointer DRAG handled in JS (the same mechanism
+as the swap bar's handle, proven on device), with touch-action pinned so iOS hands us
+every touch. Also guards the sizing pass against a zero-height first frame.
+
 ## [0.49.20] — 2026-07-03
 
 ### Fixed — the Network map pans again + the full world fits its corner (Andjroo)

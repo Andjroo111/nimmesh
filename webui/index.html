@@ -54,7 +54,8 @@
     color: #fff; margin-top: 4px; }
   .nw-stat .val svg { width: 26px; height: 26px; color: #fff; }
   .nw-map-pan { position: absolute; top: 64px; left: 52%; right: 10px; height: 42%;
-    overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
+    overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch;
+    touch-action: none; cursor: grab; }
   .nw-map-pan::-webkit-scrollbar { display: none; }
   .nw-hexmap { display: block; height: 100%; color: rgba(255,255,255,.08); }
   .nw-hexmap #nw-you-hex.on { fill: var(--nimiq-gold, #E9B213); }
@@ -1818,12 +1819,13 @@ Don't share them and keep them safe.</p>
   menuBackdrop.addEventListener('click', closeMenu);
   document.getElementById('menu-swap').addEventListener('click', () => { closeMenu(); resetSwapSheet(); open('swap'); });
   document.getElementById('menu-account').addEventListener('click', () => { closeMenu(); open('account'); });
-  function centerNetworkMap() {
+  function centerNetworkMap(attempt) {
     requestAnimationFrame(() => {
       const pan = document.getElementById('nw-map-pan');
       const you = document.getElementById('nw-you-hex');
       const svg = pan && pan.querySelector('svg');
       if (!pan || !you || !svg) return;
+      if (!pan.clientHeight && (attempt || 0) < 10) { centerNetworkMap((attempt || 0) + 1); return; }
       const vb = svg.viewBox.baseVal;
       // WebKit collapses width:auto SVGs to the container: set the intrinsic width
       // explicitly so the FULL world (both hemispheres) renders at the area's height
@@ -1835,6 +1837,24 @@ Don't share them and keep them safe.</p>
       pan.scrollLeft = tf.e * scale - pan.clientWidth / 2;
     });
   }
+  // drag-to-pan (pointer events): WKWebView swallows native horizontal scroll here,
+  // so the map pans the same way the swap bar drags — proven on device.
+  (function wireMapDrag() {
+    const pan = document.getElementById('nw-map-pan');
+    if (!pan) return;
+    let startX = null, startLeft = 0;
+    pan.addEventListener('pointerdown', (e) => {
+      startX = e.clientX; startLeft = pan.scrollLeft;
+      try { pan.setPointerCapture(e.pointerId); } catch (err) {}
+    });
+    pan.addEventListener('pointermove', (e) => {
+      if (startX == null) return;
+      pan.scrollLeft = startLeft - (e.clientX - startX);
+    });
+    const end = () => { startX = null; };
+    pan.addEventListener('pointerup', end);
+    pan.addEventListener('pointercancel', end);
+  })();
   document.getElementById('menu-network').addEventListener('click', () => { closeMenu(); showView('view-network'); centerNetworkMap(); });
   document.getElementById('nw-back').addEventListener('click', () => showView('view-home'));
   document.getElementById('nw-menu').addEventListener('click', () => openMenu());
