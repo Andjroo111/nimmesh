@@ -98,6 +98,49 @@ pub fn htlc_refund(swap_id: &UsdcSwapId) -> Vec<u8> {
     cd
 }
 
+/// HTLC `newSwapWithPermit(address,uint256,bytes32,uint256,uint256,uint8,bytes32,bytes32)`
+/// calldata (selector `0x0dc15831`) — **single-transaction funding**: the EIP-2612 permit and the
+/// escrow ride one tx, no prior `approve` (closes S4's approve→transferFrom race; ADR-0007).
+/// Build the digest with [`crate::evm_permit::permit_digest`]; `v` is
+/// [`crate::evm_permit::permit_sig_v`] (27/28), `r`/`s` are the signature words.
+#[allow(clippy::too_many_arguments)]
+pub fn htlc_new_swap_with_permit(
+    receiver: &EvmAddress,
+    amount: u64,
+    hashlock: &[u8; HASH_LEN],
+    timelock: u64,
+    deadline: u64,
+    v: u8,
+    r: &[u8; 32],
+    s: &[u8; 32],
+) -> Vec<u8> {
+    let mut cd = calldata(
+        "newSwapWithPermit(address,uint256,bytes32,uint256,uint256,uint8,bytes32,bytes32)",
+    );
+    cd.extend_from_slice(&word_address(receiver));
+    cd.extend_from_slice(&word_u256(amount));
+    cd.extend_from_slice(hashlock); // bytes32 — passthrough
+    cd.extend_from_slice(&word_u256(timelock));
+    cd.extend_from_slice(&word_u256(deadline));
+    cd.extend_from_slice(&word_u256(u64::from(v))); // uint8 — right-aligned in a word
+    cd.extend_from_slice(r); // bytes32
+    cd.extend_from_slice(s); // bytes32
+    cd
+}
+
+/// ERC-20 `DOMAIN_SEPARATOR()` calldata (selector `0x3644e515`) — read the token's LIVE EIP-712
+/// domain for [`crate::evm_permit::permit_digest`] (deployments differ; on-chain is the truth).
+pub fn erc20_domain_separator() -> Vec<u8> {
+    calldata("DOMAIN_SEPARATOR()")
+}
+
+/// ERC-20 `nonces(address owner)` calldata (selector `0x7ecebe00`) — the owner's next permit nonce.
+pub fn erc20_nonces(owner: &EvmAddress) -> Vec<u8> {
+    let mut cd = calldata("nonces(address)");
+    cd.extend_from_slice(&word_address(owner));
+    cd
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -202,6 +245,36 @@ mod tests {
         assert_eq!(&cd[..4], &function_selector("refund(bytes32)")[..]);
         assert_eq!(cd.len(), 4 + WORD); // 36 bytes
         assert_eq!(&cd[4..36], &swap_id[..]);
+    }
+
+    #[test]
+    fn new_swap_with_permit_calldata_lays_out_all_eight_words() {
+        let receiver = [0xAB; 20];
+        let hashlock = [0xC7; 32];
+        let r = [0x04; 32];
+        let sig_s = [0x05; 32];
+        let cd = htlc_new_swap_with_permit(
+            &receiver, 25_000_000, &hashlock, 5_000, 6_000, 27, &r, &sig_s,
+        );
+        assert_eq!(&cd[..4], &hex("0dc15831")[..]); // cast sig of the canonical signature
+        assert_eq!(cd.len(), 4 + 8 * WORD); // 260 bytes
+        assert_eq!(&cd[4..36], &word_address(&receiver)[..]);
+        assert_eq!(&cd[36..68], &word_u256(25_000_000)[..]);
+        assert_eq!(&cd[68..100], &hashlock[..]);
+        assert_eq!(&cd[100..132], &word_u256(5_000)[..]);
+        assert_eq!(&cd[132..164], &word_u256(6_000)[..]);
+        assert_eq!(&cd[164..196], &word_u256(27)[..]); // uint8 v, right-aligned
+        assert_eq!(&cd[196..228], &r[..]);
+        assert_eq!(&cd[228..260], &sig_s[..]);
+    }
+
+    #[test]
+    fn the_permit_read_selectors_match_their_public_constants() {
+        assert_eq!(&erc20_domain_separator()[..], &hex("3644e515")[..]); // DOMAIN_SEPARATOR()
+        let cd = erc20_nonces(&[0x44; 20]);
+        assert_eq!(&cd[..4], &hex("7ecebe00")[..]); // nonces(address)
+        assert_eq!(cd.len(), 4 + WORD);
+        assert_eq!(&cd[4..36], &word_address(&[0x44; 20])[..]);
     }
 
     #[test]

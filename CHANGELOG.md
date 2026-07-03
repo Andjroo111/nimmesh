@@ -2,6 +2,22 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.49.7] — 2026-07-03
+
+### Added — the Rust side of single-transaction permit funding (feeds G6/G7)
+
+- **`evm_permit`** (behind `polygon-leg`): hand-rolled EIP-2612/EIP-712 pre-images — the
+  canonical typehashes (asserted against the published constants), `eip712_domain_separator`,
+  `permit_digest` (bound to every field), and `permit_sig_v` (27/28 — an EIP-712 signature,
+  not the EIP-155 tx `v`). Digest vectors cross-derived with `cast keccak` on the Foundry
+  `MockUsdc` domain fields. Live-path guidance: read the token's `DOMAIN_SEPARATOR()` rather
+  than rebuilding it (Amoy USDC is name "USDC", version "2").
+- **`evm_abi`**: `htlc_new_swap_with_permit` calldata (selector `0x0dc15831`, 8 static words,
+  byte-layout-tested) for the contract's single-tx funding entry point, plus the two permit
+  read builders `erc20_domain_separator()` (`0x3644e515`) and `erc20_nonces(owner)`
+  (`0x7ecebe00`). The app can now fund the USDC escrow with **no separate approve tx** once it
+  signs the permit digest — the on-chain half landed with the G5 contract (ADR-0007).
+
 ## [0.49.6] — 2026-07-03
 
 ### Changed — size headroom: extract `swap_node.rs`'s test-only hooks (loop maintenance)

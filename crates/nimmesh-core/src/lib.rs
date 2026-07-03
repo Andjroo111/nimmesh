@@ -156,6 +156,13 @@ pub mod swap_usdc_leg;
 #[cfg(feature = "polygon-leg")]
 pub mod evm_abi;
 
+// Mesh swap: EIP-2612 permit signing pre-images, behind `polygon-leg`. `evm_permit` builds the
+// EIP-712 digest for the single-transaction `newSwapWithPermit` funding path (ADR-0007) — the
+// off-chain half of closing S4's approve→transferFrom race. Digest-builder only: signing is the
+// `EvmSigner` seam, the calldata is `evm_abi`. Vectors asserted against cast-derived constants.
+#[cfg(feature = "polygon-leg")]
+pub mod evm_permit;
+
 // Mesh swap (P4a): EVM RLP + the EIP-155 legacy tx signing-hash, behind `polygon-leg`. `evm_rlp`
 // turns the P3 `evm_abi` calldata + tx fields into the exact keccak256 signing hash a wallet signs —
 // KEY-FREE (no secp256k1, no key, no RPC, no broadcast; that's P4b, gated). Amoy testnet chainId
