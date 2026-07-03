@@ -2,6 +2,14 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.49.16] — 2026-07-03
+
+### Fixed — the hex world map's top row was cut off (Andjroo)
+
+The map was bottom-anchored (absolute), so on taller screens it grew up underneath the
+TX TIME stat and its top rows hid behind the text. It now flows below the stats in
+normal layout — no overlap at any screen size (verified at 390x844 and 430x932).
+
 ## [0.49.15] — 2026-07-03
 
 ### Changed — the Network screen's hexagons became a real hex WORLD MAP (Andjroo)
