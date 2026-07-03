@@ -82,3 +82,4 @@ _(one line per completed cycle: date · goal · PR · result)_
 - 2026-07-02 · G9 #80 slice 1 — discovery metrics over UniFFI (`MeshNode::intent_metrics()` → `FfiIntentMetrics`) · PR #114 · merged (v0.47.0)
 - 2026-07-02 · G9 #80 slice 2 — active-swap match list over UniFFI (`MeshNode::active_swaps() -> Vec<FfiSwapMatch>`, `FfiSwapPhase` relocated to always-compiled `swap_intent`) · PR #116 · merged (v0.48.0)
 - 2026-07-02 · loop maintenance — `node.rs` 799→785: inline tests → `node_tests.rs` sibling (headroom for G9 slice 3); cycle-log backfill · PR #118 · merged (v0.48.2)
+- 2026-07-02 · G7 #78 decision — ADR-0006: relayer-sponsored gas (EIP-2771) + mandatory self-funded fallback; impl gated on G6 · PR #119 · merged (v0.48.3)

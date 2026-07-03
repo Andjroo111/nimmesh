@@ -2,6 +2,21 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.48.3] — 2026-07-02
+
+### Docs — G7 gas-abstraction ADR (#78): relayer-sponsored claims (EIP-2771) + mandatory self-funded fallback
+
+- **ADR-0006** records the gas model for the USDC leg: primary path = relayer-sponsored
+  meta-transactions (EIP-2771 trusted forwarder — the recipient signs the `withdraw` intent,
+  the relayer submits and pays the MATIC, the contract recovers the signer via `_msgSender()`),
+  with the plain self-funded `withdraw(S)`/`refund()` as a mandatory, forwarder-independent
+  fallback. Trust surface captured: a relayer can grief/censor but cannot steal; handing `S`
+  to a relayer is treated as a reveal, so the failover to self-funding must land inside the
+  claim window (ties into ADR-0004's reveal-deadline guard).
+- **Decision only, marked revisitable pending Amoy validation — implementation stays gated on
+  G6 (#77)**; the G5 contract (#76) picks up the ERC-2771 requirements. Options catalogue:
+  `docs/swap/USDC-GAS.md`.
+
 ## [0.48.2] — 2026-07-02
 
 ### Changed — size headroom: extract `node.rs`'s inline test mod (loop maintenance)
