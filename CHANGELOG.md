@@ -2,6 +2,19 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.49.5] — 2026-07-03
+
+### Changed — REBUILD Phase 5: the final diff-everything pass
+
+Captured every screen (home, address detail, side menu, account modal, settings, network,
+receive, send, swap, language) against its wallet reference and closed the visible gaps:
+
+- **The privacy eye** next to TOTAL BALANCE (the wallet's): one tap masks every amount
+  (total, cards, address header, account modal), persists across launches.
+- The big fiat total at the wallet's size (58px); asset cards at the wallet's 16px radius.
+
+The rebuild contract (docs/REBUILD.md) is complete: all five phases shipped.
+
 ## [0.49.4] — 2026-07-03
 
 ### Added — REBUILD Phase 4: the mesh-native Network screen

@@ -124,9 +124,9 @@
   .total-balance .eyebrow { display: inline-flex; align-items: center; gap: 8px;
     font-size: 13px; font-weight: 700; letter-spacing: 2px; color: rgba(31,35,72,.4); text-transform: uppercase; }
   .total-balance .eyebrow svg { width: 20px; height: 14px; }
-  .total-balance .big { font-size: 52px; line-height: 1.15; font-weight: 700; color: #1f2348; margin-top: 2px; }
+  .total-balance .big { font-size: 58px; line-height: 1.15; font-weight: 700; color: #1f2348; margin-top: 2px; }
   .asset-stack { padding: 18px 16px 150px; position: relative; }
-  .asset-card { background: rgba(31,35,72,.055); border-radius: 12px; padding: 14px; }
+  .asset-card { background: rgba(31,35,72,.055); border-radius: 16px; padding: 14px; }
   .asset-card .asset-head { display: flex; align-items: center; gap: 10px; padding: 4px 6px 12px;
     font-weight: 700; font-size: 17px; color: #1f2348; }
   .asset-card .asset-head svg, .asset-card .asset-head img { width: 26px; height: 24px; }
@@ -718,7 +718,10 @@
 
   
     <div class="total-balance">
-      <div class="eyebrow"><span data-i18n="home.total">Total balance</span></div>
+      <div class="eyebrow"><span data-i18n="home.total">Total balance</span>
+        <button id="privacy-eye" aria-label="Hide amounts" style="border:0;background:none;cursor:pointer;color:inherit;padding:2px;display:inline-flex;">
+          <svg viewBox="0 0 24 24" fill="none" width="20" height="14"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="12" r="2.6" stroke="currentColor" stroke-width="1.8"/></svg>
+        </button></div>
       <div class="big" id="total-fiat">···</div>
     </div>
     <div class="asset-stack">
@@ -1928,6 +1931,30 @@ Don't share them and keep them safe.</p>
   });
   document.getElementById('swap-done').addEventListener('click', () => { close(); resetSwapSheet(); });
 
+  // The wallet's privacy eye: one tap hides every amount (the wallet's TOTAL BALANCE eye).
+  let privacyOn = false;
+  try { privacyOn = localStorage.getItem('nimmesh.privacy') === '1'; } catch (e) {}
+  window.paintAmounts = function paintAmounts(balanceLuna) {
+    const dots = '•••••';
+    const bal = document.getElementById('home-balance');
+    if (bal) bal.innerHTML = privacyOn ? dots : `${fmtNim(balanceLuna)} <span class="currency nim">NIM</span>`;
+    const fiat = document.getElementById('home-fiat');
+    if (fiat) fiat.textContent = privacyOn ? '' : fiatText(balanceLuna);
+    const total = document.getElementById('total-fiat');
+    if (total) total.textContent = privacyOn ? dots : (fiatText(balanceLuna) || `${fmtNim(balanceLuna)} NIM`);
+    const cardNim = document.getElementById('card-nim');
+    if (cardNim) cardNim.textContent = privacyOn ? dots : `${fmtNim(balanceLuna)} NIM`;
+    const cardFiat = document.getElementById('card-fiat');
+    if (cardFiat) cardFiat.textContent = privacyOn ? '' : fiatText(balanceLuna);
+    const acctFiat = document.getElementById('acct-fiat');
+    if (acctFiat) acctFiat.textContent = privacyOn ? dots : fiatText(balanceLuna);
+  };
+  document.getElementById('privacy-eye').addEventListener('click', () => {
+    privacyOn = !privacyOn;
+    try { localStorage.setItem('nimmesh.privacy', privacyOn ? '1' : '0'); } catch (e) {}
+    paintAmounts(window.__lastLuna || 0);
+  });
+
   // ---- P1: view switching (home portfolio <-> address detail, the wallet's IA) ----
   function showView(id) {
     ['view-home', 'view-address', 'view-network'].forEach((v) => {
@@ -2530,20 +2557,9 @@ Don't share them and keep them safe.</p>
       try {
         const b = await nimmesh.walletBalance();
         balanceLuna = (b && typeof b.luna === 'number') ? b.luna : 0;
-        const bal = document.getElementById('home-balance');
-        if (bal) bal.innerHTML = `${fmtNim(balanceLuna)} <span class="currency nim">NIM</span>`;
         await refreshNimPrice();
-        const fiat = document.getElementById('home-fiat');
-        if (fiat) fiat.textContent = fiatText(balanceLuna);
-        // P1: the portfolio home numbers (big total + the NIM card row)
-        const total = document.getElementById('total-fiat');
-        if (total) total.textContent = fiatText(balanceLuna) || `${fmtNim(balanceLuna)} NIM`;
-        const cardNim = document.getElementById('card-nim');
-        if (cardNim) cardNim.textContent = `${fmtNim(balanceLuna)} NIM`;
-        const cardFiat = document.getElementById('card-fiat');
-        if (cardFiat) cardFiat.textContent = fiatText(balanceLuna);
-        const acctFiat = document.getElementById('acct-fiat');
-        if (acctFiat) acctFiat.textContent = fiatText(balanceLuna);
+        window.__lastLuna = balanceLuna;
+        paintAmounts(balanceLuna);
       } catch (e) { /* keep the last shown balance if the read fails */ }
       try {
         const { txs } = await nimmesh.walletHistory();
