@@ -155,7 +155,7 @@
   .swap-circle.v1 { left: 22%; top: -17px; }
   .swap-circle.v2 { right: 22%; top: -17px; }
   .swap-circle.hz { left: 50%; top: 50%; transform: translate(-50%, -50%); }
-  .help-pill { position: fixed; right: 16px; bottom: 118px; z-index: 15; display: inline-flex; align-items: center;
+  .help-pill { position: fixed; right: 16px; bottom: 96px; z-index: 15; display: inline-flex; align-items: center;
     gap: 8px; height: 42px; padding: 0 18px; border: 0; border-radius: 500px; cursor: pointer;
     background: var(--nimiq-blue, #1f2348); background-image: var(--nimiq-blue-bg, radial-gradient(100% 100% at bottom right, #260133, #1f2348));
     color: #fff; font-family: inherit; font-weight: 700; font-size: 15px; box-shadow: 0 6px 20px rgba(31,35,72,.25); }
@@ -905,10 +905,6 @@
 
 <!-- A3: fixed bottom dock — mesh status line (device-only) + the action bar -->
 <div class="bottom-dock">
-  <div class="meshbar" id="meshbar">
-    <svg class="mesh-glyph" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="5" cy="18" r="2.4" fill="currentColor"/><circle cx="19" cy="18" r="2.4" fill="currentColor"/><circle cx="12" cy="5" r="2.4" fill="currentColor"/><path d="M6.4 16.3 10.7 6.9M13.3 6.9l4.3 9.4M7.2 18h9.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-    <span id="meshbar-text" data-i18n="mesh.ready">Bluetooth mesh · offline-ready</span>
-  </div>
   <div class="actionbar">
     <button class="ab-receive" id="open-receive">
       <svg viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3.5 8.5L8 13l4.5-4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -2669,7 +2665,8 @@ Don't share them and keep them safe.</p>
       let line = `${T('mesh.state.' + m.state)} · ${m.peers} ${T('mesh.nearby')} · core ${v.core}`;
       // C1c: also show the live head we anchor sends to (proves app → chain RPC works).
       try { const h = await nimmesh.headHeight(); if (h && h.height) line += ` · head ${h.height}`; } catch (e) {}
-      document.getElementById('meshbar-text').textContent = line;
+      const mbText = document.getElementById('meshbar-text');
+      if (mbText) mbText.textContent = line;
       const mb1 = document.getElementById('mesh-banner-t1');
       if (mb1) mb1.textContent = `${T('mesh.state.' + m.state)} · ${m.peers} ${T('mesh.nearby')}`;
       const nwState = document.getElementById('nw-mesh-state');

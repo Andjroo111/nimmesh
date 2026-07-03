@@ -2,6 +2,15 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.49.11] — 2026-07-03
+
+### Removed — the bottom mesh status line (Andjroo)
+
+The `mesh offline · 0 nearby · core X · head N` line above the action bar is retired:
+post-rebuild, the mesh state lives where the design wants it — the address screen's green
+mesh banner and the Network screen (both still fed live by the same beat). The bottom
+dock is action-bar-only now, like the wallet's; the Help pill moved down accordingly.
+
 ## [0.49.10] — 2026-07-03
 
 ### Changed — the swap sheet IS the wallet's "Swap Currencies" modal (Andjroo's captures)
