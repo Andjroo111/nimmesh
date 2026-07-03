@@ -2,6 +2,22 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.48.4] — 2026-07-02
+
+### Changed — the scanner, wallet-exact (Andjroo's captures)
+
+Rebuilt the native QR scanner to match the real wallet's scanner screen for screen:
+
+- **Corner brackets** framing the scan area — grey while waiting for permission, NIMIQ
+  GOLD over the live camera feed (rounded caps, the wallet's geometry).
+- **White Cancel pill, bottom center** (was a translucent top-left button).
+- **The navy "Unblock the camera" state**: a missing camera permission no longer makes the
+  scan button silently do nothing — the scanner opens on the wallet's navy screen with
+  "Unblock the camera for nimmesh to scan QR codes." / "Grant camera access when asked.",
+  and after a denial the hint becomes a light-blue "Open Settings" deep link.
+- All scanner strings localized in the app's five languages (native side reads the
+  persisted language).
+
 ## [0.48.3] — 2026-07-02
 
 ### Docs — G7 gas-abstraction ADR (#78): relayer-sponsored claims (EIP-2771) + mandatory self-funded fallback
