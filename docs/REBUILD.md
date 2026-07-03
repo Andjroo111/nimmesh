@@ -73,7 +73,7 @@ One phase-slice per cycle, autonomous, merge-on-green (Andjroo's standing grant)
 5. Tick the phase below, reschedule the next cycle.
 
 Progress: [x] P1 home overview + address drill-in (v-P1, 2026-07-03) · [x] P2 side menu (2026-07-03) · [x] P3 account
-modal (2026-07-03) · [ ] P4 mesh Network screen · [ ] P5 final diff-everything polish pass.
+modal (2026-07-03) · [x] P4 mesh Network screen (2026-07-03) · [ ] P5 final diff-everything polish pass.
 
 ## Rules
 

@@ -2,6 +2,21 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.49.4] — 2026-07-03
+
+### Added — REBUILD Phase 4: the mesh-native Network screen
+
+The side menu's Network row now opens a full navy Network screen on the wallet's own
+network-screen layout (reference: sweep/06-network.png), with OUR numbers:
+
+- The dark stat card: NIM pill, MESH (live state + glyph), CONNECTED TO (live nearby
+  peers), FEE $0/tx, TX TIME 1-2 sec, over a hexagon world-map motif.
+- Top bar: hamburger (menu), "Back to addresses" pill, and an info button that brings
+  back the explainer.
+- The explainer card, rewritten for the mesh: "With nimmesh, you ARE the network" -
+  relaying signed payments phone to phone over Bluetooth, settling on-chain when any
+  relay reaches the internet. Localized in the five languages.
+
 ## [0.49.3] — 2026-07-03
 
 ### Changed — REBUILD Phase 3: the account modal
