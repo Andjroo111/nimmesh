@@ -125,7 +125,7 @@
   .total-balance .eyebrow { display: inline-flex; align-items: center; gap: 8px;
     font-size: 13px; font-weight: 700; letter-spacing: 2px; color: rgba(31,35,72,.4); text-transform: uppercase; }
   .total-balance .eyebrow svg { width: 20px; height: 14px; }
-  .total-balance .big { font-size: 58px; line-height: 1.15; font-weight: 700; color: #1f2348; margin-top: 2px; }
+  .total-balance .big { font-weight: 400; font-size: 58px; line-height: 1.15;  color: #1f2348; margin-top: 2px; }
   .asset-stack { padding: 18px 16px 150px; position: relative; }
   .asset-card { background: rgba(31,35,72,.055); border-radius: 16px; padding: 14px; }
   .asset-card .asset-head { display: flex; align-items: center; gap: 10px; padding: 4px 6px 12px;
@@ -155,7 +155,7 @@
   .swap-circle.v1 { left: 22%; top: -17px; }
   .swap-circle.v2 { right: 22%; top: -17px; }
   .swap-circle.hz { left: 50%; top: 50%; transform: translate(-50%, -50%); }
-  .help-pill { position: fixed; right: 16px; bottom: 96px; z-index: 15; display: inline-flex; align-items: center;
+  .help-pill { position: fixed; right: 16px; bottom: calc(118px + env(safe-area-inset-bottom, 0px)); z-index: 15; display: inline-flex; align-items: center;
     gap: 8px; height: 42px; padding: 0 18px; border: 0; border-radius: 500px; cursor: pointer;
     background: var(--nimiq-blue, #1f2348); background-image: var(--nimiq-blue-bg, radial-gradient(100% 100% at bottom right, #260133, #1f2348));
     color: #fff; font-family: inherit; font-weight: 700; font-size: 15px; box-shadow: 0 6px 20px rgba(31,35,72,.25); }
@@ -336,8 +336,8 @@
     font-size: 12px; font-weight: 600; color: rgba(31,35,72,.55); padding: 9px 16px 3px; }
   .meshbar .mesh-glyph { width: 15px; height: 15px; color: #21bca5; flex: 0 0 auto; }
   .meshbar[hidden] { display: none; }
-  .actionbar { display: flex; align-items: center; gap: 12px;
-    padding: 8px 16px calc(14px + env(safe-area-inset-bottom, 0px)); }
+  .actionbar { display: flex; align-items: center; gap: 10px;
+    padding: 8px 20px calc(14px + env(safe-area-inset-bottom, 0px)); }
   .actionbar button { border: 0; cursor: pointer; font-family: inherit; }
   .ab-receive, .ab-send { flex: 1 1 0; height: 50px; border-radius: 500px; font-weight: 700; font-size: 15px;
     display: inline-flex; align-items: center; justify-content: center; gap: 8px;
@@ -347,13 +347,11 @@
     box-shadow: 0 8px 24px rgba(5,130,202,.25); }
   .ab-receive:active, .ab-send:active { transform: translateY(1px); }
   .ab-send:hover { transform: translateY(-2px); box-shadow: 0 14px 34px rgba(5,130,202,.32); }
-  /* The wallet's round swap button (official SwapIcon) between Receive and Send. */
-  .ab-swap { flex: 0 0 auto; width: 50px; height: 50px; border-radius: 50%; border: 0; cursor: pointer;
     background: #fff; box-shadow: inset 0 0 0 1.5px rgba(31,35,72,.12);
     color: rgba(31,35,72,.6); display: inline-flex; align-items: center; justify-content: center; }
   .ab-swap:active { transform: translateY(1px); }
   .ab-swap svg { width: 15px; height: 20px; }
-  .ab-scan { flex: 0 0 auto; width: 50px; height: 50px; border-radius: 50%; background: transparent;
+  .ab-scan { flex: 0 0 auto; width: 36px; height: 50px; margin-left: 6px; border-radius: 50%; background: transparent;
     color: rgba(31,35,72,.5); display: inline-flex; align-items: center; justify-content: center; }
   .actionbar svg { width: 18px; height: 18px; }
   .ab-scan svg { width: 22px; height: 22px; }
@@ -905,6 +903,11 @@
 
 <!-- A3: fixed bottom dock — mesh status line (device-only) + the action bar -->
 <div class="bottom-dock">
+  <!-- the mesh identity line, short form (Andjroo 2026-07-03): this wallet IS the mesh -->
+  <div class="meshbar" id="meshbar">
+    <svg class="mesh-glyph" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="5" cy="18" r="2.4" fill="currentColor"/><circle cx="19" cy="18" r="2.4" fill="currentColor"/><circle cx="12" cy="5" r="2.4" fill="currentColor"/><path d="M6.4 16.3 10.7 6.9M13.3 6.9l4.3 9.4M7.2 18h9.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+    <span id="meshbar-text" data-i18n="mesh.ready">Bluetooth mesh · offline-ready</span>
+  </div>
   <div class="actionbar">
     <button class="ab-receive" id="open-receive">
       <svg viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3.5 8.5L8 13l4.5-4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -2658,9 +2661,7 @@ Don't share them and keep them safe.</p>
     } catch (e) { /* assume wallet exists if the probe fails */ }
     try {
       const [v, m] = await Promise.all([nimmesh.version(), nimmesh.meshStatus()]);
-      let line = `${T('mesh.state.' + m.state)} · ${m.peers} ${T('mesh.nearby')} · core ${v.core}`;
-      // C1c: also show the live head we anchor sends to (proves app → chain RPC works).
-      try { const h = await nimmesh.headHeight(); if (h && h.height) line += ` · head ${h.height}`; } catch (e) {}
+      const line = `${T('mesh.state.' + m.state)} · ${m.peers} ${T('mesh.nearby')}`;
       const mbText = document.getElementById('meshbar-text');
       if (mbText) mbText.textContent = line;
       const mb1 = document.getElementById('mesh-banner-t1');

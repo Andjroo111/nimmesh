@@ -2,6 +2,19 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.49.13] — 2026-07-03
+
+### Fixed — Andjroo's dock + type round
+
+- **The mesh line is back, short form**: the green mesh triangle + "mesh offline · 0
+  nearby" above the action bar — clearly the mesh edition, without the core/head debug
+  tail (that detail lives on the address banner + the Network screen).
+- **The big total matches the wallet's weight** (regular, not bold — the $ was too thick).
+- **The Help pill clears the dock** (safe-area-aware positioning; it was half-buried
+  under the action bar on device).
+- **Action-bar spacing** at the wallet's metrics (tighter gap, small bare QR at the
+  right edge); dead swap-circle styles removed.
+
 ## [0.49.12] — 2026-07-03
 
 ### Removed — the action bar's swap circle (Andjroo)

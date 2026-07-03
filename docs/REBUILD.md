@@ -49,9 +49,10 @@ Pixel-verified components: the `nq` registry (40). Upstream truth: `nimiq/wallet
 
 ## Andjroo's keeps (2026-07-02)
 
-- ~~The mesh status line~~ **RETIRED by Andjroo 2026-07-03** (post-rebuild: the mesh state
-  now lives in the address screen's green banner + the Network screen, so the bottom
-  debug line went away — the dock is action-bar-only, like the wallet).
+- **The mesh line is BACK in short form (Andjroo 2026-07-03, after a brief retirement):**
+  the glyph + `mesh offline · 0 nearby` above the action bar — no core/head debug tail.
+  "I want the wallet to look the same, but also be very clearly the mesh." Full detail
+  stays on the address banner + the Network screen.
 - **The language selector stays and stays visible** — the flag pill goes top-right on the
   home, in exactly the slot where the real wallet shows its globe/language icon. Same
   offline flag-hex pill, same language sheet.
