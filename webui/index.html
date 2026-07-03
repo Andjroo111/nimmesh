@@ -910,9 +910,6 @@
       <svg viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3.5 8.5L8 13l4.5-4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <span data-i18n="bar.receive">Receive</span>
     </button>
-    <button class="ab-swap" id="open-swap" aria-label="Swap" data-i18n-aria="swap.title">
-      <svg viewBox="0 0 12 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><g stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m4.25 15-3-3 3-3M2.43 11.863h7.071M7.25 1l3 3-3 3M9.07 4.133H1.999"/></g></svg>
-    </button>
     <button class="ab-send" id="open-send">
       <svg viewBox="0 0 16 16" fill="none"><path d="M8 13V3M3.5 7.5L8 3l4.5 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <span data-i18n="bar.send">Send</span>
@@ -1971,7 +1968,6 @@ Don't share them and keep them safe.</p>
     document.getElementById('swap-done').hidden = true;
     document.getElementById('swap-status').textContent = '';
   }
-  document.getElementById('open-swap').addEventListener('click', () => { resetSwapSheet(); open('swap'); });
 
   // ---- the SwapBalanceBar behavior (the wallet's): drag the handle to choose how much
   // NIM leaves; the amount field and the bar stay in sync both ways. Bars sum to 99%

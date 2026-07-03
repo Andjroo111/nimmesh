@@ -2,6 +2,14 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.49.12] — 2026-07-03
+
+### Removed — the action bar's swap circle (Andjroo)
+
+The bottom bar is the wallet's exact trio now: Receive | Send | scan. Swap keeps its two
+wallet-native entries — the swap circles between the home's asset cards and the side
+menu's Swap pill.
+
 ## [0.49.11] — 2026-07-03
 
 ### Removed — the bottom mesh status line (Andjroo)
