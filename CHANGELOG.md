@@ -2,6 +2,19 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.48.2] — 2026-07-02
+
+### Changed — size headroom: extract `node.rs`'s inline test mod (loop maintenance)
+
+- `node.rs` sat at 799/800 lines — one under the size-guard ceiling — with more FFI surface
+  (G9 slice 3) still to land. Its lone inline `#[cfg(test)] mod tests`
+  (`id_helpers_truncate_and_pad`) moves to a `node_tests.rs` sibling registered in `lib.rs`,
+  matching the `swap_session_tests.rs` / `swap_coordinator_tests.rs` convention;
+  `to_sender_id` / `to_tx_id` widen to `pub(crate)` for the sibling. Behavior-neutral — no
+  production logic touched. `node.rs` is now 786 lines.
+- The deferred cycle-log lines for #114 (G9 slice 1) and #116 (G9 slice 2) are folded into
+  `docs/swap/INTEGRATION-LOOP.md`, replacing the stale "G0 is next" placeholder.
+
 ## [0.48.1] — 2026-07-02
 
 ### Added — live fiat value + tap-to-copy address (Andjroo)

@@ -80,7 +80,7 @@ enum Job {
 }
 
 /// Widen an FFI byte id into the fixed 8-byte protocol `senderID` (truncate/zero-pad).
-fn to_sender_id(bytes: &[u8]) -> [u8; PEER_ID_LEN] {
+pub(crate) fn to_sender_id(bytes: &[u8]) -> [u8; PEER_ID_LEN] {
     let mut id = [0u8; PEER_ID_LEN];
     let n = bytes.len().min(PEER_ID_LEN);
     id[..n].copy_from_slice(&bytes[..n]);
@@ -88,7 +88,7 @@ fn to_sender_id(bytes: &[u8]) -> [u8; PEER_ID_LEN] {
 }
 
 /// Widen an FFI byte id into a 32-byte [`TxId`] (truncate/zero-pad).
-fn to_tx_id(bytes: &[u8]) -> TxId {
+pub(crate) fn to_tx_id(bytes: &[u8]) -> TxId {
     let mut id = [0u8; 32];
     let n = bytes.len().min(32);
     id[..n].copy_from_slice(&bytes[..n]);
@@ -781,19 +781,5 @@ impl MeshNode {
 impl Drop for MeshNode {
     fn drop(&mut self) {
         self.do_shutdown();
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn id_helpers_truncate_and_pad() {
-        assert_eq!(to_sender_id(&[1, 2, 3]), [1, 2, 3, 0, 0, 0, 0, 0]);
-        assert_eq!(to_sender_id(&[9; 12]), [9; 8]);
-        let id = to_tx_id(&[7; 4]);
-        assert_eq!(&id.0[..4], &[7, 7, 7, 7]);
-        assert_eq!(id.0[4], 0);
     }
 }
