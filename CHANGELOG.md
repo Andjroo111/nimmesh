@@ -2,6 +2,18 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.49.3] — 2026-07-03
+
+### Changed — REBUILD Phase 3: the account modal
+
+The account sheet now has the wallet's account-modal layout (reference:
+sweep/andjroo-account-modal.png): identicon + wallet name + total fiat in the header, then
+Backup (the hub), NEW Rename (native prompt; the name updates on the home card, the side
+menu, the address header and the modal, persists across launches), NEW Export History
+(CSV via the share sheet, clipboard fallback), and Log out. Save Login File / Change
+password / Add account intentionally omitted (nimmesh = Face ID + backup codes, one
+wallet). All new strings localized in the five languages.
+
 ## [0.49.2] — 2026-07-03
 
 ### Changed — REBUILD Phase 2: the navy side menu

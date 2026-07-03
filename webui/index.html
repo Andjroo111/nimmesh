@@ -487,6 +487,12 @@
   .acct-actions button:active { background: rgba(31,35,72,.03); }
   .acct-actions button svg { width: 20px; height: 20px; color: rgba(31,35,72,.45); flex: 0 0 auto; }
   .acct-actions button.danger, .acct-actions button.danger svg { color: var(--nimiq-red); }
+  .acct-head { display: flex; align-items: center; gap: 13px; min-width: 0; }
+  .acct-head .identicon { width: 52px; height: 52px; flex: 0 0 auto; }
+  .acct-head .identicon img { width: 100%; height: 100%; }
+  .acct-head .acct-name { display: block; font-weight: 700; font-size: 21px; color: #1f2348;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .acct-head .acct-fiat { display: block; font-size: 14.5px; font-weight: 600; color: rgba(31,35,72,.5); margin-top: 1px; }
   .acct-meta { text-align: center; color: rgba(31,35,72,.4); font-size: 12px; font-weight: 600; margin: 16px 24px 0; }
 
   /* Language sheet: the offline language list (name + active check). */
@@ -684,7 +690,7 @@
         <div class="asset-head"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#asset-nim-grad)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="asset-nim-grad" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> NIM</div>
         <button class="address-row" id="open-address">
           <span class="identicon" data-wallet data-address="NQ30 AM32 NHXL 29F7 XUY0 HR3R 7XHF EF4L LYBS"><img src='data:image/svg+xml,<svg width="64" height="64" viewBox="0 -4 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path opacity=".1" d="M62.3 25.4L49.2 2.6A5.3 5.3 0 0 0 44.6 0H18.4c-1.9 0-3.6 1-4.6 2.6L.7 25.4c-1 1.6-1 3.6 0 5.2l13.1 22.8c1 1.6 2.7 2.6 4.6 2.6h26.2c1.9 0 3.6-1 4.6-2.6l13-22.8c1-1.6 1-3.6.1-5.2z" fill="url(%23identicon_radial)"/><defs><radialGradient id="identicon_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(-63.0033 0 0 -56 63 56)"><stop stop-color="%23260133"/><stop offset="1" stop-color="%231F2348"/></radialGradient></defs></svg>' alt="Nimiq identicon"></span>
-          <span class="nm" data-i18n="home.label">Mesh Wallet</span>
+          <span class="nm" data-wallet-label>Mesh Wallet</span>
           <span class="amts"><span class="a1" id="card-nim">0 NIM</span><span class="a2" id="card-fiat"></span></span>
           <span class="chev"><svg viewBox="0 0 8 14" fill="none"><path d="M1 1l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
         </button>
@@ -729,7 +735,7 @@
         </div>
         <div class="meta">
           <div class="flex-row">
-            <div class="label" data-i18n="home.label">Mesh Wallet</div>
+            <div class="label" data-wallet-label>Mesh Wallet</div>
             <span class="amount" id="home-balance">752 <span class="currency nim">NIM</span></span>
           </div>
           <div class="flex-row">
@@ -839,7 +845,7 @@
   <div class="sm-spacer"></div>
   <button class="sm-account" id="menu-account">
     <span class="identicon" data-wallet data-address="NQ30 AM32 NHXL 29F7 XUY0 HR3R 7XHF EF4L LYBS"><img src='data:image/svg+xml,<svg width="64" height="64" viewBox="0 -4 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path opacity=".1" d="M62.3 25.4L49.2 2.6A5.3 5.3 0 0 0 44.6 0H18.4c-1.9 0-3.6 1-4.6 2.6L.7 25.4c-1 1.6-1 3.6 0 5.2l13.1 22.8c1 1.6 2.7 2.6 4.6 2.6h26.2c1.9 0 3.6-1 4.6-2.6l13-22.8c1-1.6 1-3.6.1-5.2z" fill="url(%23identicon_radial)"/><defs><radialGradient id="identicon_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(-63.0033 0 0 -56 63 56)"><stop stop-color="%23260133"/><stop offset="1" stop-color="%231F2348"/></radialGradient></defs></svg>' alt="Account identicon"></span>
-    <span data-i18n="home.label">Mesh Wallet</span>
+    <span data-wallet-label>Mesh Wallet</span>
   </button>
   <button class="sm-row" id="menu-network"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 12h17M12 3.2c-5.6 5.4-5.6 12.2 0 17.6M12 3.2c5.6 5.4 5.6 12.2 0 17.6" stroke="currentColor" stroke-width="1.6"/></svg><span data-i18n="menu.network">Network</span></button>
   <button class="sm-row" id="menu-settings"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.8"/><path d="M12 2.8l1.2 2.6 2.8-.6 1 2.7 2.8.7-.6 2.8 2 2-2 2 .6 2.8-2.8.7-1 2.7-2.8-.6L12 21.2l-1.2-2.6-2.8.6-1-2.7-2.8-.7.6-2.8-2-2 2-2-.6-2.8 2.8-.7 1-2.7 2.8.6z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg><span data-i18n="set.title">Settings</span></button>
@@ -1326,27 +1332,25 @@ Don't share them and keep them safe.</p>
      (address / copy / backup / log out), like the real wallet's account menu. -->
 <section class="sheet" id="account-sheet" aria-label="My account">
   <div class="sheet-header">
-    <div class="title" data-i18n="acct.title">My account</div>
+    <div class="acct-head">
+      <span class="identicon" data-wallet data-address="NQ30 AM32 NHXL 29F7 XUY0 HR3R 7XHF EF4L LYBS"><img src='data:image/svg+xml,<svg width="64" height="64" viewBox="0 -4 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path opacity=".1" d="M62.3 25.4L49.2 2.6A5.3 5.3 0 0 0 44.6 0H18.4c-1.9 0-3.6 1-4.6 2.6L.7 25.4c-1 1.6-1 3.6 0 5.2l13.1 22.8c1 1.6 2.7 2.6 4.6 2.6h26.2c1.9 0 3.6-1 4.6-2.6l13-22.8c1-1.6 1-3.6.1-5.2z" fill="url(%23identicon_radial)"/><defs><radialGradient id="identicon_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(-63.0033 0 0 -56 63 56)"><stop stop-color="%23260133"/><stop offset="1" stop-color="%231F2348"/></radialGradient></defs></svg>' alt="Your account identicon"></span>
+      <span><span class="acct-name" data-wallet-label>Mesh Wallet</span>
+      <span class="acct-fiat" id="acct-fiat"></span></span>
+    </div>
     <button class="s-close sheet-close" aria-label="Close"><svg viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
   </div>
-  <div class="receive-id">
-    <div class="identicon" data-wallet data-address="NQ30 AM32 NHXL 29F7 XUY0 HR3R 7XHF EF4L LYBS">
-      <img src='data:image/svg+xml,<svg width="64" height="64" viewBox="0 -4 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path opacity=".1" d="M62.3 25.4L49.2 2.6A5.3 5.3 0 0 0 44.6 0H18.4c-1.9 0-3.6 1-4.6 2.6L.7 25.4c-1 1.6-1 3.6 0 5.2l13.1 22.8c1 1.6 2.7 2.6 4.6 2.6h26.2c1.9 0 3.6-1 4.6-2.6l13-22.8c1-1.6 1-3.6.1-5.2z" fill="url(%23identicon_radial)"/><defs><radialGradient id="identicon_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(-63.0033 0 0 -56 63 56)"><stop stop-color="%23260133"/><stop offset="1" stop-color="%231F2348"/></radialGradient></defs></svg>' alt="Your account identicon">
-    </div>
-  </div>
-  <div class="addr-box">
-    <div class="address-display format-nimiq">
-      <span class="chunk">NQ30<span class="space">&nbsp;</span></span><span class="chunk">AM32<span class="space">&nbsp;</span></span><span class="chunk">NHXL<span class="space">&nbsp;</span></span><span class="chunk">29F7<span class="space">&nbsp;</span></span><span class="chunk">XUY0<span class="space">&nbsp;</span></span><span class="chunk">HR3R<span class="space">&nbsp;</span></span><span class="chunk">7XHF<span class="space">&nbsp;</span></span><span class="chunk">EF4L<span class="space">&nbsp;</span></span><span class="chunk">LYBS<span class="space">&nbsp;</span></span>
-    </div>
-  </div>
   <div class="acct-actions">
-    <button id="acct-copy">
-      <svg viewBox="0 0 20 20" fill="none"><rect x="7" y="7" width="10" height="11" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M13 4.5V4a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-      <span id="acct-copy-label" data-i18n="acct.copy">Copy address</span>
-    </button>
     <button id="acct-backup">
       <svg viewBox="0 0 20 20" fill="none"><rect x="3" y="2.5" width="14" height="15" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M6.5 7h7M6.5 10.5h7M6.5 14h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
       <span data-i18n="acct.backup">Backup</span>
+    </button>
+    <button id="acct-rename">
+      <svg viewBox="0 0 20 20" fill="none"><path d="M7.5 3h2m2 0h-2m0 0v14m0 0h-2m2 0h2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M13 7h2.25A1.75 1.75 0 0 1 17 8.75v2.5A1.75 1.75 0 0 1 15.25 13H13M7 7H4.75A1.75 1.75 0 0 0 3 8.75v2.5A1.75 1.75 0 0 0 4.75 13H7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      <span data-i18n="acct.rename">Rename</span>
+    </button>
+    <button id="acct-export">
+      <svg viewBox="0 0 20 20" fill="none"><path d="M10 12.5V3m0 0L6.5 6.5M10 3l3.5 3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 10.5v4.75A1.75 1.75 0 0 0 5.75 17h8.5A1.75 1.75 0 0 0 16 15.25V10.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <span data-i18n="acct.export">Export History</span>
     </button>
     <button id="acct-logout" class="danger">
       <svg viewBox="0 0 20 20" fill="none"><path d="M12.5 6.5V4.75A1.75 1.75 0 0 0 10.75 3h-6A1.75 1.75 0 0 0 3 4.75v10.5A1.75 1.75 0 0 0 4.75 17h6a1.75 1.75 0 0 0 1.75-1.75V13.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M8 10h9.5M14.5 7l3 3-3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -1390,7 +1394,7 @@ Don't share them and keep them safe.</p>
       'confirm.title': 'Confirma tu dirección', 'confirm.sub': 'Esta es la dirección que nimmesh derivó de tu frase.', 'confirm.warn': 'Comprueba que coincide exactamente con tu cartera antes de enviarle fondos.', 'confirm.mine': 'Esta es mi cartera', 'confirm.retry': 'No es correcta, intentar de nuevo',
       'rec.title': 'Cartera encontrada en este dispositivo', 'rec.sub': 'Una cartera de una instalación anterior sigue en el almacenamiento seguro del dispositivo. Esta es su dirección:', 'rec.keep': 'Conservar esta cartera', 'rec.fresh': 'Borrarla y empezar de cero', 'rec.confirm': '¿Borrar la cartera de este dispositivo? Sin sus 24 palabras NO se puede recuperar.',
       'acct.title': 'Mi cuenta', 'acct.copy': 'Copiar dirección', 'acct.backup': 'Respaldo', 'acct.logout': 'Cerrar sesión en este dispositivo', 'acct.logout.confirm': '¿Eliminar la cartera de este dispositivo? Sin tus 24 palabras NO se puede recuperar. Asegúrate de tenerlas guardadas.',
-      'menu.network': 'Red', 'set.title': 'Ajustes', 'menu.network.soon': 'La pantalla de Red mesh llega en la próxima actualización', 'home.total': 'Saldo total', 'a.help': 'Ayuda', 'help.text': 'nimmesh es una cartera de NIM que retransmite pagos de teléfono a teléfono por Bluetooth, sin internet. Envía, recibe e intercambia; tus llaves nunca salen de este teléfono.', 'mesh.banner.sub': 'Retransmite pagos de teléfono a teléfono, sin internet', 'tx.thismonth': 'Este mes', 'lang.title': 'Idioma', 'create.failed': 'No se pudo crear la cartera: ', 'scan.invalid': 'Eso no es una dirección Nimiq ni una solicitud de pago', 'cashlink.soon': 'Los Cashlinks llegarán pronto a nimmesh',
+      'acct.rename': 'Renombrar', 'acct.rename.prompt': 'Nuevo nombre para esta cartera', 'acct.export': 'Exportar historial', 'acct.export.copied': 'Historial copiado como CSV', 'menu.network': 'Red', 'set.title': 'Ajustes', 'menu.network.soon': 'La pantalla de Red mesh llega en la próxima actualización', 'home.total': 'Saldo total', 'a.help': 'Ayuda', 'help.text': 'nimmesh es una cartera de NIM que retransmite pagos de teléfono a teléfono por Bluetooth, sin internet. Envía, recibe e intercambia; tus llaves nunca salen de este teléfono.', 'mesh.banner.sub': 'Retransmite pagos de teléfono a teléfono, sin internet', 'tx.thismonth': 'Este mes', 'lang.title': 'Idioma', 'create.failed': 'No se pudo crear la cartera: ', 'scan.invalid': 'Eso no es una dirección Nimiq ni una solicitud de pago', 'cashlink.soon': 'Los Cashlinks llegarán pronto a nimmesh',
       'hub.title': 'Importante: crea un respaldo', 'hub.sub': 'No existe ‘olvidé mi contraseña’. Crea un respaldo para mantener el control.',
       'hub.codes': 'Envíate dos códigos de respaldo', 'hub.codes.sub': 'Solo necesitas dos formas de escribirte, como un mensajero y un correo.',
       'hub.words': 'Anota las 24 palabras de recuperación', 'hub.words.sub': 'Solo necesitas papel, lápiz y un lugar seguro donde guardarlo.',
@@ -1436,7 +1440,7 @@ Don't share them and keep them safe.</p>
       'confirm.title': 'Bestätige deine Adresse', 'confirm.sub': 'Das ist die Adresse, die nimmesh aus deiner Phrase abgeleitet hat.', 'confirm.warn': 'Prüfe genau, dass sie mit deiner bestehenden Wallet übereinstimmt, bevor du Geld darauf sendest.', 'confirm.mine': 'Das ist meine Wallet', 'confirm.retry': 'Stimmt nicht, nochmal versuchen',
       'rec.title': 'Wallet auf diesem Gerät gefunden', 'rec.sub': 'Eine Wallet einer früheren Installation liegt noch im sicheren Speicher des Geräts. Das ist ihre Adresse:', 'rec.keep': 'Diese Wallet behalten', 'rec.fresh': 'Löschen und neu anfangen', 'rec.confirm': 'Wallet von diesem Gerät löschen? Ohne ihre 24 Wörter ist sie NICHT wiederherstellbar.',
       'acct.title': 'Mein Konto', 'acct.copy': 'Adresse kopieren', 'acct.backup': 'Backup', 'acct.logout': 'Von diesem Gerät abmelden', 'acct.logout.confirm': 'Wallet von diesem Gerät entfernen? Ohne deine 24 Wörter ist sie NICHT wiederherstellbar. Stelle sicher, dass du sie gesichert hast.',
-      'menu.network': 'Netzwerk', 'set.title': 'Einstellungen', 'menu.network.soon': 'Der Mesh-Netzwerk-Bildschirm kommt im nächsten Update', 'home.total': 'Gesamtguthaben', 'a.help': 'Hilfe', 'help.text': 'nimmesh ist eine NIM-Wallet, die Zahlungen per Bluetooth von Handy zu Handy weiterreicht, ohne Internet. Senden, empfangen, tauschen; deine Schlüssel verlassen dieses Handy nie.', 'mesh.banner.sub': 'Leitet Zahlungen offline von Handy zu Handy weiter', 'tx.thismonth': 'Diesen Monat', 'lang.title': 'Sprache', 'create.failed': 'Wallet konnte nicht erstellt werden: ', 'scan.invalid': 'Das ist keine Nimiq-Adresse und keine Zahlungsanforderung', 'cashlink.soon': 'Cashlinks kommen bald zu nimmesh',
+      'acct.rename': 'Umbenennen', 'acct.rename.prompt': 'Neuer Name für diese Wallet', 'acct.export': 'Verlauf exportieren', 'acct.export.copied': 'Verlauf als CSV kopiert', 'menu.network': 'Netzwerk', 'set.title': 'Einstellungen', 'menu.network.soon': 'Der Mesh-Netzwerk-Bildschirm kommt im nächsten Update', 'home.total': 'Gesamtguthaben', 'a.help': 'Hilfe', 'help.text': 'nimmesh ist eine NIM-Wallet, die Zahlungen per Bluetooth von Handy zu Handy weiterreicht, ohne Internet. Senden, empfangen, tauschen; deine Schlüssel verlassen dieses Handy nie.', 'mesh.banner.sub': 'Leitet Zahlungen offline von Handy zu Handy weiter', 'tx.thismonth': 'Diesen Monat', 'lang.title': 'Sprache', 'create.failed': 'Wallet konnte nicht erstellt werden: ', 'scan.invalid': 'Das ist keine Nimiq-Adresse und keine Zahlungsanforderung', 'cashlink.soon': 'Cashlinks kommen bald zu nimmesh',
       'hub.title': 'Wichtig: Erstelle ein Backup', 'hub.sub': 'Es gibt kein ‘Passwort vergessen’. Erstelle ein Backup und behalte die Kontrolle.',
       'hub.codes': 'Schick dir zwei Backup-Codes', 'hub.codes.sub': 'Braucht nur zwei Wege, dir selbst zu schreiben, etwa Messenger + E-Mail.',
       'hub.words': 'Schreibe 24 Wiederherstellungswörter auf', 'hub.words.sub': 'Braucht Stift, Papier und einen sicheren Ort dafür.',
@@ -1482,7 +1486,7 @@ Don't share them and keep them safe.</p>
       'confirm.title': 'Confirme ton adresse', 'confirm.sub': 'Voici l’adresse que nimmesh a dérivée de ta phrase.', 'confirm.warn': 'Vérifie qu’elle correspond exactement à ton portefeuille avant d’y envoyer des fonds.', 'confirm.mine': 'C’est mon portefeuille', 'confirm.retry': 'Ce n’est pas ça, réessayer',
       'rec.title': 'Portefeuille trouvé sur cet appareil', 'rec.sub': 'Un portefeuille d’une installation précédente est encore dans le stockage sécurisé. Voici son adresse :', 'rec.keep': 'Garder ce portefeuille', 'rec.fresh': 'Le supprimer et repartir de zéro', 'rec.confirm': 'Supprimer le portefeuille de cet appareil ? Sans ses 24 mots il est IRRÉCUPÉRABLE.',
       'acct.title': 'Mon compte', 'acct.copy': 'Copier l’adresse', 'acct.backup': 'Sauvegarde', 'acct.logout': 'Se déconnecter de cet appareil', 'acct.logout.confirm': 'Supprimer le portefeuille de cet appareil ? Sans tes 24 mots il est IRRÉCUPÉRABLE. Assure-toi de les avoir sauvegardés.',
-      'menu.network': 'Réseau', 'set.title': 'Réglages', 'menu.network.soon': 'L’écran Réseau mesh arrive dans la prochaine mise à jour', 'home.total': 'Solde total', 'a.help': 'Aide', 'help.text': 'nimmesh est un portefeuille NIM qui relaie les paiements de téléphone en téléphone par Bluetooth, sans internet. Envoie, reçois, échange ; tes clés ne quittent jamais ce téléphone.', 'mesh.banner.sub': 'Relaie les paiements de téléphone en téléphone, hors ligne', 'tx.thismonth': 'Ce mois-ci', 'lang.title': 'Langue', 'create.failed': 'Impossible de créer le portefeuille : ', 'scan.invalid': 'Ce n’est pas une adresse Nimiq ni une demande de paiement', 'cashlink.soon': 'Les Cashlinks arrivent bientôt sur nimmesh',
+      'acct.rename': 'Renommer', 'acct.rename.prompt': 'Nouveau nom pour ce portefeuille', 'acct.export': 'Exporter l’historique', 'acct.export.copied': 'Historique copié en CSV', 'menu.network': 'Réseau', 'set.title': 'Réglages', 'menu.network.soon': 'L’écran Réseau mesh arrive dans la prochaine mise à jour', 'home.total': 'Solde total', 'a.help': 'Aide', 'help.text': 'nimmesh est un portefeuille NIM qui relaie les paiements de téléphone en téléphone par Bluetooth, sans internet. Envoie, reçois, échange ; tes clés ne quittent jamais ce téléphone.', 'mesh.banner.sub': 'Relaie les paiements de téléphone en téléphone, hors ligne', 'tx.thismonth': 'Ce mois-ci', 'lang.title': 'Langue', 'create.failed': 'Impossible de créer le portefeuille : ', 'scan.invalid': 'Ce n’est pas une adresse Nimiq ni une demande de paiement', 'cashlink.soon': 'Les Cashlinks arrivent bientôt sur nimmesh',
       'hub.title': 'Important : crée une sauvegarde', 'hub.sub': 'Il n’y a pas de ‘mot de passe oublié’. Crée une sauvegarde pour garder le contrôle.',
       'hub.codes': 'Envoie-toi deux codes de sauvegarde', 'hub.codes.sub': 'Il suffit de deux façons de t’écrire, comme un messager et un email.',
       'hub.words': 'Note les 24 mots de récupération', 'hub.words.sub': 'Il suffit d’un stylo, d’un papier et d’un endroit sûr.',
@@ -1528,7 +1532,7 @@ Don't share them and keep them safe.</p>
       'confirm.title': 'Confirme seu endereço', 'confirm.sub': 'Este é o endereço que o nimmesh derivou da sua frase.', 'confirm.warn': 'Confira se corresponde exatamente à sua carteira antes de enviar fundos para ela.', 'confirm.mine': 'Esta é a minha carteira', 'confirm.retry': 'Não está certo, tentar de novo',
       'rec.title': 'Carteira encontrada neste aparelho', 'rec.sub': 'Uma carteira de uma instalação anterior ainda está no armazenamento seguro do aparelho. Este é o endereço dela:', 'rec.keep': 'Manter esta carteira', 'rec.fresh': 'Apagá-la e começar do zero', 'rec.confirm': 'Apagar a carteira deste aparelho? Sem as 24 palavras ela NÃO pode ser recuperada.',
       'acct.title': 'Minha conta', 'acct.copy': 'Copiar endereço', 'acct.backup': 'Backup', 'acct.logout': 'Sair deste aparelho', 'acct.logout.confirm': 'Remover a carteira deste aparelho? Sem suas 24 palavras ela NÃO pode ser recuperada. Garanta que você as guardou.',
-      'menu.network': 'Rede', 'set.title': 'Ajustes', 'menu.network.soon': 'A tela de Rede mesh chega na próxima atualização', 'home.total': 'Saldo total', 'a.help': 'Ajuda', 'help.text': 'O nimmesh é uma carteira NIM que retransmite pagamentos de telefone em telefone por Bluetooth, sem internet. Envie, receba e troque; suas chaves nunca saem deste telefone.', 'mesh.banner.sub': 'Retransmite pagamentos de telefone em telefone, offline', 'tx.thismonth': 'Este mês', 'lang.title': 'Idioma', 'create.failed': 'Não foi possível criar a carteira: ', 'scan.invalid': 'Isso não é um endereço Nimiq nem uma cobrança', 'cashlink.soon': 'Os Cashlinks chegam em breve ao nimmesh',
+      'acct.rename': 'Renomear', 'acct.rename.prompt': 'Novo nome para esta carteira', 'acct.export': 'Exportar histórico', 'acct.export.copied': 'Histórico copiado como CSV', 'menu.network': 'Rede', 'set.title': 'Ajustes', 'menu.network.soon': 'A tela de Rede mesh chega na próxima atualização', 'home.total': 'Saldo total', 'a.help': 'Ajuda', 'help.text': 'O nimmesh é uma carteira NIM que retransmite pagamentos de telefone em telefone por Bluetooth, sem internet. Envie, receba e troque; suas chaves nunca saem deste telefone.', 'mesh.banner.sub': 'Retransmite pagamentos de telefone em telefone, offline', 'tx.thismonth': 'Este mês', 'lang.title': 'Idioma', 'create.failed': 'Não foi possível criar a carteira: ', 'scan.invalid': 'Isso não é um endereço Nimiq nem uma cobrança', 'cashlink.soon': 'Os Cashlinks chegam em breve ao nimmesh',
       'hub.title': 'Importante: crie um backup', 'hub.sub': 'Não existe ‘esqueci a senha’. Crie um backup para manter o controle.',
       'hub.codes': 'Envie dois códigos de backup para você', 'hub.codes.sub': 'Bastam duas formas de escrever para si, como um mensageiro e um e-mail.',
       'hub.words': 'Anote as 24 palavras de recuperação', 'hub.words.sub': 'Bastam caneta, papel e um lugar seguro para guardar.',
@@ -1578,6 +1582,9 @@ Don't share them and keep them safe.</p>
     'help.text': 'nimmesh is a NIM wallet that relays payments phone to phone over Bluetooth, no internet needed. Send, receive and swap; your keys never leave this phone.',
     'tx.thismonth': 'This month',
     'menu.network.soon': 'The mesh Network screen arrives in the next update',
+    'home.label': 'Mesh Wallet',
+    'acct.rename.prompt': 'New name for this wallet',
+    'acct.export.copied': 'History copied as CSV',
     'codes.copy': 'Copy code',
     'codes.how.tip': 'Email it to yourself, or message it to yourself in a chat app. Use a DIFFERENT platform for each code.',
     'swap.matched': 'Partner found, negotiating…', 'swap.settled': 'Swap settled',
@@ -1594,6 +1601,7 @@ Don't share them and keep them safe.</p>
     LANG = LANGS[saved] ? saved : 'en';
   }
   function applyI18n() {
+    setTimeout(() => { if (typeof applyLabel === 'function') applyLabel(); }, 0);
     document.documentElement.lang = LANG;
     if (LANG !== 'en') {
       document.querySelectorAll('[data-i18n]').forEach((el) => { const v = I18N[LANG][el.dataset.i18n]; if (v) el.textContent = v; });
@@ -1696,11 +1704,40 @@ Don't share them and keep them safe.</p>
       } catch (e) { /* offline: charts stay empty */ }
     }
   }
-  document.getElementById('acct-copy').addEventListener('click', () => {
-    const compact = window.RECEIVE_ADDR || '';
-    const spaced = (compact.match(/.{1,4}/g) || []).join(' ');
-    copyText(spaced, 'acct-copy-label');
+  // ---- P3: the wallet label (Rename) — cosmetic, persisted in localStorage ----
+  function walletLabel() {
+    try { return localStorage.getItem('nimmesh.label') || T('home.label'); } catch (e) { return T('home.label'); }
+  }
+  function applyLabel() {
+    const name = walletLabel();
+    document.querySelectorAll('[data-wallet-label]').forEach((el) => { el.textContent = name; });
+  }
+  applyLabel();
+  document.getElementById('acct-rename').addEventListener('click', () => {
+    const next = prompt(T('acct.rename.prompt'), walletLabel());
+    if (next == null) return;
+    const name = next.trim().slice(0, 30);
+    try { name ? localStorage.setItem('nimmesh.label', name) : localStorage.removeItem('nimmesh.label'); } catch (e) {}
+    applyLabel();
   });
+
+  // ---- P3: Export History — CSV of the fetched tx list (share, else clipboard) ----
+  document.getElementById('acct-export').addEventListener('click', async () => {
+    const txs = window.__lastTxs || [];
+    if (!txs.length) { alert(T('tx.empty')); return; }
+    const esc = (x) => `"${String(x).replace(/"/g, '""')}"`;
+    const csv = ['date,counterparty,direction,amount_nim,hash']
+      .concat(txs.map((t) => [
+        new Date(t.timestamp || 0).toISOString(), esc(t.counterparty || ''),
+        t.incoming ? 'in' : 'out', (t.valueLuna / 1e5).toFixed(5), esc(t.hash || ''),
+      ].join(','))).join('\n');
+    try {
+      if (navigator.share) { await navigator.share({ title: 'nimmesh history', text: csv }); return; }
+    } catch (e) { if (e && e.name === 'AbortError') return; }
+    try { await navigator.clipboard.writeText(csv); } catch (e) {}
+    alert(T('acct.export.copied'));
+  });
+
   document.getElementById('acct-logout').addEventListener('click', async () => {
     if (!(window.nimmesh && nimmesh.deleteWallet)) return;
     if (!confirm(T('acct.logout.confirm'))) return;
@@ -2426,9 +2463,12 @@ Don't share them and keep them safe.</p>
         if (cardNim) cardNim.textContent = `${fmtNim(balanceLuna)} NIM`;
         const cardFiat = document.getElementById('card-fiat');
         if (cardFiat) cardFiat.textContent = fiatText(balanceLuna);
+        const acctFiat = document.getElementById('acct-fiat');
+        if (acctFiat) acctFiat.textContent = fiatText(balanceLuna);
       } catch (e) { /* keep the last shown balance if the read fails */ }
       try {
         const { txs } = await nimmesh.walletHistory();
+        window.__lastTxs = txs || [];
         const key = JSON.stringify((txs || []).map((t) => [t.hash, t.confirmed]));
         if (key !== lastHistoryKey) { lastHistoryKey = key; await renderHistory(txs || []); }
       } catch (e) { if (lastHistoryKey === null) { lastHistoryKey = '[]'; await renderHistory([]); } }
