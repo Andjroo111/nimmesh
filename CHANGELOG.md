@@ -2,6 +2,27 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.49.1] — 2026-07-03
+
+### Changed — REBUILD Phase 1: the wallet's portfolio home + address drill-in
+
+The app now has wallet.nimiq.com's information architecture (references:
+sweep/01-home-overview + andjroo-home-activated-assets + andjroo-address-detail-staked):
+
+- **Home = the portfolio overview**: hamburger top-left (opens the account sheet until the
+  P2 side menu lands), the language flag pill top-right (the wallet's globe slot — Andjroo's
+  keep), TOTAL BALANCE eyebrow + the big fiat total (trailing-symbol format like the
+  wallet), the NIM asset card with the identicon address row (name, NIM, fiat, chevron),
+  Bitcoin + USD Coin cards with the wallet's three swap circles (each preselects its pair
+  and opens the swap sheet), the navy Help pill.
+- **Address detail (drill-in)**: back + "Search transactions" pill + more-menu, the
+  account-header (identicon, name, balance, faded copyable address, fiat), and — in the
+  wallet's staking-banner slot — the green MESH BANNER (live state: "mesh meshed · 2
+  nearby / Relays payments phone to phone, offline"). Transactions now group like the
+  wallet: THIS MONTH, then month + year.
+- The mesh status line + action bar stay on both views (Andjroo's keep).
+- Fiat everywhere now uses the wallet's trailing-symbol convention ("64.02 $", "0,44 €").
+
 ## [0.49.0] — 2026-07-02
 
 ### Added — the real USDC HTLC contract (G5, #76) — Foundry unblocked

@@ -26,6 +26,73 @@
   .topbar { display: flex; align-items: center; gap: 8px; padding: 16px 12px 4px; }
   .topbar .logo { display: flex; align-items: center; gap: 7px; flex: 0 0 auto; }
   .topbar .wordmark { font-weight: 700; font-size: 19px; color: #1f2348; }
+  /* ---- P1: the wallet's portfolio home ---- */
+  .view[hidden] { display: none !important; }
+  .home-topbar { display: flex; align-items: center; padding: 14px 16px 0; }
+  .hamburger { border: 0; background: none; cursor: pointer; padding: 8px; color: rgba(31,35,72,.4); }
+  .hamburger svg { width: 26px; height: 20px; display: block; }
+  .home-topbar .spacer { flex: 1 1 auto; }
+  .total-balance { text-align: center; padding: 26px 24px 8px; }
+  .total-balance .eyebrow { display: inline-flex; align-items: center; gap: 8px;
+    font-size: 13px; font-weight: 700; letter-spacing: 2px; color: rgba(31,35,72,.4); text-transform: uppercase; }
+  .total-balance .eyebrow svg { width: 20px; height: 14px; }
+  .total-balance .big { font-size: 52px; line-height: 1.15; font-weight: 700; color: #1f2348; margin-top: 2px; }
+  .asset-stack { padding: 18px 16px 150px; position: relative; }
+  .asset-card { background: rgba(31,35,72,.055); border-radius: 12px; padding: 14px; }
+  .asset-card .asset-head { display: flex; align-items: center; gap: 10px; padding: 4px 6px 12px;
+    font-weight: 700; font-size: 17px; color: #1f2348; }
+  .asset-card .asset-head svg, .asset-card .asset-head img { width: 26px; height: 24px; }
+  .address-row { display: flex; align-items: center; gap: 12px; width: 100%; border: 0; cursor: pointer;
+    background: rgba(31,35,72,.05); border-radius: 10px; padding: 12px 12px; font-family: inherit; text-align: left; }
+  .address-row:active { background: rgba(31,35,72,.09); }
+  .address-row .identicon { width: 44px; height: 44px; flex: 0 0 auto; }
+  .address-row .identicon img { width: 100%; height: 100%; }
+  .address-row .nm { flex: 1 1 auto; min-width: 0; font-weight: 600; font-size: 16px; color: #1f2348;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .address-row .amts { text-align: right; }
+  .address-row .amts .a1 { display: block; font-weight: 700; font-size: 17px; color: #1f2348; white-space: nowrap; }
+  .address-row .amts .a2 { display: block; font-size: 13.5px; font-weight: 600; color: rgba(31,35,72,.45); margin-top: 1px; }
+  .address-row .chev { flex: 0 0 auto; color: rgba(31,35,72,.3); }
+  .address-row .chev svg { width: 8px; height: 14px; }
+  .asset-duo { display: flex; gap: 12px; margin-top: 12px; position: relative; }
+  .asset-duo .asset-card { flex: 1 1 0; min-width: 0; }
+  .asset-card .asset-bal { padding: 2px 6px 0; font-weight: 700; font-size: 17px; color: #1f2348; }
+  .asset-card .asset-fiat { padding: 2px 6px 4px; font-size: 13.5px; font-weight: 600; color: rgba(31,35,72,.45); }
+  /* the wallet's swap circles: two vertical between NIM and the duo, one horizontal between them */
+  .swap-circle { position: absolute; width: 34px; height: 34px; border-radius: 50%; border: 0; cursor: pointer;
+    background: #f8f8f8; box-shadow: 0 2px 8px rgba(31,35,72,.12); color: rgba(31,35,72,.5);
+    display: flex; align-items: center; justify-content: center; z-index: 2; }
+  .swap-circle svg { width: 14px; height: 14px; }
+  .swap-circle.v1 { left: 22%; top: -17px; }
+  .swap-circle.v2 { right: 22%; top: -17px; }
+  .swap-circle.hz { left: 50%; top: 50%; transform: translate(-50%, -50%); }
+  .help-pill { position: fixed; right: 16px; bottom: 118px; z-index: 15; display: inline-flex; align-items: center;
+    gap: 8px; height: 42px; padding: 0 18px; border: 0; border-radius: 500px; cursor: pointer;
+    background: var(--nimiq-blue, #1f2348); background-image: var(--nimiq-blue-bg, radial-gradient(100% 100% at bottom right, #260133, #1f2348));
+    color: #fff; font-family: inherit; font-weight: 700; font-size: 15px; box-shadow: 0 6px 20px rgba(31,35,72,.25); }
+  .help-pill svg { width: 18px; height: 18px; }
+  /* ---- P1: the address-detail drill-in ---- */
+  .addr-topbar { display: flex; align-items: center; gap: 10px; padding: 14px 16px 4px; }
+  .addr-topbar .back { border: 0; background: none; cursor: pointer; padding: 6px; color: rgba(31,35,72,.4); }
+  .addr-topbar .back svg { width: 22px; height: 16px; display: block; }
+  .addr-topbar .search-bar { flex: 1 1 auto; display: flex; align-items: center; gap: 8px;
+    height: 40px; padding: 0 14px; border-radius: 500px; box-shadow: inset 0 0 0 1.5px rgba(31,35,72,.14);
+    color: rgba(31,35,72,.4); min-width: 0; max-width: none; }
+  .addr-topbar .search-bar svg { width: 16px; height: 16px; flex: 0 0 auto; }
+  .addr-topbar .search-bar input { flex: 1 1 auto; min-width: 0; border: 0; background: none; outline: none;
+    font-family: inherit; font-size: 15px; color: #1f2348; }
+  .addr-topbar .search-bar input::placeholder { color: rgba(31,35,72,.4); }
+  .addr-topbar .dots { border: 0; background: none; cursor: pointer; padding: 6px; color: rgba(31,35,72,.4); font-size: 22px; line-height: 0; }
+  /* the mesh banner in the wallet's staking-banner slot (green gradient card) */
+  .mesh-banner { display: flex; align-items: center; gap: 14px; margin: 14px 16px 0; padding: 14px 16px;
+    border-radius: 12px; color: #fff;
+    background: var(--nimiq-green, #21bca5); background-image: var(--nimiq-green-bg, radial-gradient(100% 100% at bottom right, #41A38E, #21BCA5)); }
+  .mesh-banner .mb-ic { width: 44px; height: 44px; border-radius: 50%; flex: 0 0 auto;
+    border: 2.5px solid rgba(255,255,255,.55); display: flex; align-items: center; justify-content: center; }
+  .mesh-banner .mb-ic svg { width: 22px; height: 22px; color: #fff; }
+  .mesh-banner .mb-t1 { font-weight: 700; font-size: 17px; }
+  .mesh-banner .mb-t2 { font-size: 13.5px; font-weight: 600; color: rgba(255,255,255,.75); margin-top: 1px; }
+
   /* Top-right chrome: the language pill + the account pill. Both are LOCAL (no CDN) so
      they work offline — this is an offline-first mesh app. The account pill replaces the
      old Hub connect-wallet pill: the app HAS its own native wallet, so the pill IS your
@@ -531,12 +598,14 @@
 
 <div class="app">
 
-  <div class="topbar">
-    <span class="logo" aria-label="nimmesh">
-      <svg viewBox="0 0 20 18" width="22" role="img" aria-label="Nimiq"><g fill="none"><path fill="url(#hex-grad)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="hex-grad" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></g></svg>
-      <span class="wordmark">nimmesh</span>
-    </span>
-    <div class="topbar-actions">
+  <!-- ================= P1: the wallet's portfolio HOME ================= -->
+  <div class="view" id="view-home">
+    <div class="home-topbar">
+      <button class="hamburger" id="open-menu" aria-label="Menu">
+        <svg viewBox="0 0 26 20" fill="none"><path d="M1 3h17M1 10h24M1 17h13" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+      </button>
+      <span class="spacer"></span>
+      <div class="topbar-actions">
       <button class="chip" id="lang-pill" aria-label="Language" data-i18n-aria="a.lang">
         <img id="lang-pill-flag" src="flags/en.svg" width="24" height="22" alt="">
         <svg class="chev" viewBox="0 0 10 6" fill="none"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -545,9 +614,8 @@
         <span class="identicon" data-wallet data-address="NQ30 AM32 NHXL 29F7 XUY0 HR3R 7XHF EF4L LYBS"><img src='data:image/svg+xml,<svg width="64" height="64" viewBox="0 -4 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path opacity=".1" d="M62.3 25.4L49.2 2.6A5.3 5.3 0 0 0 44.6 0H18.4c-1.9 0-3.6 1-4.6 2.6L.7 25.4c-1 1.6-1 3.6 0 5.2l13.1 22.8c1 1.6 2.7 2.6 4.6 2.6h26.2c1.9 0 3.6-1 4.6-2.6l13-22.8c1-1.6 1-3.6.1-5.2z" fill="url(%23identicon_radial)"/><defs><radialGradient id="identicon_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(-63.0033 0 0 -56 63 56)"><stop stop-color="%23260133"/><stop offset="1" stop-color="%231F2348"/></radialGradient></defs></svg>' alt="Your account identicon"></span>
       </button>
     </div>
-  </div>
-
-  <!-- Real Nimiq backup banner — the component's "words" variant verbatim (orange warning
+    </div>
+<!-- Real Nimiq backup banner — the component's "words" variant verbatim (orange warning
        text + inset border + orange "Backup →" pill). G19: on device its insistence + copy
        are driven by the Rust backup-nudge policy (hidden → words → solid-orange critical). -->
   <div id="backup-wrap" style="padding:12px 10px 0;">
@@ -557,7 +625,51 @@
     </div>
   </div>
 
-  <!-- Real Nimiq account header (Stake tooltip removed; nimmesh doesn't stake) -->
+  
+    <div class="total-balance">
+      <div class="eyebrow"><span data-i18n="home.total">Total balance</span></div>
+      <div class="big" id="total-fiat">···</div>
+    </div>
+    <div class="asset-stack">
+      <div class="asset-card">
+        <div class="asset-head"><svg viewBox="0 0 20 18" aria-hidden="true"><path fill="url(#asset-nim-grad)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="asset-nim-grad" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#ec991c"/><stop offset="1" stop-color="#e9b213"/></radialGradient></defs></svg> NIM</div>
+        <button class="address-row" id="open-address">
+          <span class="identicon" data-wallet data-address="NQ30 AM32 NHXL 29F7 XUY0 HR3R 7XHF EF4L LYBS"><img src='data:image/svg+xml,<svg width="64" height="64" viewBox="0 -4 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path opacity=".1" d="M62.3 25.4L49.2 2.6A5.3 5.3 0 0 0 44.6 0H18.4c-1.9 0-3.6 1-4.6 2.6L.7 25.4c-1 1.6-1 3.6 0 5.2l13.1 22.8c1 1.6 2.7 2.6 4.6 2.6h26.2c1.9 0 3.6-1 4.6-2.6l13-22.8c1-1.6 1-3.6.1-5.2z" fill="url(%23identicon_radial)"/><defs><radialGradient id="identicon_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(-63.0033 0 0 -56 63 56)"><stop stop-color="%23260133"/><stop offset="1" stop-color="%231F2348"/></radialGradient></defs></svg>' alt="Nimiq identicon"></span>
+          <span class="nm" data-i18n="home.label">Mesh Wallet</span>
+          <span class="amts"><span class="a1" id="card-nim">0 NIM</span><span class="a2" id="card-fiat"></span></span>
+          <span class="chev"><svg viewBox="0 0 8 14" fill="none"><path d="M1 1l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        </button>
+      </div>
+      <div class="asset-duo">
+        <button class="swap-circle v1" data-swap="btc" aria-label="Swap NIM and BTC"><svg viewBox="0 0 12 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="transform:rotate(90deg)"><g stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m4.25 15-3-3 3-3M2.43 11.863h7.071M7.25 1l3 3-3 3M9.07 4.133H1.999"/></g></svg></button>
+        <button class="swap-circle v2" data-swap="usdc" aria-label="Swap NIM and USDC"><svg viewBox="0 0 12 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="transform:rotate(90deg)"><g stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m4.25 15-3-3 3-3M2.43 11.863h7.071M7.25 1l3 3-3 3M9.07 4.133H1.999"/></g></svg></button>
+        <button class="swap-circle hz" data-swap="btc" aria-label="Swap"><svg viewBox="0 0 12 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><g stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m4.25 15-3-3 3-3M2.43 11.863h7.071M7.25 1l3 3-3 3M9.07 4.133H1.999"/></g></svg></button>
+        <div class="asset-card">
+          <div class="asset-head"><svg viewBox="0 0 42 42" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="color:#F7931A"><circle fill="#fff" cx="21" cy="21" r="18"/><path fill-rule="evenodd" clip-rule="evenodd" d="M15.918 41.371c11.253 2.805 22.649-4.04 25.454-15.291C44.176 14.83 37.33 3.433 26.077.628 14.828-2.176 3.433 4.67.629 15.922c-2.806 11.25 4.041 22.645 15.289 25.45zm10.31-29.01c3.041.997 5.265 2.49 4.828 5.27-.316 2.033-1.501 3.018-3.075 3.364 2.161 1.07 3.26 2.712 2.213 5.557-1.3 3.533-4.388 3.831-8.495 3.092l-.998 3.8-2.407-.571.983-3.75a96.07 96.07 0 01-1.919-.474l-.986 3.768-2.406-.571.997-3.807-.652-.161c-.351-.087-.706-.175-1.065-.26l-3.135-.744 1.196-2.623s1.775.448 1.75.415c.682.16.985-.262 1.104-.544l1.575-6.007.255.06a2.197 2.197 0 00-.25-.076l1.123-4.288c.03-.487-.147-1.101-1.122-1.333.038-.024-1.75-.413-1.75-.413l.641-2.448 3.322.79-.003.011c.5.118 1.014.23 1.538.344L20.477 7l2.407.571-.967 3.69c.644.137 1.288.281 1.93.431l.96-3.664 2.408.57-.986 3.764zm-7.622 13.646c1.964.494 6.264 1.575 6.947-1.037.7-2.667-3.463-3.556-5.496-3.991-.229-.049-.43-.092-.594-.13l-1.323 5.043c.134.031.291.07.466.115zm1.857-7.369c1.638.416 5.212 1.324 5.835-1.048.636-2.428-2.838-3.159-4.535-3.516-.19-.04-.359-.076-.496-.108l-1.2 4.574c.114.027.247.06.396.098z"/></svg> Bitcoin</div>
+          <div class="asset-bal">0.00000 BTC</div>
+          <div class="asset-fiat">0.00 $</div>
+        </div>
+        <div class="asset-card">
+          <div class="asset-head"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 2000" aria-hidden="true" style="color:#2775CA"><path d="M1000 2000c554 0 1000-446 1000-1000S1554 0 1000 0 0 446 0 1000s446 1000 1000 1000z" fill="currentColor"/><path d="M1275 1158c0-146-87-196-262-216-125-17-150-50-150-109s41-96 125-96c75 0 116 25 137 88 4 12 17 21 29 21h67c17 0 29-13 29-29v-5c-17-91-92-162-187-170V542c0-17-13-30-34-34h-62c-17 0-29 13-34 34v95c-125 17-204 101-204 205 0 137 84 191 259 212 116 21 154 46 154 113s-59 112-138 112c-108 0-146-46-158-108-4-17-17-25-29-25h-71c-17 0-29 12-29 29v4c16 104 83 179 221 200v100c0 17 12 29 33 34h62c17 0 30-13 34-34v-100c125-21 208-108 208-221z" fill="#fff"/><path d="M788 1596a620 620 0 0 1-371-800 616 616 0 0 1 371-371c16-8 25-21 25-42v-58c0-17-9-29-25-33-5 0-13 0-17 4a749 749 0 0 0 0 1429c17 8 33 0 37-17 5-4 5-8 5-16v-59c0-12-13-29-25-37zm441-1300c-16-9-33 0-37 16-4 5-4 9-4 17v58c0 17 12 34 25 42a620 620 0 0 1 370 800 616 616 0 0 1-371 371c-16 8-24 21-24 42v58c0 17 8 29 25 33 4 0 12 0 16-4a749 749 0 0 0 488-942 756 756 0 0 0-488-491z" fill="#fff"/></svg> USD Coin</div>
+          <div class="asset-bal">0.00 USDC</div>
+          <div class="asset-fiat">0.00 $</div>
+        </div>
+      </div>
+    </div>
+    <button class="help-pill" id="help-pill"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.8"/><path d="M9.4 9.2a2.7 2.7 0 1 1 3.9 2.4c-.8.4-1.3 1-1.3 1.9v.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="17" r="1.2" fill="currentColor"/></svg><span data-i18n="a.help">Help</span></button>
+  </div>
+
+  <!-- ================= P1: the ADDRESS DETAIL drill-in ================= -->
+  <div class="view" id="view-address" hidden>
+    <div class="addr-topbar">
+      <button class="back" id="addr-back" aria-label="Back"><svg viewBox="0 0 22 16" fill="none"><path d="M8 1L1 8l7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="2" y1="8" x2="21" y2="8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+      <div class="search-bar">
+        <svg fill="none" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="2"/><path d="M13.31 14.73a1 1 0 001.42-1.42l-1.42 1.42zM8.3 9.7l5.02 5.02 1.42-1.42L9.7 8.3 8.29 9.71z" fill="currentColor"/></svg>
+        <input type="text" placeholder="Search transactions" data-i18n-ph="home.search">
+      </div>
+      <button class="dots" id="addr-dots" aria-label="More">⋮</button>
+    </div>
+<!-- Real Nimiq account header (Stake tooltip removed; nimmesh doesn't stake) -->
   <div class="header-wrap">
     <div class="account-header">
       <div class="active-address flex-row">
@@ -577,18 +689,16 @@
           </div>
         </div>
       </div>
-      <div class="actions flex-row">
-        <div class="container">
-          <div class="search-bar">
-            <svg fill="none" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="2"/><path d="M13.31 14.73a1 1 0 001.42-1.42l-1.42 1.42zM8.3 9.7l5.02 5.02 1.42-1.42L9.7 8.3 8.29 9.71z" fill="currentColor"/></svg>
-            <input type="text" placeholder="Search transactions" data-i18n-ph="home.search">
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 
-  <!-- Real Nimiq transaction list (live from the chain when running in the app; the rows
+    <!-- the mesh banner, in the wallet's staking-banner slot: the mesh IS our superpower -->
+    <div class="mesh-banner" id="mesh-banner">
+      <span class="mb-ic"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="5" cy="18" r="2.4" fill="currentColor"/><circle cx="19" cy="18" r="2.4" fill="currentColor"/><circle cx="12" cy="5" r="2.4" fill="currentColor"/><path d="M6.4 16.3 10.7 6.9M13.3 6.9l4.3 9.4M7.2 18h9.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span>
+      <span><span class="mb-t1" id="mesh-banner-t1" data-i18n="mesh.ready">Bluetooth mesh · offline-ready</span>
+      <span class="mb-t2" id="mesh-banner-t2" data-i18n="mesh.banner.sub" style="display:block">Relays payments phone to phone, offline</span></span>
+    </div>
+<!-- Real Nimiq transaction list (live from the chain when running in the app; the rows
        below are only a no-bridge browser preview — the app replaces them via #tx-list). -->
   <div class="tx-wrap">
     <div class="transaction-list" id="tx-list">
@@ -632,6 +742,8 @@
   </div>
 
 </div>
+
+  </div>
 
 <!-- A3: fixed bottom dock — mesh status line (device-only) + the action bar -->
 <div class="bottom-dock">
@@ -1188,7 +1300,7 @@ Don't share them and keep them safe.</p>
       'confirm.title': 'Confirma tu dirección', 'confirm.sub': 'Esta es la dirección que nimmesh derivó de tu frase.', 'confirm.warn': 'Comprueba que coincide exactamente con tu cartera antes de enviarle fondos.', 'confirm.mine': 'Esta es mi cartera', 'confirm.retry': 'No es correcta, intentar de nuevo',
       'rec.title': 'Cartera encontrada en este dispositivo', 'rec.sub': 'Una cartera de una instalación anterior sigue en el almacenamiento seguro del dispositivo. Esta es su dirección:', 'rec.keep': 'Conservar esta cartera', 'rec.fresh': 'Borrarla y empezar de cero', 'rec.confirm': '¿Borrar la cartera de este dispositivo? Sin sus 24 palabras NO se puede recuperar.',
       'acct.title': 'Mi cuenta', 'acct.copy': 'Copiar dirección', 'acct.backup': 'Respaldo', 'acct.logout': 'Cerrar sesión en este dispositivo', 'acct.logout.confirm': '¿Eliminar la cartera de este dispositivo? Sin tus 24 palabras NO se puede recuperar. Asegúrate de tenerlas guardadas.',
-      'lang.title': 'Idioma', 'create.failed': 'No se pudo crear la cartera: ', 'scan.invalid': 'Eso no es una dirección Nimiq ni una solicitud de pago', 'cashlink.soon': 'Los Cashlinks llegarán pronto a nimmesh',
+      'home.total': 'Saldo total', 'a.help': 'Ayuda', 'help.text': 'nimmesh es una cartera de NIM que retransmite pagos de teléfono a teléfono por Bluetooth, sin internet. Envía, recibe e intercambia; tus llaves nunca salen de este teléfono.', 'mesh.banner.sub': 'Retransmite pagos de teléfono a teléfono, sin internet', 'tx.thismonth': 'Este mes', 'lang.title': 'Idioma', 'create.failed': 'No se pudo crear la cartera: ', 'scan.invalid': 'Eso no es una dirección Nimiq ni una solicitud de pago', 'cashlink.soon': 'Los Cashlinks llegarán pronto a nimmesh',
       'hub.title': 'Importante: crea un respaldo', 'hub.sub': 'No existe ‘olvidé mi contraseña’. Crea un respaldo para mantener el control.',
       'hub.codes': 'Envíate dos códigos de respaldo', 'hub.codes.sub': 'Solo necesitas dos formas de escribirte, como un mensajero y un correo.',
       'hub.words': 'Anota las 24 palabras de recuperación', 'hub.words.sub': 'Solo necesitas papel, lápiz y un lugar seguro donde guardarlo.',
@@ -1234,7 +1346,7 @@ Don't share them and keep them safe.</p>
       'confirm.title': 'Bestätige deine Adresse', 'confirm.sub': 'Das ist die Adresse, die nimmesh aus deiner Phrase abgeleitet hat.', 'confirm.warn': 'Prüfe genau, dass sie mit deiner bestehenden Wallet übereinstimmt, bevor du Geld darauf sendest.', 'confirm.mine': 'Das ist meine Wallet', 'confirm.retry': 'Stimmt nicht, nochmal versuchen',
       'rec.title': 'Wallet auf diesem Gerät gefunden', 'rec.sub': 'Eine Wallet einer früheren Installation liegt noch im sicheren Speicher des Geräts. Das ist ihre Adresse:', 'rec.keep': 'Diese Wallet behalten', 'rec.fresh': 'Löschen und neu anfangen', 'rec.confirm': 'Wallet von diesem Gerät löschen? Ohne ihre 24 Wörter ist sie NICHT wiederherstellbar.',
       'acct.title': 'Mein Konto', 'acct.copy': 'Adresse kopieren', 'acct.backup': 'Backup', 'acct.logout': 'Von diesem Gerät abmelden', 'acct.logout.confirm': 'Wallet von diesem Gerät entfernen? Ohne deine 24 Wörter ist sie NICHT wiederherstellbar. Stelle sicher, dass du sie gesichert hast.',
-      'lang.title': 'Sprache', 'create.failed': 'Wallet konnte nicht erstellt werden: ', 'scan.invalid': 'Das ist keine Nimiq-Adresse und keine Zahlungsanforderung', 'cashlink.soon': 'Cashlinks kommen bald zu nimmesh',
+      'home.total': 'Gesamtguthaben', 'a.help': 'Hilfe', 'help.text': 'nimmesh ist eine NIM-Wallet, die Zahlungen per Bluetooth von Handy zu Handy weiterreicht, ohne Internet. Senden, empfangen, tauschen; deine Schlüssel verlassen dieses Handy nie.', 'mesh.banner.sub': 'Leitet Zahlungen offline von Handy zu Handy weiter', 'tx.thismonth': 'Diesen Monat', 'lang.title': 'Sprache', 'create.failed': 'Wallet konnte nicht erstellt werden: ', 'scan.invalid': 'Das ist keine Nimiq-Adresse und keine Zahlungsanforderung', 'cashlink.soon': 'Cashlinks kommen bald zu nimmesh',
       'hub.title': 'Wichtig: Erstelle ein Backup', 'hub.sub': 'Es gibt kein ‘Passwort vergessen’. Erstelle ein Backup und behalte die Kontrolle.',
       'hub.codes': 'Schick dir zwei Backup-Codes', 'hub.codes.sub': 'Braucht nur zwei Wege, dir selbst zu schreiben, etwa Messenger + E-Mail.',
       'hub.words': 'Schreibe 24 Wiederherstellungswörter auf', 'hub.words.sub': 'Braucht Stift, Papier und einen sicheren Ort dafür.',
@@ -1280,7 +1392,7 @@ Don't share them and keep them safe.</p>
       'confirm.title': 'Confirme ton adresse', 'confirm.sub': 'Voici l’adresse que nimmesh a dérivée de ta phrase.', 'confirm.warn': 'Vérifie qu’elle correspond exactement à ton portefeuille avant d’y envoyer des fonds.', 'confirm.mine': 'C’est mon portefeuille', 'confirm.retry': 'Ce n’est pas ça, réessayer',
       'rec.title': 'Portefeuille trouvé sur cet appareil', 'rec.sub': 'Un portefeuille d’une installation précédente est encore dans le stockage sécurisé. Voici son adresse :', 'rec.keep': 'Garder ce portefeuille', 'rec.fresh': 'Le supprimer et repartir de zéro', 'rec.confirm': 'Supprimer le portefeuille de cet appareil ? Sans ses 24 mots il est IRRÉCUPÉRABLE.',
       'acct.title': 'Mon compte', 'acct.copy': 'Copier l’adresse', 'acct.backup': 'Sauvegarde', 'acct.logout': 'Se déconnecter de cet appareil', 'acct.logout.confirm': 'Supprimer le portefeuille de cet appareil ? Sans tes 24 mots il est IRRÉCUPÉRABLE. Assure-toi de les avoir sauvegardés.',
-      'lang.title': 'Langue', 'create.failed': 'Impossible de créer le portefeuille : ', 'scan.invalid': 'Ce n’est pas une adresse Nimiq ni une demande de paiement', 'cashlink.soon': 'Les Cashlinks arrivent bientôt sur nimmesh',
+      'home.total': 'Solde total', 'a.help': 'Aide', 'help.text': 'nimmesh est un portefeuille NIM qui relaie les paiements de téléphone en téléphone par Bluetooth, sans internet. Envoie, reçois, échange ; tes clés ne quittent jamais ce téléphone.', 'mesh.banner.sub': 'Relaie les paiements de téléphone en téléphone, hors ligne', 'tx.thismonth': 'Ce mois-ci', 'lang.title': 'Langue', 'create.failed': 'Impossible de créer le portefeuille : ', 'scan.invalid': 'Ce n’est pas une adresse Nimiq ni une demande de paiement', 'cashlink.soon': 'Les Cashlinks arrivent bientôt sur nimmesh',
       'hub.title': 'Important : crée une sauvegarde', 'hub.sub': 'Il n’y a pas de ‘mot de passe oublié’. Crée une sauvegarde pour garder le contrôle.',
       'hub.codes': 'Envoie-toi deux codes de sauvegarde', 'hub.codes.sub': 'Il suffit de deux façons de t’écrire, comme un messager et un email.',
       'hub.words': 'Note les 24 mots de récupération', 'hub.words.sub': 'Il suffit d’un stylo, d’un papier et d’un endroit sûr.',
@@ -1326,7 +1438,7 @@ Don't share them and keep them safe.</p>
       'confirm.title': 'Confirme seu endereço', 'confirm.sub': 'Este é o endereço que o nimmesh derivou da sua frase.', 'confirm.warn': 'Confira se corresponde exatamente à sua carteira antes de enviar fundos para ela.', 'confirm.mine': 'Esta é a minha carteira', 'confirm.retry': 'Não está certo, tentar de novo',
       'rec.title': 'Carteira encontrada neste aparelho', 'rec.sub': 'Uma carteira de uma instalação anterior ainda está no armazenamento seguro do aparelho. Este é o endereço dela:', 'rec.keep': 'Manter esta carteira', 'rec.fresh': 'Apagá-la e começar do zero', 'rec.confirm': 'Apagar a carteira deste aparelho? Sem as 24 palavras ela NÃO pode ser recuperada.',
       'acct.title': 'Minha conta', 'acct.copy': 'Copiar endereço', 'acct.backup': 'Backup', 'acct.logout': 'Sair deste aparelho', 'acct.logout.confirm': 'Remover a carteira deste aparelho? Sem suas 24 palavras ela NÃO pode ser recuperada. Garanta que você as guardou.',
-      'lang.title': 'Idioma', 'create.failed': 'Não foi possível criar a carteira: ', 'scan.invalid': 'Isso não é um endereço Nimiq nem uma cobrança', 'cashlink.soon': 'Os Cashlinks chegam em breve ao nimmesh',
+      'home.total': 'Saldo total', 'a.help': 'Ajuda', 'help.text': 'O nimmesh é uma carteira NIM que retransmite pagamentos de telefone em telefone por Bluetooth, sem internet. Envie, receba e troque; suas chaves nunca saem deste telefone.', 'mesh.banner.sub': 'Retransmite pagamentos de telefone em telefone, offline', 'tx.thismonth': 'Este mês', 'lang.title': 'Idioma', 'create.failed': 'Não foi possível criar a carteira: ', 'scan.invalid': 'Isso não é um endereço Nimiq nem uma cobrança', 'cashlink.soon': 'Os Cashlinks chegam em breve ao nimmesh',
       'hub.title': 'Importante: crie um backup', 'hub.sub': 'Não existe ‘esqueci a senha’. Crie um backup para manter o controle.',
       'hub.codes': 'Envie dois códigos de backup para você', 'hub.codes.sub': 'Bastam duas formas de escrever para si, como um mensageiro e um e-mail.',
       'hub.words': 'Anote as 24 palavras de recuperação', 'hub.words.sub': 'Bastam caneta, papel e um lugar seguro para guardar.',
@@ -1373,6 +1485,8 @@ Don't share them and keep them safe.</p>
     'cashlink.soon': 'Cashlinks are coming to nimmesh soon',
     'codes.invalid': 'Those codes do not match. Check both codes and try again.',
     'val.q': 'What is the {n} word?',
+    'help.text': 'nimmesh is a NIM wallet that relays payments phone to phone over Bluetooth, no internet needed. Send, receive and swap; your keys never leave this phone.',
+    'tx.thismonth': 'This month',
     'codes.copy': 'Copy code',
     'codes.how.tip': 'Email it to yourself, or message it to yourself in a chat app. Use a DIFFERENT platform for each code.',
     'swap.matched': 'Partner found, negotiating…', 'swap.settled': 'Swap settled',
@@ -1566,6 +1680,28 @@ Don't share them and keep them safe.</p>
   });
   document.getElementById('swap-done').addEventListener('click', () => { close(); resetSwapSheet(); });
 
+  // ---- P1: view switching (home portfolio <-> address detail, the wallet's IA) ----
+  function showView(id) {
+    ['view-home', 'view-address'].forEach((v) => {
+      const el = document.getElementById(v); if (el) el.hidden = (v !== id);
+    });
+    window.scrollTo(0, 0);
+  }
+  document.getElementById('open-address').addEventListener('click', () => showView('view-address'));
+  document.getElementById('addr-back').addEventListener('click', () => showView('view-home'));
+  document.getElementById('addr-dots').addEventListener('click', () => open('account'));
+  // until the side menu (P2) exists, the hamburger opens the account sheet
+  document.getElementById('open-menu').addEventListener('click', () => open('account'));
+  document.getElementById('help-pill').addEventListener('click', () => alert(T('help.text')));
+  // the wallet's swap circles preselect the receive asset, then open the swap sheet
+  document.querySelectorAll('.swap-circle').forEach((b) => b.addEventListener('click', () => {
+    const asset = b.dataset.swap || 'btc';
+    const btn = document.querySelector(`#swap-asset-toggle button[data-asset="${asset}"]`);
+    if (btn) btn.click();
+    resetSwapSheet();
+    open('swap');
+  }));
+
   // The home address is a real Copyable: tap -> copy the full spaced address, show the
   // wallet's blue "Copied" tooltip for ~800ms (upstream Copyable's DISPLAY_TIME).
   (function wireHomeCopyable() {
@@ -1612,7 +1748,11 @@ Don't share them and keep them safe.</p>
     const cfg = FIAT[LANG] || FIAT.en;
     const value = (luna / 1e5) * nimPrice;
     try {
-      return new Intl.NumberFormat(cfg.locale, { style: 'currency', currency: cfg.currency.toUpperCase() }).format(value);
+      // the wallet's own convention: number first, currency symbol trailing ("1550.29 $")
+      const parts = new Intl.NumberFormat(cfg.locale, { style: 'currency', currency: cfg.currency.toUpperCase() }).formatToParts(value);
+      const num = parts.filter((p) => p.type !== 'currency' && !(p.type === 'literal' && p.value.trim() === '')).map((p) => p.value).join('').trim();
+      const sym = (parts.find((p) => p.type === 'currency') || {}).value || '';
+      return `${num} ${sym}`;
     } catch (e) { return ''; }
   }
 
@@ -1770,24 +1910,30 @@ Don't share them and keep them safe.</p>
         + `<div style="font-size:13px;opacity:.8;margin-top:4px">${T('tx.empty.sub')}</div></div>`;
       return;
     }
+    const now = new Date();
+    let lastGroup = null;
     const rows = txs.map((t) => {
       const d = new Date(t.timestamp || 0);
       const day = d.getDate();
       const mon = MONTHS[d.getMonth()] || '';
+      const group = (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth())
+        ? T('tx.thismonth') : `${mon} ${d.getFullYear()}`;
+      const label = group !== lastGroup ? `<div class="month-label"><label>${group}</label></div>` : '';
+      lastGroup = group;
       const hh = String(d.getHours()).padStart(2, '0');
       const mm = String(d.getMinutes()).padStart(2, '0');
       const addr = (t.counterparty || '').trim();
       const cls = t.confirmed ? 'confirmed' : 'pending';
       const amtCls = t.incoming ? 'amounts isIncoming' : 'amounts';
       const status = t.confirmed ? `${hh}:${mm}` : `<span class="tx-pending">${T('tx.pending')}</span>`;
-      return `<button class="transaction ${cls}">
+      return `${label}<button class="transaction ${cls}">
         <div class="date"><span class="day">${day}</span><br><span class="month">${mon}</span></div>
         <div class="identicon" data-address="${addr}"><img alt="Nimiq identicon"></div>
         <div class="data"><div class="address">${addr}</div><div class="time-and-message"><span>${status}</span></div></div>
         <div class="${amtCls}"><span class="amount">${fmtNim(t.valueLuna)} <span class="currency nim">NIM</span></span><div class="fiat-amount fiat-loading">&nbsp;</div></div>
       </button>`;
     }).join('');
-    list.innerHTML = `<div class="month-label"><label>${T('tx.recent')}</label></div>${rows}`;
+    list.innerHTML = rows;
     for (const el of list.querySelectorAll('.identicon[data-address]')) {
       try { el.querySelector('img').src = await Iqons.toDataUrl(el.dataset.address); } catch (e) {}
     }
@@ -2082,6 +2228,8 @@ Don't share them and keep them safe.</p>
       // C1c: also show the live head we anchor sends to (proves app → chain RPC works).
       try { const h = await nimmesh.headHeight(); if (h && h.height) line += ` · head ${h.height}`; } catch (e) {}
       document.getElementById('meshbar-text').textContent = line;
+      const mb1 = document.getElementById('mesh-banner-t1');
+      if (mb1) mb1.textContent = `${T('mesh.state.' + m.state)} · ${m.peers} ${T('mesh.nearby')}`;
       const meta = document.getElementById('acct-meta');
       if (meta) meta.textContent = `core ${v.core}`;
     } catch (e) { console.error('bridge probe failed', e); }
@@ -2134,6 +2282,13 @@ Don't share them and keep them safe.</p>
         await refreshNimPrice();
         const fiat = document.getElementById('home-fiat');
         if (fiat) fiat.textContent = fiatText(balanceLuna);
+        // P1: the portfolio home numbers (big total + the NIM card row)
+        const total = document.getElementById('total-fiat');
+        if (total) total.textContent = fiatText(balanceLuna) || `${fmtNim(balanceLuna)} NIM`;
+        const cardNim = document.getElementById('card-nim');
+        if (cardNim) cardNim.textContent = `${fmtNim(balanceLuna)} NIM`;
+        const cardFiat = document.getElementById('card-fiat');
+        if (cardFiat) cardFiat.textContent = fiatText(balanceLuna);
       } catch (e) { /* keep the last shown balance if the read fails */ }
       try {
         const { txs } = await nimmesh.walletHistory();
