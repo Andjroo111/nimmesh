@@ -2,6 +2,16 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.49.23] — 2026-07-03
+
+### Fixed — the map drag starts reliably now (Andjroo)
+
+Two causes for "hard to get moving": the drag surface was only the small map patch, and
+WKWebView's own gesture recognizer sometimes stole the first touches from the pointer
+stream. Now the WHOLE navy card is the drag surface (nothing else on it is tappable),
+driven by raw touch events with preventDefault so iOS can never intercept; the mouse
+path stays for desktop. Same momentum feel.
+
 ## [0.49.22] — 2026-07-03
 
 ### Fixed — the map pan feels native now (Andjroo)

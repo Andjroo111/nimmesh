@@ -43,7 +43,8 @@
     color: rgba(255,255,255,.45); display: flex; align-items: center; justify-content: center; }
   .nw-info svg { width: 22px; height: 22px; }
   .nw-card { position: relative; flex: 1 1 auto; margin: 10px 14px calc(14px + env(safe-area-inset-bottom, 0px));
-    border-radius: 12px; overflow: hidden; background: #171d2e; padding: 22px 22px 26px; }
+    border-radius: 12px; overflow: hidden; background: #171d2e; padding: 22px 22px 26px;
+    touch-action: none; cursor: grab; }
   .nw-pill, .nw-stat { position: relative; z-index: 1; }
   .nw-pill { display: inline-block; background: #fff; color: #1f2348; font-weight: 700; font-size: 14.5px;
     padding: 6px 16px; border-radius: 500px; margin-bottom: 18px; }
@@ -1841,27 +1842,28 @@ Don't share them and keep them safe.</p>
   // so the map pans the same way the swap bar drags — proven on device.
   (function wireMapDrag() {
     const pan = document.getElementById('nw-map-pan');
-    if (!pan) return;
+    const card = document.querySelector('.nw-card');
+    if (!pan || !card) return;
+    // The WHOLE card is the drag surface (nothing else on it is interactive), and on
+    // device we use raw TOUCH events with preventDefault so WKWebView's own gesture
+    // recognizers can never steal the drag (pointer events alone were flaky there).
     let startX = null, startLeft = 0, lastX = 0, lastT = 0, vel = 0, raf = null;
-    pan.addEventListener('pointerdown', (e) => {
+    function begin(x) {
       if (raf) { cancelAnimationFrame(raf); raf = null; }
-      startX = lastX = e.clientX; startLeft = pan.scrollLeft;
+      startX = lastX = x; startLeft = pan.scrollLeft;
       lastT = performance.now(); vel = 0;
-      try { pan.setPointerCapture(e.pointerId); } catch (err) {}
-    });
-    pan.addEventListener('pointermove', (e) => {
+    }
+    function move(x) {
       if (startX == null) return;
       const now = performance.now();
       const dt = Math.max(1, now - lastT);
-      // px per frame (16ms), low-pass filtered for a stable fling
-      vel = 0.75 * vel + 0.25 * (-(e.clientX - lastX) / dt) * 16;
-      lastX = e.clientX; lastT = now;
-      pan.scrollLeft = startLeft - (e.clientX - startX);
-    });
-    const end = () => {
+      vel = 0.75 * vel + 0.25 * (-(x - lastX) / dt) * 16;
+      lastX = x; lastT = now;
+      pan.scrollLeft = startLeft - (x - startX);
+    }
+    function end() {
       if (startX == null) return;
       startX = null;
-      // momentum fling with friction, like a native scroller
       const step = () => {
         pan.scrollLeft += vel;
         vel *= 0.94;
@@ -1871,9 +1873,20 @@ Don't share them and keep them safe.</p>
         } else { raf = null; }
       };
       raf = requestAnimationFrame(step);
-    };
-    pan.addEventListener('pointerup', end);
-    pan.addEventListener('pointercancel', end);
+    }
+    card.addEventListener('touchstart', (e) => { begin(e.touches[0].clientX); }, { passive: true });
+    card.addEventListener('touchmove', (e) => { e.preventDefault(); move(e.touches[0].clientX); }, { passive: false });
+    card.addEventListener('touchend', end);
+    card.addEventListener('touchcancel', end);
+    // mouse path (desktop / harness)
+    card.addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'mouse') return;
+      begin(e.clientX);
+      try { card.setPointerCapture(e.pointerId); } catch (err) {}
+    });
+    card.addEventListener('pointermove', (e) => { if (e.pointerType === 'mouse') move(e.clientX); });
+    card.addEventListener('pointerup', (e) => { if (e.pointerType === 'mouse') end(); });
+    card.addEventListener('pointercancel', end);
   })();
   document.getElementById('menu-network').addEventListener('click', () => { closeMenu(); showView('view-network'); centerNetworkMap(); });
   document.getElementById('nw-back').addEventListener('click', () => showView('view-home'));
