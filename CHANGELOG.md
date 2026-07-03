@@ -2,6 +2,20 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.49.18] — 2026-07-03
+
+### Changed — the Network screen, wallet-shaped: one screen, dense pannable map (Andjroo)
+
+Reshaped to the real wallet's network screen per Andjroo's captures:
+
+- ONE SCREEN, no scrolling: the card fills the viewport; the explainer is now an in-card
+  overlay opened by the info button instead of a block you scroll to.
+- The map is 2x denser (1318 cells, 78x39 grid with organic eroded coastlines), fills the
+  card BEHIND the stat stack like the wallet, and SWIPES left/right (wider than the
+  screen, opens centered on your node).
+- Your node is the wallet's GOLD hex; nearby peers are light-blue hexes with thin arcs
+  drawn from you to each active peer (live counts).
+
 ## [0.49.17] — 2026-07-03
 
 ### Fixed — the hex world map no longer reads as cropped (Andjroo, round 2)
