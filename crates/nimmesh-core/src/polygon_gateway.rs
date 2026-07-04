@@ -112,6 +112,12 @@ pub fn parse_quantity(s: &str) -> Option<u64> {
     u64::from_str_radix(h, 16).ok()
 }
 
+/// Parse an EVM hex-quantity to `u128` — native balances (wei) overflow `u64` past ~18.4 POL.
+pub fn parse_quantity_u128(s: &str) -> Option<u128> {
+    let h = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X"))?;
+    u128::from_str_radix(h, 16).ok()
+}
+
 /// Pull the `result` out of a JSON-RPC response, mapping a non-null `error` object to a terminal
 /// [`EvmRpcError::Rpc`] and a missing `result` to [`EvmRpcError::BadResponse`]. Panic-free on any JSON.
 fn parse_result(method: &str, resp: &serde_json::Value) -> Result<serde_json::Value, EvmRpcError> {
@@ -177,6 +183,22 @@ pub fn parse_gas_price(resp: &serde_json::Value) -> Result<u64, EvmRpcError> {
         .and_then(parse_quantity)
         .ok_or(EvmRpcError::BadResponse {
             method: "eth_gasPrice".to_string(),
+        })
+}
+
+/// `eth_getBalance(address, "latest")` — the native (POL) balance in wei. Request builder +
+/// parser. The G6 live round-trip preflights its whole gas budget with this before spending.
+pub fn get_balance_request(address: &str, id: u64) -> serde_json::Value {
+    json_rpc_request("eth_getBalance", serde_json::json!([address, "latest"]), id)
+}
+
+/// Parse an `eth_getBalance` response → wei (`u128` — see [`parse_quantity_u128`]).
+pub fn parse_balance(resp: &serde_json::Value) -> Result<u128, EvmRpcError> {
+    let r = parse_result("eth_getBalance", resp)?;
+    r.as_str()
+        .and_then(parse_quantity_u128)
+        .ok_or(EvmRpcError::BadResponse {
+            method: "eth_getBalance".to_string(),
         })
 }
 
@@ -425,6 +447,12 @@ impl HttpPolygonRpc {
         parse_gas_price(&self.post(req, "eth_gasPrice")?)
     }
 
+    /// The native POL balance in wei (LIVE — read-only).
+    pub fn get_balance(&self, address: &str) -> Result<u128, EvmRpcError> {
+        let req = get_balance_request(address, self.next_id());
+        parse_balance(&self.post(req, "eth_getBalance")?)
+    }
+
     /// Broadcast a `0x`-prefixed signed raw tx, returning its hash (LIVE BROADCAST — owner-gated;
     /// real funds + mainnet = needs:owner).
     pub fn send_raw_transaction(&self, raw_hex: &str) -> Result<String, EvmRpcError> {
@@ -479,6 +507,7 @@ pub struct MockPolygonRpc {
     nonce: u64,
     gas_price: u64,
     head_block: u64,
+    balance_wei: u128,
 }
 
 impl Default for MockPolygonRpc {
@@ -488,6 +517,7 @@ impl Default for MockPolygonRpc {
             nonce: 0,
             gas_price: 30_000_000_000, // 30 gwei
             head_block: 0x10,
+            balance_wei: 1_000_000_000_000_000_000, // 1 POL
         }
     }
 }
@@ -536,6 +566,13 @@ impl MockPolygonRpc {
         parse_gas_price(&resp)
     }
 
+    /// Native balance — same codec round-trip, no network.
+    pub fn get_balance(&self, address: &str) -> Result<u128, EvmRpcError> {
+        let _req = get_balance_request(address, 1);
+        let resp = serde_json::json!({ "jsonrpc": "2.0", "id": 1, "result": format!("0x{:x}", self.balance_wei) });
+        parse_balance(&resp)
+    }
+
     /// Record the broadcast + return the (real) tx hash, parsed back through the codec.
     pub fn send_raw_transaction(&self, raw_hex: &str) -> Result<String, EvmRpcError> {
         let _req = send_raw_transaction_request(raw_hex, 1);
@@ -571,197 +608,5 @@ fn decode_hex(s: &str) -> Option<Vec<u8>> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn guard_refuses_polygon_mainnet_hosts_accepts_amoy() {
-        assert!(guard_amoy(DEFAULT_AMOY_RPC_URL).is_ok());
-        assert!(guard_amoy("https://rpc.ankr.com/polygon_amoy").is_ok());
-        for host in MAINNET_RPC_HOSTS {
-            assert!(matches!(
-                guard_amoy(&format!("https://{host}/")),
-                Err(EvmRpcError::NotAmoy { .. })
-            ));
-        }
-    }
-
-    #[test]
-    fn quantity_hex_round_trips() {
-        for v in [0u64, 1, 9, 21_000, 80_002, u64::MAX] {
-            assert_eq!(parse_quantity(&quantity_hex(v)), Some(v));
-        }
-        assert_eq!(quantity_hex(9), "0x9");
-        assert_eq!(parse_quantity("0x5208"), Some(21_000));
-        assert_eq!(parse_quantity("not-hex"), None); // panic-free on junk
-        assert_eq!(parse_quantity("0xZZ"), None);
-    }
-
-    #[test]
-    fn logs_and_block_number_codecs_round_trip() {
-        assert_eq!(block_number_request(4)["method"], "eth_blockNumber");
-        let head = json!({ "jsonrpc": "2.0", "id": 4, "result": "0x2753924" });
-        assert_eq!(parse_block_number(&head).unwrap(), 0x2753924);
-
-        let req = get_logs_request("0xdead", "0xt0", Some("0xt3"), 7, 5);
-        assert_eq!(req["method"], "eth_getLogs");
-        assert_eq!(req["params"][0]["fromBlock"], "0x7");
-        assert_eq!(req["params"][0]["topics"][0], "0xt0");
-        assert_eq!(req["params"][0]["topics"][3], "0xt3");
-        assert!(req["params"][0]["topics"][1].is_null());
-
-        // A realistic entry (the shape Amoy returned for the deployed HTLC's NewSwap), plus a
-        // malformed sibling that must be skipped, not panicked on.
-        let resp = json!({ "jsonrpc": "2.0", "id": 5, "result": [
-            {
-                "topics": ["0xaaaa", format!("0x{}", "11".repeat(32)), "0xbb", "0xcc"],
-                "data": format!("0x{}", "22".repeat(96)),
-                "blockNumber": "0x64"
-            },
-            { "topics": [], "data": 7, "blockNumber": null }
-        ]});
-        let logs = parse_logs(&resp).unwrap();
-        assert_eq!(logs.len(), 1);
-        assert_eq!(logs[0].topic1, [0x11; 32]);
-        assert_eq!(logs[0].data, vec![0x22; 96]);
-        assert_eq!(logs[0].block_number, 100);
-        // And a node error is terminal, not a panic.
-        assert!(
-            parse_logs(&json!({ "jsonrpc": "2.0", "id": 5, "error": { "message": "nope" } }))
-                .is_err()
-        );
-    }
-
-    #[test]
-    fn request_envelopes_have_the_jsonrpc_shape() {
-        let req = get_transaction_count_request("0xabc", 7);
-        assert_eq!(req["jsonrpc"], "2.0");
-        assert_eq!(req["method"], "eth_getTransactionCount");
-        assert_eq!(req["params"], json!(["0xabc", "pending"]));
-        assert_eq!(req["id"], 7);
-
-        assert_eq!(gas_price_request(1)["method"], "eth_gasPrice");
-        assert_eq!(
-            send_raw_transaction_request("0xf86c09", 2)["params"],
-            json!(["0xf86c09"])
-        );
-        let call = eth_call_request("0xcontract", "0x70a08231", 3);
-        assert_eq!(call["method"], "eth_call");
-        assert_eq!(call["params"][0]["to"], "0xcontract");
-        assert_eq!(call["params"][0]["data"], "0x70a08231");
-        assert_eq!(call["params"][1], "latest");
-    }
-
-    #[test]
-    fn parses_transaction_count_and_gas_price_fixtures() {
-        let resp = json!({ "jsonrpc": "2.0", "id": 1, "result": "0x9" });
-        assert_eq!(parse_transaction_count(&resp).unwrap(), 9);
-        let gas = json!({ "jsonrpc": "2.0", "id": 1, "result": "0x6fc23ac00" }); // 30 gwei
-        assert_eq!(parse_gas_price(&gas).unwrap(), 30_000_000_000);
-    }
-
-    #[test]
-    fn parses_send_raw_transaction_hash_fixture() {
-        let resp = json!({
-            "jsonrpc": "2.0", "id": 1,
-            "result": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
-        });
-        assert_eq!(
-            parse_send_raw_transaction(&resp).unwrap(),
-            "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
-        );
-    }
-
-    #[test]
-    fn parses_receipt_success_failure_and_pending_fixtures() {
-        let mined = json!({
-            "jsonrpc": "2.0", "id": 1,
-            "result": { "transactionHash": "0xdead", "status": "0x1", "blockNumber": "0x10" }
-        });
-        assert_eq!(
-            parse_transaction_receipt(&mined).unwrap(),
-            Some(EvmReceipt {
-                tx_hash: "0xdead".to_string(),
-                success: true,
-                block_number: 16,
-            })
-        );
-        let reverted = json!({
-            "jsonrpc": "2.0", "id": 1,
-            "result": { "transactionHash": "0xbeef", "status": "0x0", "blockNumber": "0x11" }
-        });
-        assert!(
-            !parse_transaction_receipt(&reverted)
-                .unwrap()
-                .unwrap()
-                .success
-        );
-        // null result = still pending.
-        let pending = json!({ "jsonrpc": "2.0", "id": 1, "result": null });
-        assert_eq!(parse_transaction_receipt(&pending).unwrap(), None);
-    }
-
-    #[test]
-    fn parses_eth_call_data_fixture() {
-        // balanceOf → a 32-byte word (here 1_500_000 micro-USDC = 1.5 USDC).
-        let resp = json!({
-            "jsonrpc": "2.0", "id": 1,
-            "result": "0x000000000000000000000000000000000000000000000000000000000016e360"
-        });
-        let data = parse_eth_call(&resp).unwrap();
-        assert_eq!(parse_quantity(&data), Some(1_500_000));
-    }
-
-    #[test]
-    fn a_node_error_object_is_a_terminal_rpc_error() {
-        let resp = json!({
-            "jsonrpc": "2.0", "id": 1,
-            "error": { "code": -32000, "message": "nonce too low" }
-        });
-        let err = parse_send_raw_transaction(&resp).unwrap_err();
-        assert!(matches!(err, EvmRpcError::Rpc { ref message, .. } if message == "nonce too low"));
-        assert!(!err.is_transient()); // a node rejection is terminal
-    }
-
-    #[test]
-    fn malformed_responses_are_structured_errors_not_panics() {
-        // Missing result → BadResponse.
-        let no_result = json!({ "jsonrpc": "2.0", "id": 1 });
-        assert!(matches!(
-            parse_transaction_count(&no_result),
-            Err(EvmRpcError::BadResponse { .. })
-        ));
-        // Result of the wrong type → BadResponse, no panic.
-        let wrong_type = json!({ "jsonrpc": "2.0", "id": 1, "result": 9 });
-        assert!(matches!(
-            parse_gas_price(&wrong_type),
-            Err(EvmRpcError::BadResponse { .. })
-        ));
-        // Arbitrary hostile JSON shapes never panic.
-        for v in [json!(null), json!([]), json!("x"), json!({ "result": {} })] {
-            let _ = parse_transaction_receipt(&v);
-            let _ = parse_eth_call(&v);
-        }
-    }
-
-    #[test]
-    fn http_errors_transient_classification() {
-        assert!(EvmRpcError::Http {
-            status: 503,
-            method: "x".into()
-        }
-        .is_transient());
-        assert!(EvmRpcError::Http {
-            status: 429,
-            method: "x".into()
-        }
-        .is_transient());
-        assert!(!EvmRpcError::Http {
-            status: 400,
-            method: "x".into()
-        }
-        .is_transient());
-        assert!(EvmRpcError::Transport("dns".into()).is_transient());
-    }
-}
+#[path = "polygon_gateway_tests.rs"]
+mod tests;

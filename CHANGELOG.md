@@ -2,6 +2,30 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.50.0] — 2026-07-03
+
+### Added — G6 (#77): the USDC HTLC is LIVE on Polygon Amoy + the real-RPC round-trip
+
+- **Deployed `NimmeshHtlc` to Amoy** — `0xaaCa309B5EF3e57D3f206220F230F5cB2562F7f3`, escrowing
+  Circle's canonical Amoy USDC (`0x41E9…7582`), ERC-2771 forwarder disabled for now (the G7
+  implementation deploys one). Deployment record + operations notes: **`docs/swap/AMOY.md`**.
+- **`examples/live_amoy_usdc_htlc.rs`** (behind `polygon-gateway`) — the round-trip against the
+  REAL chain, every byte from our own stack (`evm_abi` calldata → `evm_rlp` EIP-155 legacy tx →
+  `evm_signer` k256 → `polygon_gateway` JSON-RPC): the live contract's `swapIdFor` byte-matches
+  `usdc_swap_id`; `approve` → `newSwap` → `getSwap == Live`; `withdraw(S)` verified by the
+  **SHA-256 precompile on-chain** → `Claimed`; premature `refund` REVERTS, post-timelock
+  `refund` → `Refunded`; USDC fully round-trips home. Gas hygiene learned from a real Amoy fee
+  spike (84 gwei suggested vs ~25 baseline): the node's suggestion is clamped and the whole gas
+  budget is preflighted against the new balance read.
+- **`polygon_gateway::get_balance`** (`eth_getBalance`) — request/parse through the same
+  offline-tested codec (`parse_quantity_u128`: wei balances overflow `u64`), mirrored on
+  `MockPolygonRpc`.
+- CI is untouched: the example needs `required-features` + env + a funded key and never runs in
+  the gate.
+- Size-guard fold-in: `polygon_gateway.rs` crossed 800 once `get_balance` joined #132's log/head
+  codecs — its offline test suite moves to a `polygon_gateway_tests.rs` child module (`#[path]`,
+  private access preserved).
+
 ## [0.49.24] — 2026-07-03
 
 ### Changed — the Network map uses the wallet's REAL world bitmap (Andjroo)

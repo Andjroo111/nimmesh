@@ -41,6 +41,11 @@ required-features = ["bitcoin-gateway"]
 name = "live_cross_chain_swap"
 required-features = ["gateway-rpc", "bitcoin-gateway"]
 
+# The G6 (#77) live Amoy round-trip against the DEPLOYED NimmeshHtlc (docs/swap/AMOY.md).
+[[example]]
+name = "live_amoy_usdc_htlc"
+required-features = ["polygon-gateway"]
+
 # Swap demo: a std-only HTTP server that runs the REAL engine (swap_sim) against an in-memory sim
 # chain and serves webui/, so the browser UI is powered by the actual SwapEngine. Sim-only, no funds.
 [[example]]
