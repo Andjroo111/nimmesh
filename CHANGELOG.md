@@ -2,6 +2,16 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.51.1] — 2026-07-05
+
+### Added — invite friends to the mesh (growth loop)
+
+A mesh is only as useful as it is populated, so the app now makes it easy to pull people
+in. An "Invite friends to the mesh" button anchors the Network screen's "you ARE the
+network" card (and a matching side-menu row), opening the NATIVE share sheet (new `share`
+bridge → UIActivityViewController) with a friendly message + the install link. Falls back
+to navigator.share, then clipboard. Localized in all five languages.
+
 ## [0.51.0] — 2026-07-04
 
 ### Added — G7 (#78) IMPLEMENTED: relayer-sponsored (gasless) funding, live on Amoy

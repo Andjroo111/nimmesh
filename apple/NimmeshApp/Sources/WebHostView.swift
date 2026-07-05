@@ -150,6 +150,9 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         setLang: function (l) { return call('setLang', { lang: l }); },
         // Native camera QR scanner (Send bar). Resolves { text } or rejects on cancel.
         scanQr: function () { return call('scanQr'); },
+        // Share/invite: open the native share sheet so a user can pull friends into the mesh
+        // (a mesh is only as useful as it is populated). Resolves { shared } / { shared:false }.
+        share: function (text, url) { return call('share', { text: text, url: url }); },
         // "Unlock your Backup": Face ID / device passcode. Resolves { ok }.
         authenticate: function () { return call('authenticate'); },
         // Backup: the wallet's two-code XOR backup + whether ANY backup was completed
@@ -209,6 +212,30 @@ final class Bridge: NSObject, WKScriptMessageHandler {
                         self.resolve(id: id, ok: false, payload: "cancelled")
                     }
                 }
+            }
+        case "share":
+            // The native share sheet (UIActivityViewController) — the mesh growth loop: invite
+            // friends to install and join, so more phones = a stronger, denser mesh.
+            let a = args as? [String: Any] ?? [:]
+            let text = (a["text"] as? String) ?? ""
+            let url = URL(string: (a["url"] as? String) ?? "")
+            DispatchQueue.main.async {
+                guard let top = Bridge.topmostViewController() else {
+                    self.resolve(id: id, ok: true, payload: ["shared": false]); return
+                }
+                var items: [Any] = [text]
+                if let url = url { items.append(url) }
+                let vc = UIActivityViewController(activityItems: items, applicationActivities: nil)
+                // iPad: anchor the popover so it doesn't crash on a nil sourceView.
+                if let pop = vc.popoverPresentationController {
+                    pop.sourceView = top.view
+                    pop.sourceRect = CGRect(x: top.view.bounds.midX, y: top.view.bounds.midY, width: 0, height: 0)
+                    pop.permittedArrowDirections = []
+                }
+                vc.completionWithItemsHandler = { _, completed, _, _ in
+                    self.resolve(id: id, ok: true, payload: ["shared": completed])
+                }
+                top.present(vc, animated: true)
             }
         default:
             let (ok, payload) = handle(method: method, args: args)
