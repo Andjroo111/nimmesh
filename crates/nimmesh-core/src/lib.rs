@@ -163,6 +163,12 @@ pub mod evm_abi;
 #[cfg(feature = "polygon-leg")]
 pub mod evm_permit;
 
+// Mesh swap (G7 #78): EIP-712 ForwardRequest pre-images + NimmeshForwarder.execute calldata,
+// behind polygon-leg. The off-chain half of relayer-sponsored (gasless) FUNDING per ADR-0006/8;
+// the claim path needs no forwarder (caller-open, ADR-0007). Cast-anchored vectors.
+#[cfg(feature = "polygon-leg")]
+pub mod evm_forward;
+
 // Mesh swap (P4a): EVM RLP + the EIP-155 legacy tx signing-hash, behind `polygon-leg`. `evm_rlp`
 // turns the P3 `evm_abi` calldata + tx fields into the exact keccak256 signing hash a wallet signs —
 // KEY-FREE (no secp256k1, no key, no RPC, no broadcast; that's P4b, gated). Amoy testnet chainId

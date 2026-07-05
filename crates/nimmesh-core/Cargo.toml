@@ -46,6 +46,11 @@ required-features = ["gateway-rpc", "bitcoin-gateway"]
 name = "live_amoy_usdc_htlc"
 required-features = ["polygon-gateway"]
 
+# The G7 (#78) live gasless-funding proof against the forwarder-bound HTLC (docs/swap/AMOY.md).
+[[example]]
+name = "live_amoy_gasless_swap"
+required-features = ["polygon-gateway"]
+
 # Swap demo: a std-only HTTP server that runs the REAL engine (swap_sim) against an in-memory sim
 # chain and serves webui/, so the browser UI is powered by the actual SwapEngine. Sim-only, no funds.
 [[example]]

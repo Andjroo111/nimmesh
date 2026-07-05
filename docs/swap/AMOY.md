@@ -13,6 +13,22 @@ operations notes for the live round-trip.
 | Chain | Amoy, chainId **80002** (`evm_rlp::POLYGON_AMOY_CHAIN_ID`) |
 | Deployer | a throwaway TESTNET key (address `0xA7bB…59b1`) — see "The env contract" below |
 
+## The G7 gas-abstraction deployments (2026-07-04)
+
+| What | Value |
+|---|---|
+| `NimmeshForwarder` | [`0x94618C9429BA431d69dA1762b5ABd3AaaA0267e1`](https://amoy.polygonscan.com/address/0x94618C9429BA431d69dA1762b5ABd3AaaA0267e1) ([deploy tx](https://amoy.polygonscan.com/tx/0xe07c30e0cd677d1ed5d89b30fce40879facc46861f765a2fa9eba1ef3a575648)) |
+| `NimmeshHtlc` v2 (forwarder-bound) | [`0xb3B3703E07AC897B7E3e864C113a2Fa547D76736`](https://amoy.polygonscan.com/address/0xb3B3703E07AC897B7E3e864C113a2Fa547D76736) ([deploy tx](https://amoy.polygonscan.com/tx/0x82a0861df0e71c03c06bcad7a5af171f701f270ff5a63dd5752dedb40ea16a99)) — same USDC, `trustedForwarder()` = the forwarder (the v1 HTLC's forwarder is immutable `0x0`, so G7 deployed fresh; both stay live, the app targets v2) |
+
+**Gasless proof (`live_amoy_gasless_swap`, 2026-07-04, exit 0):** a user derived in-process with
+**zero POL and account nonce 0** funded a real escrow and settled it — the relayer paid every
+drop of gas: [stake transfer](https://amoy.polygonscan.com/tx/0xdfff227b5ca39a9d4343e5252e480009c4a41db2e3390cfa7c80e60b06668788) →
+user signs permit + `ForwardRequest` (0 txs) → [forwarder `execute`](https://amoy.polygonscan.com/tx/0x537eb61d0b101f31fa310c7671327ccd185161108b8d24aedf8c3bd91742c16b)
+→ `getSwap`: Live, **funder == the user** (ERC-2771 attribution) → [caller-open `withdraw(S)` by the relayer](https://amoy.polygonscan.com/tx/0xe61122f7ec24df227e461401bbf97ddddb24fbc52b21ac7630527b8ad63c8e4e)
+→ Claimed → **user nonce still 0, POL still 0**. Run:
+`cargo run --example live_amoy_gasless_swap --features polygon-gateway` (env additionally:
+`AMOY_FORWARDER_ADDRESS`, `AMOY_HTLC2_ADDRESS`). Design: ADR-0008.
+
 ## The live round-trip
 
 ```

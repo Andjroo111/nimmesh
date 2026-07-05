@@ -2,6 +2,29 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.51.0] — 2026-07-04
+
+### Added — G7 (#78) IMPLEMENTED: relayer-sponsored (gasless) funding, live on Amoy
+
+- **`contracts/src/NimmeshForwarder.sol`** — the minimal hand-rolled ERC-2771 forwarder
+  (ADR-0008): EIP-712 `ForwardRequest` (struct calldata — ten flat args blew the EVM stack),
+  strictly sequential nonces, required deadline, target failures REPORTED not bubbled
+  (`Forwarded` event, nonce burns either way), EIP-150 under-gas guard so a stingy relayer
+  can't fake a target failure. 8 new Foundry tests (25 total): attribution, replay/expiry/
+  tamper/forgery rejection, honest `verify`.
+- **The clarifying insight**: caller-open `withdraw`/`refund` (ADR-0007) already make claims
+  gasless — the forwarder exists to attribute the FUNDER (`newSwapWithPermit` binds funder =
+  `_msgSender()` and the permit verifies against it). One contract, gasless both directions.
+- **`evm_forward`** (Rust, behind `polygon-leg`): `ForwardRequest` typehash + EIP-712 digest
+  (binds the wrapped calldata) + the `execute` dynamic-tuple calldata builder — all
+  byte-anchored against `cast` vectors.
+- **Deployed to Amoy**: forwarder `0x94618C…67e1` + a fresh forwarder-bound `NimmeshHtlc` v2
+  `0xb3B370…6736` (v1's forwarder is immutable `0x0` by design). **Live gasless proof**
+  (`examples/live_amoy_gasless_swap.rs`): an in-process-derived user with zero POL and account
+  nonce 0 funded and settled a real escrow — nonce and POL still 0 at the end; the chain
+  attributed the funder to the signer. Receipts: `docs/swap/AMOY.md`.
+- ADR-0006's implementation half is done → #78 closes; S4 fully closed.
+
 ## [0.50.0] — 2026-07-03
 
 ### Added — G6 (#77): the USDC HTLC is LIVE on Polygon Amoy + the real-RPC round-trip
