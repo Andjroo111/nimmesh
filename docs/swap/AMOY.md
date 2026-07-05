@@ -50,6 +50,24 @@ Every byte from our own stack; gas 30 gwei (clamped), starting nonce 5:
 - refund path (0.5 USDC, timelock +75s): [approve](https://amoy.polygonscan.com/tx/0x85898a28ca1c66e18d77e8ee9eed407606a02c199a0e1b2792b78c522f0f7d25) → [newSwap](https://amoy.polygonscan.com/tx/0x53bb94574ccd65210fadf4573e6e8cc21dcc129b384218d90e91d7521f294a29) → [premature refund **REVERTED**](https://amoy.polygonscan.com/tx/0xe78278ce6fc3ff216201b4c9e1ac4be44da74ba5c7124200c02d98300d7a3f8d) (`TimeoutNotReached` — the boundary second belongs to the claimer) → [post-timelock refund](https://amoy.polygonscan.com/tx/0xfb1ac8a46c83f8210d4a7b57413d8d8464f4f03dfc464898a389bd649c9f3f91) → **Refunded**
 - USDC balance round-tripped exactly: 20.000000 → 20.000000
 
+## The funding-verifier proven live (#72 tail, 2026-07-05)
+
+`polygon_verifier::PolygonHtlcVerifier` — the real-chain G1 funding gate — walked one escrow
+through all three verdicts against the deployed HTLC (`live_amoy_verifier` example, exit 0):
+
+- fund a 1-USDC self-escrow: [approve](https://amoy.polygonscan.com/tx/0xc3f531c72386a52a0612779f4ae9716f75e575fb81eedcba27ca38260b0a97d3) → [newSwap](https://amoy.polygonscan.com/tx/0xc87d87b0c7ce796164b6751ac2623005ff4b1adf8b0d227afdb6b2d7fd022c67)
+- `observe` → **`Found { amount: 1000000, timeout, depth: 2 }`** → gate `TooShallow`; polled again → **depth 8** → `require_funded` **PASS** at testnet USDC policy depth 5 (real depth GREW across reads — live blocks)
+- wrong-hashlock expectation while live → **`Mismatch(Hashlock)`**
+- [withdraw(S)](https://amoy.polygonscan.com/tx/0xa71d06bcdf7b2337fc16eb1d4063bd00f11cf4ec3f8c30286ca8fa0ce28f8373) → re-`observe` → **`Absent`** (a resolved slot is not funding — the same stateless re-check that refuses a reorg-reburied escrow)
+- USDC round-tripped exactly (self-escrow)
+
+**RPC gotcha (recorded for production wiring):** the public Amoy endpoint caps `eth_getLogs`
+ranges to ~50 blocks ("block range exceeds configured limit" past that). The example anchors its
+scan window at the funding block; a production verifier must page from the contract's deploy
+block in cap-sized chunks (or use a provider with real range limits). Because the verifier is
+fail-closed (an RPC error reads `Absent`), a too-wide range silently reads "not funded" — safe
+for the money path, but the example adds a loud `get_logs` preflight so a misconfig is obvious.
+
 ## The env contract
 
 The example reads (never commits) these variables — on the operations box they live in

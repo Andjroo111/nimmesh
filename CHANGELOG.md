@@ -2,6 +2,24 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.51.2] — 2026-07-05
+
+### Added — the funding verifier PROVEN live on Amoy (#72 tail)
+
+- **`examples/live_amoy_verifier.rs`** (behind `polygon-gateway`): drives
+  `polygon_verifier::PolygonHtlcVerifier` — the real-chain G1 funding gate — through all three
+  verdicts against the deployed HTLC. A real escrow reads **`Found`** with a depth that GROWS
+  across reads (2 → 8), `require_funded` flips to PASS at the testnet USDC policy depth (5); a
+  wrong-hashlock expectation reads **`Mismatch(Hashlock)`**; after `withdraw(S)` it reads
+  **`Absent`** (a resolved slot is not funding — the stateless re-check). Receipts in
+  `docs/swap/AMOY.md`.
+- **Recorded RPC gotcha**: the public Amoy endpoint caps `eth_getLogs` to ~50 blocks; the
+  example anchors its scan at the funding block and preflights the query loudly (the verifier
+  itself is fail-closed, so a too-wide range would otherwise silently read `Absent`). Production
+  verifier wiring pages from the deploy block in cap-sized chunks.
+- The offline logic proof landed in #132; this closes the LIVE half of the verifier. Still open
+  on #72: NIM/BTC gateway verifiers + wiring a real verifier into the production participant path.
+
 ## [0.51.1] — 2026-07-05
 
 ### Added — invite friends to the mesh (growth loop)
