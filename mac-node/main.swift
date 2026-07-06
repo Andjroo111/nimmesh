@@ -1,3 +1,4 @@
+import AppKit
 import CoreBluetooth
 import Foundation
 
@@ -15,7 +16,23 @@ func ts() -> String {
     let f = DateFormatter(); f.dateFormat = "HH:mm:ss"
     return f.string(from: Date())
 }
-func line(_ s: String) { print("[\(ts())] \(s)") }
+// Tee every line to ~/.nimmesh-relay/node.log so the state is readable without screenshots.
+let logDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".nimmesh-relay")
+let logFileURL = logDir.appendingPathComponent("node.log")
+try? FileManager.default.createDirectory(at: logDir, withIntermediateDirectories: true)
+let logFH: FileHandle? = {
+    if !FileManager.default.fileExists(atPath: logFileURL.path) {
+        FileManager.default.createFile(atPath: logFileURL.path, contents: nil)
+    }
+    let fh = try? FileHandle(forWritingTo: logFileURL)
+    try? fh?.seekToEnd()
+    return fh
+}()
+func line(_ s: String) {
+    let msg = "[\(ts())] \(s)"
+    print(msg)
+    logFH?.write((msg + "\n").data(using: .utf8) ?? Data())
+}
 
 // ---- illustrative reward rates (PLACEHOLDERS — real economics pending ADR-0009) ----
 let UPTIME_NIM_PER_HOUR = 0.10        // availability reward per hour up
@@ -92,13 +109,7 @@ let node = MeshNode(senderId: sid, radio: radio)
 radio.node = node
 radio.onLog = { line($0) }
 
-radio.startAdvertising()
-radio.startScanning()
-line("radio up — advertising + scanning. Waiting for a nimmesh phone nearby…")
-line("(if you see 'BLUETOOTH NOT AUTHORIZED', grant Bluetooth to this terminal in")
-line(" System Settings › Privacy & Security › Bluetooth, then re-run.)")
-
-let startTime = Date()
+var startTime = Date()
 var lastPeers: UInt32 = 0xFFFFFFFF
 var lastPayments: UInt64 = 0
 var lastStatusPrint = Date(timeIntervalSince1970: 0)
@@ -112,49 +123,72 @@ func syncState() {
     saveState(state)
 }
 
-let timer = DispatchSource.makeTimerSource(queue: .main)
-timer.schedule(deadline: .now() + 1, repeating: 2.0)
-timer.setEventHandler {
-    let peers = node.peerCount()
-    let stats = node.relayStats()
-    syncState()
+// The Bluetooth request MUST happen after the app has finished launching and is active —
+// otherwise macOS has no running foreground app to attach the permission prompt to, and it
+// silently stays notDetermined forever (the bug). So all radio startup lives in
+// applicationDidFinishLaunching, not in top-level code that runs before the event loop.
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    var timer: DispatchSourceTimer?
+    var sigint: DispatchSourceSignal?
 
-    // Event lines: peer count changes + each newly-relayed payment (the "utility" event).
-    if peers != lastPeers {
-        let reach: String
-        switch node.reachability() {
-        case .online: reach = "online"
-        case .meshed: reach = "meshed"
-        case .offline: reach = "offline"
+    func applicationDidFinishLaunching(_ note: Notification) {
+        NSApp.activate(ignoringOtherApps: true)
+        line("bluetooth authorization: \(BleMeshRadio.authName(CBCentralManager.authorization))")
+
+        startTime = Date()
+        radio.startAdvertising()
+        radio.startScanning()
+        line("radio up — advertising + scanning. Waiting for a nimmesh phone nearby…")
+
+        let t = DispatchSource.makeTimerSource(queue: .main)
+        t.schedule(deadline: .now() + 1, repeating: 2.0)
+        t.setEventHandler {
+            let peers = node.peerCount()
+            let stats = node.relayStats()
+            syncState()
+            if peers != lastPeers {
+                let reach: String
+                switch node.reachability() {
+                case .online: reach = "online"
+                case .meshed: reach = "meshed"
+                case .offline: reach = "offline"
+                }
+                line("mesh \(reach) · \(peers) nearby")
+                lastPeers = peers
+            }
+            if stats.paymentsRelayed != lastPayments {
+                line("★ payment relayed through this node (\(stats.paymentsRelayed) this session) — utility earned")
+                lastPayments = stats.paymentsRelayed
+            }
+            if Date().timeIntervalSince(lastStatusPrint) >= 60 {
+                lastStatusPrint = Date()
+                let sessUp = Date().timeIntervalSince(startTime)
+                let hrs = state.lifetimeUptimeSec / 3600
+                let reward = hrs * UPTIME_NIM_PER_HOUR + Double(state.lifetimePaymentsRelayed) * USAGE_NIM_PER_PAYMENT
+                line("── relay status ── session \(fmtDuration(sessUp)) up, \(peers) peers · lifetime \(fmtDuration(state.lifetimeUptimeSec)) + \(state.lifetimePaymentsRelayed) payments")
+                line(String(format: "   est. contribution reward ~%.2f NIM (illustrative)", reward))
+            }
         }
-        line("mesh \(reach) · \(peers) nearby")
-        lastPeers = peers
-    }
-    if stats.paymentsRelayed != lastPayments {
-        line("★ payment relayed through this node (\(stats.paymentsRelayed) this session) — utility earned")
-        lastPayments = stats.paymentsRelayed
-    }
+        t.resume()
+        timer = t
 
-    // A periodic operator status (every 60s) summarizing both reward dimensions.
-    if Date().timeIntervalSince(lastStatusPrint) >= 60 {
-        lastStatusPrint = Date()
-        let sessUp = Date().timeIntervalSince(startTime)
-        let hrs = state.lifetimeUptimeSec / 3600
-        let reward = hrs * UPTIME_NIM_PER_HOUR + Double(state.lifetimePaymentsRelayed) * USAGE_NIM_PER_PAYMENT
-        line("── relay status ── session \(fmtDuration(sessUp)) up, \(peers) peers · lifetime \(fmtDuration(state.lifetimeUptimeSec)) + \(state.lifetimePaymentsRelayed) payments")
-        line(String(format: "   est. contribution reward ~%.2f NIM (illustrative)", reward))
+        signal(SIGINT, SIG_IGN)
+        let s = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
+        s.setEventHandler {
+            syncState()
+            line("shutting down — lifetime \(fmtDuration(state.lifetimeUptimeSec)) up, \(state.lifetimePaymentsRelayed) payments relayed. Saved.")
+            radio.stop()
+            exit(0)
+        }
+        s.resume()
+        sigint = s
     }
 }
-timer.resume()
 
-signal(SIGINT, SIG_IGN)
-let sigint = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
-sigint.setEventHandler {
-    syncState()
-    line("shutting down — lifetime \(fmtDuration(state.lifetimeUptimeSec)) up, \(state.lifetimePaymentsRelayed) payments relayed. Saved.")
-    radio.stop()
-    exit(0)
-}
-sigint.resume()
-
-RunLoop.main.run()
+// Become a proper FOREGROUND app so macOS presents the Bluetooth prompt, then run the app
+// event loop; the delegate requests Bluetooth once the app is live (see the comment above).
+let nsApp = NSApplication.shared
+nsApp.setActivationPolicy(.regular)
+let appDelegate = AppDelegate()
+nsApp.delegate = appDelegate
+nsApp.run()

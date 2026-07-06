@@ -79,17 +79,34 @@ final class BleMeshRadio: NSObject, BleRadio {
 // MARK: - Central role (scan → connect → subscribe → write)
 
 extension BleMeshRadio: CBCentralManagerDelegate, CBPeripheralDelegate {
+    static func stateName(_ s: CBManagerState) -> String {
+        switch s {
+        case .unknown: return "unknown"; case .resetting: return "resetting"
+        case .unsupported: return "unsupported"; case .unauthorized: return "unauthorized"
+        case .poweredOff: return "poweredOff"; case .poweredOn: return "poweredOn"
+        @unknown default: return "state(\(s.rawValue))"
+        }
+    }
+    static func authName(_ a: CBManagerAuthorization) -> String {
+        switch a {
+        case .notDetermined: return "notDetermined (prompt should appear)"
+        case .restricted: return "restricted"; case .denied: return "denied (enable in Settings › Bluetooth)"
+        case .allowedAlways: return "allowedAlways ✓"
+        @unknown default: return "auth(\(a.rawValue))"
+        }
+    }
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
+        log("central: state=\(Self.stateName(central.state)) · authorization=\(Self.authName(central.authorization))")
         switch central.state {
         case .poweredOn:
-            log("central: powered on, scanning for nimmesh peers")
+            log("central: scanning for nimmesh peers")
             central.scanForPeripherals(withServices: [Self.serviceUUID], options: nil)
         case .unauthorized:
-            log("central: BLUETOOTH NOT AUTHORIZED — grant Bluetooth to this terminal in System Settings › Privacy & Security › Bluetooth")
+            log("central: BLUETOOTH NOT AUTHORIZED — enable in System Settings › Privacy & Security › Bluetooth")
         case .poweredOff:
             log("central: Bluetooth is OFF")
         default:
-            log("central: state \(central.state.rawValue)")
+            break
         }
     }
 
@@ -142,6 +159,7 @@ extension BleMeshRadio: CBCentralManagerDelegate, CBPeripheralDelegate {
 
 extension BleMeshRadio: CBPeripheralManagerDelegate {
     func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
+        log("peripheral: state=\(BleMeshRadio.stateName(peripheral.state))")
         guard peripheral.state == .poweredOn else {
             if peripheral.state == .unauthorized {
                 log("peripheral: BLUETOOTH NOT AUTHORIZED")

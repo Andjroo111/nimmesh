@@ -16,8 +16,6 @@
     <string>1</string>
     <key>LSMinimumSystemVersion</key>
     <string>12.0</string>
-    <key>LSUIElement</key>
-    <true/>
     <key>NSBluetoothAlwaysUsageDescription</key>
     <string>nimmesh uses Bluetooth to relay Nimiq payments phone-to-phone over the offline mesh.</string>
     <key>NSBluetoothPeripheralUsageDescription</key>
