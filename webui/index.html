@@ -470,6 +470,14 @@
   .send-reach .dot { width: 9px; height: 9px; border-radius: 50%; background: #21bca5; flex: 0 0 auto; }
   .send-reach.meshed .dot { background: #fc8702; }
   .send-reach.offline .dot { background: rgba(31,35,72,.3); }
+  /* Offline mesh send (testnet proof): an explicit opt-in row, never a silent fallback.
+     Unhidden by the bridge only when a gateway head beacon has been heard over BLE. */
+  .mesh-send-row { display: flex; align-items: center; justify-content: center; gap: 9px;
+    margin: 14px 24px 0; font-size: 13.5px; font-weight: 600; color: #1f2348; cursor: pointer; }
+  .mesh-send-row[hidden] { display: none !important; }
+  .mesh-send-row input { width: 17px; height: 17px; accent-color: #0582ca; margin: 0; }
+  .mesh-send-net { font-size: 10px; font-weight: 800; letter-spacing: .07em;
+    color: var(--nimiq-orange, #fc8702); border: 1.5px solid currentColor; border-radius: 6px; padding: 1px 6px; }
   .send-btn { display: block; width: calc(100% - 48px); margin: 24px 24px 0; height: 52px; border: 0; cursor: pointer;
     border-radius: 500px; font-family: inherit; font-weight: 700; font-size: 16px; color: #fff;
     background-image: radial-gradient(100% 100% at bottom right, #265DD7, #0582CA); box-shadow: 0 8px 24px rgba(5,130,202,.25);
@@ -1404,6 +1412,13 @@ Don't share them and keep them safe.</p>
     <input id="send-amount" inputmode="decimal" placeholder="0" aria-label="Amount in NIM">
     <span class="nim">NIM</span>
   </div>
+  <!-- Offline mesh send (TESTNET proof): explicit opt-in. The bridge unhides this only when
+       a gateway head beacon has been heard over BLE (mesh-anchored validityStartHeight). -->
+  <label class="mesh-send-row" id="mesh-send-row" hidden>
+    <input type="checkbox" id="mesh-send-toggle">
+    <span data-i18n="send.mesh">Send over Bluetooth mesh</span>
+    <span class="mesh-send-net">TESTNET</span>
+  </label>
   <button class="send-btn" id="send-btn" data-i18n="send.cta">Send</button>
   <div class="send-status" id="send-status" hidden></div>
   <p class="send-foot" data-i18n="send.noaddr">Address unavailable?</p>
@@ -1552,6 +1567,7 @@ Don't share them and keep them safe.</p>
       'recv.title': 'Recibir NIM', 'recv.sub': 'Comparte tu dirección o solicita un monto exacto', 'recv.reqlabel': 'Solicitar un monto (opcional)', 'recv.reqlink': 'Crear enlace de solicitud', 'recv.requesting': 'Solicitando',
       'send.title': 'Enviar transacción', 'send.cta': 'Enviar', 'send.noaddr': '¿Sin dirección?', 'send.cashlink': 'Crea un Cashlink', 'send.contacts': 'Contactos', 'send.enteraddr': 'INTRODUCE LA DIRECCIÓN',
       'send.openapp': 'Abre la app para enviar', 'send.fulladdr': 'Introduce la dirección completa de 36 caracteres', 'send.needamount': 'Introduce un monto', 'send.signing': 'Firmando y transmitiendo…', 'send.sent': 'Enviado · tx ', 'send.failed': 'Falló: ',
+      'send.mesh': 'Enviar por malla Bluetooth', 'send.meshhanded': 'Entregado a la malla · esperando una pasarela para transmitir…', 'send.meshsettled': 'Transmitido por una pasarela de malla ✓ tx ', 'send.meshfailed': 'La pasarela de malla rechazó esta transacción', 'send.meshslow': 'Aún retransmitiendo… se transmitirá cuando una pasarela lo escuche',
       'reach.default': 'Se retransmite por la malla y llega a la red cuando un dispositivo conectado está en línea', 'reach.online': 'Hay una pasarela accesible, esto se envía a la red ahora', 'reach.meshed': 'Conectado a la malla, retransmitiendo hasta llegar a la red', 'reach.offline': 'No hay dispositivos cerca todavía, en cola hasta que haya uno al alcance',
       'ob.title': 'Bienvenido a nimmesh', 'ob.sub': 'Paga con NIM incluso sin internet. Configura tu cartera para empezar.', 'ob.create': 'Crear cartera nueva', 'ob.create.sub': 'Genera una frase de recuperación', 'ob.import': 'Importar cartera', 'ob.import.sub': 'Usa tus 24 palabras de recuperación',
       'words.title': 'Tus palabras de recuperación', 'words.create.sub': 'Escribe estas 24 palabras en orden. Cualquiera con ellas controla tus fondos y nimmesh no puede recuperarlas por ti.', 'words.backup.sub': 'Escríbelas y guárdalas en un lugar seguro. Cualquiera con estas palabras controla tus fondos.', 'words.copy': 'Copiar palabras', 'words.saved': 'He escrito mis 24 palabras y las guardé en un lugar seguro', 'words.continue': 'Continuar',
@@ -1598,6 +1614,7 @@ Don't share them and keep them safe.</p>
       'recv.title': 'NIM empfangen', 'recv.sub': 'Teile deine Adresse oder fordere einen genauen Betrag an', 'recv.reqlabel': 'Betrag anfordern (optional)', 'recv.reqlink': 'Anfrage-Link erstellen', 'recv.requesting': 'Angefordert:',
       'send.title': 'Transaktion senden', 'send.cta': 'Senden', 'send.noaddr': 'Keine Adresse?', 'send.cashlink': 'Cashlink erstellen', 'send.contacts': 'Kontakte', 'send.enteraddr': 'ADRESSE EINGEBEN',
       'send.openapp': 'Zum Senden die App öffnen', 'send.fulladdr': 'Gib die vollständige 36-stellige Adresse ein', 'send.needamount': 'Gib einen Betrag ein', 'send.signing': 'Signieren + Senden…', 'send.sent': 'Gesendet · tx ', 'send.failed': 'Fehlgeschlagen: ',
+      'send.mesh': 'Über Bluetooth-Mesh senden', 'send.meshhanded': 'Ans Mesh übergeben · warte auf ein Gateway zum Senden…', 'send.meshsettled': 'Von einem Mesh-Gateway zur Chain gesendet ✓ tx ', 'send.meshfailed': 'Das Mesh-Gateway hat diese Transaktion abgelehnt', 'send.meshslow': 'Wird weiter verteilt… gesendet, sobald ein Gateway es hört',
       'reach.default': 'Wird über das Mesh weitergereicht und erreicht das Netzwerk, sobald ein verbundenes Gerät online ist', 'reach.online': 'Ein Gateway ist erreichbar, dies wird jetzt ins Netzwerk gesendet', 'reach.meshed': 'Mit dem Mesh verbunden, wird weitergereicht bis es das Netzwerk erreicht', 'reach.offline': 'Noch keine Geräte in der Nähe, wartet bis eines in Reichweite ist',
       'ob.title': 'Willkommen bei nimmesh', 'ob.sub': 'Zahle mit NIM, auch ohne Internet. Richte deine Wallet ein, um zu starten.', 'ob.create': 'Neue Wallet erstellen', 'ob.create.sub': 'Erzeugt eine Wiederherstellungs-Phrase', 'ob.import': 'Wallet importieren', 'ob.import.sub': 'Nutze deine 24 Wiederherstellungswörter',
       'words.title': 'Deine Wiederherstellungswörter', 'words.create.sub': 'Schreibe diese 24 Wörter der Reihe nach auf. Jeder mit diesen Wörtern kontrolliert dein Guthaben, und nimmesh kann sie nicht für dich wiederherstellen.', 'words.backup.sub': 'Schreibe sie auf und bewahre sie sicher auf. Jeder mit diesen Wörtern kontrolliert dein Guthaben.', 'words.copy': 'Wörter kopieren', 'words.saved': 'Ich habe meine 24 Wörter aufgeschrieben und sicher verwahrt', 'words.continue': 'Weiter',
@@ -1644,6 +1661,7 @@ Don't share them and keep them safe.</p>
       'recv.title': 'Recevoir des NIM', 'recv.sub': 'Partage ton adresse ou demande un montant exact', 'recv.reqlabel': 'Demander un montant (facultatif)', 'recv.reqlink': 'Créer un lien de demande', 'recv.requesting': 'Demande de',
       'send.title': 'Envoyer une transaction', 'send.cta': 'Envoyer', 'send.noaddr': 'Adresse indisponible ?', 'send.cashlink': 'Créer un Cashlink', 'send.contacts': 'Contacts', 'send.enteraddr': 'SAISIR L’ADRESSE',
       'send.openapp': 'Ouvre l’app pour envoyer', 'send.fulladdr': 'Saisis l’adresse complète de 36 caractères', 'send.needamount': 'Saisis un montant', 'send.signing': 'Signature + diffusion…', 'send.sent': 'Envoyé · tx ', 'send.failed': 'Échec : ',
+      'send.mesh': 'Envoyer via le mesh Bluetooth', 'send.meshhanded': 'Confié au mesh · en attente d’une passerelle pour diffuser…', 'send.meshsettled': 'Diffusé par une passerelle du mesh ✓ tx ', 'send.meshfailed': 'La passerelle du mesh a rejeté cette transaction', 'send.meshslow': 'Relais en cours… diffusion dès qu’une passerelle l’entend',
       'reach.default': 'Relayé par le mesh, il atteint le réseau dès qu’un appareil connecté est en ligne', 'reach.online': 'Une passerelle est joignable, l’envoi part sur le réseau maintenant', 'reach.meshed': 'Connecté au mesh, relayé jusqu’à atteindre le réseau', 'reach.offline': 'Aucun appareil à proximité pour l’instant, en file d’attente',
       'ob.title': 'Bienvenue sur nimmesh', 'ob.sub': 'Paie en NIM même sans internet. Configure ton portefeuille pour commencer.', 'ob.create': 'Créer un portefeuille', 'ob.create.sub': 'Génère une phrase de récupération', 'ob.import': 'Importer un portefeuille', 'ob.import.sub': 'Utilise tes 24 mots de récupération',
       'words.title': 'Tes mots de récupération', 'words.create.sub': 'Note ces 24 mots dans l’ordre. Quiconque les détient contrôle tes fonds, et nimmesh ne peut pas les récupérer pour toi.', 'words.backup.sub': 'Note-les et garde-les en lieu sûr. Quiconque détient ces mots contrôle tes fonds.', 'words.copy': 'Copier les mots', 'words.saved': 'J’ai noté mes 24 mots et je les ai rangés en lieu sûr', 'words.continue': 'Continuer',
@@ -1690,6 +1708,7 @@ Don't share them and keep them safe.</p>
       'recv.title': 'Receber NIM', 'recv.sub': 'Compartilhe seu endereço ou solicite um valor exato', 'recv.reqlabel': 'Solicitar um valor (opcional)', 'recv.reqlink': 'Criar link de cobrança', 'recv.requesting': 'Solicitando',
       'send.title': 'Enviar transação', 'send.cta': 'Enviar', 'send.noaddr': 'Sem endereço?', 'send.cashlink': 'Criar um Cashlink', 'send.contacts': 'Contatos', 'send.enteraddr': 'INSERIR ENDEREÇO',
       'send.openapp': 'Abra o app para enviar', 'send.fulladdr': 'Insira o endereço completo de 36 caracteres', 'send.needamount': 'Insira um valor', 'send.signing': 'Assinando + transmitindo…', 'send.sent': 'Enviado · tx ', 'send.failed': 'Falhou: ',
+      'send.mesh': 'Enviar pela malha Bluetooth', 'send.meshhanded': 'Entregue à malha · aguardando um gateway transmitir…', 'send.meshsettled': 'Transmitido por um gateway da malha ✓ tx ', 'send.meshfailed': 'O gateway da malha rejeitou esta transação', 'send.meshslow': 'Ainda retransmitindo… será transmitido quando um gateway ouvir',
       'reach.default': 'Retransmitido pela mesh, chega à rede quando um aparelho conectado estiver online', 'reach.online': 'Um gateway está acessível, isto vai para a rede agora', 'reach.meshed': 'Conectado à mesh, retransmitindo até chegar à rede', 'reach.offline': 'Nenhum aparelho por perto ainda, na fila até um ficar ao alcance',
       'ob.title': 'Bem-vindo ao nimmesh', 'ob.sub': 'Pague com NIM mesmo sem internet. Configure sua carteira para começar.', 'ob.create': 'Criar carteira nova', 'ob.create.sub': 'Gera uma frase de recuperação', 'ob.import': 'Importar carteira', 'ob.import.sub': 'Use suas 24 palavras de recuperação',
       'words.title': 'Suas palavras de recuperação', 'words.create.sub': 'Anote estas 24 palavras em ordem. Qualquer pessoa com elas controla seus fundos, e o nimmesh não pode recuperá-las por você.', 'words.backup.sub': 'Anote-as e guarde-as em segurança. Qualquer pessoa com estas palavras controla seus fundos.', 'words.copy': 'Copiar palavras', 'words.saved': 'Anotei minhas 24 palavras e as guardei em segurança', 'words.continue': 'Continuar',
@@ -1735,6 +1754,7 @@ Don't share them and keep them safe.</p>
     'tx.recent': 'Recent', 'tx.pending': 'Pending', 'tx.empty.title': 'No transactions yet', 'tx.empty.sub': 'Fund your wallet and your payments show up here',
     'recv.requesting': 'Requesting',
     'send.openapp': 'Open in the app to send', 'send.fulladdr': 'Enter the full 36-character address', 'send.needamount': 'Enter an amount', 'send.signing': 'Signing + broadcasting…', 'send.sent': 'Sent · tx ', 'send.failed': 'Failed: ',
+    'send.mesh': 'Send over Bluetooth mesh', 'send.meshhanded': 'Handed to the mesh · waiting for a gateway to broadcast…', 'send.meshsettled': 'Broadcast by a mesh gateway ✓ tx ', 'send.meshfailed': 'The mesh gateway rejected this transaction', 'send.meshslow': 'Still relaying… it broadcasts when a gateway hears it',
     'reach.default': 'Relays over the mesh and reaches the network when a connected device is online', 'reach.online': 'A gateway is reachable, so this sends to the network now', 'reach.meshed': 'Connected to the mesh, relaying until it reaches the network', 'reach.offline': 'No devices nearby yet, queued until one is in range',
     'import.invalid': 'That is not a valid 24-word recovery phrase. Check the words and the spelling.',
     'rec.confirm': 'Delete the wallet from this device? Without its 24 words it CANNOT be recovered.',
@@ -2350,6 +2370,37 @@ Don't share them and keep them safe.</p>
     if (recipient.replace(/\s/g, '').length < 36) { setSendStatus(T('send.fulladdr'), 'err'); return; }
     if (!(nim > 0)) { setSendStatus(T('send.needamount'), 'err'); return; }
     const amountLuna = Math.round(nim * 100000);
+    // The offline mesh path (TESTNET proof), only when explicitly opted in: sign anchored
+    // to the mesh-heard gateway head, hand the signed tx to the mesh, then poll the receipt
+    // a gateway floods back after broadcasting. No RPC anywhere on this path.
+    const meshToggle = document.getElementById('mesh-send-toggle');
+    if (meshToggle && meshToggle.checked && nimmesh.meshSendTransaction) {
+      sendBtn.disabled = true;
+      setSendStatus(T('send.signing'));
+      try {
+        const r = await nimmesh.meshSendTransaction({ recipient, amountLuna });
+        setSendStatus(T('send.meshhanded'));
+        const t0 = Date.now();
+        const poll = setInterval(async () => {
+          let st = 'pending';
+          try { st = (await nimmesh.meshPaymentStatus(r.meshTxId)).status; } catch (e) { return; }
+          if (st === 'settled') {
+            clearInterval(poll); sendBtn.disabled = false;
+            setSendStatus(T('send.meshsettled') + r.txHash, 'ok');
+          } else if (st === 'failed') {
+            clearInterval(poll); sendBtn.disabled = false;
+            setSendStatus(T('send.meshfailed'), 'err');
+          } else if (Date.now() - t0 > 120000) {
+            clearInterval(poll); sendBtn.disabled = false;
+            setSendStatus(T('send.meshslow'));
+          }
+        }, 2000);
+      } catch (e) {
+        sendBtn.disabled = false;
+        setSendStatus(T('send.failed') + (e && e.message ? e.message : e), 'err');
+      }
+      return;
+    }
     sendBtn.disabled = true;
     setSendStatus(T('send.signing'));
     try {
@@ -2801,6 +2852,15 @@ Don't share them and keep them safe.</p>
         if (meta) meta.textContent = `core ${v.core}`;
         const smeta = document.getElementById('set-meta');
         if (smeta) smeta.textContent = `nimmesh · core ${v.core}`;
+        // Offline mesh send row: only offer it when a gateway head beacon has been heard
+        // (the validityStartHeight anchor) AND a live peer is connected to hand the tx to.
+        try {
+          if (nimmesh.meshSendInfo) {
+            const info = await nimmesh.meshSendInfo();
+            const row = document.getElementById('mesh-send-row');
+            if (row) row.hidden = !(info.headHeard && info.peers > 0);
+          }
+        } catch (e) { /* leave the row as-is if the probe fails */ }
       } catch (e) { /* keep the last shown mesh status if a probe fails */ }
     };
     await refreshMeshStatus();

@@ -2,6 +2,32 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.52.0] — 2026-07-06
+
+### Added — the offline mesh payment path (TESTNET proof)
+
+The milestone build: a phone with **no internet** can now sign a NIM transaction and hand it
+to the Bluetooth mesh, and the Mac node — now a **gateway** — broadcasts it to the Nimiq
+TESTNET chain and floods the receipt back so the sender sees it settle.
+
+- **Core FFI**: new `MeshNode.newGateway(senderId, radio, rpcUrl)` UniFFI constructor builds
+  the real HTTP broadcast client (`HttpGatewayRpc` + `RpcGateway`, G8) behind the existing
+  testnet-only guard — a known mainnet RPC host is refused at construction, and the gateway
+  drops any non-testnet `networkId`. The constructor is exported in EVERY build so the shared
+  bindings never diverge; without the `gateway-rpc` cargo feature it returns
+  `GatewayInitError.Unsupported`. Verify-before-relay stays ON (G12).
+- **Mac node = gateway**: `mac-node` now builds the core with `--features gateway-rpc` and
+  constructs the gateway node against `rpc.testnet.nimiqwatch.com` (falls back to a plain
+  relay, loudly, if the core lacks the feature). Its ★ "payment relayed" line is the
+  utility-earned event.
+- **Phone offline send**: an explicit "Send over Bluetooth mesh" opt-in row (orange TESTNET
+  tag) in the Send sheet — never a silent fallback on the mainnet app. Shown only when a
+  gateway head beacon has been heard AND a peer is live. The path: `anchoredIntent` (G9,
+  validityStartHeight = mesh-heard head, testnet network) → Keychain sign →
+  `submitSignedTransfer` → poll `paymentStatus` for the gateway receipt
+  (pending → settled/failed). New bridge methods `meshSendInfo` / `meshSendTransaction` /
+  `meshPaymentStatus`; status copy in all 5 languages.
+
 ## [0.51.6] — 2026-07-06
 
 ### Fixed — mesh status was stale + link flapped (2-node test)

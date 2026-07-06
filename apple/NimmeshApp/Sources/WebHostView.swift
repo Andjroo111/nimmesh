@@ -171,7 +171,13 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         headHeight: function () { return call('headHeight'); },
         walletBalance: function () { return call('walletBalance'); },
         walletHistory: function () { return call('walletHistory'); },
-        sendTransaction: function (a) { return call('sendTransaction', a || {}); }
+        sendTransaction: function (a) { return call('sendTransaction', a || {}); },
+        // Offline mesh send (TESTNET proof): sign anchored to the mesh-heard gateway head
+        // beacon, hand the signed tx to the BLE mesh, and poll the receipt that a gateway
+        // floods back once it broadcasts. No RPC anywhere on this path.
+        meshSendInfo: function () { return call('meshSendInfo'); },
+        meshSendTransaction: function (a) { return call('meshSendTransaction', a || {}); },
+        meshPaymentStatus: function (t) { return call('meshPaymentStatus', { meshTxId: t }); }
       };
     })();
     """
@@ -184,7 +190,7 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         // C1c: the live-chain methods do network IO → run them off the main actor and resolve
         // when they complete. Everything else is synchronous (pure-core reads).
         switch method {
-        case "headHeight", "walletBalance", "walletHistory", "sendTransaction":
+        case "headHeight", "walletBalance", "walletHistory", "sendTransaction", "meshSendTransaction":
             Task { let (ok, payload) = await self.handleAsync(method: method, args: args)
                 self.resolve(id: id, ok: ok, payload: payload) }
         case "authenticate":
@@ -307,6 +313,37 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             } catch {
                 return (false, "\(error)")
             }
+        case "meshSendTransaction":
+            // The offline mesh send (TESTNET proof): NO RPC anywhere on this path. The intent
+            // is anchored to the freshest gateway head beacon heard over BLE (G9 — never
+            // pre-date a tx), signed with the same Keychain key, and flooded to the mesh as a
+            // real nimiqTx. A gateway node (the Mac) broadcasts it to the TESTNET chain and
+            // floods the receipt back (G8/G17); `meshPaymentStatus` polls that settlement.
+            // The anchored intent carries the core's default network (testnet), so the
+            // gateway's testnet-only networkId guard accepts it — this path cannot spend
+            // mainnet funds by construction.
+            let a = args as? [String: Any] ?? [:]
+            guard let recipient = a["recipient"] as? String, !recipient.isEmpty else {
+                return (false, "missing recipient")
+            }
+            let amount = (a["amountLuna"] as? NSNumber)?.uint64Value ?? 0
+            guard amount > 0 else { return (false, "missing amount") }
+            guard let signer = Wallet.signer else { return (false, "no wallet yet") }
+            guard let intent = node.anchoredIntent(recipient: recipient, value: amount) else {
+                return (false, "no gateway head heard yet")
+            }
+            do {
+                let signed = try signer.signTransfer(intent: intent)
+                let meshTxId = node.submitSignedTransfer(signedTransfer: signed)
+                guard !meshTxId.isEmpty else { return (false, "could not encode the signed tx") }
+                return (true, [
+                    "meshTxId": meshTxId.map { String(format: "%02x", $0) }.joined(),
+                    "txHash": signed.txHash,
+                    "network": "testnet",
+                ])
+            } catch {
+                return (false, "\(error)")
+            }
         default:
             return (false, "unknown async method: \(method)")
         }
@@ -332,6 +369,35 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             // idle-dropping the mesh link (the ~50s flap). No-op if there are no peers.
             node.pollBeacon()
             return (true, ["ok": true])
+        case "meshSendInfo":
+            // Whether an offline mesh send is possible RIGHT NOW: a gateway head beacon has
+            // been heard (the anchor for validityStartHeight) and at least one live peer is
+            // connected to hand the signed tx to. Read-only, no keys.
+            let head = node.cachedHeadHeight()
+            return (true, [
+                "headHeard": head != nil,
+                "head": Int(head ?? 0),
+                "peers": Int(node.peerCount()),
+            ])
+        case "meshPaymentStatus":
+            // Poll a mesh-submitted payment: pending (still relaying) → settled (a gateway
+            // broadcast it and the receipt came back over BLE) or failed (gateway rejected).
+            let a = args as? [String: Any] ?? [:]
+            let hex = a["meshTxId"] as? String ?? ""
+            var txId = Data(); txId.reserveCapacity(hex.count / 2)
+            var i = hex.startIndex
+            while i < hex.endIndex, let nx = hex.index(i, offsetBy: 2, limitedBy: hex.endIndex) {
+                guard let b = UInt8(hex[i..<nx], radix: 16) else { break }
+                txId.append(b); i = nx
+            }
+            guard txId.count == 32 else { return (false, "bad meshTxId") }
+            let s: String
+            switch node.paymentStatus(txId: txId) {
+            case .pending: s = "pending"
+            case .settled: s = "settled"
+            case .failed: s = "failed"
+            }
+            return (true, ["status": s])
         case "reachability":
             // G16/G5: the live "will it send?" reach from the BLE-backed node (peers + a heard
             // gateway beacon). Simulator: offline (no BLE); device: meshed/online with peers.

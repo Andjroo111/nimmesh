@@ -105,7 +105,20 @@ for (i, b) in host.enumerated() where i < 32 { sid[i] = b }
 sid[31] = 0x4D // 'M' marker
 
 let radio = BleMeshRadio()
-let node = MeshNode(senderId: sid, radio: radio)
+// GATEWAY node: relays like any mesh node AND broadcasts every verified nimiqTx it hears
+// to the Nimiq TESTNET chain, then floods the receipt back so the sender sees settlement.
+// The core's HTTP client refuses mainnet hosts by construction (rpc::guard_testnet) — this
+// node cannot move real funds. If the core was built without the gateway-rpc feature the
+// constructor throws; fall back to a plain relay so the mesh still works, but say so loudly.
+let testnetRpcUrl = "https://rpc.testnet.nimiqwatch.com"
+let node: MeshNode
+do {
+    node = try MeshNode.newGateway(senderId: sid, radio: radio, rpcUrl: testnetRpcUrl)
+    line("GATEWAY mode — broadcasting mesh txs to \(testnetRpcUrl) (TESTNET only)")
+} catch {
+    node = MeshNode(senderId: sid, radio: radio)
+    line("!! gateway unavailable (\(error)) — plain relay only, no chain broadcast")
+}
 radio.node = node
 radio.onLog = { line($0) }
 

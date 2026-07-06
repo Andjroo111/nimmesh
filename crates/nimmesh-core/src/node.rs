@@ -184,6 +184,9 @@ fn run_worker(
 }
 
 // --- FFI surface (the shim calls these) ------------------------------------------
+//
+// The gateway constructor (`MeshNode::new_gateway`, G8) lives in `crate::gateway_ffi`
+// (a second `#[uniffi::export]` block) — split out for the 800-line guard.
 
 #[uniffi::export]
 impl MeshNode {

@@ -18,8 +18,10 @@ BIN="$APP/Contents/MacOS/nimmesh-node"
 DEV_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | grep -m1 'Apple Development' | awk '{print $2}')"
 IDENTITY="${DEV_IDENTITY:--}"
 
-echo "==> building the Rust core for macOS (release, staticlib)…"
-cargo build -p nimmesh-core --release --target aarch64-apple-darwin --lib
+echo "==> building the Rust core for macOS (release, staticlib, gateway-rpc)…"
+# gateway-rpc compiles the real HTTP broadcast client in — the Mac node is the mesh's
+# internet exit (testnet-guarded in the core; a mainnet host is refused at construction).
+cargo build -p nimmesh-core --release --target aarch64-apple-darwin --lib --features gateway-rpc
 
 echo "==> compiling the Swift node…"
 mkdir -p "$APP/Contents/MacOS"

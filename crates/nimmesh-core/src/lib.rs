@@ -243,6 +243,11 @@ pub mod btc_gateway;
 pub mod dedup;
 pub mod engine;
 pub mod gateway;
+// G8: the FFI gateway constructor (`MeshNode::new_gateway`) — a second `#[uniffi::export]`
+// block on `MeshNode`, split out of `node.rs` for the 800-line guard. Always exported;
+// without the `gateway-rpc` feature it returns `GatewayInitError::Unsupported` so the
+// shared generated bindings never diverge between the app and Mac-node builds.
+pub mod gateway_ffi;
 pub mod mock_radio;
 pub mod node;
 pub mod provider;
