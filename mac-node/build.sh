@@ -10,11 +10,13 @@ LIB="$ROOT/target/aarch64-apple-darwin/release/libnimmesh_core.a"
 APP="$ROOT/mac-node/nimmesh-node.app"
 BIN="$APP/Contents/MacOS/nimmesh-node"
 
-# Ad-hoc sign (identity "-"): this headless Mac's Keychain/securityd blocks real-cert signing
-# (errSecInternalComponent — same securityd XPC issue that blocks 1Password `op` here). Ad-hoc
-# carries the Bluetooth usage string + entitlement, which is what the TCC prompt needs; the
-# only cost is the grant resets on each rebuild (re-approve once after building).
-IDENTITY="-"
+# Sign with the Apple Development cert when the login keychain is reachable (i.e. when a HUMAN
+# runs this from a GUI Terminal). A real code identity is REQUIRED for the macOS Bluetooth TCC
+# prompt to appear at all — ad-hoc silently suppresses it (verified 2026-07-05). Falls back to
+# ad-hoc for headless/automated builds (which can't reach securityd here — errSecInternalComponent),
+# but an ad-hoc build will NOT get the Bluetooth prompt, so build.sh must be run by Andjroo.
+DEV_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | grep -m1 'Apple Development' | awk '{print $2}')"
+IDENTITY="${DEV_IDENTITY:--}"
 
 echo "==> building the Rust core for macOS (release, staticlib)…"
 cargo build -p nimmesh-core --release --target aarch64-apple-darwin --lib
@@ -35,9 +37,13 @@ swiftc \
 
 echo "==> assembling + signing the .app (identity: $IDENTITY)…"
 cp "$ROOT/mac-node/Info.plist" "$APP/Contents/Info.plist"
-codesign --force --sign "$IDENTITY" \
+if ! codesign --force --sign "$IDENTITY" \
   --entitlements "$ROOT/mac-node/nimmesh-node.entitlements" \
-  "$APP"
+  "$APP" 2>/dev/null; then
+  echo "!! real-cert signing failed (headless keychain?) — falling back to ad-hoc."
+  echo "!! An ad-hoc build will NOT get the Bluetooth prompt. Run build.sh from a GUI Terminal."
+  codesign --force --sign - --entitlements "$ROOT/mac-node/nimmesh-node.entitlements" "$APP"
+fi
 
 echo "==> built + signed: $APP"
 echo "    run it with:  ./mac-node/run.sh   (first run pops a Bluetooth permission prompt — click Allow)"
