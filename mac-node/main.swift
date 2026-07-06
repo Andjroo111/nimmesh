@@ -130,8 +130,26 @@ func syncState() {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var timer: DispatchSourceTimer?
     var sigint: DispatchSourceSignal?
+    var window: NSWindow?
+    var statusLabel: NSTextField?
 
     func applicationDidFinishLaunching(_ note: Notification) {
+        // A REAL visible window: macOS attaches the Bluetooth permission prompt to a
+        // foreground app that actually shows something on screen. A windowless CLI-in-a-bundle
+        // may be why the prompt never presented. This makes us an unambiguous GUI app.
+        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 180),
+                         styleMask: [.titled, .closable, .miniaturizable],
+                         backing: .buffered, defer: false)
+        w.title = "nimmesh mesh node"
+        w.center()
+        let label = NSTextField(labelWithString: "nimmesh mesh node is starting…\n\nWhen macOS asks, click Allow to let this node use Bluetooth\nand join the mesh.")
+        label.frame = NSRect(x: 24, y: 24, width: 472, height: 132)
+        label.font = .systemFont(ofSize: 14)
+        w.contentView?.addSubview(label)
+        w.makeKeyAndOrderFront(nil)
+        window = w
+        statusLabel = label
+
         NSApp.activate(ignoringOtherApps: true)
         line("bluetooth authorization: \(BleMeshRadio.authName(CBCentralManager.authorization))")
 
@@ -140,20 +158,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         radio.startScanning()
         line("radio up — advertising + scanning. Waiting for a nimmesh phone nearby…")
 
+        let statusLabel = self.statusLabel
         let t = DispatchSource.makeTimerSource(queue: .main)
         t.schedule(deadline: .now() + 1, repeating: 2.0)
         t.setEventHandler {
             let peers = node.peerCount()
             let stats = node.relayStats()
             syncState()
+            let reachNow: String
+            switch node.reachability() {
+            case .online: reachNow = "online"
+            case .meshed: reachNow = "meshed"
+            case .offline: reachNow = "offline"
+            }
+            statusLabel?.stringValue = "nimmesh mesh node — running\n\nMesh: \(reachNow) · \(peers) nearby\nPayments relayed: \(stats.paymentsRelayed)\n\nBring a phone with the nimmesh app nearby to link up."
             if peers != lastPeers {
-                let reach: String
-                switch node.reachability() {
-                case .online: reach = "online"
-                case .meshed: reach = "meshed"
-                case .offline: reach = "offline"
-                }
-                line("mesh \(reach) · \(peers) nearby")
+                line("mesh \(reachNow) · \(peers) nearby")
                 lastPeers = peers
             }
             if stats.paymentsRelayed != lastPayments {
