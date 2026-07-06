@@ -2,6 +2,15 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.51.4] — 2026-07-06
+
+### Added — live BLE diagnostics on the Network screen (on-device 2-node test)
+
+A mono debug line on the Network screen shows the phone radio's live state — Bluetooth
+authorization, scan/advertise status, and counters for discovered/connected/subscribed +
+per-role link counts + peer count. Makes the phone's Bluetooth visible so we can see why
+the phone isn't counting the Mac node as a peer (new `meshDebug` bridge).
+
 ## [0.51.3] — 2026-07-05
 
 ### Fixed — mesh peer count crashing to 0 despite a live link (real 2-device test)

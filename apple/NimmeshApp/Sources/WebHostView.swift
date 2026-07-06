@@ -153,6 +153,8 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         // Share/invite: open the native share sheet so a user can pull friends into the mesh
         // (a mesh is only as useful as it is populated). Resolves { shared } / { shared:false }.
         share: function (text, url) { return call('share', { text: text, url: url }); },
+        // Diagnostics: the BLE radio's live role/counter state (for the on-device mesh test).
+        meshDebug: function () { return call('meshDebug'); },
         // "Unlock your Backup": Face ID / device passcode. Resolves { ok }.
         authenticate: function () { return call('authenticate'); },
         // Backup: the wallet's two-code XOR backup + whether ANY backup was completed
@@ -318,6 +320,11 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             // brings the radio up). Simulator: 0 peers (BLE unsupported); device: real peers.
             let peers = Int(node.peerCount())
             return (true, ["state": peers > 0 ? "meshed" : "offline", "peers": peers])
+        case "meshDebug":
+            // The BLE radio's live role/counter state — makes the phone's Bluetooth visible on
+            // the Network screen during the 2-node test (constructing node ensures the radio is up).
+            _ = node
+            return (true, ["debug": bleRadio.debugSummary()])
         case "reachability":
             // G16/G5: the live "will it send?" reach from the BLE-backed node (peers + a heard
             // gateway beacon). Simulator: offline (no BLE); device: meshed/online with peers.

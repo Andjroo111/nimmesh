@@ -30,6 +30,28 @@ final class BleMeshRadio: NSObject, BleRadio {
     private var peripheralMgr: CBPeripheralManager?
     private var meshChar: CBMutableCharacteristic?
 
+    // Diagnostics for the on-device 2-node test: exactly which BLE roles are alive + what the
+    // radio has seen, surfaced to the Network screen so the phone's side is visible.
+    private var sawDiscover = 0            // central: advertisements discovered
+    private var sawConnect = 0             // central: peripherals connected
+    private var sawSubscribe = 0           // peripheral: centrals that subscribed to us
+    func debugSummary() -> String {
+        queue.sync {
+            let cAuth = central?.authorization
+            let auth: String
+            switch cAuth {
+            case .some(.allowedAlways): auth = "ok"
+            case .some(.notDetermined): auth = "notDet"
+            case .some(.denied): auth = "DENIED"
+            case .some(.restricted): auth = "restr"
+            default: auth = "?"
+            }
+            let scan = (central?.state == .some(.poweredOn)) ? "on" : "\(central?.state.rawValue ?? -1)"
+            let adv = peripheralMgr?.isAdvertising == true ? "on" : "off"
+            return "auth:\(auth) scan:\(scan) adv:\(adv) | disc:\(sawDiscover) conn:\(sawConnect) subs:\(sawSubscribe) | c-link:\(centralLinked.count) p-link:\(periphLinked.count) peers:\(linkCount.count)"
+        }
+    }
+
     // peerId (UUID string) → how to reach it.
     private var peripherals: [String: CBPeripheral] = [:]       // peers we are central to
     private var writeChars: [String: CBCharacteristic] = [:]    // their inbound characteristic
@@ -119,11 +141,13 @@ extension BleMeshRadio: CBCentralManagerDelegate, CBPeripheralDelegate {
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
                         advertisementData: [String: Any], rssi RSSI: NSNumber) {
         let id = peripheral.identifier.uuidString
+        sawDiscover += 1
         peripherals[id] = peripheral // retain through connection
         central.connect(peripheral, options: nil)
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        sawConnect += 1
         peripheral.delegate = self
         peripheral.discoverServices([Self.serviceUUID])
     }
@@ -187,6 +211,7 @@ extension BleMeshRadio: CBPeripheralManagerDelegate {
     func peripheralManager(_ peripheral: CBPeripheralManager, central: CBCentral,
                           didSubscribeTo characteristic: CBCharacteristic) {
         let id = central.identifier.uuidString
+        sawSubscribe += 1
         subscribedCentrals[id] = central
         if periphLinked.insert(id).inserted { linkUp(id) } // count this directed link once
     }
