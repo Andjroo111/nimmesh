@@ -2776,32 +2776,37 @@ Don't share them and keep them safe.</p>
         obShow('ob-recovered'); hideSplash();
       } else if (!w.exists) { obShow('ob-welcome'); hideSplash(); }
     } catch (e) { /* assume wallet exists if the probe fails */ }
-    try {
-      const [v, m] = await Promise.all([nimmesh.version(), nimmesh.meshStatus()]);
-      const line = `${T('mesh.state.' + m.state)} · ${m.peers} ${T('mesh.nearby')}`;
-      const mbText = document.getElementById('meshbar-text');
-      if (mbText) mbText.textContent = line;
-      const mb1 = document.getElementById('mesh-banner-t1');
-      if (mb1) mb1.textContent = `${T('mesh.state.' + m.state)} · ${m.peers} ${T('mesh.nearby')}`;
-      const nwState = document.getElementById('nw-mesh-state');
-      if (nwState) nwState.textContent = T('mesh.state.' + m.state).replace(/^mesh\s+|^malla\s+|^Mesh[- ]/i, '');
-      const nwPeers = document.getElementById('nw-peers');
-      if (nwPeers) nwPeers.textContent = m.peers;
-      // the hex world map lights up with the LIVE mesh: you (blue) when the radio is on,
-      // one green cell per nearby peer (positions abstract; the counts are real)
-      const you = document.getElementById('nw-you-hex');
-      if (you) you.classList.toggle('on', m.state !== 'offline');
-      document.querySelectorAll('.nw-hexmap [data-peer-cell]').forEach((el, i) => {
-        el.classList.toggle('on', i < m.peers);
-      });
-      document.querySelectorAll('.nw-hexmap [data-peer-arc]').forEach((el, i) => {
-        el.classList.toggle('on', m.state !== 'offline' && i < m.peers);
-      });
-      const meta = document.getElementById('acct-meta');
-      if (meta) meta.textContent = `core ${v.core}`;
-      const smeta = document.getElementById('set-meta');
-      if (smeta) smeta.textContent = `nimmesh · core ${v.core}`;
-    } catch (e) { console.error('bridge probe failed', e); }
+    // The live mesh status — polled on a repeating beat (was set ONCE at boot, so the header
+    // froze at the boot value while the radio was actually connected).
+    window.refreshMeshStatus = async function refreshMeshStatus() {
+      try {
+        const [v, m] = await Promise.all([nimmesh.version(), nimmesh.meshStatus()]);
+        const mbText = document.getElementById('meshbar-text');
+        if (mbText) mbText.textContent = `${T('mesh.state.' + m.state)} · ${m.peers} ${T('mesh.nearby')}`;
+        const mb1 = document.getElementById('mesh-banner-t1');
+        if (mb1) mb1.textContent = `${T('mesh.state.' + m.state)} · ${m.peers} ${T('mesh.nearby')}`;
+        const nwState = document.getElementById('nw-mesh-state');
+        if (nwState) nwState.textContent = T('mesh.state.' + m.state).replace(/^mesh\s+|^malla\s+|^Mesh[- ]/i, '');
+        const nwPeers = document.getElementById('nw-peers');
+        if (nwPeers) nwPeers.textContent = m.peers;
+        const you = document.getElementById('nw-you-hex');
+        if (you) you.classList.toggle('on', m.state !== 'offline');
+        document.querySelectorAll('.nw-hexmap [data-peer-cell]').forEach((el, i) => {
+          el.classList.toggle('on', i < m.peers);
+        });
+        document.querySelectorAll('.nw-hexmap [data-peer-arc]').forEach((el, i) => {
+          el.classList.toggle('on', m.state !== 'offline' && i < m.peers);
+        });
+        const meta = document.getElementById('acct-meta');
+        if (meta) meta.textContent = `core ${v.core}`;
+        const smeta = document.getElementById('set-meta');
+        if (smeta) smeta.textContent = `nimmesh · core ${v.core}`;
+      } catch (e) { /* keep the last shown mesh status if a probe fails */ }
+    };
+    await refreshMeshStatus();
+    setInterval(() => { if (!document.hidden) refreshMeshStatus(); }, 3000);
+    // Keepalive: nudge a head beacon every ~15s so the BLE link doesn't idle-timeout.
+    setInterval(() => { try { if (window.nimmesh && nimmesh.keepalive) nimmesh.keepalive().catch(() => {}); } catch (e) {} }, 15000);
     // G16: light up the Send sheet's "will it send?" line from the node's reach. With no
     // native radio yet (Phase D) the bridge honestly reports offline; once the shim runs a
     // MeshNode, the same call returns live Online / Meshed / Offline.

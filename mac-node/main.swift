@@ -161,10 +161,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let statusLabel = self.statusLabel
         let t = DispatchSource.makeTimerSource(queue: .main)
         t.schedule(deadline: .now() + 1, repeating: 2.0)
+        var beatCount = 0
         t.setEventHandler {
             let peers = node.peerCount()
             let stats = node.relayStats()
             syncState()
+            // Keepalive: emit a head beacon every ~14s (7 × 2s ticks) so the BLE link to a
+            // phone doesn't idle-timeout and flap.
+            beatCount += 1
+            if beatCount % 7 == 0 { node.pollBeacon() }
             let reachNow: String
             switch node.reachability() {
             case .online: reachNow = "online"

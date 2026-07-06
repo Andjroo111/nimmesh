@@ -155,6 +155,9 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         share: function (text, url) { return call('share', { text: text, url: url }); },
         // Diagnostics: the BLE radio's live role/counter state (for the on-device mesh test).
         meshDebug: function () { return call('meshDebug'); },
+        // Keepalive: emit a head beacon to peers so the BLE link doesn't idle-timeout (~every
+        // 15s from the UI). Real mesh traffic (G9 beacon), not filler.
+        keepalive: function () { return call('keepalive'); },
         // "Unlock your Backup": Face ID / device passcode. Resolves { ok }.
         authenticate: function () { return call('authenticate'); },
         // Backup: the wallet's two-code XOR backup + whether ANY backup was completed
@@ -324,6 +327,11 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             // The BLE radio's live role/counter state — makes the phone's Bluetooth visible on
             // the Network screen during the 2-node test (constructing node ensures the radio is up).
             return (true, ["debug": bleRadio.debugSummary() + " node-peers:\(node.peerCount())"])
+        case "keepalive":
+            // Emit a head beacon to connected peers — periodic BLE traffic that keeps iOS from
+            // idle-dropping the mesh link (the ~50s flap). No-op if there are no peers.
+            node.pollBeacon()
+            return (true, ["ok": true])
         case "reachability":
             // G16/G5: the live "will it send?" reach from the BLE-backed node (peers + a heard
             // gateway beacon). Simulator: offline (no BLE); device: meshed/online with peers.

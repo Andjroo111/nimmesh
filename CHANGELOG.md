@@ -2,6 +2,16 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.51.6] — 2026-07-06
+
+### Fixed — mesh status was stale + link flapped (2-node test)
+
+- **Live mesh status**: the Network header / mesh banner / world map were set ONCE at boot,
+  so they froze at "offline · 0" even while the radio was connected (the debug line proved
+  the node had the peer). Now polled every 3s.
+- **Keepalive**: the BLE link idle-dropped every ~50s. Both the app and the Mac node now
+  emit a head beacon every ~15s (real G9 mesh traffic) so iOS doesn't time the link out.
+
 ## [0.51.5] — 2026-07-06
 
 ### Fixed — phone read 0 peers while connected: radio's node ref was released (2-node test)
