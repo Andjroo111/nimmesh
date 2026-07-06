@@ -22,8 +22,12 @@ final class BleMeshRadio: NSObject, BleRadio {
     static let serviceUUID = CBUUID(string: "4E494D4D-4553-4800-0000-6E696D6D6573")
     static let charUUID = CBUUID(string: "4E494D4D-4553-4800-0001-6E696D6D6573")
 
-    /// The Rust node — weak, to break the cross-language refcount cycle (ADR-0002 gotcha d).
-    weak var node: MeshNode?
+    /// The Rust node. Held STRONGLY: a weak ref was getting released out from under the radio
+    /// on-device, so `linkUp`'s `node?.onPeerConnected` silently no-op'd — the radio counted
+    /// the peer but the mesh node never did (phone read 0 while the Mac saw 1). The node is
+    /// app-lifetime here (never torn down), so the node↔radio cycle is an accepted one-instance
+    /// leak in exchange for the callbacks actually landing. `stop()` breaks it if ever needed.
+    var node: MeshNode?
 
     private let queue = DispatchQueue(label: "com.nimmesh.ble")
     private var central: CBCentralManager?
@@ -125,6 +129,7 @@ final class BleMeshRadio: NSObject, BleRadio {
             self.peripherals.removeAll()
             self.writeChars.removeAll()
             self.subscribedCentrals.removeAll()
+            self.node = nil // break the node↔radio cycle on teardown
         }
     }
 }

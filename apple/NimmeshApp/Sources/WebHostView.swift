@@ -323,8 +323,7 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         case "meshDebug":
             // The BLE radio's live role/counter state — makes the phone's Bluetooth visible on
             // the Network screen during the 2-node test (constructing node ensures the radio is up).
-            _ = node
-            return (true, ["debug": bleRadio.debugSummary()])
+            return (true, ["debug": bleRadio.debugSummary() + " node-peers:\(node.peerCount())"])
         case "reachability":
             // G16/G5: the live "will it send?" reach from the BLE-backed node (peers + a heard
             // gateway beacon). Simulator: offline (no BLE); device: meshed/online with peers.

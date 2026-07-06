@@ -2,6 +2,18 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.51.5] — 2026-07-06
+
+### Fixed — phone read 0 peers while connected: radio's node ref was released (2-node test)
+
+The on-device diagnostic pinned it: the phone's BLE radio WAS fully connected (auth ok,
+scanning, advertising, the Mac discovered + subscribed, both links up, radio counted 1
+peer) but the mesh-node count stayed 0. Cause: the radio held the MeshNode with a WEAK
+reference (ADR-0002 cycle-breaker), and on-device the node was released out from under it,
+so linkUp's `node?.onPeerConnected` silently no-op'd — the radio counted the peer, the node
+never did. The radio now holds the node strongly (app-lifetime; cycle broken in stop()).
+Debug readout now also shows the node's own peer count to confirm parity.
+
 ## [0.51.4] — 2026-07-06
 
 ### Added — live BLE diagnostics on the Network screen (on-device 2-node test)
