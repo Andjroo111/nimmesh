@@ -32,6 +32,11 @@ use crate::NetworkId;
 /// The default public Albatross **testnet** JSON-RPC endpoint.
 pub const DEFAULT_TESTNET_RPC_URL: &str = "https://rpc.testnet.nimiqwatch.com";
 
+/// The default public Albatross **MAINNET** JSON-RPC endpoint. Only the Andjroo-gated
+/// mainnet gateway path (`HttpGatewayRpc::new_mainnet` → `MeshNode::new_gateway_mainnet`)
+/// ever touches this — the autonomous loop and every default constructor stay testnet.
+pub const DEFAULT_MAINNET_RPC_URL: &str = "https://rpc.nimiqwatch.com";
+
 /// Known **mainnet** RPC host fragments the [`guard_testnet`] refuses outright. These are
 /// real-money endpoints — the autonomous loop must never reach them (core value #7).
 pub const MAINNET_RPC_HOSTS: &[&str] = &["rpc.nimiqwatch.com"];
@@ -325,6 +330,30 @@ mod http {
             // The default URL + Testnet always pass the guard.
             Self::new(DEFAULT_TESTNET_RPC_URL, NetworkId::Testnet)
                 .expect("default testnet endpoint passes the testnet guard")
+        }
+
+        /// **OWNER-GATED (real money): a MAINNET client.** Deliberately bypasses
+        /// [`super::guard_testnet`] — it exists solely for the mesh's mainnet gateway
+        /// (`MeshNode::new_gateway_mainnet`), which Andjroo explicitly authorized on
+        /// 2026-07-06 for the real-funds mesh payment: HE signs and sends on his phone;
+        /// the gateway only delivers the already-signed tx. The autonomous loop never
+        /// calls this; every default/testnet constructor still routes through the guard.
+        ///
+        /// The one check kept is the MIRROR of the testnet guard: a URL that looks like a
+        /// testnet host is refused, so a mainnet-configured gateway can never anchor its
+        /// beacons to (or broadcast into) the wrong chain.
+        pub fn new_mainnet(url: impl Into<String>) -> Result<Self, RpcError> {
+            let url = url.into();
+            if url.to_ascii_lowercase().contains("testnet") {
+                return Err(RpcError::NotTestnet {
+                    reason: format!("mainnet gateway refused a testnet-looking RPC url: {url}"),
+                });
+            }
+            let agent = ureq::AgentBuilder::new()
+                .timeout_connect(Duration::from_secs(10))
+                .timeout(Duration::from_secs(30))
+                .build();
+            Ok(HttpGatewayRpc { url, agent })
         }
 
         /// The endpoint this client talks to.

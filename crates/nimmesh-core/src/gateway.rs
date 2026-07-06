@@ -238,7 +238,8 @@ pub struct RpcGateway {
 
 impl RpcGateway {
     /// Build a testnet gateway over an injected RPC client. The enforced `networkId` is
-    /// fixed to [`NetworkId::Testnet`] — there is no constructor that accepts mainnet.
+    /// fixed to [`NetworkId::Testnet`] — the only mainnet path is the loudly-separate,
+    /// Andjroo-gated [`RpcGateway::new_mainnet`].
     pub fn new(rpc: Arc<dyn GatewayRpc>) -> Self {
         RpcGateway {
             rpc,
@@ -246,7 +247,21 @@ impl RpcGateway {
         }
     }
 
-    /// The network-id byte this gateway broadcasts for (testnet `5`).
+    /// **OWNER-GATED (real money): a MAINNET gateway.** Enforces `networkId = 24` on
+    /// every tx it hears — a testnet-signed tx is refused, exactly mirroring how the
+    /// testnet gateway refuses mainnet bytes. Exists solely for the mesh's mainnet
+    /// delivery role (`MeshNode::new_gateway_mainnet`, authorized by Andjroo 2026-07-06):
+    /// the sender signs on their own device; this gateway only broadcasts the
+    /// already-signed blob. The autonomous loop never constructs one.
+    pub fn new_mainnet(rpc: Arc<dyn GatewayRpc>) -> Self {
+        RpcGateway {
+            rpc,
+            network_id: NetworkId::Mainnet.wire_id(),
+        }
+    }
+
+    /// The network-id byte this gateway broadcasts for (testnet `5`, or mainnet `24` via
+    /// the Andjroo-gated [`RpcGateway::new_mainnet`]).
     pub fn network_id(&self) -> u8 {
         self.network_id
     }

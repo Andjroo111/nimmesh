@@ -38,6 +38,7 @@ use crate::relay::RelayPolicy;
 use crate::settlement::{PaymentStatus, Settlement};
 use crate::swap_session::SwapSession;
 use crate::transport::{mock_tx_id, TxId};
+use crate::NetworkId;
 
 /// A unit of work handed from a BLE callback to the worker thread.
 enum Job {
@@ -205,6 +206,7 @@ impl MeshNode {
             true,
             None,
             None,
+            NetworkId::Testnet,
         )
     }
 
@@ -424,7 +426,10 @@ impl MeshNode {
             recipient,
             value,
             validity_start_height: head,
-            network: crate::default_network(),
+            // THIS node's network (testnet unless the Andjroo-gated mainnet ctors were
+            // used) — the cached head was validated against the same network, so the
+            // intent is coherent: a mainnet head anchors a mainnet tx, never mixed.
+            network: self.ctx.network,
         })
     }
 
@@ -462,6 +467,12 @@ impl MeshNode {
     /// Shared constructor for the plain and gateway-enabled nodes. The `policy` carries
     /// the G6 relay tunables + injected RNG/jitter (production = real jitter + time seed;
     /// the harness/tests inject [`RelayPolicy::deterministic`] = zero sleep, fixed seed).
+    /// `network` pins the node to ONE Albatross network end to end (beacon validation,
+    /// envelope stamp, anchored intents) — testnet everywhere except the Andjroo-gated
+    /// mainnet constructors in `gateway_ffi`.
+    // An internal plumbing ctor every public ctor funnels through — a param struct here
+    // would just re-spell the same eight fields at every call site.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn build(
         sender_id: Vec<u8>,
         radio: Arc<dyn BleRadio>,
@@ -470,11 +481,13 @@ impl MeshNode {
         verify_before_relay: bool,
         swap: Option<SwapSession>,
         signer: Option<Box<dyn crate::swap_signer::SwapSigner>>,
+        network: crate::NetworkId,
     ) -> Arc<Self> {
         let ctx = Arc::new(WorkerCtx::new(
             to_sender_id(&sender_id),
             radio.clone(),
             gateway,
+            network,
         ));
         let (tx, rx) = channel();
         let worker_ctx = ctx.clone();
@@ -500,101 +513,20 @@ impl MeshNode {
         policy: RelayPolicy,
     ) -> Arc<Self> {
         // Verify off: the harness floods opaque stand-in bytes (not real signed txs).
-        Self::build(sender_id, radio, None, policy, false, None, None)
-    }
-
-    /// G14 (test): a swap **participant** node — a plain node that also runs a [`SwapSession`] for
-    /// `identity`, with the default sim signer (`MockSigner`), so it decodes its own `swap_id` off
-    /// the swap stream, builds its tx bytes via the signer seam, and floods replies.
-    #[cfg(test)]
-    pub(crate) fn new_participant(
-        sender_id: Vec<u8>,
-        radio: Arc<dyn BleRadio>,
-        policy: RelayPolicy,
-        identity: crate::swap_session::NodeIdentity,
-        ladder: crate::swap::LadderParams,
-    ) -> Arc<Self> {
-        Self::new_participant_with_signer(
-            sender_id,
-            radio,
-            policy,
-            identity,
-            ladder,
-            Box::new(crate::swap_signer::MockSigner),
-        )
-    }
-
-    /// G26 (test): a participant node with a caller-supplied [`crate::swap_signer::SwapSigner`] —
-    /// proving the signer seam is pluggable (a different signer drops in unchanged).
-    #[cfg(test)]
-    pub(crate) fn new_participant_with_signer(
-        sender_id: Vec<u8>,
-        radio: Arc<dyn BleRadio>,
-        policy: RelayPolicy,
-        identity: crate::swap_session::NodeIdentity,
-        ladder: crate::swap::LadderParams,
-        signer: Box<dyn crate::swap_signer::SwapSigner>,
-    ) -> Arc<Self> {
-        let session = SwapSession::new(identity, ladder);
         Self::build(
             sender_id,
             radio,
             None,
             policy,
             false,
-            Some(session),
-            Some(signer),
+            None,
+            None,
+            NetworkId::Testnet,
         )
     }
 
-    /// S2 / #73 (test): a participant node that also holds a NIM enclave key, so each `Propose` it
-    /// originates over the discovery flow is authenticated (signed) before it floods. `propose_key`
-    /// must own `identity.nim_address`.
-    #[cfg(test)]
-    pub(crate) fn new_participant_signing(
-        sender_id: Vec<u8>,
-        radio: Arc<dyn BleRadio>,
-        policy: RelayPolicy,
-        identity: crate::swap_session::NodeIdentity,
-        ladder: crate::swap::LadderParams,
-        propose_key: Arc<dyn crate::nimiq::signer::EnclaveKey>,
-    ) -> Arc<Self> {
-        let session = SwapSession::new(identity, ladder).with_propose_signer(propose_key);
-        Self::build(
-            sender_id,
-            radio,
-            None,
-            policy,
-            false,
-            Some(session),
-            Some(Box::new(crate::swap_signer::MockSigner)),
-        )
-    }
-
-    /// G33 (test): a participant node restored from a crash-recovery snapshot (G31/G32) — its swap
-    /// session is rebuilt from `snapshot` bytes so a funds-locked swap resumes its refund tick. A
-    /// corrupt blob falls back to an empty session (the node starts clean rather than crashing).
-    #[cfg(test)]
-    pub(crate) fn new_participant_restored(
-        sender_id: Vec<u8>,
-        radio: Arc<dyn BleRadio>,
-        policy: RelayPolicy,
-        identity: crate::swap_session::NodeIdentity,
-        ladder: crate::swap::LadderParams,
-        snapshot: Vec<u8>,
-    ) -> Arc<Self> {
-        let session = SwapSession::restore_bytes(identity.clone(), ladder, &snapshot)
-            .unwrap_or_else(|_| SwapSession::new(identity, ladder));
-        Self::build(
-            sender_id,
-            radio,
-            None,
-            policy,
-            false,
-            Some(session),
-            Some(Box::new(crate::swap_signer::MockSigner)),
-        )
-    }
+    // The #[cfg(test)] swap-participant constructors (new_participant / _with_signer /
+    // _signing / _restored) live in `node_tests.rs` — moved for the 800-line guard.
 
     /// Build a gateway node with a caller-chosen relay policy (deterministic in tests).
     pub(crate) fn new_gateway_with_policy(
@@ -603,7 +535,16 @@ impl MeshNode {
         gateway: Arc<dyn MeshGateway>,
         policy: RelayPolicy,
     ) -> Arc<Self> {
-        Self::build(sender_id, radio, Some(gateway), policy, false, None, None)
+        Self::build(
+            sender_id,
+            radio,
+            Some(gateway),
+            policy,
+            false,
+            None,
+            None,
+            NetworkId::Testnet,
+        )
     }
 
     /// G12 harness helper: a verifying plain node (verify-before-relay ON) — used by the
@@ -613,7 +554,16 @@ impl MeshNode {
         radio: Arc<dyn BleRadio>,
         policy: RelayPolicy,
     ) -> Arc<Self> {
-        Self::build(sender_id, radio, None, policy, true, None, None)
+        Self::build(
+            sender_id,
+            radio,
+            None,
+            policy,
+            true,
+            None,
+            None,
+            NetworkId::Testnet,
+        )
     }
 
     fn do_shutdown(&self) {

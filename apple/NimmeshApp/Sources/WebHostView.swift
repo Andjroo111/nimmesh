@@ -95,7 +95,10 @@ final class Bridge: NSObject, WKScriptMessageHandler {
     private lazy var node: MeshNode = {
         var sid = Data(count: 8)
         _ = sid.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 8, $0.baseAddress!) }
-        let n = MeshNode(senderId: sid, radio: bleRadio)
+        // Pinned to the app's network (mainnet since v0.35): the head cache then accepts
+        // the mainnet gateway's beacons, envelopes carry the mainnet networkId, and
+        // anchoredIntent yields mainnet intents. Constructing a node signs nothing.
+        let n = MeshNode.newOnNetwork(senderId: sid, radio: bleRadio, network: NimiqRpc.network)
         bleRadio.node = n
         return n
     }()
@@ -314,14 +317,14 @@ final class Bridge: NSObject, WKScriptMessageHandler {
                 return (false, "\(error)")
             }
         case "meshSendTransaction":
-            // The offline mesh send (TESTNET proof): NO RPC anywhere on this path. The intent
-            // is anchored to the freshest gateway head beacon heard over BLE (G9 — never
-            // pre-date a tx), signed with the same Keychain key, and flooded to the mesh as a
-            // real nimiqTx. A gateway node (the Mac) broadcasts it to the TESTNET chain and
-            // floods the receipt back (G8/G17); `meshPaymentStatus` polls that settlement.
-            // The anchored intent carries the core's default network (testnet), so the
-            // gateway's testnet-only networkId guard accepts it — this path cannot spend
-            // mainnet funds by construction.
+            // The offline mesh send: NO RPC anywhere on this path. The intent is anchored to
+            // the freshest gateway head beacon heard over BLE (G9 — never pre-date a tx),
+            // signed with the same Keychain key, and flooded to the mesh as a real nimiqTx.
+            // A gateway node (the Mac) broadcasts it and floods the receipt back (G8/G17);
+            // `meshPaymentStatus` polls that settlement. The anchored intent carries the
+            // NODE's network — mainnet on the real app (Andjroo-gated, authorized
+            // 2026-07-06), so the USER is signing real funds exactly like the online Send;
+            // the mesh only changes the delivery, never who signs.
             let a = args as? [String: Any] ?? [:]
             guard let recipient = a["recipient"] as? String, !recipient.isEmpty else {
                 return (false, "missing recipient")
@@ -339,7 +342,7 @@ final class Bridge: NSObject, WKScriptMessageHandler {
                 return (true, [
                     "meshTxId": meshTxId.map { String(format: "%02x", $0) }.joined(),
                     "txHash": signed.txHash,
-                    "network": "testnet",
+                    "network": intent.network == .mainnet ? "mainnet" : "testnet",
                 ])
             } catch {
                 return (false, "\(error)")
@@ -372,12 +375,15 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         case "meshSendInfo":
             // Whether an offline mesh send is possible RIGHT NOW: a gateway head beacon has
             // been heard (the anchor for validityStartHeight) and at least one live peer is
-            // connected to hand the signed tx to. Read-only, no keys.
+            // connected to hand the signed tx to. Read-only, no keys. `network` labels the
+            // send row honestly (MAINNET on the real app; the node only caches beacons
+            // matching its own network, so a heard head IS a head on that network).
             let head = node.cachedHeadHeight()
             return (true, [
                 "headHeard": head != nil,
                 "head": Int(head ?? 0),
                 "peers": Int(node.peerCount()),
+                "network": NimiqRpc.network == .mainnet ? "mainnet" : "testnet",
             ])
         case "meshPaymentStatus":
             // Poll a mesh-submitted payment: pending (still relaying) → settled (a gateway

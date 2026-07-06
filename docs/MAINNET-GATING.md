@@ -103,3 +103,27 @@ headless with **no network** (mock gateway) via `examples/mesh_demo.rs`:
 cargo run -p nimmesh-core --example mesh_demo            # headless mock loop, no network
 cargo run -p nimmesh-core --example live_testnet_broadcast --features gateway-rpc   # real testnet
 ```
+
+## 7. 2026-07-06 — Andjroo exercised the gate: the mainnet mesh DELIVERY role
+
+Andjroo explicitly requested a real-funds mesh payment ("I wanna do a real wallet
+transaction. I will be providing the NIM and sending it to another address that I
+control."). Per section 3, that authorization is his to give, and this is the record.
+
+What was opened (v0.53.0), and exactly how far it goes:
+
+- `HttpGatewayRpc::new_mainnet(url)` + `RpcGateway::new_mainnet(rpc)` +
+  `MeshNode::new_gateway_mainnet(...)` — a mainnet GATEWAY that broadcasts
+  **already-signed** txs it hears over the mesh and enforces `networkId = 24`.
+  It holds no keys and signs nothing. A testnet-looking URL is refused (the mirror
+  of `guard_testnet`).
+- `MeshNode::new_on_network(...)` — the phone app's node pinned to mainnet so it
+  anchors to mainnet head beacons and stamps mainnet envelopes. Constructing a node
+  signs nothing; only the wallet owner's explicit Send signs a tx.
+- The Mac node broadcasts on mainnet ONLY when launched with the explicit
+  `--mainnet` flag. Default stays testnet.
+
+What did NOT change: every default constructor and the autonomous loop remain
+testnet-only; `guard_testnet` still refuses mainnet hosts everywhere else; the agent
+still never signs or initiates a mainnet transfer — the human sender does, on their
+own device, exactly like the online Send path.

@@ -2,6 +2,33 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.53.0] — 2026-07-06
+
+### Added — the MAINNET mesh payment (Andjroo-gated, real funds)
+
+Andjroo exercised the mainnet gate (docs/MAINNET-GATING.md section 7): he provides the
+NIM, signs on his phone, and sends to an address he controls; the Mac gateway only
+delivers. The mesh now carries a REAL payment end to end.
+
+- **Network-coherent nodes**: `WorkerCtx` carries the node's `NetworkId` — the head
+  cache accepts only same-network beacons, locally-originated envelopes are stamped
+  with the node's `networkId`, and `anchoredIntent` yields intents on the node's
+  network. Every existing constructor stays testnet; behavior there is unchanged.
+- **Mainnet gateway (explicit, loud)**: `HttpGatewayRpc::new_mainnet` (refuses
+  testnet-looking URLs — the mirror of `guard_testnet`), `RpcGateway::new_mainnet`
+  (enforces `networkId = 24`), and FFI `MeshNode.newGatewayMainnet`. The Mac node
+  broadcasts on mainnet ONLY with the explicit `--mainnet` launch flag; it holds no
+  keys and signs nothing.
+- **Phone on mainnet**: FFI `MeshNode.newOnNetwork` — the app's node is pinned to the
+  app's (mainnet) network, so the offline mesh send signs REAL funds exactly like the
+  online Send; the mesh only changes delivery. The Send-sheet row's network tag is now
+  set from the bridge (orange MAINNET pill).
+- **Proofs**: new `mainnet_e2e_tests` — a mainnet-signed transfer anchors to the
+  mainnet beacon and settles with the exact signed bytes broadcast; a testnet tx is
+  refused by the mainnet gateway (nothing broadcast); a mainnet node ignores testnet
+  beacons. Receipt codec moved to `settlement.rs` and test-only participant ctors to
+  `node_tests.rs` (800-line guard).
+
 ## [0.52.0] — 2026-07-06
 
 ### Added — the offline mesh payment path (TESTNET proof)

@@ -85,6 +85,7 @@ impl MeshNode {
                 true,
                 None,
                 None,
+                crate::NetworkId::Testnet,
             ))
         }
         #[cfg(not(feature = "gateway-rpc"))]
@@ -92,6 +93,73 @@ impl MeshNode {
             let _ = (sender_id, radio, rpc_url);
             Err(GatewayInitError::Unsupported)
         }
+    }
+
+    /// **OWNER-GATED (real money): create a MAINNET gateway node.** Same shape as
+    /// [`MeshNode::new_gateway`] but on Albatross MAINNET (`networkId = 24`): it beacons
+    /// the mainnet head, accepts ONLY mainnet-signed txs, and broadcasts them to a
+    /// mainnet RPC. Authorized by Andjroo on 2026-07-06 for the real-funds mesh payment —
+    /// the SENDER signs on their own device and taps Send; this node only delivers the
+    /// already-signed, self-contained tx. Nothing autonomous constructs one: the Mac
+    /// node requires an explicit `--mainnet` launch flag.
+    ///
+    /// A testnet-looking `rpc_url` is refused (the mirror of the testnet guard), so a
+    /// mainnet gateway can never anchor beacons to or broadcast into the wrong chain.
+    #[uniffi::constructor]
+    pub fn new_gateway_mainnet(
+        sender_id: Vec<u8>,
+        radio: Arc<dyn BleRadio>,
+        rpc_url: String,
+    ) -> Result<Arc<Self>, GatewayInitError> {
+        #[cfg(feature = "gateway-rpc")]
+        {
+            let rpc = crate::rpc::HttpGatewayRpc::new_mainnet(rpc_url).map_err(|e| {
+                GatewayInitError::Rpc {
+                    reason: e.to_string(),
+                }
+            })?;
+            let gateway: Arc<dyn crate::gateway::MeshGateway> =
+                Arc::new(crate::gateway::RpcGateway::new_mainnet(Arc::new(rpc)));
+            Ok(Self::build(
+                sender_id,
+                radio,
+                Some(gateway),
+                crate::relay::RelayPolicy::production(),
+                true,
+                None,
+                None,
+                crate::NetworkId::Mainnet,
+            ))
+        }
+        #[cfg(not(feature = "gateway-rpc"))]
+        {
+            let _ = (sender_id, radio, rpc_url);
+            Err(GatewayInitError::Unsupported)
+        }
+    }
+
+    /// Create a plain (non-gateway) node pinned to `network`. The mainnet phone app uses
+    /// this so its head cache accepts the mainnet gateway's beacons, its envelopes carry
+    /// the mainnet `networkId`, and [`MeshNode::anchored_intent`] yields mainnet intents.
+    /// Constructing a node signs/broadcasts nothing — the network choice only matters
+    /// once the OWNER of the device signs a tx into it.
+    #[uniffi::constructor]
+    pub fn new_on_network(
+        sender_id: Vec<u8>,
+        radio: Arc<dyn BleRadio>,
+        network: crate::NetworkId,
+    ) -> Arc<Self> {
+        // Verify-before-relay ON, same as the production `new` (G12 spam filter).
+        Self::build(
+            sender_id,
+            radio,
+            None,
+            crate::relay::RelayPolicy::production(),
+            true,
+            None,
+            None,
+            network,
+        )
     }
 }
 
@@ -139,6 +207,60 @@ mod gateway_ctor_tests {
             "https://rpc.testnet.nimiqwatch.com".into(),
         )
         .expect("testnet gateway constructs");
+        node.shutdown();
+    }
+
+    /// The mainnet ctor is the mirror image: it refuses a TESTNET-looking URL, so a
+    /// mainnet gateway can never beacon/broadcast against the wrong chain.
+    #[cfg(feature = "gateway-rpc")]
+    #[test]
+    fn new_gateway_mainnet_refuses_testnet_url() {
+        match MeshNode::new_gateway_mainnet(
+            b"gw".to_vec(),
+            radio(),
+            "https://rpc.testnet.nimiqwatch.com".into(),
+        ) {
+            Err(err) => assert!(matches!(err, GatewayInitError::Rpc { .. })),
+            Ok(_) => panic!("testnet url must be refused by the mainnet ctor"),
+        }
+    }
+
+    /// A mainnet URL constructs a live MAINNET gateway node (no network I/O at
+    /// construction), and its intents anchor on the mainnet network.
+    #[cfg(feature = "gateway-rpc")]
+    #[test]
+    fn new_gateway_mainnet_builds_on_mainnet_url() {
+        let node = MeshNode::new_gateway_mainnet(
+            b"gw".to_vec(),
+            radio(),
+            "https://rpc.nimiqwatch.com".into(),
+        )
+        .expect("mainnet gateway constructs");
+        node.shutdown();
+    }
+
+    /// Without `gateway-rpc` the mainnet ctor refuses too — identical FFI surface.
+    #[cfg(not(feature = "gateway-rpc"))]
+    #[test]
+    fn new_gateway_mainnet_unsupported_without_feature() {
+        match MeshNode::new_gateway_mainnet(
+            b"gw".to_vec(),
+            radio(),
+            "https://rpc.nimiqwatch.com".into(),
+        ) {
+            Err(err) => assert_eq!(err, GatewayInitError::Unsupported),
+            Ok(_) => panic!("must refuse without the gateway-rpc feature"),
+        }
+    }
+
+    /// A plain node pinned to mainnet constructs in every build (no gateway involved).
+    #[test]
+    fn new_on_network_builds_a_mainnet_plain_node() {
+        let node = MeshNode::new_on_network(b"ph".to_vec(), radio(), crate::NetworkId::Mainnet);
+        // No beacon heard yet — a mainnet node refuses to anchor, same as testnet.
+        assert!(node
+            .anchored_intent("NQ95 ARU6 CQ8U 38N8 B8D6 ESVQ R12V 0RAY V8D6".into(), 1)
+            .is_none());
         node.shutdown();
     }
 }

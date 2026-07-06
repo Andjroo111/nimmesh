@@ -25,7 +25,30 @@ use std::sync::{Condvar, Mutex};
 #[cfg(test)]
 use std::time::{Duration, Instant};
 
+use crate::gateway::ReceiptStatus;
 use crate::transport::TxId;
+
+/// A `nimiqTxReceipt` payload is exactly `txId(32) | status(1)`.
+pub(crate) const RECEIPT_PAYLOAD_LEN: usize = 33;
+
+/// Encode a `nimiqTxReceipt` payload: `txId(32) | status(1)`. (Receipt codec lives here
+/// with the ledger it feeds — moved from `engine.rs` for the 800-line guard.)
+pub(crate) fn encode_receipt(tx_id: &TxId, status: ReceiptStatus) -> Vec<u8> {
+    let mut v = Vec::with_capacity(RECEIPT_PAYLOAD_LEN);
+    v.extend_from_slice(&tx_id.0);
+    v.push(status.code());
+    v
+}
+
+/// Decode a `nimiqTxReceipt` payload, returning `None` on any malformed input.
+pub(crate) fn decode_receipt(payload: &[u8]) -> Option<(TxId, ReceiptStatus)> {
+    if payload.len() != RECEIPT_PAYLOAD_LEN {
+        return None;
+    }
+    let mut id = [0u8; 32];
+    id.copy_from_slice(&payload[..32]);
+    Some((TxId(id), ReceiptStatus::from_code(payload[32])))
+}
 
 /// Where a payment stands. `Pending` until a gateway receipt arrives; honours
 /// unconfirmed-until-inclusion (core value #5) — only an `Accepted` receipt yields `Settled`.
@@ -220,5 +243,28 @@ mod tests {
         // Settling an untracked txId is a harmless no-op.
         l.settle(tx(9), PaymentStatus::Settled);
         assert!(l.settlement(&tx(9)).is_none());
+    }
+
+    #[test]
+    fn receipt_payload_round_trips() {
+        let id = crate::transport::mock_tx_id(b"hello");
+        for status in [
+            ReceiptStatus::Accepted,
+            ReceiptStatus::Expired,
+            ReceiptStatus::Failed,
+        ] {
+            let bytes = encode_receipt(&id, status);
+            assert_eq!(bytes.len(), RECEIPT_PAYLOAD_LEN);
+            let (back_id, back_status) = decode_receipt(&bytes).unwrap();
+            assert_eq!(back_id, id);
+            assert_eq!(back_status, status);
+        }
+    }
+
+    #[test]
+    fn decode_receipt_rejects_wrong_length() {
+        assert!(decode_receipt(&[]).is_none());
+        assert!(decode_receipt(&[0u8; 32]).is_none());
+        assert!(decode_receipt(&[0u8; 34]).is_none());
     }
 }

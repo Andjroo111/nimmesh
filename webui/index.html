@@ -1412,12 +1412,13 @@ Don't share them and keep them safe.</p>
     <input id="send-amount" inputmode="decimal" placeholder="0" aria-label="Amount in NIM">
     <span class="nim">NIM</span>
   </div>
-  <!-- Offline mesh send (TESTNET proof): explicit opt-in. The bridge unhides this only when
-       a gateway head beacon has been heard over BLE (mesh-anchored validityStartHeight). -->
+  <!-- Offline mesh send: explicit opt-in, never a silent fallback. The bridge unhides this
+       only when a gateway head beacon has been heard over BLE (mesh-anchored
+       validityStartHeight) and sets the network tag honestly (MAINNET = real funds). -->
   <label class="mesh-send-row" id="mesh-send-row" hidden>
     <input type="checkbox" id="mesh-send-toggle">
     <span data-i18n="send.mesh">Send over Bluetooth mesh</span>
-    <span class="mesh-send-net">TESTNET</span>
+    <span class="mesh-send-net" id="mesh-send-net">MAINNET</span>
   </label>
   <button class="send-btn" id="send-btn" data-i18n="send.cta">Send</button>
   <div class="send-status" id="send-status" hidden></div>
@@ -2854,11 +2855,14 @@ Don't share them and keep them safe.</p>
         if (smeta) smeta.textContent = `nimmesh · core ${v.core}`;
         // Offline mesh send row: only offer it when a gateway head beacon has been heard
         // (the validityStartHeight anchor) AND a live peer is connected to hand the tx to.
+        // The network tag is set from the bridge so it is always honest (MAINNET = real funds).
         try {
           if (nimmesh.meshSendInfo) {
             const info = await nimmesh.meshSendInfo();
             const row = document.getElementById('mesh-send-row');
             if (row) row.hidden = !(info.headHeard && info.peers > 0);
+            const net = document.getElementById('mesh-send-net');
+            if (net && info.network) net.textContent = info.network.toUpperCase();
           }
         } catch (e) { /* leave the row as-is if the probe fails */ }
       } catch (e) { /* keep the last shown mesh status if a probe fails */ }

@@ -507,6 +507,52 @@ impl MeshHarness {
         self.attach(peer_id, node, radio)
     }
 
+    /// Network-pinned twin of [`MeshHarness::add_node`] — the mainnet mesh-payment e2e
+    /// builds its nodes on [`crate::NetworkId::Mainnet`]; everything else stays testnet.
+    #[cfg(test)]
+    pub fn add_node_on(
+        &mut self,
+        peer_id: &str,
+        sender_id: &[u8],
+        network: crate::NetworkId,
+    ) -> Arc<MeshNode> {
+        let radio = MockRadio::new(peer_id, self.ether.clone());
+        let node = MeshNode::build(
+            sender_id.to_vec(),
+            radio.clone(),
+            None,
+            RelayPolicy::deterministic(),
+            false,
+            None,
+            None,
+            network,
+        );
+        self.attach(peer_id, node, radio)
+    }
+
+    /// Network-pinned twin of [`MeshHarness::add_gateway`] (see [`MeshHarness::add_node_on`]).
+    #[cfg(test)]
+    pub fn add_gateway_on(
+        &mut self,
+        peer_id: &str,
+        sender_id: &[u8],
+        gateway: Arc<dyn MeshGateway>,
+        network: crate::NetworkId,
+    ) -> Arc<MeshNode> {
+        let radio = MockRadio::new(peer_id, self.ether.clone());
+        let node = MeshNode::build(
+            sender_id.to_vec(),
+            radio.clone(),
+            Some(gateway),
+            RelayPolicy::deterministic(),
+            false,
+            None,
+            None,
+            network,
+        );
+        self.attach(peer_id, node, radio)
+    }
+
     /// Wire a bidirectional BLE link between `a` and `b` (each learns the other as a
     /// connected peer).
     pub fn connect(&self, a: &str, b: &str) {

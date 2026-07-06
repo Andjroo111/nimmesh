@@ -45,7 +45,9 @@ use crate::packet::{MessageType, Packet, BROADCAST_RECIPIENT, DEFAULT_TTL, PEER_
 use crate::radio::BleRadio;
 use crate::ratelimit::PeerRateLimiter;
 use crate::relay::{relayed_ttl, RelayPolicy};
-use crate::settlement::{PaymentStatus, SettlementDirection, SettlementLedger};
+use crate::settlement::{
+    decode_receipt, encode_receipt, PaymentStatus, SettlementDirection, SettlementLedger,
+};
 use crate::store_forward::{packet_id, RecentCache, SyncScheduler};
 use crate::swap::SwapPhase;
 use crate::swap_session::SwapSession;
@@ -56,34 +58,15 @@ use crate::transport::{mock_tx_id, TxId};
 const RELAY_CACHE_CAP: usize = 2048;
 /// LRU bound for the gateway's per-`txId` submit-once dedup.
 const GATEWAY_CACHE_CAP: usize = 1024;
-/// A `nimiqTxReceipt` payload is exactly `txId(32) | status(1)`.
-const RECEIPT_PAYLOAD_LEN: usize = 33;
 
 /// The **blind** relay dedup key: `(type, senderID, timestamp)` — all packet-header fields, never
 /// the opaque payload (PROTOCOL.md dedup intent). For a flooded `nimiqTx` this header tuple is the
-/// packet's identity; the endpoints separately correlate receipts by the envelope `txId`.
+/// packet's identity; the endpoints separately correlate receipts by the envelope `txId` (the
+/// receipt codec lives with the ledger in [`crate::settlement`]).
 pub(crate) type RelayKey = (u8, [u8; PEER_ID_LEN], u64);
 
 pub(crate) fn relay_key(p: &Packet) -> RelayKey {
     (p.msg_type.to_u8(), p.sender_id, p.timestamp_ms)
-}
-
-/// Encode a `nimiqTxReceipt` payload: `txId(32) | status(1)`.
-fn encode_receipt(tx_id: &TxId, status: ReceiptStatus) -> Vec<u8> {
-    let mut v = Vec::with_capacity(RECEIPT_PAYLOAD_LEN);
-    v.extend_from_slice(&tx_id.0);
-    v.push(status.code());
-    v
-}
-
-/// Decode a `nimiqTxReceipt` payload, returning `None` on any malformed input.
-fn decode_receipt(payload: &[u8]) -> Option<(TxId, ReceiptStatus)> {
-    if payload.len() != RECEIPT_PAYLOAD_LEN {
-        return None;
-    }
-    let mut id = [0u8; 32];
-    id.copy_from_slice(&payload[..32]);
-    Some((TxId(id), ReceiptStatus::from_code(payload[32])))
 }
 
 /// The shared context the worker thread operates on. Crucially it holds **no**
@@ -92,6 +75,11 @@ fn decode_receipt(payload: &[u8]) -> Option<(TxId, ReceiptStatus)> {
 pub struct WorkerCtx {
     /// This node's 8-byte protocol sender id (header `senderID`).
     pub(crate) sender_id: [u8; PEER_ID_LEN],
+    /// The Albatross network this node operates on (testnet unless the Andjroo-gated
+    /// mainnet constructors were used). Drives the head-cache beacon validation, the
+    /// envelope `networkId` stamp on locally-originated txs, and the anchored-intent
+    /// network — so a node is coherently on ONE network end to end.
+    pub(crate) network: crate::NetworkId,
     /// The native radio. Held **strongly**; the radio holds the node weakly.
     pub(crate) radio: Arc<dyn BleRadio>,
     /// Present iff this node also acts as a gateway (internet + RPC at G8).
@@ -153,14 +141,18 @@ impl WorkerCtx {
         sender_id: [u8; PEER_ID_LEN],
         radio: Arc<dyn BleRadio>,
         gateway: Option<Arc<dyn MeshGateway>>,
+        network: crate::NetworkId,
     ) -> Self {
         WorkerCtx {
             sender_id,
+            network,
             radio,
             gateway,
             peers: Mutex::new(HashSet::new()),
             ledger: SettlementLedger::new(),
-            head: Mutex::new(HeadCache::default()),
+            // The head cache validates beacons against THIS node's network, so a
+            // mainnet node anchors only to mainnet heads (and vice versa).
+            head: Mutex::new(HeadCache::new(network.wire_id())),
             balances: Mutex::new(BalanceCache::new()),
             seq: AtomicU64::new(1),
             citizen: CitizenState::new(),
@@ -436,6 +428,9 @@ pub(crate) fn flood_local_tx(ctx: &WorkerCtx, tx_wire: Vec<u8>, st: &mut WorkerS
     //     (money-path, gated) and ride this exact `Vec<u8>` path unchanged.
     let tx_id = mock_tx_id(&tx_wire);
     let mut env = NimiqEnvelope::new(tx_wire);
+    // Stamp the envelope with THIS node's network (testnet by default; mainnet only via
+    // the Andjroo-gated constructors) — the gateway's networkId guard reads this.
+    env.network_id = ctx.network.wire_id();
     env.tx_id = Some(tx_id.0);
     env.want_receipt = true;
     // G9: stamp the relay budget from the freshest head we have heard
@@ -763,29 +758,6 @@ pub(crate) fn relay_onward(
 mod tests {
     use super::*;
     use crate::packet::Packet;
-
-    #[test]
-    fn receipt_payload_round_trips() {
-        let id = mock_tx_id(b"hello");
-        for status in [
-            ReceiptStatus::Accepted,
-            ReceiptStatus::Expired,
-            ReceiptStatus::Failed,
-        ] {
-            let bytes = encode_receipt(&id, status);
-            assert_eq!(bytes.len(), RECEIPT_PAYLOAD_LEN);
-            let (back_id, back_status) = decode_receipt(&bytes).unwrap();
-            assert_eq!(back_id, id);
-            assert_eq!(back_status, status);
-        }
-    }
-
-    #[test]
-    fn decode_receipt_rejects_wrong_length() {
-        assert!(decode_receipt(&[]).is_none());
-        assert!(decode_receipt(&[0u8; 32]).is_none());
-        assert!(decode_receipt(&[0u8; 34]).is_none());
-    }
 
     #[test]
     fn relay_key_is_header_only_and_payload_blind() {

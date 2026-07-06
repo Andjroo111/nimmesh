@@ -106,15 +106,27 @@ sid[31] = 0x4D // 'M' marker
 
 let radio = BleMeshRadio()
 // GATEWAY node: relays like any mesh node AND broadcasts every verified nimiqTx it hears
-// to the Nimiq TESTNET chain, then floods the receipt back so the sender sees settlement.
-// The core's HTTP client refuses mainnet hosts by construction (rpc::guard_testnet) — this
-// node cannot move real funds. If the core was built without the gateway-rpc feature the
-// constructor throws; fall back to a plain relay so the mesh still works, but say so loudly.
-let testnetRpcUrl = "https://rpc.testnet.nimiqwatch.com"
+// to the Nimiq chain, then floods the receipt back so the sender sees settlement.
+//
+// Default = TESTNET (the core's HTTP client refuses mainnet hosts by construction).
+// `--mainnet` = the OWNER-GATED real-money delivery role (authorized 2026-07-06): the
+// gateway broadcasts already-signed MAINNET txs that the SENDER signed on their own
+// device — this node holds no keys and signs nothing. Never launched autonomously.
+// If the core was built without the gateway-rpc feature the constructor throws; fall
+// back to a plain relay so the mesh still works, but say so loudly.
+let useMainnet = CommandLine.arguments.contains("--mainnet")
 let node: MeshNode
 do {
-    node = try MeshNode.newGateway(senderId: sid, radio: radio, rpcUrl: testnetRpcUrl)
-    line("GATEWAY mode — broadcasting mesh txs to \(testnetRpcUrl) (TESTNET only)")
+    if useMainnet {
+        let mainnetRpcUrl = "https://rpc.nimiqwatch.com"
+        node = try MeshNode.newGatewayMainnet(senderId: sid, radio: radio, rpcUrl: mainnetRpcUrl)
+        line("★★ MAINNET GATEWAY — broadcasting mesh txs to \(mainnetRpcUrl) (REAL FUNDS)")
+        line("★★ this node only delivers txs the sender signed on their own device")
+    } else {
+        let testnetRpcUrl = "https://rpc.testnet.nimiqwatch.com"
+        node = try MeshNode.newGateway(senderId: sid, radio: radio, rpcUrl: testnetRpcUrl)
+        line("GATEWAY mode — broadcasting mesh txs to \(testnetRpcUrl) (TESTNET only)")
+    }
 } catch {
     node = MeshNode(senderId: sid, radio: radio)
     line("!! gateway unavailable (\(error)) — plain relay only, no chain broadcast")
