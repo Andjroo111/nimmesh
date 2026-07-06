@@ -22,6 +22,21 @@ final class BleMeshRadio: NSObject, BleRadio {
     private var writeChars: [String: CBCharacteristic] = [:]
     private var subscribedCentrals: [String: CBCentral] = [:]
 
+    // A pair links TWICE (central + peripheral) under the same peer id — reference-count the
+    // two directed links so a flap on one doesn't report "peer gone" while the other is up.
+    private var linkCount: [String: Int] = [:]
+    private var centralLinked: Set<String> = []
+    private var periphLinked: Set<String> = []
+    private func linkUp(_ id: String) {
+        linkCount[id, default: 0] += 1
+        if linkCount[id] == 1 { log("mesh peer \(id.prefix(8)) linked ✓"); node?.onPeerConnected(peerId: id) }
+    }
+    private func linkDown(_ id: String) {
+        guard let c = linkCount[id] else { return }
+        if c <= 1 { linkCount[id] = nil; log("mesh peer \(id.prefix(8)) gone"); node?.onPeerDisconnected(peerId: id) }
+        else { linkCount[id] = c - 1 }
+    }
+
     private func log(_ s: String) { onLog?(s) }
 
     // MARK: BleRadio (called by Rust)
@@ -134,8 +149,7 @@ extension BleMeshRadio: CBCentralManagerDelegate, CBPeripheralDelegate {
         for ch in service.characteristics ?? [] where ch.uuid == Self.charUUID {
             writeChars[id] = ch
             peripheral.setNotifyValue(true, for: ch)
-            log("linked to peer \(id.prefix(8)) ✓")
-            node?.onPeerConnected(peerId: id)
+            if centralLinked.insert(id).inserted { linkUp(id) } // count this directed link once
         }
     }
 
@@ -149,8 +163,7 @@ extension BleMeshRadio: CBCentralManagerDelegate, CBPeripheralDelegate {
         let id = peripheral.identifier.uuidString
         peripherals[id] = nil
         writeChars[id] = nil
-        log("peer \(id.prefix(8)) disconnected")
-        node?.onPeerDisconnected(peerId: id)
+        if centralLinked.remove(id) != nil { linkDown(id) } // our central link dropped
         central.scanForPeripherals(withServices: [Self.serviceUUID], options: nil)
     }
 }
@@ -197,14 +210,13 @@ extension BleMeshRadio: CBPeripheralManagerDelegate {
                           didSubscribeTo characteristic: CBCharacteristic) {
         let id = central.identifier.uuidString
         subscribedCentrals[id] = central
-        log("peer \(id.prefix(8)) subscribed (they are central to us) ✓")
-        node?.onPeerConnected(peerId: id)
+        if periphLinked.insert(id).inserted { linkUp(id) } // count this directed link once
     }
 
     func peripheralManager(_ peripheral: CBPeripheralManager, central: CBCentral,
                           didUnsubscribeFrom characteristic: CBCharacteristic) {
         let id = central.identifier.uuidString
         subscribedCentrals[id] = nil
-        node?.onPeerDisconnected(peerId: id)
+        if periphLinked.remove(id) != nil { linkDown(id) } // their central link dropped
     }
 }

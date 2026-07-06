@@ -2,6 +2,18 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.51.3] — 2026-07-05
+
+### Fixed — mesh peer count crashing to 0 despite a live link (real 2-device test)
+
+First real 2-device test (Andjroo's iPhone ↔ the Mac mini node) surfaced it: a pair links
+TWICE over BLE (each device is central to the other) under the SAME peer id, so a flap on
+either directed link fired onPeerDisconnected and dropped the peer entirely — the phone
+read "offline · 0" while the Mac still saw 1. Both radios now REFERENCE-COUNT the two
+directed links: onPeerConnected fires only on the first link up, onPeerDisconnected only
+when the last link drops (per-role dedup so re-fires don't miscount). The peer count now
+holds steady through the connection churn.
+
 ## [0.51.2] — 2026-07-05
 
 ### Added — the funding verifier PROVEN live on Amoy (#72 tail)
