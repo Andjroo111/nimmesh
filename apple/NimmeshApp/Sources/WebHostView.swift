@@ -180,7 +180,12 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         // floods back once it broadcasts. No RPC anywhere on this path.
         meshSendInfo: function () { return call('meshSendInfo'); },
         meshSendTransaction: function (a) { return call('meshSendTransaction', a || {}); },
-        meshPaymentStatus: function (t) { return call('meshPaymentStatus', { meshTxId: t }); }
+        meshPaymentStatus: function (t) { return call('meshPaymentStatus', { meshTxId: t }); },
+        // Fiat price data proxied through native URLSession: the page runs on a file://
+        // origin and WKWebView blocks its fetch() to the network, so CoinGecko is fetched
+        // natively. Whitelisted coins/currencies only - no arbitrary-URL surface.
+        prices: function (c) { return call('prices', { currency: c }); },
+        market: function (coin, c) { return call('market', { coin: coin, currency: c }); }
       };
     })();
     """
@@ -193,7 +198,8 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         // C1c: the live-chain methods do network IO → run them off the main actor and resolve
         // when they complete. Everything else is synchronous (pure-core reads).
         switch method {
-        case "headHeight", "walletBalance", "walletHistory", "sendTransaction", "meshSendTransaction":
+        case "headHeight", "walletBalance", "walletHistory", "sendTransaction", "meshSendTransaction",
+             "prices", "market":
             Task { let (ok, payload) = await self.handleAsync(method: method, args: args)
                 self.resolve(id: id, ok: ok, payload: payload) }
         case "authenticate":
@@ -344,6 +350,50 @@ final class Bridge: NSObject, WKScriptMessageHandler {
                     "txHash": signed.txHash,
                     "network": intent.network == .mainnet ? "mainnet" : "testnet",
                 ])
+            } catch {
+                return (false, "\(error)")
+            }
+        case "prices":
+            // CoinGecko simple/price via native URLSession — the webui page runs on a
+            // file:// origin and WKWebView blocks its fetch() to the network. Read-only
+            // public data; the currency is whitelisted.
+            let a = args as? [String: Any] ?? [:]
+            let currency = (a["currency"] as? String ?? "usd").lowercased()
+            guard ["usd", "mxn", "eur", "brl"].contains(currency) else { return (false, "bad currency") }
+            guard let url = URL(string: "https://api.coingecko.com/api/v3/simple/price?ids=nimiq-2,bitcoin,usd-coin&vs_currencies=\(currency)") else {
+                return (false, "bad url")
+            }
+            do {
+                let (data, _) = try await URLSession.shared.data(from: url)
+                guard let j = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                    return (false, "bad response")
+                }
+                let price: (String) -> Any = { id in
+                    ((j[id] as? [String: Any])?[currency] as? NSNumber)?.doubleValue ?? NSNull()
+                }
+                return (true, ["nim": price("nimiq-2"), "btc": price("bitcoin"), "usdc": price("usd-coin")])
+            } catch {
+                return (false, "\(error)")
+            }
+        case "market":
+            // CoinGecko market_chart (the 24h sparkline series), same native proxy; coin +
+            // currency whitelisted, and only the price series crosses the bridge.
+            let a = args as? [String: Any] ?? [:]
+            let coin = a["coin"] as? String ?? ""
+            let currency = (a["currency"] as? String ?? "usd").lowercased()
+            guard ["nimiq-2", "bitcoin"].contains(coin), ["usd", "mxn", "eur", "brl"].contains(currency) else {
+                return (false, "bad coin or currency")
+            }
+            guard let url = URL(string: "https://api.coingecko.com/api/v3/coins/\(coin)/market_chart?vs_currency=\(currency)&days=1") else {
+                return (false, "bad url")
+            }
+            do {
+                let (data, _) = try await URLSession.shared.data(from: url)
+                guard let j = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let raw = j["prices"] as? [[Any]] else { return (false, "bad response") }
+                let series = raw.compactMap { row in (row.count > 1 ? row[1] : nil) as? NSNumber }
+                    .map { $0.doubleValue }
+                return (true, ["prices": series])
             } catch {
                 return (false, "\(error)")
             }

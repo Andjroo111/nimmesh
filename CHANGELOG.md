@@ -2,6 +2,22 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.53.1] — 2026-07-06
+
+### Fixed — fiat conversion + menu sparklines were dead ON DEVICE
+
+Andjroo's report from the live mainnet test: the fiat line under NIM amounts never
+showed anything on the phone. Root cause: the webui loads via `loadFileURL`, so the
+page runs on a `file://` origin — and WKWebView blocks the page's `fetch()` to the
+network entirely (CoinGecko's permissive CORS never even gets consulted). The desktop
+browser used for verification allows it, which is why this only bit on device.
+
+Fix: the two CoinGecko endpoints are now proxied through native URLSession bridge
+methods `prices` / `market` — whitelisted coins and currencies only, no arbitrary-URL
+surface; only the numbers cross the bridge. The webui prefers the bridge and falls
+back to direct fetch in a plain browser. Fixes the home/total/address fiat lines, the
+swap sheet's indicative pricing, and the side-menu 24h sparklines.
+
 ## [0.53.0] — 2026-07-06
 
 ### Added — the MAINNET mesh payment (Andjroo-gated, real funds)

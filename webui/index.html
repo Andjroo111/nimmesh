@@ -1968,9 +1968,15 @@ Don't share them and keep them safe.</p>
     const cfg = FIAT[LANG] || FIAT.en;
     for (const [el, coin] of [['chart-nim', 'nimiq-2'], ['chart-btc', 'bitcoin']]) {
       try {
-        const r = await fetch(`https://api.coingecko.com/api/v3/coins/${coin}/market_chart?vs_currency=${cfg.currency}&days=1`);
-        const j = await r.json();
-        const prices = (j.prices || []).map((x) => x[1]);
+        let prices;
+        if (window.nimmesh && nimmesh.market) {
+          // Same file://-origin fetch block as the fiat rates: proxy via the bridge.
+          prices = (await nimmesh.market(coin, cfg.currency)).prices || [];
+        } else {
+          const r = await fetch(`https://api.coingecko.com/api/v3/coins/${coin}/market_chart?vs_currency=${cfg.currency}&days=1`);
+          const j = await r.json();
+          prices = (j.prices || []).map((x) => x[1]);
+        }
         if (prices.length < 2) continue;
         const step = Math.max(1, Math.floor(prices.length / 44));
         const pts = prices.filter((_, i) => i % step === 0);
@@ -2308,13 +2314,21 @@ Don't share them and keep them safe.</p>
     if (Date.now() - nimPriceAt < 5 * 60 * 1000) return;
     const cfg = FIAT[LANG] || FIAT.en;
     try {
-      const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=nimiq-2,bitcoin,usd-coin&vs_currencies=' + cfg.currency);
-      const j = await r.json();
-      const p = j && j['nimiq-2'] && j['nimiq-2'][cfg.currency];
+      let p, b, u;
+      if (window.nimmesh && nimmesh.prices) {
+        // On device the page runs on a file:// origin and WKWebView blocks fetch() to
+        // the network entirely - the native bridge fetches the rates instead.
+        const r = await nimmesh.prices(cfg.currency);
+        p = r.nim; b = r.btc; u = r.usdc;
+      } else {
+        const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=nimiq-2,bitcoin,usd-coin&vs_currencies=' + cfg.currency);
+        const j = await r.json();
+        p = j && j['nimiq-2'] && j['nimiq-2'][cfg.currency];
+        b = j && j.bitcoin && j.bitcoin[cfg.currency];
+        u = j && j['usd-coin'] && j['usd-coin'][cfg.currency];
+      }
       if (typeof p === 'number' && p > 0) { nimPrice = p; nimPriceAt = Date.now(); }
-      const b = j && j.bitcoin && j.bitcoin[cfg.currency];
       if (typeof b === 'number' && b > 0) btcPrice = b;
-      const u = j && j['usd-coin'] && j['usd-coin'][cfg.currency];
       if (typeof u === 'number' && u > 0) usdcPrice = u;
     } catch (e) { /* offline: no fiat line */ }
   }
