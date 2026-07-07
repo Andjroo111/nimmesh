@@ -2,6 +2,28 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.53.4] — 2026-07-06
+
+### Added — transaction detail with tap-to-copy addresses (Andjroo's ask)
+
+Tapping a transaction in history now opens the wallet's TransactionModal treatment —
+captured live from the testnet wallet for fidelity: "Transaction from/to" title, the
+green "Received at" / "Sent at" date line, sender → recipient identicons with the FULL
+address grids beneath, and the big signed amount with fiat.
+
+- **Both address grids are real Copyables**: tap to copy the full spaced address, with
+  the wallet's blue "Copied" tooltip. Grab a counterparty address straight from history
+  to send funds back — fully offline over the mesh.
+- **The Send address grid now accepts a paste**: a full NQ address pasted into any cell
+  distributes across all nine blocks (same convenience as the import sheet's
+  paste-whole-phrase). Copy from a transaction, paste into Send, done.
+- New i18n strings in all 5 languages.
+
+Verified: Playwright end-to-end — row tap opens the sheet (title/date/labels/amount/
+fiat all correct for incoming and outgoing), tapping the counterparty grid puts the
+exact spaced address on the clipboard, and pasting it into the Send grid fills all
+nine cells. Screenshot compared against the live wallet capture.
+
 ## [0.53.3] — 2026-07-06
 
 ### Fixed — the REAL cause of the blank offline wallet: the RPC layer lied
