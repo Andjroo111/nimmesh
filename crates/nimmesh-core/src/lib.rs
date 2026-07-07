@@ -257,6 +257,8 @@ pub mod provider;
 pub mod radio;
 pub mod transport;
 pub mod tx_history;
+// Data-mule: the origin re-floods its own pending txs until receipt or validity expiry.
+pub mod pending_retry;
 
 // G8: the one online hop — gateway broadcast (TESTNET-only, money-path). `rpc` is the
 // blocking Albatross JSON-RPC seam (`GatewayRpc`): a deterministic `MockRpc` (always

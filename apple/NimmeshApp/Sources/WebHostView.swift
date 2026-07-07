@@ -95,10 +95,21 @@ final class Bridge: NSObject, WKScriptMessageHandler {
     private lazy var node: MeshNode = {
         var sid = Data(count: 8)
         _ = sid.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 8, $0.baseAddress!) }
-        // Pinned to the app's network (mainnet since v0.35): the head cache then accepts
-        // the mainnet gateway's beacons, envelopes carry the mainnet networkId, and
-        // anchoredIntent yields mainnet intents. Constructing a node signs nothing.
-        let n = MeshNode.newOnNetwork(senderId: sid, radio: bleRadio, network: NimiqRpc.network)
+        // The phone is a GATEWAY node whenever the framework carries the HTTP client:
+        // when this phone has internet it broadcasts other people's mesh txs, answers
+        // balance/history queries, and beacons the head — any online phone becomes an
+        // exit for everyone around it. Offline it self-gates: every RPC call fails, so
+        // it answers nothing and emits no receipt (another gateway can still carry the
+        // tx) and behaves exactly like the plain relay it falls back to below. It holds
+        // no keys for others and signs nothing — broadcast-only, same as the Mac.
+        let n: MeshNode
+        do {
+            n = try MeshNode.newGatewayMainnet(
+                senderId: sid, radio: bleRadio, rpcUrl: "https://rpc.nimiqwatch.com")
+        } catch {
+            // Framework built without gateway-rpc (or a refused URL): plain mainnet node.
+            n = MeshNode.newOnNetwork(senderId: sid, radio: bleRadio, network: NimiqRpc.network)
+        }
         bleRadio.node = n
         return n
     }()
@@ -529,14 +540,11 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             }
             return (true, ["status": s])
         case "reachability":
-            // G16/G5: the live "will it send?" reach from the BLE-backed node (peers + a heard
-            // gateway beacon). Simulator: offline (no BLE); device: meshed/online with peers.
-            let r: String
-            switch node.reachability() {
-            case .online: r = "online"
-            case .meshed: r = "meshed"
-            case .offline: r = "offline"
-            }
+            // Honest reach now that the phone node is itself a gateway (a self-gateway
+            // node's reachability() is always Online): online = a real RPC round-trip
+            // succeeded in the last 30s; meshed = live BLE peers; else offline.
+            let rpcLive = NimiqRpc.lastSuccessAt.map { Date().timeIntervalSince($0) < 30 } ?? false
+            let r = rpcLive ? "online" : (node.peerCount() > 0 ? "meshed" : "offline")
             return (true, ["reachability": r])
         case "walletAddress":
             // C1: the wallet's NQ address, derived from the Keychain Ed25519 public key. The

@@ -2,6 +2,32 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.56.0] — 2026-07-07
+
+### Added — range, two ways: the data-mule and the phone-gateway
+
+Andjroo's field report: drive away from the house and a send just dies. Two answers:
+
+- **Data-mule (`pending_retry.rs`)**: the origin now keeps every still-pending tx it
+  signed (bytes + validity) and re-offers it on the ~15s heartbeat whenever peers are
+  present — sign a payment in the middle of nowhere and it delivers itself the moment
+  the mesh reappears, any time inside the tx's ~2h chain-validity window. A tx flooded
+  into the void retries IMMEDIATELY on first contact (no cadence wait). A receipt
+  clears the retry; past-validity sends settle Failed honestly instead of "relaying"
+  forever. Re-floods are idempotent (same relay key: old peers dedup, only new peers
+  carry). e2e: sign with zero peers → connect later → tick → settled.
+- **Phone-as-gateway**: the iOS framework now builds with `gateway-rpc`, and the app's
+  node is a MAINNET gateway — any phone WITH internet broadcasts other people's mesh
+  txs, answers balance/history queries, and beacons the chain head; a whole group with
+  one online member has a working exit. Offline it self-gates (every RPC fails → no
+  answer, no receipt — another gateway can still carry the tx) and behaves exactly like
+  the old plain relay. Holds no keys for others, broadcast-only, same role as the Mac.
+- **Honest reachability**: a self-gateway node always reports Online, so the reach line
+  is now computed in the app: online = a real RPC round-trip in the last 30s; meshed =
+  live BLE peers; else offline.
+- Filed #172: LoRa bridge + Raspberry Pi relay nodes for kilometer-scale coverage.
+- 800-guard: the G6 fragment engine-glue moved to `fragment.rs`.
+
 ## [0.55.0] — 2026-07-07
 
 ### Added — TRANSACTIONS over the mesh: the history list updates with zero internet

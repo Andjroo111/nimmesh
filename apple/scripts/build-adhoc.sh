@@ -54,7 +54,7 @@ echo "==> nimmesh $MARKETING_VERSION (build $BUILD_NUMBER) -> Ad Hoc ipa (team $
 
 if [ "$SKIP_RUST" -eq 0 ]; then
   echo "==> cargo swift package (iOS framework)"
-  ( cd "$REPO/crates/nimmesh-core" && cargo swift package -n NimmeshCore -p ios -y >/dev/null )
+  ( cd "$REPO/crates/nimmesh-core" && cargo swift package -n NimmeshCore -p ios -y -F gateway-rpc >/dev/null )
 fi
 echo "==> xcodegen generate"
 ( cd "$APPLE" && xcodegen generate >/dev/null )

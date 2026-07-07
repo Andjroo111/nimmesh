@@ -150,6 +150,9 @@ fn run_worker(
             Job::BeaconTick => {
                 let _ = catch_unwind(AssertUnwindSafe(|| {
                     emit_head_beacon(&ctx, &mut st);
+                    // Data-mule: the ~15s beacon poll is the reliable heartbeat on both
+                    // shims (neither calls pollSync), so pending-tx retry rides it too.
+                    crate::pending_retry::tick(&ctx, &mut st);
                 }));
             }
             Job::BalanceQuery(addr) => {

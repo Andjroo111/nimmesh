@@ -36,7 +36,7 @@ use crate::citizen::CitizenState;
 use crate::codec::{decode, encode};
 use crate::dedup::DedupCache;
 use crate::envelope::{decode_envelope, encode_envelope, NimiqEnvelope};
-use crate::fragment::{parse_fragment, Reassembler};
+use crate::fragment::Reassembler;
 use crate::gateway::{MeshGateway, ReceiptStatus, SubmitContext};
 use crate::gcs::GcsFilter;
 use crate::nimiq::address::Address;
@@ -328,7 +328,7 @@ impl WorkerCtx {
         self.ledger.record(tx_id, SettlementDirection::Incoming);
     }
 
-    fn settle(&self, tx_id: TxId, status: PaymentStatus) {
+    pub(crate) fn settle(&self, tx_id: TxId, status: PaymentStatus) {
         self.ledger.settle(tx_id, status);
     }
 
@@ -379,7 +379,7 @@ pub(crate) struct WorkerState {
     pub(crate) relay_seen: DedupCache<RelayKey>,
     gateway_seen: DedupCache<TxId>,
     pub(crate) policy: RelayPolicy,
-    reassembler: Reassembler,
+    pub(crate) reassembler: Reassembler,
     /// G7: the bounded recent-packet cache served by GCS gossip-sync.
     recent: RecentCache,
     /// G7: rate-limiter for the 30 s periodic `requestSync` maintenance tick.
@@ -392,6 +392,8 @@ pub(crate) struct WorkerState {
     limiter: PeerRateLimiter,
     /// G12: txIds we have seen a gateway receipt (ACK) for — stop re-carrying a landed tx.
     acked: DedupCache<TxId>,
+    /// Data-mule: this origin's still-pending own txs, re-flooded until receipt/expiry.
+    pub(crate) pending: crate::pending_retry::PendingRetry,
     start: Instant,
     /// G14: `Some` iff a swap **participant** (decodes its own `swap_id` + floods replies; relay = `None`).
     pub(crate) swap: Option<SwapSession>,
@@ -419,6 +421,7 @@ impl WorkerState {
             verify_before_relay,
             limiter: PeerRateLimiter::new(),
             acked: DedupCache::new(GATEWAY_CACHE_CAP),
+            pending: crate::pending_retry::PendingRetry::default(),
             start: Instant::now(),
             swap,
             signer,
@@ -474,6 +477,14 @@ pub(crate) fn flood_local_tx(ctx: &WorkerCtx, tx_wire: Vec<u8>, st: &mut WorkerS
     remember(ctx, st, &packet);
     ctx.record_pending(tx_id);
     if let Ok(bytes) = encode(&packet) {
+        // Data-mule: keep our own pending tx for periodic re-flood until receipt/expiry.
+        st.pending.remember(
+            tx_id,
+            bytes.clone(),
+            env.valid_until,
+            st.now_ms(),
+            ctx.peer_degree() > 0,
+        );
         ctx.flood(bytes);
     }
     tx_id
@@ -500,6 +511,7 @@ pub(crate) fn maintenance_tick(ctx: &WorkerCtx, st: &mut WorkerState) {
     if st.sync.due(now) {
         emit_request_sync(ctx, st);
     }
+    crate::pending_retry::tick(ctx, st);
 }
 
 /// The hot path: one inbound frame from the radio, with the peer it arrived on (`src`,
@@ -545,7 +557,12 @@ pub(crate) fn process_inbound(
 
 /// Route a (non-`isRSR`, non-`requestSync`) packet to its type handler. Shared by the
 /// inbound path and by locally-delivered reassembled / catch-up packets.
-fn dispatch_packet(ctx: &WorkerCtx, packet: Packet, src: Option<&str>, st: &mut WorkerState) {
+pub(crate) fn dispatch_packet(
+    ctx: &WorkerCtx,
+    packet: Packet,
+    src: Option<&str>,
+    st: &mut WorkerState,
+) {
     match packet.msg_type {
         MessageType::NimiqTx => handle_tx(ctx, packet, src, st),
         MessageType::NimiqTxReceipt => handle_receipt(ctx, packet, src, st),
@@ -566,7 +583,7 @@ fn dispatch_packet(ctx: &WorkerCtx, packet: Packet, src: Option<&str>, st: &mut 
             crate::tx_history::handle_history_response(ctx, packet, src, st)
         }
         // G6: the fragment path — carry the fragment onward and feed the reassembler.
-        MessageType::Fragment => handle_fragment(ctx, packet, src, st),
+        MessageType::Fragment => crate::fragment::handle_fragment(ctx, packet, src, st),
         // F4b/G14 (mesh swap): blind-relay the swap packet (`0x40`–`0x44`) like a `nimiqTx`, and —
         // for a participant node — route it to the local `SwapSession` and flood the reply. The
         // relay never parses a swap (privacy, core value #3). See [`crate::swap_node`].
@@ -700,52 +717,14 @@ fn handle_receipt(ctx: &WorkerCtx, packet: Packet, src: Option<&str>, st: &mut W
             _ => PaymentStatus::Failed,
         };
         ctx.settle(tx_id, payment_status);
+        st.pending.clear(&tx_id);
         // G12 stop-after-ACK: remember this txId has landed so we stop re-carrying its tx.
         st.acked.insert(tx_id);
     }
     relay_onward(ctx, packet, src, st);
 }
 
-/// G6 fragment path: carry the fragment onward (it's a normal flooded packet) and feed
-/// its chunk to the bounded [`Reassembler`]. When a set completes, the original message
-/// is reconstructed with **TTL zeroed** (PROTOCOL.md: "reassembled TTL zeroed") and
-/// dispatched **locally only** — it is never re-flooded, since the individual fragments
-/// already propagated it.
-fn handle_fragment(ctx: &WorkerCtx, packet: Packet, src: Option<&str>, st: &mut WorkerState) {
-    if !st.relay_seen.insert(relay_key(&packet)) {
-        return;
-    }
-    // G7: cache the fragment packet so gossip-sync can replay it to a rejoining peer.
-    remember(ctx, st, &packet);
-    // Parse the chunk before we move `packet` into the relay step.
-    let parsed = parse_fragment(&packet.payload);
-    let now = st.now_ms();
-    relay_onward(ctx, packet, src, st);
-
-    let Some(fragment) = parsed else {
-        return; // malformed fragment header — carried but not reassembled.
-    };
-    if let Some((original_type, payload)) = st.reassembler.accept(fragment, now) {
-        if let Some(msg_type) = MessageType::from_u8(original_type) {
-            // Reconstruct the original message, TTL zeroed so it is delivered locally and
-            // never rebroadcast (the fragments already did the flooding).
-            let mut reassembled = Packet::new(msg_type, [0u8; PEER_ID_LEN], payload);
-            reassembled.ttl = 0;
-            reassembled.timestamp_ms = st.now_ms();
-            dispatch_reassembled(ctx, reassembled, st);
-        }
-    }
-}
-
-/// Dispatch a reassembled (TTL-0) message through the normal type handlers. `relay_onward`
-/// drops it at the hop floor, so this only ever *delivers* (gateway submit / origin
-/// settle), never re-floods. A reassembled fragment-of-a-fragment is impossible
-/// (`fragment_message` never wraps a `fragment` payload), so this can't recurse.
-fn dispatch_reassembled(ctx: &WorkerCtx, packet: Packet, st: &mut WorkerState) {
-    // TTL is already zeroed, so `relay_onward` drops at the hop floor — this only ever
-    // *delivers* (gateway submit / origin settle / cache), never re-floods.
-    dispatch_packet(ctx, packet, None, st);
-}
+// The G6 fragment glue (handle_fragment + reassembled dispatch) lives in `fragment.rs`.
 
 /// Blind degree-adaptive, jittered, source-excluding TTL re-flood. Never reads the opaque
 /// payload. The caller has already dedup'd (`relay_seen`); this decides whether/when to

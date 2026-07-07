@@ -90,3 +90,29 @@ fn a_tampered_signed_transfer_is_dropped_by_a_verifying_relay() {
 
     h.shutdown();
 }
+
+#[test]
+fn a_send_into_the_void_delivers_when_the_mesh_reappears() {
+    // The drive-away scenario (data-mule): sign with NO peers in range, meet the mesh
+    // later, and the pending tx re-floods on the next tick and settles. Before
+    // `pending_retry` this send was lost the moment the initial flood hit nobody.
+    let signer = AppSigner::new(Arc::new(InMemoryEnclaveKey::from_secret(&[5u8; 32])));
+    let signed = signer.sign_transfer(intent(42_000, 77)).unwrap();
+
+    let mut h = MeshHarness::new();
+    let gw = Arc::new(MockGateway::new(default_network()));
+    let origin = h.add_node("origin", &[1]);
+    let _gateway = h.add_gateway("gw", &[3], gw.clone());
+    // NOT connected yet: the initial flood reaches nobody.
+    let tx_id = origin.submit_signed_transfer(signed);
+    assert_eq!(gw.submission_count(), 0);
+
+    // Drive home: the mesh appears, and the ~15s heartbeat tick re-offers the tx
+    // immediately (a void-flooded tx skips the retry cadence on its first chance).
+    h.connect("origin", "gw");
+    origin.poll_beacon();
+
+    assert_eq!(origin.wait_payment(&tx_id, SETTLE), PaymentStatus::Settled);
+    assert_eq!(gw.submission_count(), 1);
+    h.shutdown();
+}

@@ -37,6 +37,8 @@ enum NimiqRpc {
         if let err = json["error"], !(err is NSNull) {
             throw RpcError(message: "\(method): \(err)")
         }
+        // Honest-reachability signal: a completed round-trip proves live internet NOW.
+        lastSuccessAt = Date()
         // Albatross wraps the payload under result.data; tolerate a bare result too.
         if let dict = json["result"] as? [String: Any] {
             let d = dict["data"]
@@ -45,6 +47,11 @@ enum NimiqRpc {
         let r = json["result"]
         return (r is NSNull) ? nil : r
     }
+
+    /// When the last RPC round-trip succeeded — the app's live-internet signal (the mesh
+    /// node can't provide this once the phone itself is a gateway: a self-gateway node
+    /// always reports Online regardless of actual connectivity).
+    static var lastSuccessAt: Date?
 
     /// The current head height — the `validityStartHeight` a fresh tx anchors to.
     static func headHeight() async throws -> UInt32 {
