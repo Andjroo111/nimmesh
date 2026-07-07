@@ -1957,6 +1957,8 @@ Don't share them and keep them safe.</p>
   document.getElementById('set-logout').addEventListener('click', async () => {
     if (!(window.nimmesh && nimmesh.deleteWallet)) return;
     if (!confirm(T('acct.logout.confirm'))) return;
+    // The cached last-known balance/history belong to the wallet being removed.
+    try { Object.keys(localStorage).filter((k) => k.startsWith('nimmesh.cache.')).forEach((k) => localStorage.removeItem(k)); } catch (e) {}
     try { await nimmesh.deleteWallet(); location.reload(); } catch (e) {}
   });
 
@@ -2032,6 +2034,8 @@ Don't share them and keep them safe.</p>
   document.getElementById('acct-logout').addEventListener('click', async () => {
     if (!(window.nimmesh && nimmesh.deleteWallet)) return;
     if (!confirm(T('acct.logout.confirm'))) return;
+    // The cached last-known balance/history belong to the wallet being removed.
+    try { Object.keys(localStorage).filter((k) => k.startsWith('nimmesh.cache.')).forEach((k) => localStorage.removeItem(k)); } catch (e) {}
     try { await nimmesh.deleteWallet(); location.reload(); } catch (e) {}
   });
   // G18: the "pay me X NIM" request — build a nimiq: URI (address + optional amount) and show
@@ -2923,6 +2927,11 @@ Don't share them and keep them safe.</p>
     // (previously data loaded ONCE at launch and never refreshed). Read-only public data;
     // no key or seed crosses. History re-renders only when it actually changed (no flicker).
     let lastHistoryKey = null;
+    // Offline continuity: the last-known balance + history persist across launches
+    // (localStorage, keyed by THIS wallet's address — public chain data only, cleared on
+    // logout). A Bluetooth-only launch then shows what the wallet last knew instead of a
+    // blank screen; live fetches overwrite the moment the network is back.
+    const cacheKey = (kind) => `nimmesh.cache.${kind}.${(window.RECEIVE_ADDR || 'demo')}`;
     window.refreshWalletData = async function refreshWalletData() {
       let balanceLuna = 0;
       try {
@@ -2931,15 +2940,30 @@ Don't share them and keep them safe.</p>
         await refreshNimPrice();
         window.__lastLuna = balanceLuna;
         paintAmounts(balanceLuna);
+        try { localStorage.setItem(cacheKey('balance'), JSON.stringify({ luna: balanceLuna, at: Date.now() })); } catch (e) {}
       } catch (e) { /* keep the last shown balance if the read fails */ }
       try {
         const { txs } = await nimmesh.walletHistory();
         window.__lastTxs = txs || [];
+        try { localStorage.setItem(cacheKey('txs'), JSON.stringify({ txs: txs || [], at: Date.now() })); } catch (e) {}
         const key = JSON.stringify((txs || []).map((t) => [t.hash, t.confirmed]));
         if (key !== lastHistoryKey) { lastHistoryKey = key; await renderHistory(txs || []); }
       } catch (e) { if (lastHistoryKey === null) { lastHistoryKey = '[]'; await renderHistory([]); } }
       return balanceLuna;
     };
+    // Hydrate from the per-wallet cache BEFORE the first live fetch, so an offline launch
+    // renders the last-known state (and a failing first fetch can no longer blank it —
+    // lastHistoryKey is seeded, which disarms the render-empty fallback above).
+    try {
+      const cb = JSON.parse(localStorage.getItem(cacheKey('balance')) || 'null');
+      if (cb && typeof cb.luna === 'number') { window.__lastLuna = cb.luna; paintAmounts(cb.luna); }
+      const ct = JSON.parse(localStorage.getItem(cacheKey('txs')) || 'null');
+      if (ct && Array.isArray(ct.txs) && ct.txs.length) {
+        window.__lastTxs = ct.txs;
+        lastHistoryKey = JSON.stringify(ct.txs.map((t) => [t.hash, t.confirmed]));
+        await renderHistory(ct.txs);
+      }
+    } catch (e) { /* no cache yet */ }
     const balanceLuna = await refreshWalletData();
     setInterval(() => { if (!document.hidden) refreshWalletData(); }, 10000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshWalletData(); });

@@ -2,6 +2,25 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.53.2] — 2026-07-06
+
+### Fixed — Bluetooth-only launches showed a blank wallet (no balance, no history)
+
+Andjroo's report from the live mesh test: with every radio except Bluetooth off, the
+wallet showed no transactions at all — not even ones he had already seen. The chain
+reads (balance + history) are live RPC fetches, and nothing survived a relaunch: an
+offline first fetch rendered the honest-but-useless empty state.
+
+Now the last-known balance and transaction history persist on-device (localStorage,
+keyed by the wallet address — public chain data only, cleared on logout from both
+menus). An offline launch hydrates from that cache before the first live fetch, so
+the wallet shows what it last knew; live data overwrites the moment the network is
+back. A failing first fetch can no longer blank an already-rendered history.
+
+Verified: Playwright offline-launch run (every chain read rejecting) renders the
+cached 501 NIM + 2 history rows with no empty state, and the same flow live-updates
+when fetches succeed.
+
 ## [0.53.1] — 2026-07-06
 
 ### Fixed — fiat conversion + menu sparklines were dead ON DEVICE
