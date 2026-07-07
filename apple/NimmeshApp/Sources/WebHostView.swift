@@ -185,7 +185,12 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         // origin and WKWebView blocks its fetch() to the network, so CoinGecko is fetched
         // natively. Whitelisted coins/currencies only - no arbitrary-URL surface.
         prices: function (c) { return call('prices', { currency: c }); },
-        market: function (coin, c) { return call('market', { coin: coin, currency: c }); }
+        market: function (coin, c) { return call('market', { coin: coin, currency: c }); },
+        // G15 balance-over-mesh: ask the mesh for this wallet's on-chain balance (any
+        // internet-bearing gateway answers over BLE), then read the last-heard answer.
+        // Public address + public balance only - no keys, no history.
+        meshQueryBalance: function () { return call('meshQueryBalance'); },
+        meshCachedBalance: function () { return call('meshCachedBalance'); }
       };
     })();
     """
@@ -450,6 +455,21 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             // idle-dropping the mesh link (the ~50s flap). No-op if there are no peers.
             node.pollBeacon()
             return (true, ["ok": true])
+        case "meshQueryBalance":
+            // G15: flood a nimiqBalanceQuery for this wallet — the Mac gateway answers a
+            // nimiqBalanceResponse over BLE. Fire-and-forget (non-blocking enqueue); the
+            // answer lands in the node's cache, read via meshCachedBalance. No keys.
+            guard let addr = Wallet.address() else { return (false, "no wallet") }
+            node.queryBalance(address: addr)
+            return (true, ["ok": true])
+        case "meshCachedBalance":
+            // The last balance heard over the mesh for this wallet (unverified/last-known,
+            // per the core's G15 contract), or has:false until a gateway has answered.
+            guard let addr = Wallet.address() else { return (false, "no wallet") }
+            if let c = node.cachedBalance(address: addr) {
+                return (true, ["has": true, "luna": Int(c.balance), "headHeight": Int(c.headHeight)])
+            }
+            return (true, ["has": false])
         case "meshSendInfo":
             // Whether an offline mesh send is possible RIGHT NOW: a gateway head beacon has
             // been heard (the anchor for validityStartHeight) and at least one live peer is

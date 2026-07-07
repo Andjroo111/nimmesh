@@ -2435,6 +2435,17 @@ Don't share them and keep them safe.</p>
   let nimPrice = null;    // in the active language's currency
   let nimPriceAt = 0;
   let btcPrice = null, usdcPrice = null;
+  // Instant fiat on launch: the last-known rates persist (per currency) and hydrate
+  // immediately; the live fetch then refreshes them. Rates move slowly - a cached rate
+  // beats a blank line for the seconds (or offline stretches) before a fetch lands.
+  try {
+    const cp = JSON.parse(localStorage.getItem('nimmesh.cache.prices') || 'null');
+    if (cp && cp.currency === (FIAT[LANG] || FIAT.en).currency) {
+      if (typeof cp.nim === 'number' && cp.nim > 0) nimPrice = cp.nim;
+      if (typeof cp.btc === 'number' && cp.btc > 0) btcPrice = cp.btc;
+      if (typeof cp.usdc === 'number' && cp.usdc > 0) usdcPrice = cp.usdc;
+    }
+  } catch (e) { /* no cached rates yet */ }
   async function refreshNimPrice() {
     if (Date.now() - nimPriceAt < 5 * 60 * 1000) return;
     const cfg = FIAT[LANG] || FIAT.en;
@@ -2455,6 +2466,9 @@ Don't share them and keep them safe.</p>
       if (typeof p === 'number' && p > 0) { nimPrice = p; nimPriceAt = Date.now(); }
       if (typeof b === 'number' && b > 0) btcPrice = b;
       if (typeof u === 'number' && u > 0) usdcPrice = u;
+      if (nimPrice != null) {
+        try { localStorage.setItem('nimmesh.cache.prices', JSON.stringify({ currency: cfg.currency, nim: nimPrice, btc: btcPrice, usdc: usdcPrice, at: Date.now() })); } catch (e) {}
+      }
     } catch (e) { /* offline: no fiat line */ }
   }
   function fiatText(luna) {
@@ -2682,6 +2696,28 @@ Don't share them and keep them safe.</p>
     for (const el of list.querySelectorAll('.identicon[data-address]')) {
       try { el.querySelector('img').src = await Iqons.toDataUrl(el.dataset.address); } catch (e) {}
     }
+    fillTxFiat();
+  }
+
+  // Per-row fiat: fill each transaction's fiat line (current rate) and stop the
+  // fiat-loading pulse - it used to pulse forever because nothing ever filled it.
+  // Called after every history render and again when a fresh price arrives.
+  function fillTxFiat() {
+    const txs = window.__lastTxs || [];
+    document.querySelectorAll('#tx-list .transaction').forEach((row) => {
+      const t = txs[Number(row.dataset.txIdx)];
+      const el = row.querySelector('.fiat-amount');
+      if (!t || !el) return;
+      const text = nimPrice != null ? fiatText(t.valueLuna) : '';
+      if (text) {
+        el.classList.remove('fiat-loading');
+        el.textContent = text;
+      } else if (el.classList.contains('fiat-loading')) {
+        // No rate available (deep offline, no cached price): stop pulsing, stay blank.
+        el.classList.remove('fiat-loading');
+        el.innerHTML = '&nbsp;';
+      }
+    });
   }
 
   // C1e: wallet onboarding (create / import) + the "view recovery words" backup screen, matched
@@ -3053,16 +3089,40 @@ Don't share them and keep them safe.</p>
     // logout). A Bluetooth-only launch then shows what the wallet last knew instead of a
     // blank screen; live fetches overwrite the moment the network is back.
     const cacheKey = (kind) => `nimmesh.cache.${kind}.${(window.RECEIVE_ADDR || 'demo')}`;
+    // G15 balance-over-mesh: when the RPC read is offline (failed or served from the
+    // native cache), ask the mesh - the Mac gateway answers this wallet's on-chain
+    // balance over Bluetooth. Fire the query now, read the last-heard answer now, and
+    // re-read shortly after so a fresh answer lands in the same tick.
+    async function refreshMeshBalance() {
+      if (!(window.nimmesh && nimmesh.meshQueryBalance)) return;
+      try {
+        nimmesh.meshQueryBalance().catch(() => {});
+        const paintMesh = (mb) => {
+          if (mb && mb.has && typeof mb.luna === 'number') {
+            window.__lastLuna = mb.luna;
+            paintAmounts(mb.luna);
+            try { localStorage.setItem(cacheKey('balance'), JSON.stringify({ luna: mb.luna, at: Date.now() })); } catch (e) {}
+          }
+        };
+        paintMesh(await nimmesh.meshCachedBalance());
+        setTimeout(async () => { try { paintMesh(await nimmesh.meshCachedBalance()); } catch (e) {} }, 1800);
+      } catch (e) { /* no mesh answer yet - keep the last shown balance */ }
+    }
     window.refreshWalletData = async function refreshWalletData() {
       let balanceLuna = 0;
       try {
         const b = await nimmesh.walletBalance();
         balanceLuna = (b && typeof b.luna === 'number') ? b.luna : 0;
-        await refreshNimPrice();
+        // The price fetch must never delay the balance paint - it refreshes fiat
+        // lines on its own when it lands (cached rates already painted instantly).
+        refreshNimPrice().then(() => { paintAmounts(window.__lastLuna || 0); fillTxFiat(); }).catch(() => {});
         window.__lastLuna = balanceLuna;
         paintAmounts(balanceLuna);
         try { localStorage.setItem(cacheKey('balance'), JSON.stringify({ luna: balanceLuna, at: Date.now() })); } catch (e) {}
-      } catch (e) { /* keep the last shown balance if the read fails */ }
+        if (b && b.cached) refreshMeshBalance(); // RPC offline: the mesh has fresher truth
+      } catch (e) {
+        refreshMeshBalance(); // no RPC and no native cache: the mesh is the only source
+      }
       try {
         const { txs } = await nimmesh.walletHistory();
         window.__lastTxs = txs || [];

@@ -2,6 +2,34 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.54.0] — 2026-07-06
+
+### Added — balance over the mesh: incoming funds show up with ZERO internet (G15)
+
+Andjroo's live-test gap: 5 NIM sent to the phone while it was Bluetooth-only stayed
+invisible until Wi-Fi came back. Now, whenever the RPC read is offline (failed or
+served from the native cache), the app floods a `nimiqBalanceQuery` over BLE and the
+Mac gateway answers with this wallet's on-chain balance (`nimiqBalanceResponse`) —
+the core's G15 machinery, live end to end for the first time. The home balance
+updates within a poll tick, fully offline. (History rows for the new funds still
+need a network round-trip — balance is what travels over the mesh today.)
+New bridge methods `meshQueryBalance` / `meshCachedBalance`; no core changes — the
+gateway side has been answering since G15 shipped.
+
+### Fixed — fiat appears instantly; per-transaction fiat no longer pulses forever
+
+- The last-known rates persist per currency and hydrate at launch, so fiat lines
+  paint immediately instead of waiting seconds for CoinGecko (and still paint when
+  fully offline). The live fetch refreshes them and re-paints when it lands.
+- The price fetch no longer delays the balance paint (it was serialized in between).
+- Each history row's fiat amount is now actually filled (current rate) — the
+  `fiat-loading` skeleton pulsed forever because nothing ever populated it. With no
+  rate available at all it stops pulsing and stays blank, honestly.
+
+Verified: Playwright offline run — home balance updates to the MESH-reported value
+(501 → 506) with RPC dead, fiat renders from cached rates with the price fetch
+failing, and row fiat is filled with the pulse gone.
+
 ## [0.53.4] — 2026-07-06
 
 ### Added — transaction detail with tap-to-copy addresses (Andjroo's ask)
