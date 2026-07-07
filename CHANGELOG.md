@@ -2,6 +2,26 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.57.0] — 2026-07-07
+
+### Changed — Send is now the wallet's two-step flow; history stops flickering
+
+Both from Andjroo's field feedback.
+
+- **Send flow rebuilt to match the real wallet**: enter/paste/scan the recipient on
+  step 1 (Continue lights only for a complete valid address), then a dedicated confirm
+  page shows the recipient BIG — identicon + bold spaced address — before you set the
+  amount and send. Pasting or scanning a full address jumps straight to confirm; a back
+  chevron returns to editing the recipient. Replaces the old cramped single sheet with
+  a tiny identicon tucked under the grid.
+- **History no longer flickers offline**: the list was fed by three sources (localStorage
+  hydrate, the native RPC cache, the mesh) that each re-rendered every ~10s cycle with
+  different sets — so on a Bluetooth-only phone the stale native cache and the fresher
+  mesh answer fought, each wiping the list (rows vanished then popped back). Now one
+  freshness-gated funnel renders ONLY on genuine content change, a staler source can't
+  overwrite a live one, and identicon data URLs are cached so a real re-render never
+  blanks. Verified: zero list rebuilds across repeated offline refresh cycles.
+
 ## [0.56.0] — 2026-07-07
 
 ### Added — range, two ways: the data-mule and the phone-gateway
