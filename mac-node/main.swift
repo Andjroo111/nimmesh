@@ -134,6 +134,15 @@ do {
 radio.node = node
 radio.onLog = { line($0) }
 
+// `--watch-balance NQ…` (diagnostic + relay observability): the gateway caches its OWN
+// answer whenever it answers a mesh balance query (G15), so logging the cache for a
+// watched address shows definitively whether queries are being answered.
+var watchBalanceAddr: String? = nil
+if let i = CommandLine.arguments.firstIndex(of: "--watch-balance"), i + 1 < CommandLine.arguments.count {
+    watchBalanceAddr = CommandLine.arguments[(i + 1)...].joined(separator: " ")
+    line("watching balance answers for \(watchBalanceAddr!)")
+}
+
 var startTime = Date()
 var lastPeers: UInt32 = 0xFFFFFFFF
 var lastPayments: UInt64 = 0
@@ -209,6 +218,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if stats.paymentsRelayed != lastPayments {
                 line("★ payment relayed through this node (\(stats.paymentsRelayed) this session) — utility earned")
                 lastPayments = stats.paymentsRelayed
+            }
+            if let w = watchBalanceAddr, beatCount % 5 == 0 {
+                if let c = node.cachedBalance(address: w) {
+                    line("balance answered for watched address: \(c.balance) luna @ head \(c.headHeight)")
+                } else {
+                    line("no balance answer cached yet for the watched address")
+                }
             }
             if Date().timeIntervalSince(lastStatusPrint) >= 60 {
                 lastStatusPrint = Date()

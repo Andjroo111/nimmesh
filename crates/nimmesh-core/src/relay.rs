@@ -224,7 +224,7 @@ impl RelayPolicy {
 
 /// A best-effort, non-cryptographic seed for the production RNG, mixed from the wall
 /// clock so two co-located nodes don't relay in lockstep.
-fn seed_from_clock() -> u64 {
+pub(crate) fn seed_from_clock() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

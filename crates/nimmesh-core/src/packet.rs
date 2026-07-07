@@ -96,6 +96,13 @@ pub enum MessageType {
     SwapPropose = 0x40,
     /// `0x41` — a **swap accept / counter** (F2): the responder's addresses + agreed terms. 1:1.
     SwapAccept = 0x41,
+    /// `0x35` — a **transaction-history query**: "what are the recent txs for this address?"
+    /// Address only — read-only public state, answered by any internet-bearing gateway.
+    NimiqTxHistoryQuery = 0x35,
+    /// `0x36` — a gateway's **transaction-history answer** (up to 10 compact records at a
+    /// stated head height; unverified/last-known, same trust model as `0x34`). Usually
+    /// arrives reassembled from `fragment` packets (it exceeds one BLE frame).
+    NimiqTxHistoryResponse = 0x36,
     /// `0x42` — a **swap funding proof** (F2): the signed HTLC funding tx blob (broadcast-safe,
     /// **opaque** here) + its txId + leg. Flooded so any gateway can broadcast it.
     SwapFundingProof = 0x42,
@@ -130,6 +137,8 @@ impl MessageType {
             0x31 => Some(MessageType::NimiqTxReceipt),
             0x32 => Some(MessageType::NimiqHeadBeacon),
             0x33 => Some(MessageType::NimiqBalanceQuery),
+            0x35 => Some(MessageType::NimiqTxHistoryQuery),
+            0x36 => Some(MessageType::NimiqTxHistoryResponse),
             0x34 => Some(MessageType::NimiqBalanceResponse),
             0x40 => Some(MessageType::SwapPropose),
             0x41 => Some(MessageType::SwapAccept),

@@ -120,6 +120,15 @@ pub trait MeshGateway: Send + Sync {
         let _ = address;
         None
     }
+
+    /// Answer a mesh transaction-history query (`0x35`): the recent txs for `address`
+    /// read at the gateway's current head, shaped as the compact mesh response. `None`
+    /// for a node with no live chain view or on a transient RPC failure (emit nothing
+    /// rather than wrong/stale rows). **Read-only** public chain data — no keys.
+    fn history_of(&self, address: &str) -> Option<crate::tx_history::HistoryResponse> {
+        let _ = address;
+        None
+    }
 }
 
 /// A gateway's answer to a balance query (G15): the balance it read for the address, the head
@@ -344,6 +353,56 @@ impl MeshGateway for RpcGateway {
             balance: account.balance,
             head_height,
             network_id: self.network_id,
+        })
+    }
+
+    fn history_of(&self, address: &str) -> Option<crate::tx_history::HistoryResponse> {
+        use crate::nimiq::address::Address;
+        use crate::nimiq::hex::hex_to_bytes;
+        use crate::tx_history::{
+            HistoryResponse, TxHistoryRecord, FLAG_CONFIRMED, FLAG_INCOMING, HISTORY_MAX,
+        };
+        let queried = Address::from_user_friendly(address).ok()?;
+        let head_height = self.rpc.block_number().ok()?;
+        let rows = self
+            .rpc
+            .get_transactions(address, HISTORY_MAX as u16)
+            .ok()?;
+        let compact = address.replace(' ', "").to_uppercase();
+        let records = rows
+            .iter()
+            .take(HISTORY_MAX)
+            .filter_map(|t| {
+                let incoming = t.to.replace(' ', "").to_uppercase() == compact;
+                let other = if incoming { &t.from } else { &t.to };
+                let counterparty = Address::from_user_friendly(other).ok()?;
+                let hash_bytes = hex_to_bytes(&t.hash).ok()?;
+                let mut hash = [0u8; 32];
+                if hash_bytes.len() != 32 {
+                    return None;
+                }
+                hash.copy_from_slice(&hash_bytes);
+                let mut flags = 0u8;
+                if incoming {
+                    flags |= FLAG_INCOMING;
+                }
+                if t.block_number.is_some() {
+                    flags |= FLAG_CONFIRMED;
+                }
+                Some(TxHistoryRecord {
+                    hash,
+                    counterparty,
+                    value: t.value,
+                    timestamp_ms: t.timestamp_ms,
+                    flags,
+                })
+            })
+            .collect();
+        Some(HistoryResponse {
+            address: queried,
+            head_height,
+            network_id: self.network_id,
+            records,
         })
     }
 }

@@ -190,7 +190,11 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         // internet-bearing gateway answers over BLE), then read the last-heard answer.
         // Public address + public balance only - no keys, no history.
         meshQueryBalance: function () { return call('meshQueryBalance'); },
-        meshCachedBalance: function () { return call('meshCachedBalance'); }
+        meshCachedBalance: function () { return call('meshCachedBalance'); },
+        // Transactions over the mesh: ask a gateway for this wallet's recent history rows
+        // (the answer rides the fragmenter over BLE), then read the last-heard answer.
+        meshQueryHistory: function () { return call('meshQueryHistory'); },
+        meshCachedHistory: function () { return call('meshCachedHistory'); }
       };
     })();
     """
@@ -455,6 +459,28 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             // idle-dropping the mesh link (the ~50s flap). No-op if there are no peers.
             node.pollBeacon()
             return (true, ["ok": true])
+        case "meshQueryHistory":
+            // Transactions over the mesh: flood a nimiqTxHistoryQuery — the Mac gateway
+            // answers up to 10 compact rows through the fragmenter. Fire-and-forget.
+            guard let addr = Wallet.address() else { return (false, "no wallet") }
+            node.queryTxHistory(address: addr)
+            return (true, ["ok": true])
+        case "meshCachedHistory":
+            // The freshest history heard over the mesh (unverified/last-known, same trust
+            // model as the mesh balance), shaped exactly like walletHistory's rows.
+            guard let addr = Wallet.address() else { return (false, "no wallet") }
+            let rows = node.cachedTxHistory(address: addr)
+            let txs: [[String: Any]] = rows.map { r in
+                [
+                    "hash": r.hash,
+                    "counterparty": r.counterparty,
+                    "valueLuna": Int(r.valueLuna),
+                    "timestamp": Double(r.timestampMs),
+                    "incoming": r.incoming,
+                    "confirmed": r.confirmed,
+                ]
+            }
+            return (true, ["txs": txs, "headHeight": Int(rows.first?.headHeight ?? 0)])
         case "meshQueryBalance":
             // G15: flood a nimiqBalanceQuery for this wallet — the Mac gateway answers a
             // nimiqBalanceResponse over BLE. Fire-and-forget (non-blocking enqueue); the

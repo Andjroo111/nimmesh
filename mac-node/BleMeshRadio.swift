@@ -59,13 +59,19 @@ final class BleMeshRadio: NSObject, BleRadio {
 
     func send(peerId: String, bytes: Data) {
         queue.async {
+            // Wire byte[1] is the packet type (0x32 beacon / 0x33 balance query / 0x34
+            // balance response / 0x30 tx / 0x31 receipt) — logged for mesh diagnosis.
+            let t = bytes.count > 1 ? String(format: "0x%02x", bytes[1]) : "??"
             if let p = self.peripherals[peerId], let ch = self.writeChars[peerId] {
                 p.writeValue(bytes, for: ch, type: .withoutResponse)
+                self.log("→ \(bytes.count)B type \(t) to \(peerId.prefix(8)) (central write)")
                 self.node?.onSendResult(peerId: peerId, ok: true)
             } else if let central = self.subscribedCentrals[peerId], let ch = self.meshChar {
                 let ok = self.peripheralMgr?.updateValue(bytes, for: ch, onSubscribedCentrals: [central]) ?? false
+                self.log("→ \(bytes.count)B type \(t) to \(peerId.prefix(8)) (notify ok=\(ok))")
                 self.node?.onSendResult(peerId: peerId, ok: ok)
             } else {
+                self.log("→ send FAILED type \(t): no link to \(peerId.prefix(8))")
                 self.node?.onSendResult(peerId: peerId, ok: false)
             }
         }
@@ -155,7 +161,8 @@ extension BleMeshRadio: CBCentralManagerDelegate, CBPeripheralDelegate {
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         guard let bytes = characteristic.value else { return }
-        log("← \(bytes.count)B from \(peripheral.identifier.uuidString.prefix(8))")
+        let t = bytes.count > 1 ? String(format: "0x%02x", bytes[1]) : "??"
+        log("← \(bytes.count)B type \(t) from \(peripheral.identifier.uuidString.prefix(8))")
         node?.onPacketReceivedFrom(peerId: peripheral.identifier.uuidString, bytes: bytes)
     }
 
@@ -199,7 +206,8 @@ extension BleMeshRadio: CBPeripheralManagerDelegate {
     func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveWrite requests: [CBATTRequest]) {
         for req in requests {
             if let bytes = req.value {
-                log("← \(bytes.count)B write from \(req.central.identifier.uuidString.prefix(8))")
+                let t = bytes.count > 1 ? String(format: "0x%02x", bytes[1]) : "??"
+                log("← \(bytes.count)B type \(t) write from \(req.central.identifier.uuidString.prefix(8))")
                 node?.onPacketReceivedFrom(peerId: req.central.identifier.uuidString, bytes: bytes)
             }
             peripheral.respond(to: req, withResult: .success)

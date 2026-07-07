@@ -97,6 +97,10 @@ pub struct WorkerCtx {
     /// G15: this node's last-known per-address balances, heard via `nimiqBalanceResponse`
     /// (`0x34`). Shared (the FFI `cached_balance` reads it); monotonic by head height.
     balances: Mutex<BalanceCache>,
+    /// History over the mesh (`0x36`): last-known per-address recent txs. FFI-read.
+    history: Mutex<crate::tx_history::HistoryCache>,
+    /// Count of `nimiqTxHistoryResponse` answers this gateway has flooded.
+    pub(crate) history_answered: AtomicUsize,
     /// Monotonic per-node sequence used as the packet `timestamp_ms` so each flooded
     /// packet has a unique blind [`RelayKey`] (the mock's deterministic clock).
     seq: AtomicU64,
@@ -154,7 +158,11 @@ impl WorkerCtx {
             // mainnet node anchors only to mainnet heads (and vice versa).
             head: Mutex::new(HeadCache::new(network.wire_id())),
             balances: Mutex::new(BalanceCache::new()),
-            seq: AtomicU64::new(1),
+            history: Mutex::new(crate::tx_history::HistoryCache::default()),
+            history_answered: AtomicUsize::new(0),
+            // Clock-seeded, NOT 1: a restarted node with a stable sender id would reuse
+            // relay keys (type, sender, seq) a running peer has seen — all deduped.
+            seq: AtomicU64::new(crate::relay::seed_from_clock()),
             citizen: CitizenState::new(),
             forwarded: AtomicUsize::new(0),
             send_attempts: AtomicUsize::new(0),
@@ -281,6 +289,19 @@ impl WorkerCtx {
         self.balances.lock().unwrap().get(address)
     }
 
+    /// History over the mesh: cache a response (monotonic; network-validated).
+    pub(crate) fn cache_history(&self, resp: &crate::tx_history::HistoryResponse) -> bool {
+        self.history
+            .lock()
+            .unwrap()
+            .observe(resp, self.network.wire_id())
+    }
+
+    /// History over the mesh: the freshest history heard for `address`, or `None`.
+    pub(crate) fn cached_history(&self, a: &Address) -> Option<crate::tx_history::HistoryResponse> {
+        self.history.lock().unwrap().get(a).cloned()
+    }
+
     pub(crate) fn status(&self, tx_id: &TxId) -> PaymentStatus {
         self.ledger.status(tx_id)
     }
@@ -311,7 +332,7 @@ impl WorkerCtx {
         self.ledger.settle(tx_id, status);
     }
 
-    fn next_seq(&self) -> u64 {
+    pub(crate) fn next_seq(&self) -> u64 {
         self.seq.fetch_add(1, Ordering::Relaxed)
     }
 
@@ -537,6 +558,12 @@ fn dispatch_packet(ctx: &WorkerCtx, packet: Packet, src: Option<&str>, st: &mut 
         // G15: a balance response — cache the (unverified) balance, then flood it onward.
         MessageType::NimiqBalanceResponse => {
             crate::balance::handle_balance_response(ctx, packet, src, st)
+        }
+        MessageType::NimiqTxHistoryQuery => {
+            crate::tx_history::handle_history_query(ctx, packet, src, st)
+        }
+        MessageType::NimiqTxHistoryResponse => {
+            crate::tx_history::handle_history_response(ctx, packet, src, st)
         }
         // G6: the fragment path — carry the fragment onward and feed the reassembler.
         MessageType::Fragment => handle_fragment(ctx, packet, src, st),

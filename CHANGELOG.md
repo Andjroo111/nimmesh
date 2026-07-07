@@ -2,6 +2,39 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.55.0] — 2026-07-07
+
+### Added — TRANSACTIONS over the mesh: the history list updates with zero internet
+
+The last offline gap from Andjroo's field testing: a Bluetooth-only phone could see its
+balance move (0.54.0) but the transaction rows stayed frozen. Now the rows travel too.
+
+- **New wire pair** `nimiqTxHistoryQuery 0x35` / `nimiqTxHistoryResponse 0x36`
+  (`tx_history.rs`, the G15 pattern): a node floods the query, any internet-bearing
+  gateway answers up to 10 compact records (hash, counterparty, value, timestamp,
+  incoming/confirmed flags) read from its RPC at the current head. Unverified /
+  last-known trust model, monotonic per-head cache, network-validated.
+- **First real user of the G6 fragmenter**: the ~716-byte answer is flooded as
+  `fragment 0x20` chunks sized to the proven 256-byte frame class and reassembled by
+  the existing engine path. Proven end to end in a headless mainnet e2e.
+- **Gateway side**: `MeshGateway::history_of` (default `None` — additive for all other
+  impls) + `GatewayRpc::get_transactions` (default unsupported; real impl via
+  `getTransactionsByAddress`; mock seedable).
+- **App**: on the same offline beat as the mesh balance, the app queries the mesh for
+  history and re-renders the list when fresher rows arrive — a new incoming payment now
+  shows up as a row on a fully offline phone within seconds.
+- **Send-sheet identicon confirmation** (Andjroo's report): a complete valid address in
+  the Send grid now renders the recipient's identicon under the grid (typing, paste, or
+  QR scan) — the wallet's visual "this is who you're paying" cue. Hidden while invalid.
+- **Restart-dedup fix**: the packet sequence (used as the blind relay-key timestamp) is
+  now clock-seeded instead of starting at 1 — a restarted node with a stable sender id
+  (the Mac) no longer reuses relay keys that a still-running peer already saw, which
+  silently deduped every packet of the new session until the app relaunched.
+
+Verified: 404 core tests incl. new codec/cache units + the fragmented mainnet e2e
+(10 rows, direction flags, head stamp); Playwright offline run renders the NEW incoming
+tx row + 495 NIM from mesh answers with RPC dead; identicon paste check.
+
 ## [0.54.0] — 2026-07-06
 
 ### Added — balance over the mesh: incoming funds show up with ZERO internet (G15)

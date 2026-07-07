@@ -248,11 +248,15 @@ pub mod gateway;
 // without the `gateway-rpc` feature it returns `GatewayInitError::Unsupported` so the
 // shared generated bindings never diverge between the app and Mac-node builds.
 pub mod gateway_ffi;
+// Transaction history over the mesh (`0x35`/`0x36`) — the G15 balance pattern extended
+// to the recent tx rows, so a Bluetooth-only phone sees payments arrive, not just its
+// balance move. The gateway's answer rides the G6 fragmenter (first real user).
 pub mod mock_radio;
 pub mod node;
 pub mod provider;
 pub mod radio;
 pub mod transport;
+pub mod tx_history;
 
 // G8: the one online hop — gateway broadcast (TESTNET-only, money-path). `rpc` is the
 // blocking Albatross JSON-RPC seam (`GatewayRpc`): a deterministic `MockRpc` (always

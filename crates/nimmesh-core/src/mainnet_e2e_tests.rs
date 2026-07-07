@@ -101,6 +101,62 @@ fn a_testnet_signed_transfer_is_refused_by_the_mainnet_gateway() {
 }
 
 #[test]
+fn history_over_mesh_round_trips_through_fragments_on_mainnet() {
+    // The Andjroo gap: a Bluetooth-only phone must see its recent TRANSACTIONS, not just
+    // its balance. Full path: phone floods a history query -> the mainnet gateway reads
+    // 10 rows from its RPC -> the ~716 B answer rides the G6 fragmenter -> the phone
+    // reassembles, caches, and serves it over FFI with correct direction flags.
+    use crate::rpc::RpcHistoryTx;
+
+    let phone_addr = "NQ95 ARU6 CQ8U 38N8 B8D6 ESVQ R12V 0RAY V8D6";
+    let other_addr = "NQ87 JY9X JUEE HA17 JNBB HPGM 5ETQ VT1G CVN2";
+    let rpc = Arc::new(MockRpc::new(9_100_000));
+    rpc.set_history(
+        (0..10u8)
+            .map(|i| RpcHistoryTx {
+                hash: format!("{:064x}", i as u128 + 1),
+                from: if i % 2 == 0 { other_addr } else { phone_addr }.to_string(),
+                to: if i % 2 == 0 { phone_addr } else { other_addr }.to_string(),
+                value: (i as u64 + 1) * 100_000,
+                timestamp_ms: 1_700_000_000_000 + i as u64,
+                block_number: if i == 0 {
+                    None
+                } else {
+                    Some(9_099_000 + i as u32)
+                },
+            })
+            .collect(),
+    );
+
+    let mut h = MeshHarness::new();
+    let gw: Arc<dyn MeshGateway> = Arc::new(RpcGateway::new_mainnet(rpc));
+    let _gateway = h.add_gateway_on("gw", &[3], gw, NetworkId::Mainnet);
+    let phone = h.add_node_on("phone", &[1], NetworkId::Mainnet);
+    h.connect("gw", "phone");
+
+    phone.query_tx_history(phone_addr.to_string());
+    assert!(
+        wait_until(
+            || phone.cached_tx_history(phone_addr.to_string()).len() == 10,
+            SETTLE
+        ),
+        "the phone never heard the fragmented history answer"
+    );
+
+    let rows = phone.cached_tx_history(phone_addr.to_string());
+    assert_eq!(rows[0].hash, format!("{:064x}", 1u8));
+    assert!(rows[0].incoming, "row 0 pays INTO the phone");
+    assert!(!rows[0].confirmed, "row 0 is mempool-pending");
+    assert!(!rows[1].incoming, "row 1 pays OUT of the phone");
+    assert!(rows[1].confirmed);
+    assert_eq!(rows[1].counterparty, other_addr);
+    assert_eq!(rows.iter().map(|r| r.value_luna).max(), Some(1_000_000));
+    assert!(rows.iter().all(|r| r.head_height == 9_100_000));
+
+    h.shutdown();
+}
+
+#[test]
 fn a_mainnet_node_ignores_a_testnet_head_beacon() {
     // Network coherence for the anchor: a mainnet phone must never anchor a real tx to a
     // TESTNET head. A testnet gateway beacons; the mainnet node keeps refusing to anchor.

@@ -470,6 +470,11 @@
   .send-reach .dot { width: 9px; height: 9px; border-radius: 50%; background: #21bca5; flex: 0 0 auto; }
   .send-reach.meshed .dot { background: #fc8702; }
   .send-reach.offline .dot { background: rgba(31,35,72,.3); }
+  /* Recipient identicon confirmation in the Send sheet (the wallet's visual cue). */
+  .send-identicon { display: flex; justify-content: center; margin: 16px 24px 0; }
+  .send-identicon[hidden] { display: none !important; }
+  .send-identicon .identicon { width: 64px; height: 64px; }
+  .send-identicon .identicon img { width: 100%; height: 100%; }
   /* Transaction detail (the wallet's TransactionModal anatomy, captured live 2026-07-06):
      from/to identicon pair with full copyable address grids + the big signed amount. */
   .txd-date { text-align: center; font-size: 14.5px; font-weight: 600; margin: 4px 24px 0; color: rgba(31,35,72,.55); }
@@ -1423,6 +1428,11 @@ Don't share them and keep them safe.</p>
     <div class="cell"><input maxlength="4" inputmode="text" aria-label="address block 8"></div>
     <div class="cell"><input maxlength="4" inputmode="text" aria-label="address block 9"></div>
   </div>
+  <!-- Recipient identicon: appears once the grid holds a complete valid address, so the
+       sender can visually verify the recipient (the wallet's own confirmation cue). -->
+  <div class="send-identicon" id="send-identicon" hidden>
+    <div class="identicon"><img alt="Recipient identicon"></div>
+  </div>
   <!-- C1c: the real send — amount (the real amount-input treatment), then sign + broadcast. -->
   <div class="amount-input" id="send-amount-wrap">
     <input id="send-amount" inputmode="decimal" placeholder="0" aria-label="Amount in NIM">
@@ -2127,9 +2137,28 @@ Don't share them and keep them safe.</p>
   });
   // Send address grid: auto-advance between the 9 blocks as you type.
   const cells = [...document.querySelectorAll('.addr-grid input')];
+  // Recipient identicon confirmation: the moment the grid holds a complete valid NQ
+  // address, render its identicon (the wallet's visual "this is who you're paying" cue);
+  // hide it again the moment the address is incomplete or invalid.
+  let sendIcnAddr = null;
+  async function refreshSendIdenticon() {
+    const box = document.getElementById('send-identicon');
+    if (!box) return;
+    const compact = cells.map((c) => c.value.trim().toUpperCase()).join('').replace(/[^0-9A-Z]/g, '');
+    const valid = /^NQ[0-9]{2}[0-9A-HJ-NP-VXY]{32}$/.test(compact);
+    if (!valid) { box.hidden = true; sendIcnAddr = null; return; }
+    if (compact === sendIcnAddr) { box.hidden = false; return; }
+    sendIcnAddr = compact;
+    const spaced = (compact.match(/.{1,4}/g) || []).join(' ');
+    try {
+      box.querySelector('img').src = await Iqons.toDataUrl(spaced);
+      box.hidden = false;
+    } catch (e) { box.hidden = true; }
+  }
   cells.forEach((c, i) => c.addEventListener('input', () => {
     c.value = c.value.toUpperCase();
     if (c.value.length >= 4 && i < cells.length - 1) cells[i + 1].focus();
+    refreshSendIdenticon();
   }));
   // Paste a whole address into ANY cell and it distributes across the grid (the same
   // convenience as the import sheet's paste-whole-phrase) - pairs with the tx-detail
@@ -2142,6 +2171,7 @@ Don't share them and keep them safe.</p>
     const blocks = compact.match(/.{1,4}/g) || [];
     cells.forEach((cell, i) => { cell.value = blocks[i] || ''; });
     cells[cells.length - 1].focus();
+    refreshSendIdenticon();
   }));
 
   // ---- Swap (slice 1): the wallet's swap anatomy + the mesh discovery step. The phase
@@ -2598,6 +2628,7 @@ Don't share them and keep them safe.</p>
     if (!scanned) { alert(T('scan.invalid')); return; }
     const blocks = scanned.address.match(/.{1,4}/g) || [];
     cells.forEach((c, i) => { c.value = blocks[i] || ''; });
+    refreshSendIdenticon();
     if (scanned.amount > 0) {
       const amt = document.getElementById('send-amount');
       amt.value = String(scanned.amount);
@@ -3097,6 +3128,9 @@ Don't share them and keep them safe.</p>
       if (!(window.nimmesh && nimmesh.meshQueryBalance)) return;
       try {
         nimmesh.meshQueryBalance().catch(() => {});
+        // Transactions over the mesh ride the same offline beat: query the gateway for
+        // the recent rows too (the answer arrives fragmented, a second or two later).
+        if (nimmesh.meshQueryHistory) nimmesh.meshQueryHistory().catch(() => {});
         const paintMesh = (mb) => {
           if (mb && mb.has && typeof mb.luna === 'number') {
             window.__lastLuna = mb.luna;
@@ -3104,9 +3138,20 @@ Don't share them and keep them safe.</p>
             try { localStorage.setItem(cacheKey('balance'), JSON.stringify({ luna: mb.luna, at: Date.now() })); } catch (e) {}
           }
         };
-        paintMesh(await nimmesh.meshCachedBalance());
-        setTimeout(async () => { try { paintMesh(await nimmesh.meshCachedBalance()); } catch (e) {} }, 1800);
-      } catch (e) { /* no mesh answer yet - keep the last shown balance */ }
+        const paintMeshHistory = async (mh) => {
+          if (!(mh && Array.isArray(mh.txs) && mh.txs.length)) return;
+          window.__lastTxs = mh.txs;
+          try { localStorage.setItem(cacheKey('txs'), JSON.stringify({ txs: mh.txs, at: Date.now() })); } catch (e) {}
+          const key = JSON.stringify(mh.txs.map((t) => [t.hash, t.confirmed]));
+          if (key !== lastHistoryKey) { lastHistoryKey = key; await renderHistory(mh.txs); }
+        };
+        const readMesh = async () => {
+          paintMesh(await nimmesh.meshCachedBalance());
+          if (nimmesh.meshCachedHistory) await paintMeshHistory(await nimmesh.meshCachedHistory());
+        };
+        await readMesh();
+        setTimeout(() => { readMesh().catch(() => {}); }, 2500);
+      } catch (e) { /* no mesh answer yet - keep the last shown data */ }
     }
     window.refreshWalletData = async function refreshWalletData() {
       let balanceLuna = 0;

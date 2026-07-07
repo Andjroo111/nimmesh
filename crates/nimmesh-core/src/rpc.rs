@@ -147,6 +147,24 @@ pub fn guard_testnet(url: &str, network: NetworkId) -> Result<(), RpcError> {
     Ok(())
 }
 
+/// One history row as the gateway reads it for a mesh `nimiqTxHistoryQuery` — public
+/// chain data only, shaped for the compact mesh record (`crate::tx_history`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RpcHistoryTx {
+    /// The tx hash (lowercase hex).
+    pub hash: String,
+    /// Sender in user-friendly `NQ…` form.
+    pub from: String,
+    /// Recipient in user-friendly `NQ…` form.
+    pub to: String,
+    /// Value in luna.
+    pub value: u64,
+    /// Chain timestamp in milliseconds.
+    pub timestamp_ms: u64,
+    /// The block it was included in, or `None` while pending.
+    pub block_number: Option<u32>,
+}
+
 /// The blocking JSON-RPC slice the gateway broadcast path needs. Kept as a trait so the
 /// engine/gateway depend only on this seam: tests inject [`MockRpc`] (offline,
 /// deterministic) and the live example injects [`HttpGatewayRpc`].
@@ -159,6 +177,16 @@ pub trait GatewayRpc: Send + Sync {
     fn send_raw_transaction(&self, raw_hex: &str) -> Result<String, RpcError>;
     /// Look a transaction up by hash; `None` until the node knows it.
     fn get_transaction(&self, hash: &str) -> Result<Option<RpcTransaction>, RpcError>;
+    /// Recent transactions for an address, newest first (read-only public state; feeds
+    /// the mesh history answer). Default: unsupported — only real gateway clients (and
+    /// the mock) serve history, so the trait addition is non-breaking for other impls.
+    fn get_transactions(&self, address: &str, max: u16) -> Result<Vec<RpcHistoryTx>, RpcError> {
+        let _ = (address, max);
+        Err(RpcError::Rpc {
+            method: "getTransactionsByAddress".to_string(),
+            message: "history unsupported by this RPC client".to_string(),
+        })
+    }
 }
 
 // --- MockRpc: the deterministic, always-compiled, offline fake -----------------------
@@ -183,6 +211,8 @@ pub struct MockRpc {
     sent: Mutex<Vec<String>>,
     /// Known transactions by hash (inclusion poll).
     txs: Mutex<HashMap<String, RpcTransaction>>,
+    /// History rows served for any address (test seed for the mesh history answer).
+    history: Mutex<Vec<RpcHistoryTx>>,
 }
 
 impl MockRpc {
@@ -194,7 +224,13 @@ impl MockRpc {
             transient: Mutex::new(None),
             sent: Mutex::new(Vec::new()),
             txs: Mutex::new(HashMap::new()),
+            history: Mutex::new(Vec::new()),
         }
+    }
+
+    /// Seed the history the mock serves for ANY address (`get_transactions`).
+    pub fn set_history(&self, rows: Vec<RpcHistoryTx>) {
+        *self.history.lock().unwrap() = rows;
     }
 
     /// Set the head height the node reports (drives the validity-window check).
@@ -291,6 +327,12 @@ impl GatewayRpc for MockRpc {
         self.transient_guard()?;
         Ok(self.txs.lock().unwrap().get(hash).cloned())
     }
+
+    fn get_transactions(&self, _address: &str, max: u16) -> Result<Vec<RpcHistoryTx>, RpcError> {
+        self.transient_guard()?;
+        let rows = self.history.lock().unwrap();
+        Ok(rows.iter().take(max as usize).cloned().collect())
+    }
 }
 
 // --- HttpGatewayRpc: the real blocking HTTP client (feature `gateway-rpc`) ------------
@@ -300,7 +342,8 @@ mod http {
     use std::time::Duration;
 
     use super::{
-        guard_testnet, GatewayRpc, RpcAccount, RpcError, RpcTransaction, DEFAULT_TESTNET_RPC_URL,
+        guard_testnet, GatewayRpc, RpcAccount, RpcError, RpcHistoryTx, RpcTransaction,
+        DEFAULT_TESTNET_RPC_URL,
     };
     use crate::NetworkId;
 
@@ -439,6 +482,32 @@ mod http {
                 .ok_or(RpcError::BadResponse {
                     method: "sendRawTransaction".to_string(),
                 })
+        }
+
+        fn get_transactions(&self, address: &str, max: u16) -> Result<Vec<RpcHistoryTx>, RpcError> {
+            let v = self.call(
+                "getTransactionsByAddress",
+                serde_json::json!([address, max, serde_json::Value::Null]),
+            )?;
+            let arr = v.as_array().ok_or(RpcError::BadResponse {
+                method: "getTransactionsByAddress".to_string(),
+            })?;
+            Ok(arr
+                .iter()
+                .filter_map(|t| {
+                    Some(RpcHistoryTx {
+                        hash: t.get("hash")?.as_str()?.to_string(),
+                        from: t.get("from")?.as_str()?.to_string(),
+                        to: t.get("to")?.as_str()?.to_string(),
+                        value: t.get("value").and_then(|x| x.as_u64()).unwrap_or(0),
+                        timestamp_ms: t.get("timestamp").and_then(|x| x.as_u64()).unwrap_or(0),
+                        block_number: t
+                            .get("blockNumber")
+                            .and_then(|x| x.as_u64())
+                            .map(|n| n as u32),
+                    })
+                })
+                .collect())
         }
 
         fn get_transaction(&self, hash: &str) -> Result<Option<RpcTransaction>, RpcError> {

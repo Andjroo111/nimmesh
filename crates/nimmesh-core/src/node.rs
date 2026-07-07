@@ -60,6 +60,8 @@ enum Job {
     BeaconTick,
     /// G15: flood a `nimiqBalanceQuery` for this address (asks any gateway for its balance).
     BalanceQuery(Address),
+    /// History over the mesh: flood a `nimiqTxHistoryQuery` for this address.
+    HistoryQuery(Address),
     /// G14 (test): register an initiator coordinator + flood its `Propose` (swap origination).
     #[cfg(test)]
     StartSwap {
@@ -100,7 +102,7 @@ pub(crate) fn to_tx_id(bytes: &[u8]) -> TxId {
 /// it drives; torn down with [`MeshNode::shutdown`] (also run on drop).
 #[derive(uniffi::Object)]
 pub struct MeshNode {
-    ctx: Arc<WorkerCtx>,
+    pub(crate) ctx: Arc<WorkerCtx>,
     /// `Mutex` makes the `Sender` `Sync` (UniFFI objects must be `Sync`) and lets
     /// shutdown drop it. `None` once shut down.
     job_tx: Mutex<Option<Sender<Job>>>,
@@ -153,6 +155,11 @@ fn run_worker(
             Job::BalanceQuery(addr) => {
                 let _ = catch_unwind(AssertUnwindSafe(|| {
                     flood_local_balance_query(&ctx, addr, &mut st);
+                }));
+            }
+            Job::HistoryQuery(addr) => {
+                let _ = catch_unwind(AssertUnwindSafe(|| {
+                    crate::tx_history::flood_local_history_query(&ctx, addr, &mut st);
                 }));
             }
             #[cfg(test)]
@@ -464,6 +471,14 @@ impl MeshNode {
         }
     }
 
+    /// History over the mesh: enqueue a `nimiqTxHistoryQuery` flood (the FFI in
+    /// `tx_history.rs` calls this; non-blocking, worker floods).
+    pub(crate) fn enqueue_history_query(&self, address: Address) {
+        if let Some(tx) = self.job_tx.lock().unwrap().as_ref() {
+            let _ = tx.send(Job::HistoryQuery(address));
+        }
+    }
+
     /// Shared constructor for the plain and gateway-enabled nodes. The `policy` carries
     /// the G6 relay tunables + injected RNG/jitter (production = real jitter + time seed;
     /// the harness/tests inject [`RelayPolicy::deterministic`] = zero sleep, fixed seed).
@@ -703,32 +718,7 @@ impl MeshNode {
     pub(crate) fn expired_dropped(&self) -> usize {
         self.ctx.expired_dropped()
     }
-    /// G12: `nimiqTx` packets dropped by the verify-before-relay spam filter.
-    #[cfg(test)]
-    pub(crate) fn verify_dropped(&self) -> usize {
-        self.ctx.verify_dropped()
-    }
-    /// G12: inbound frames dropped because the source peer exceeded its rate limit.
-    #[cfg(test)]
-    pub(crate) fn rate_limited(&self) -> usize {
-        self.ctx.rate_limited()
-    }
-    /// G12: `nimiqTx` packets not re-carried because their txId was already ACKed.
-    #[cfg(test)]
-    pub(crate) fn stop_after_ack(&self) -> usize {
-        self.ctx.stop_after_ack()
-    }
-    /// G15: `nimiqBalanceResponse` frames this gateway has answered + flooded.
-    #[cfg(test)]
-    pub(crate) fn balance_answered(&self) -> usize {
-        self.ctx.balance_answered()
-    }
-    /// G15: the last-known cached balance for a user-friendly address (test read).
-    #[cfg(test)]
-    pub(crate) fn test_cached_balance(&self, address: &str) -> Option<CachedBalance> {
-        let addr = Address::from_user_friendly(address).ok()?;
-        self.ctx.cached_balance(&addr)
-    }
+    // Test-only observability accessors live in `node_tests.rs` (800-line guard).
 }
 
 impl Drop for MeshNode {

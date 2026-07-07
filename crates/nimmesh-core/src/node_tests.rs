@@ -5,6 +5,8 @@
 
 use std::sync::Arc;
 
+use crate::balance::CachedBalance;
+use crate::nimiq::address::Address;
 use crate::node::{to_sender_id, to_tx_id, MeshNode};
 use crate::radio::BleRadio;
 use crate::relay::RelayPolicy;
@@ -112,4 +114,34 @@ fn id_helpers_truncate_and_pad() {
     let id = to_tx_id(&[7; 4]);
     assert_eq!(&id.0[..4], &[7, 7, 7, 7]);
     assert_eq!(id.0[4], 0);
+}
+
+// Test-only observability accessors, moved from `node.rs` for the 800-line guard.
+impl MeshNode {
+    /// G12: `nimiqTx` packets dropped by the verify-before-relay spam filter.
+    #[cfg(test)]
+    pub(crate) fn verify_dropped(&self) -> usize {
+        self.ctx.verify_dropped()
+    }
+    /// G12: inbound frames dropped because the source peer exceeded its rate limit.
+    #[cfg(test)]
+    pub(crate) fn rate_limited(&self) -> usize {
+        self.ctx.rate_limited()
+    }
+    /// G12: `nimiqTx` packets not re-carried because their txId was already ACKed.
+    #[cfg(test)]
+    pub(crate) fn stop_after_ack(&self) -> usize {
+        self.ctx.stop_after_ack()
+    }
+    /// G15: `nimiqBalanceResponse` frames this gateway has answered + flooded.
+    #[cfg(test)]
+    pub(crate) fn balance_answered(&self) -> usize {
+        self.ctx.balance_answered()
+    }
+    /// G15: the last-known cached balance for a user-friendly address (test read).
+    #[cfg(test)]
+    pub(crate) fn test_cached_balance(&self, address: &str) -> Option<CachedBalance> {
+        let addr = Address::from_user_friendly(address).ok()?;
+        self.ctx.cached_balance(&addr)
+    }
 }
