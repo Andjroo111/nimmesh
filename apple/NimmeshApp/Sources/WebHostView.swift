@@ -283,27 +283,55 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             guard let h = try? await NimiqRpc.headHeight() else { return (false, "head fetch failed") }
             return (true, ["height": Int(h)])
         case "walletBalance":
+            // Offline continuity lives NATIVELY: a successful read updates the UserDefaults
+            // cache; a failed read (offline) answers with the last-known balance instead of
+            // pretending the wallet is empty. NimiqRpc.balance now THROWS on failure — it
+            // used to return 0, which made Bluetooth-only mode render "0 NIM" as if real.
             guard let addr = Wallet.address() else { return (false, "no wallet") }
-            return (true, ["luna": Int(await NimiqRpc.balance(addr))])
+            let balKey = "nimmesh.cache.balance." + addr.replacingOccurrences(of: " ", with: "")
+            do {
+                let luna = try await NimiqRpc.balance(addr)
+                UserDefaults.standard.set(Int(luna), forKey: balKey)
+                return (true, ["luna": Int(luna)])
+            } catch {
+                if UserDefaults.standard.object(forKey: balKey) != nil {
+                    return (true, ["luna": UserDefaults.standard.integer(forKey: balKey), "cached": true])
+                }
+                return (false, "\(error)")
+            }
         case "walletHistory":
             // Real on-chain history for this wallet, normalised for the UI: direction +
             // counterparty + confirmed are decided here (the seed never crosses; this is all
-            // public chain data). Newest first, capped.
+            // public chain data). Newest first, capped. Same native offline continuity as
+            // walletBalance: NimiqRpc.transactions now THROWS on failure (it used to return
+            // [], which rendered — and cached — an empty history whenever the network died).
             guard let addr = Wallet.address() else { return (false, "no wallet") }
             let selfCompact = addr.replacingOccurrences(of: " ", with: "").uppercased()
-            let txs: [[String: Any]] = (await NimiqRpc.transactions(addr, max: 20)).map { t in
-                let to = (t["to"] as? String ?? "").replacingOccurrences(of: " ", with: "").uppercased()
-                let incoming = (to == selfCompact)
-                return [
-                    "hash": t["hash"] as? String ?? "",
-                    "counterparty": incoming ? (t["from"] as? String ?? "") : (t["to"] as? String ?? ""),
-                    "valueLuna": (t["value"] as? NSNumber)?.intValue ?? 0,
-                    "timestamp": (t["timestamp"] as? NSNumber)?.doubleValue ?? 0,
-                    "incoming": incoming,
-                    "confirmed": ((t["blockNumber"] as? NSNumber)?.intValue ?? 0) > 0,
-                ]
+            let txsKey = "nimmesh.cache.txs." + addr.replacingOccurrences(of: " ", with: "")
+            do {
+                let txs: [[String: Any]] = try await NimiqRpc.transactions(addr, max: 20).map { t in
+                    let to = (t["to"] as? String ?? "").replacingOccurrences(of: " ", with: "").uppercased()
+                    let incoming = (to == selfCompact)
+                    return [
+                        "hash": t["hash"] as? String ?? "",
+                        "counterparty": incoming ? (t["from"] as? String ?? "") : (t["to"] as? String ?? ""),
+                        "valueLuna": (t["value"] as? NSNumber)?.intValue ?? 0,
+                        "timestamp": (t["timestamp"] as? NSNumber)?.doubleValue ?? 0,
+                        "incoming": incoming,
+                        "confirmed": ((t["blockNumber"] as? NSNumber)?.intValue ?? 0) > 0,
+                    ]
+                }
+                if let d = try? JSONSerialization.data(withJSONObject: txs) {
+                    UserDefaults.standard.set(d, forKey: txsKey)
+                }
+                return (true, ["txs": txs])
+            } catch {
+                if let d = UserDefaults.standard.data(forKey: txsKey),
+                   let cached = (try? JSONSerialization.jsonObject(with: d)) as? [[String: Any]] {
+                    return (true, ["txs": cached, "cached": true])
+                }
+                return (false, "\(error)")
             }
-            return (true, ["txs": txs])
         case "sendTransaction":
             let a = args as? [String: Any] ?? [:]
             guard let recipient = a["recipient"] as? String, !recipient.isEmpty else {
@@ -507,6 +535,11 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             Wallet.delete()
             UserDefaults.standard.set(false, forKey: Bridge.recoveredWalletKey)
             UserDefaults.standard.set(false, forKey: Bridge.backedUpKey)
+            // The cached last-known balance/history belong to the removed wallet.
+            for key in UserDefaults.standard.dictionaryRepresentation().keys
+            where key.hasPrefix("nimmesh.cache.") {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
             return (true, ["deleted": true])
         case "backupCodes":
             // The two XOR backup codes (either alone is useless; both recover the wallet).

@@ -2,6 +2,24 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.53.3] — 2026-07-06
+
+### Fixed — the REAL cause of the blank offline wallet: the RPC layer lied
+
+0.53.2's cache never got a chance: `NimiqRpc.balance` returned **0** and
+`NimiqRpc.transactions` returned **[]** on ANY failure — so going offline looked like
+a *successful* fetch of an empty wallet. The UI rendered 0 NIM / no history and the
+cache was overwritten with the empty data. (The 0.53.2 verification mocked rejecting
+reads, which is not what the device does — lesson recorded.)
+
+- `NimiqRpc.balance` / `transactions` now **throw** on transport/RPC failure — offline
+  is no longer indistinguishable from "0 NIM, no transactions".
+- The last-known balance + history now live in a **native UserDefaults cache** (keyed
+  by wallet address, cleared on wallet deletion): a successful read updates it, a
+  failed read answers with it (`cached: true`), so the webui renders last-known data
+  with zero reliance on web storage surviving a relaunch.
+- The 0.53.2 localStorage layer stays as an in-session belt-and-suspenders.
+
 ## [0.53.2] — 2026-07-06
 
 ### Fixed — Bluetooth-only launches showed a blank wallet (no balance, no history)

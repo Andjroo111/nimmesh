@@ -70,23 +70,26 @@ enum NimiqRpc {
         return true
     }
 
-    /// An account's balance in luna (0 if unknown / unfunded). Uses `getAccountByAddress`
-    /// (the endpoint rejects `getAccount`).
-    static func balance(_ address: String) async -> UInt64 {
+    /// An account's balance in luna. **Throws on any transport/RPC failure** — offline must
+    /// be distinguishable from "0 NIM", or the UI shows an empty wallet whenever the network
+    /// is down (the bug Andjroo hit in the Bluetooth-only test). A genuinely unfunded/unknown
+    /// account still reads as 0 from a successful call. Uses `getAccountByAddress`.
+    static func balance(_ address: String) async throws -> UInt64 {
         let compact = address.replacingOccurrences(of: " ", with: "")
-        guard let obj = (try? await call("getAccountByAddress", [compact])) as? [String: Any],
+        guard let obj = (try await call("getAccountByAddress", [compact])) as? [String: Any],
               let b = obj["balance"] as? NSNumber
-        else { return 0 }
+        else { throw RpcError(message: "getAccountByAddress: unexpected result shape") }
         return b.uint64Value
     }
 
-    /// An address's recent transactions, newest first (empty on error / none). Uses
-    /// `getTransactionsByAddress(address, max, start_at)` — `start_at` is `null` for the head.
-    /// Each element is the raw RPC tx object (hash/from/to/value/timestamp/blockNumber/…).
-    static func transactions(_ address: String, max: Int = 20) async -> [[String: Any]] {
+    /// An address's recent transactions, newest first. **Throws on any transport/RPC
+    /// failure** (same honesty as `balance` — offline is not "no transactions"). Uses
+    /// `getTransactionsByAddress(address, max, start_at)` — `start_at` is `null` for the
+    /// head. Each element is the raw RPC tx object (hash/from/to/value/timestamp/…).
+    static func transactions(_ address: String, max: Int = 20) async throws -> [[String: Any]] {
         let compact = address.replacingOccurrences(of: " ", with: "")
-        guard let arr = (try? await call("getTransactionsByAddress", [compact, max, NSNull()])) as? [[String: Any]]
-        else { return [] }
+        guard let arr = (try await call("getTransactionsByAddress", [compact, max, NSNull()])) as? [[String: Any]]
+        else { throw RpcError(message: "getTransactionsByAddress: unexpected result shape") }
         return arr
     }
 
