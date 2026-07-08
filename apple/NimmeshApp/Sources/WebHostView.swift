@@ -204,7 +204,12 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         swapMeshStop: function () { return call('swapMeshStop'); },
         // Public mesh chat (0x50): broadcast text over BLE; the rolling heard/sent log.
         sendChat: function (nick, text) { return call('sendChat', { nickname: nick, text: text }); },
-        chatMessages: function () { return call('chatMessages'); }
+        chatMessages: function () { return call('chatMessages'); },
+        // Cashlinks: NIM as a URL (official hub format — any browser claims). The wallet
+        // funds a fresh single-use key; the link is cash — whoever holds it can claim.
+        cashlinkCreate: function (a) { return call('cashlinkCreate', a || {}); },
+        cashlinkList: function () { return call('cashlinkList'); },
+        cashlinkStatus: function (addr) { return call('cashlinkStatus', { address: addr }); }
       };
     })();
     """
@@ -218,7 +223,7 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         // when they complete. Everything else is synchronous (pure-core reads).
         switch method {
         case "headHeight", "walletBalance", "walletHistory", "sendTransaction", "meshSendTransaction",
-             "prices", "market", "swapMeshStart":
+             "prices", "market", "swapMeshStart", "cashlinkCreate", "cashlinkStatus":
             Task { let (ok, payload) = await self.handleAsync(method: method, args: args)
                 self.resolve(id: id, ok: ok, payload: payload) }
         case "authenticate":
@@ -447,6 +452,10 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         case "swapMeshStart":
             // The over-the-mesh swap demo: swaps the node onto TESTNET as a participant.
             return await swapMeshStart(args: args)
+        case "cashlinkCreate":
+            return await cashlinkCreate(args: args)
+        case "cashlinkStatus":
+            return await cashlinkStatus(args: args)
         default:
             return (false, "unknown async method: \(method)")
         }
@@ -476,6 +485,8 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             return swapMeshStatus()
         case "swapMeshStop":
             return swapMeshStop()
+        case "cashlinkList":
+            return cashlinkList()
         case "sendChat":
             // Public mesh chat: text + chosen nickname flood to everyone nearby (0x50).
             // Nothing but text crosses — no keys, no addresses, not money-path.

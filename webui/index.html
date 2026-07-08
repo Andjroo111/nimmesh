@@ -605,6 +605,42 @@
     background-image: var(--nimiq-light-blue-bg, radial-gradient(100% 100% at bottom right, #265DD7, #0582CA)); }
   .chat-send-btn:disabled { opacity: .4; }
   .chat-send-btn svg { width: 18px; height: 18px; }
+
+  /* ---- Cash link sheet: NIM as a URL/QR, hub-claimable in any browser ---- */
+  #cashlink-sheet { overflow-x: hidden; }
+  .cl-body { padding: 6px 24px calc(18px + env(safe-area-inset-bottom)); max-height: 66vh; overflow-y: auto; overflow-x: hidden; }
+  .cl-amount { display: flex; align-items: baseline; justify-content: center; gap: 8px; margin: 14px 0 2px; }
+  .cl-amount input { width: 5ch; border: none; outline: none; font: inherit; font-size: 40px; font-weight: 700;
+    color: #1f2348; text-align: right; background: none; }
+  .cl-amount .cur { font-size: 20px; font-weight: 700; color: rgba(31,35,72,.5); }
+  .cl-fiat { text-align: center; font-size: 13px; color: rgba(31,35,72,.5); min-height: 17px; }
+  .cl-msg { display: block; width: 100%; box-sizing: border-box; margin: 14px 0 0; border: 1.5px solid rgba(31,35,72,.16);
+    border-radius: 12px; padding: 10px 14px; font: inherit; font-size: 16px; color: #1f2348; outline: none; }
+  .cl-msg:focus { border-color: #0582CA; }
+  .cl-note { margin: 12px 0 0; text-align: center; font-size: 12px; font-weight: 700; letter-spacing: .04em;
+    text-transform: uppercase; color: #E9B213; }
+  .cl-mesh-row { display: flex; align-items: center; gap: 10px; margin: 12px 2px 0; font-size: 14px; color: #1f2348; }
+  .cl-mesh-row[hidden] { display: none; }
+  .cl-qr-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 12px; }
+  .cl-link { font-family: 'Fira Mono', monospace; font-size: 11.5px; color: rgba(31,35,72,.65); word-break: break-all;
+    background: #f4f4f6; border-radius: 10px; padding: 8px 10px; max-height: 58px; overflow: hidden; }
+  .cl-actions { display: flex; gap: 8px; margin-top: 12px; }
+  .cl-actions button { flex: 1; border: 1.5px solid rgba(31,35,72,.16); background: #fff; border-radius: 999px;
+    padding: 10px 4px; font: inherit; font-size: 13.5px; font-weight: 700; color: #1f2348; cursor: pointer; }
+  .cl-actions button.primary { border: 0; color: #fff;
+    background-image: var(--nimiq-light-blue-bg, radial-gradient(100% 100% at bottom right, #265DD7, #0582CA)); }
+  .cl-status { text-align: center; font-size: 13px; color: rgba(31,35,72,.55); margin-top: 10px; min-height: 17px; }
+  .cl-list-title { margin: 18px 0 4px; font-size: 12px; font-weight: 800; letter-spacing: .06em;
+    text-transform: uppercase; color: rgba(31,35,72,.45); }
+  .cl-row { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: none; padding: 10px 2px;
+    border-top: 1px solid rgba(31,35,72,.08); font: inherit; color: #1f2348; cursor: pointer; text-align: left; }
+  .cl-row .amt { font-weight: 700; }
+  .cl-row .when { margin-left: auto; font-size: 12px; color: rgba(31,35,72,.45); }
+  .cl-row .chip { font-size: 10.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+    border-radius: 999px; padding: 3px 8px; background: #f1f1f4; color: rgba(31,35,72,.55); }
+  .cl-row .chip.open { background: rgba(33,188,165,.12); color: #21BCA5; }
+  .cl-row .chip.claimed { background: rgba(31,35,72,.08); }
+  #cl-create[hidden], #cl-result[hidden] { display: none !important; }
   .swap-discovery svg { width: 44px; height: 44px; color: var(--nimiq-green, #21bca5); }
   .swap-discovery h3 { margin: 0; font-size: 18px; font-weight: 700; color: #1f2348; }
   .swap-discovery p { margin: 0; font-size: 14.5px; line-height: 1.45; color: rgba(31,35,72,.55); }
@@ -1035,6 +1071,7 @@
     <span data-wallet-label>Mesh Wallet</span>
   </button>
   <button class="sm-row" id="menu-chat"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M21 12a8 8 0 0 1-8 8H4.5l2-2.7A8 8 0 1 1 21 12z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8.5 10.5h7M8.5 13.5h4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span data-i18n="chat.menu">Messages</span></button>
+  <button class="sm-row" id="menu-cashlink"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M10 14a4.2 4.2 0 0 0 6 0l3.2-3.2a4.24 4.24 0 1 0-6-6L11.6 6.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M14 10a4.2 4.2 0 0 0-6 0l-3.2 3.2a4.24 4.24 0 1 0 6 6l1.6-1.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span data-i18n="cl.menu">Cash Links</span></button>
   <button class="sm-row" id="menu-invite"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M12 3v12M7.5 7.5 12 3l4.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="nw.invite">Invite friends to the mesh</span></button>
   <button class="sm-row" id="menu-network"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 12h17M12 3.2c-5.6 5.4-5.6 12.2 0 17.6M12 3.2c5.6 5.4 5.6 12.2 0 17.6" stroke="currentColor" stroke-width="1.6"/></svg><span data-i18n="menu.network">Network</span></button>
   <button class="sm-row" id="menu-settings"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.8"/><path d="M12 2.8l1.2 2.6 2.8-.6 1 2.7 2.8.7-.6 2.8 2 2-2 2 .6 2.8-2.8.7-1 2.7-2.8-.6L12 21.2l-1.2-2.6-2.8.6-1-2.7-2.8-.7.6-2.8-2-2 2-2-.6-2.8 2.8-.7 1-2.7 2.8.6z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg><span data-i18n="set.title">Settings</span></button>
@@ -1633,6 +1670,42 @@ Don't share them and keep them safe.</p>
   </div>
 </section>
 
+<!-- Cash link sheet: NIM that travels as text — a fresh single-use key funded by the
+     wallet, claimable at hub.nimiq.com in any browser. A link is cash: say so. -->
+<section class="sheet" id="cashlink-sheet" aria-label="Cash links">
+  <div class="sheet-header">
+    <div class="title" data-i18n="cl.title">Cash Links</div>
+    <button class="s-close sheet-close" aria-label="Close"><svg viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+  </div>
+  <div class="cl-body">
+    <div id="cl-create">
+      <div class="cl-amount"><input id="cl-amount" inputmode="numeric" placeholder="0" aria-label="Amount in NIM"><span class="cur">NIM</span></div>
+      <div class="cl-fiat" id="cl-fiat"></div>
+      <input class="cl-msg" id="cl-msg" maxlength="64" placeholder="Message (optional)" data-i18n-ph="cl.msg">
+      <label class="cl-mesh-row" id="cl-mesh-row" hidden><input type="checkbox" id="cl-mesh"><span data-i18n="cl.mesh">Fund over Bluetooth mesh</span></label>
+      <button class="send-btn" id="cl-create-btn" data-i18n="cl.create">Create cash link</button>
+      <p class="cl-note" data-i18n="cl.cash">A link is cash — anyone holding it can claim</p>
+      <div class="cl-status" id="cl-create-status"></div>
+      <div class="cl-list-title" data-i18n="cl.yours">Your cash links</div>
+      <div id="cl-list"></div>
+    </div>
+    <div id="cl-result" hidden>
+      <div class="cl-qr-wrap">
+        <canvas id="cl-qr" width="220" height="220"></canvas>
+        <div class="cl-fiat" id="cl-result-amt"></div>
+      </div>
+      <div class="cl-link" id="cl-link"></div>
+      <div class="cl-actions">
+        <button class="primary" id="cl-share" data-i18n="cl.share">Share</button>
+        <button id="cl-copy" data-i18n="cl.copy">Copy</button>
+        <button id="cl-tochat" data-i18n="cl.tochat">To chat</button>
+      </div>
+      <div class="cl-status" id="cl-status"></div>
+      <button class="send-btn" id="cl-back" data-i18n="cl.newlink">New cash link</button>
+    </div>
+  </div>
+</section>
+
 <!-- Account sheet: the wallet-pill replacement — your identicon opens YOUR account
      (address / copy / backup / log out), like the real wallet's account menu. -->
 <section class="sheet" id="account-sheet" aria-label="My account">
@@ -1726,6 +1799,14 @@ Don't share them and keep them safe.</p>
       'chat.menu': 'Mensajes', 'chat.title': 'Mensajes de la malla', 'chat.ph': 'Mensaje a la malla…',
       'chat.public': 'Público — toda la malla puede leerlo',
       'chat.empty': 'Aún no hay mensajes. Cualquiera en la malla cerca de ti verá lo que envíes.',
+      'cl.menu': 'Enlaces de dinero', 'cl.title': 'Enlaces de dinero', 'cl.msg': 'Mensaje (opcional)',
+      'cl.mesh': 'Financiar por malla Bluetooth', 'cl.create': 'Crear enlace', 'cl.creating': 'Creando y financiando…',
+      'cl.cash': 'Un enlace es efectivo — quien lo tenga puede cobrarlo', 'cl.yours': 'Tus enlaces',
+      'cl.share': 'Compartir', 'cl.copy': 'Copiar', 'cl.tochat': 'Al chat', 'cl.newlink': 'Nuevo enlace',
+      'cl.funded': 'Financiado — listo para compartir', 'cl.fundedmesh': 'Enviado por la malla — entregándose',
+      'cl.unclaimed': 'Sin cobrar — listo para compartir', 'cl.claimed': 'Cobrado ✓', 'cl.copied': 'Copiado',
+      'cl.none': 'Todavía no hay enlaces', 'cl.chip.open': 'abierto', 'cl.chip.claimed': 'cobrado',
+      'cl.sharetext': 'NIM para ti — abre el enlace para cobrarlo:',
       'swap.ph.propose': 'Propuesta enviada', 'swap.ph.accept': 'Socio aceptó', 'swap.ph.fundnim': 'HTLC de NIM fondeado',
       'swap.ph.fundother': 'HTLC del socio fondeado', 'swap.ph.reveal': 'Secreto revelado', 'swap.ph.settled': 'Liquidado',
       'intro.title': '¡No hay recuperación de contraseña!', 'intro.warn': 'Las palabras de recuperación son la ÚNICA forma de restaurar tu cartera si pierdes este teléfono.',
@@ -1777,6 +1858,14 @@ Don't share them and keep them safe.</p>
       'chat.menu': 'Nachrichten', 'chat.title': 'Mesh-Nachrichten', 'chat.ph': 'Nachricht ans Mesh…',
       'chat.public': 'Öffentlich — das ganze Mesh kann mitlesen',
       'chat.empty': 'Noch keine Nachrichten. Jeder im Mesh in deiner Nähe sieht, was du sendest.',
+      'cl.menu': 'Cash-Links', 'cl.title': 'Cash-Links', 'cl.msg': 'Nachricht (optional)',
+      'cl.mesh': 'Über Bluetooth-Mesh finanzieren', 'cl.create': 'Cash-Link erstellen', 'cl.creating': 'Erstellen + finanzieren…',
+      'cl.cash': 'Ein Link ist Bargeld — wer ihn hat, kann ihn einlösen', 'cl.yours': 'Deine Cash-Links',
+      'cl.share': 'Teilen', 'cl.copy': 'Kopieren', 'cl.tochat': 'In den Chat', 'cl.newlink': 'Neuer Cash-Link',
+      'cl.funded': 'Finanziert — bereit zum Teilen', 'cl.fundedmesh': 'Über das Mesh gesendet — wird zugestellt',
+      'cl.unclaimed': 'Nicht eingelöst — bereit zum Teilen', 'cl.claimed': 'Eingelöst ✓', 'cl.copied': 'Kopiert',
+      'cl.none': 'Noch keine Cash-Links', 'cl.chip.open': 'offen', 'cl.chip.claimed': 'eingelöst',
+      'cl.sharetext': 'NIM für dich — Link öffnen und einlösen:',
       'swap.ph.propose': 'Vorschlag gesendet', 'swap.ph.accept': 'Partner hat angenommen', 'swap.ph.fundnim': 'NIM-HTLC finanziert',
       'swap.ph.fundother': 'Partner-HTLC finanziert', 'swap.ph.reveal': 'Geheimnis enthüllt', 'swap.ph.settled': 'Abgewickelt',
       'intro.title': 'Es gibt keine Passwort-Wiederherstellung!', 'intro.warn': 'Die Wiederherstellungswörter sind der EINZIGE Weg, deine Wallet wiederherzustellen, falls dieses Handy verloren geht.',
@@ -1828,6 +1917,14 @@ Don't share them and keep them safe.</p>
       'chat.menu': 'Messages', 'chat.title': 'Messages du mesh', 'chat.ph': 'Message au mesh…',
       'chat.public': 'Public — tout le mesh peut le lire',
       'chat.empty': 'Pas encore de messages. Tout le monde sur le mesh autour de vous verra ce que vous envoyez.',
+      'cl.menu': 'Liens cash', 'cl.title': 'Liens cash', 'cl.msg': 'Message (optionnel)',
+      'cl.mesh': 'Financer via le mesh Bluetooth', 'cl.create': 'Créer un lien cash', 'cl.creating': 'Création + financement…',
+      'cl.cash': 'Un lien est du liquide — quiconque le détient peut l\'encaisser', 'cl.yours': 'Vos liens cash',
+      'cl.share': 'Partager', 'cl.copy': 'Copier', 'cl.tochat': 'Vers le chat', 'cl.newlink': 'Nouveau lien',
+      'cl.funded': 'Financé — prêt à partager', 'cl.fundedmesh': 'Envoyé via le mesh — en cours',
+      'cl.unclaimed': 'Non encaissé — prêt à partager', 'cl.claimed': 'Encaissé ✓', 'cl.copied': 'Copié',
+      'cl.none': 'Pas encore de liens', 'cl.chip.open': 'ouvert', 'cl.chip.claimed': 'encaissé',
+      'cl.sharetext': 'Du NIM pour vous — ouvrez le lien pour l\'encaisser :',
       'swap.ph.propose': 'Proposition envoyée', 'swap.ph.accept': 'Partenaire a accepté', 'swap.ph.fundnim': 'HTLC NIM financé',
       'swap.ph.fundother': 'HTLC du partenaire financé', 'swap.ph.reveal': 'Secret révélé', 'swap.ph.settled': 'Réglé',
       'intro.title': 'Il n’y a pas de récupération de mot de passe !', 'intro.warn': 'Les mots de récupération sont le SEUL moyen de restaurer ton portefeuille si tu perds ce téléphone.',
@@ -1879,6 +1976,14 @@ Don't share them and keep them safe.</p>
       'chat.menu': 'Mensagens', 'chat.title': 'Mensagens da mesh', 'chat.ph': 'Mensagem para a mesh…',
       'chat.public': 'Público — toda a mesh pode ler',
       'chat.empty': 'Ainda sem mensagens. Qualquer pessoa na mesh perto de você verá o que enviar.',
+      'cl.menu': 'Links de dinheiro', 'cl.title': 'Links de dinheiro', 'cl.msg': 'Mensagem (opcional)',
+      'cl.mesh': 'Financiar pela mesh Bluetooth', 'cl.create': 'Criar link', 'cl.creating': 'Criando e financiando…',
+      'cl.cash': 'Um link é dinheiro — quem o tiver pode resgatar', 'cl.yours': 'Seus links',
+      'cl.share': 'Compartilhar', 'cl.copy': 'Copiar', 'cl.tochat': 'Para o chat', 'cl.newlink': 'Novo link',
+      'cl.funded': 'Financiado — pronto para compartilhar', 'cl.fundedmesh': 'Enviado pela mesh — entregando',
+      'cl.unclaimed': 'Não resgatado — pronto para compartilhar', 'cl.claimed': 'Resgatado ✓', 'cl.copied': 'Copiado',
+      'cl.none': 'Ainda sem links', 'cl.chip.open': 'aberto', 'cl.chip.claimed': 'resgatado',
+      'cl.sharetext': 'NIM para você — abra o link para resgatar:',
       'swap.ph.propose': 'Proposta enviada', 'swap.ph.accept': 'Parceiro aceitou', 'swap.ph.fundnim': 'HTLC de NIM financiado',
       'swap.ph.fundother': 'HTLC do parceiro financiado', 'swap.ph.reveal': 'Segredo revelado', 'swap.ph.settled': 'Liquidado',
       'intro.title': 'Não existe recuperação de senha!', 'intro.warn': 'As palavras de recuperação são a ÚNICA forma de restaurar sua carteira se você perder este telefone.',
@@ -1922,6 +2027,14 @@ Don't share them and keep them safe.</p>
     'chat.menu': 'Messages', 'chat.title': 'Mesh Messages', 'chat.ph': 'Message the mesh…',
     'chat.public': 'Public — everyone on the mesh can read it',
     'chat.empty': 'No messages yet. Anyone on the mesh around you will see what you send.',
+    'cl.menu': 'Cash Links', 'cl.title': 'Cash Links', 'cl.msg': 'Message (optional)',
+    'cl.mesh': 'Fund over Bluetooth mesh', 'cl.create': 'Create cash link', 'cl.creating': 'Creating + funding…',
+    'cl.cash': 'A link is cash — anyone holding it can claim', 'cl.yours': 'Your cash links',
+    'cl.share': 'Share', 'cl.copy': 'Copy', 'cl.tochat': 'To chat', 'cl.newlink': 'New cash link',
+    'cl.funded': 'Funded — ready to share', 'cl.fundedmesh': 'Sent over the mesh — delivering',
+    'cl.unclaimed': 'Unclaimed — ready to share', 'cl.claimed': 'Claimed ✓', 'cl.copied': 'Copied',
+    'cl.none': 'No cash links yet', 'cl.chip.open': 'open', 'cl.chip.claimed': 'claimed',
+    'cl.sharetext': 'NIM for you — open the link to claim it:',
     'swap.ph.propose': 'Proposal sent', 'swap.ph.accept': 'Partner accepted', 'swap.ph.fundnim': 'NIM HTLC funded',
     'swap.ph.fundother': 'Partner HTLC funded', 'swap.ph.reveal': 'Secret revealed', 'swap.ph.settled': 'Settled',
   };
@@ -1972,6 +2085,7 @@ Don't share them and keep them safe.</p>
     account: document.getElementById('account-sheet'), lang: document.getElementById('lang-sheet'),
     swap: document.getElementById('swap-sheet'), settings: document.getElementById('settings-sheet'),
     txd: document.getElementById('txd-sheet'), chat: document.getElementById('chat-sheet'),
+    cashlink: document.getElementById('cashlink-sheet'),
   };
   const open = (k) => { backdrop.classList.add('open'); sheets[k].classList.add('open'); };
   const close = () => { backdrop.classList.remove('open'); Object.values(sheets).forEach(s => s.classList.remove('open')); };
@@ -2065,6 +2179,139 @@ Don't share them and keep them safe.</p>
     open('chat');
     pollChat();
     if (!chatPoll) chatPoll = setInterval(pollChat, 2500);
+  });
+
+  // ---- Cash links: NIM as a URL (hub-claimable in any browser), QR + share + chat ----
+  const clLocal = [];   // browser fallback so the sheet demos without the bridge
+  let clCurrent = null; // the record shown in the result view
+  function clFmtNim(luna) { return `${(luna / 1e5).toLocaleString()} NIM`; }
+  function clRenderQR(data) {
+    const c = document.getElementById('cl-qr');
+    if (!c || typeof QrCreator === 'undefined') return;
+    const cssSize = 220;
+    const ratio = Math.min(3, window.devicePixelRatio || 1);
+    c.width = cssSize * ratio; c.height = cssSize * ratio;
+    c.style.width = `${cssSize}px`; c.style.height = `${cssSize}px`;
+    QrCreator.render({ text: data, radius: 0.5, ecLevel: 'M',
+      fill: '#1f2348', background: null, size: cssSize * ratio }, c);
+  }
+  function clShowResult(rec) {
+    clCurrent = rec;
+    document.getElementById('cl-create').hidden = true;
+    document.getElementById('cl-result').hidden = false;
+    document.getElementById('cl-result-amt').textContent =
+      clFmtNim(rec.amountLuna) + (rec.message ? ` · ${rec.message}` : '');
+    document.getElementById('cl-link').textContent = rec.url;
+    document.getElementById('cl-status').textContent =
+      rec.viaMesh ? T('cl.fundedmesh') : T('cl.funded');
+    clRenderQR(rec.url);
+    // Live claim status when online: funded balance still on the link = unclaimed.
+    if (window.nimmesh && window.nimmesh.cashlinkStatus) {
+      window.nimmesh.cashlinkStatus(rec.address).then((s) => {
+        if (clCurrent !== rec) return;
+        document.getElementById('cl-status').textContent =
+          s.balanceLuna > 0 ? T('cl.unclaimed') : T('cl.claimed');
+      }).catch(() => {});
+    }
+  }
+  function clShowCreate() {
+    clCurrent = null;
+    document.getElementById('cl-result').hidden = true;
+    document.getElementById('cl-create').hidden = false;
+    clRefreshList();
+  }
+  async function clRefreshList() {
+    let links = clLocal;
+    if (window.nimmesh && window.nimmesh.cashlinkList) {
+      try { links = (await window.nimmesh.cashlinkList()).links || []; } catch (e) { links = []; }
+    }
+    const fmt = (t) => new Date(t * 1000).toLocaleDateString();
+    document.getElementById('cl-list').innerHTML = links.length === 0
+      ? `<div class="cl-status">${T('cl.none')}</div>`
+      : links.map((l, i) =>
+        `<button class="cl-row" data-i="${i}"><span class="amt">${clFmtNim(l.amountLuna)}</span>` +
+        `<span class="chip open" data-addr="${chatEsc(l.address)}">·</span>` +
+        `<span class="when">${fmt(l.createdAt)}</span></button>`).join('');
+    document.querySelectorAll('#cl-list .cl-row').forEach((b) =>
+      b.addEventListener('click', () => clShowResult(links[Number(b.dataset.i)])));
+    // Lazily resolve claim chips when online (balance>0 = still unclaimed).
+    if (window.nimmesh && window.nimmesh.cashlinkStatus) {
+      document.querySelectorAll('#cl-list .chip[data-addr]').forEach((chip) => {
+        window.nimmesh.cashlinkStatus(chip.dataset.addr).then((s) => {
+          chip.textContent = s.balanceLuna > 0 ? T('cl.chip.open') : T('cl.chip.claimed');
+          chip.classList.toggle('claimed', !(s.balanceLuna > 0));
+        }).catch(() => { chip.textContent = '·'; });
+      });
+    }
+  }
+  const clAmountEl = document.getElementById('cl-amount');
+  clAmountEl.addEventListener('input', () => {
+    clAmountEl.style.width = `${Math.max(1, String(clAmountEl.value || '0').length) + 0.4}ch`;
+    const nim = parseFloat(clAmountEl.value) || 0;
+    document.getElementById('cl-fiat').textContent = nim > 0 ? fiatText(nim * 1e5) : '';
+  });
+  document.getElementById('cl-create-btn').addEventListener('click', async () => {
+    const nim = parseFloat(clAmountEl.value);
+    if (!(nim > 0)) { alert(T('send.needamount')); return; }
+    const status = document.getElementById('cl-create-status');
+    status.textContent = T('cl.creating');
+    const args = {
+      amountLuna: Math.round(nim * 1e5),
+      message: document.getElementById('cl-msg').value.trim(),
+      mesh: document.getElementById('cl-mesh').checked,
+    };
+    if (window.nimmesh && window.nimmesh.cashlinkCreate) {
+      try {
+        const rec = await window.nimmesh.cashlinkCreate(args);
+        status.textContent = '';
+        clAmountEl.value = ''; document.getElementById('cl-msg').value = '';
+        clShowResult(rec);
+      } catch (e) {
+        status.textContent = String((e && e.message) || e);
+      }
+      return;
+    }
+    // Browser demo: a fake record so the flow is testable without the bridge.
+    const rec = { url: 'https://hub.nimiq.com/cashlink/#demo-not-real', address: 'NQ00 DEMO',
+      amountLuna: args.amountLuna, message: args.message,
+      createdAt: Date.now() / 1000, txHash: 'demo', viaMesh: false };
+    clLocal.unshift(rec);
+    status.textContent = '';
+    clShowResult(rec);
+  });
+  document.getElementById('cl-share').addEventListener('click', () => {
+    if (!clCurrent) return;
+    if (window.nimmesh && window.nimmesh.share) {
+      window.nimmesh.share(T('cl.sharetext'), clCurrent.url);
+    } else if (navigator.share) { navigator.share({ url: clCurrent.url }).catch(() => {}); }
+  });
+  document.getElementById('cl-copy').addEventListener('click', async () => {
+    if (!clCurrent) return;
+    try { await navigator.clipboard.writeText(clCurrent.url); } catch (e) {}
+    document.getElementById('cl-status').textContent = T('cl.copied');
+  });
+  document.getElementById('cl-tochat').addEventListener('click', () => {
+    if (!clCurrent) return;
+    // Drop the link into the mesh chat input, ready to send (the user still taps send —
+    // publishing a cashlink to the PUBLIC mesh is a deliberate act).
+    close();
+    open('chat');
+    pollChat();
+    if (!chatPoll) chatPoll = setInterval(pollChat, 2500);
+    chatInput.value = clCurrent.url;
+    chatSendBtn.disabled = false;
+  });
+  document.getElementById('cl-back').addEventListener('click', clShowCreate);
+  document.getElementById('menu-cashlink').addEventListener('click', () => {
+    closeMenu();
+    clShowCreate();
+    // The mesh-funding toggle appears only when an offline mesh send is actually possible.
+    if (window.nimmesh && window.nimmesh.meshSendInfo) {
+      window.nimmesh.meshSendInfo().then((i) => {
+        document.getElementById('cl-mesh-row').hidden = !(i.headHeard && i.peers > 0);
+      }).catch(() => {});
+    }
+    open('cashlink');
   });
   function centerNetworkMap(attempt) {
     requestAnimationFrame(() => {

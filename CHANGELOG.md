@@ -2,6 +2,32 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.61.0] — 2026-07-08
+
+### Added — Cash Links: NIM that travels as text, claimable by anyone in a browser
+
+The other half of the dead-zone story: paying someone who has NO app. A cash link is a
+fresh single-use key funded by the wallet; the key + amount ride the URL in the
+**official Nimiq Hub format** — verified against the production parser (hub.nimiq.com
+rendered our fragment: "5 NIM · mesh test · Claim your Cash"). The recipient opens the
+link in any browser, creates an account in 30 seconds, and claims. No infrastructure of
+ours anywhere.
+
+- **Side menu → Cash Links**: amount + optional message → Create. Funding is a NORMAL
+  wallet transfer over the proven path — online RPC, or **over the Bluetooth mesh** when
+  offline (the toggle appears when a mesh send is possible). Result: QR (scan it right
+  off the screen — fully offline handoff), native Share sheet (AirDrop/SMS/Bitchat/
+  anything), Copy, and **To chat** (drops the link into Mesh Messages, you still tap
+  send). Honest label: *a link is cash — anyone holding it can claim*.
+- **Your cash links**: kept in the iOS Keychain (the URL embeds the key — never
+  UserDefaults, never logs). Live claimed/unclaimed chips from the chain when online.
+  Pre-fund a few at home, hand them out anywhere like bills.
+- Format notes: seed(32) ‖ value u64 BE ‖ optional len-prefixed message, unpadded
+  base64url; address = the standard Blake2b single-sig derivation (the same Rust path
+  the wallet itself uses via `AppSigner`). Funding is a plain transfer — the hub claims
+  it fine; the cosmetic "CASH" extraData label needs extended-tx support in the signer
+  and is a noted follow-up.
+
 ## [0.60.3] — 2026-07-08
 
 ### Fixed — the right-edge clipping was iOS focus-zoom, not layout
