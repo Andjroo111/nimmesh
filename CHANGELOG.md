@@ -2,6 +2,28 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.64.0] — 2026-07-08
+
+### Added — A2c: a REAL two-node NIM⇄USDC atomic swap, executed live on both testnets
+
+`live_mesh_swap_nim_usdc` — Act 2's headline proof, run to green against the real chains
+(every tx hash in `docs/swap/ACT2-RECEIPTS.md`): two participant `MeshNode`s over the
+deterministic harness drove the SHIPPING protocol end to end with real testnet money —
+discovery matched the standing intents, alice funded a real NIM HTLC (5 tNIM), bob's REAL
+`NimHtlcVerifier` gated his `approve`+`newSwap` (1 USDC, deployed `NimmeshHtlc` v2) on the
+chain, alice's `AmoyHtlcSwapVerifier` gated her reveal, `withdraw(S)` landed on Amoy, bob
+read `S` off the reveal and claimed the NIM leg — one secret, two chains, zero manual steps.
+
+Built to be safely re-runnable: every lock is persisted the moment it exists; on startup the
+example refunds anything a dead run left behind (or refuses to start while a lock is still
+timelocked — never more than one swap's funds in flight); a ONE-SHOT funding latch keeps the
+continuous standing-intent advertising (G37, by design) from funding a second real swap the
+moment the first settles — run 1 caught exactly that, and its repeat lock was refunded
+through the example's own recovery path. Completion is detected from CHAIN TRUTH (escrow
+Claimed + HTLC emptied), never from the reap-racy phase mirror, and the claimed NIM is swept
+home to the treasury. Plus tiny store accessors (`NimFundingStore::records`,
+`PolygonFundingStore::found_all`) the rig reads for receipts/refunds.
+
 ## [0.63.0] — 2026-07-08
 
 ### Added — A2b: the LIVE NIM⇄USDC money-path signer + the last real funding gate

@@ -232,6 +232,12 @@ impl PolygonFundingStore {
         self.found.lock().unwrap().get(hashlock).copied()
     }
 
+    /// Every verified escrow (A2c: the live e2e reads the — single — escrow to assert its
+    /// on-chain resolution and to persist a refund record).
+    pub fn found_all(&self) -> Vec<FoundEscrow> {
+        self.found.lock().unwrap().values().copied().collect()
+    }
+
     pub(crate) fn record_found(&self, hashlock: [u8; 32], escrow: FoundEscrow) {
         self.found.lock().unwrap().insert(hashlock, escrow);
     }

@@ -56,6 +56,14 @@ required-features = ["polygon-gateway"]
 name = "live_amoy_verifier"
 required-features = ["polygon-gateway"]
 
+# A2c: the LIVE two-node NIM⇄USDC mesh swap — two participant MeshNodes over the deterministic
+# harness, REAL money on BOTH testnets (Albatross testnet + Polygon Amoy) through the REAL
+# protocol (discovery → Propose/Accept → verifier-gated funding → withdraw(S) → NIM claim).
+# Needs both HTTP stacks; never compiled by `cargo test` (default features).
+[[example]]
+name = "live_mesh_swap_nim_usdc"
+required-features = ["polygon-gateway", "gateway-rpc"]
+
 # Swap demo: a std-only HTTP server that runs the REAL engine (swap_sim) against an in-memory sim
 # chain and serves webui/, so the browser UI is powered by the actual SwapEngine. Sim-only, no funds.
 [[example]]

@@ -147,6 +147,12 @@ impl NimFundingStore {
         self.entries.lock().unwrap().get(hashlock).cloned()
     }
 
+    /// Every retained hint (A2c: the live e2e reads the — single — funding it observed to
+    /// verify the claim on-chain and to persist a refund record; it never learns `S`).
+    pub fn records(&self) -> Vec<NimFundingRecord> {
+        self.entries.lock().unwrap().values().cloned().collect()
+    }
+
     /// Whether any retained hint pays `recipient` under a hashlock OTHER than `hashlock` —
     /// the ledger-reference `Mismatch(Hashlock)` signal (an HTLC paying us under a different
     /// lock is never ours to advance on).
