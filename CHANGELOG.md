@@ -2,6 +2,21 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.60.3] — 2026-07-08
+
+### Fixed — the right-edge clipping was iOS focus-zoom, not layout
+
+Andjroo's screenshots showed EVERYTHING at the right edge clipped by the same sliver —
+the language pill, the sheet's close button, his own bubble, the send arrow — plus
+sideways panning. That's iOS's automatic viewport zoom: focusing any input with a font
+under 16px zooms the page ~7% and KEEPS the zoom after the keyboard closes. The chat
+input was 15px. Fixed at both ends: the input is 16px, and the viewport is scale-locked
+(`maximum-scale=1`, app-style — also protects the other small inputs like the recovery
+word cells from ever triggering it).
+
+Also confirmed live this release cycle: airplane-mode + Bluetooth-only chat delivered
+instantly on 0.60.2 (`💬 Anon: Testing` at the gateway, matching the phone's 11:40 send).
+
 ## [0.60.2] — 2026-07-08
 
 ### Fixed — offline chat actually sends (Andjroo's field report) + chat input overflow

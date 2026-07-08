@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- maximum-scale=1 kills iOS's focus-zoom on sub-16px inputs — without it, focusing such
+     an input zooms the page ~7% and KEEPS the zoom after the keyboard closes (every
+     right-edge element clipped + sideways panning; Andjroo's 2026-07-08 field report). -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>nimmesh</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -593,8 +596,9 @@
   .chat-note { margin: 6px 24px 0; text-align: center; font-size: 11.5px; font-weight: 700;
     color: rgba(31,35,72,.45); text-transform: uppercase; letter-spacing: .06em; }
   .chat-inputrow { display: flex; gap: 8px; margin: 8px 20px calc(16px + env(safe-area-inset-bottom)); }
+  /* 16px minimum on the input: below that iOS focus-zooms the page (see the viewport meta). */
   .chat-inputrow input { flex: 1; min-width: 0; border: 1.5px solid rgba(31,35,72,.16); border-radius: 999px;
-    padding: 10px 16px; font: inherit; font-size: 15px; color: #1f2348; outline: none; background: #fff; }
+    padding: 10px 16px; font: inherit; font-size: 16px; color: #1f2348; outline: none; background: #fff; }
   .chat-inputrow input:focus { border-color: #0582CA; }
   .chat-send-btn { width: 42px; height: 42px; border-radius: 50%; border: 0; color: #fff; cursor: pointer; flex: 0 0 auto;
     display: flex; align-items: center; justify-content: center;
