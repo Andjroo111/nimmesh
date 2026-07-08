@@ -655,18 +655,34 @@ fn offline_node_catches_up_via_gcs_gossip_sync() {
 fn gossip_sync_only_sends_the_packets_a_peer_lacks() {
     // B already has SOME of A's packets (it was online for the first few, then dropped).
     // On rejoin, A's reply must cover only the gap — not the packets B already holds.
+    // Fence-driven drains throughout (ADR-0005) — the wall-clock waits this test used to
+    // run on missed their budget repeatedly under CI's 2-core oversubscription.
     let mut h = MeshHarness::new();
     let a = h.add_node("a", &[1]);
     let b = h.add_node("b", &[2]);
     h.connect("a", "b");
+
+    // A round-trip drain: source's jobs+sends → ether delivery → dest's handlers, twice
+    // over so a reply produced by the first pass is itself delivered and processed.
+    let drain = |x: &std::sync::Arc<crate::node::MeshNode>,
+                 y: &std::sync::Arc<crate::node::MeshNode>| {
+        for _ in 0..2 {
+            x.fence();
+            h.ether().fence();
+            y.fence();
+            h.ether().fence();
+            x.fence();
+        }
+    };
 
     // First few packets arrive while B is connected (B caches them via the relay path).
     let early = 4usize;
     for i in 0..early {
         a.submit_local_tx(format!("early-{i}").into_bytes());
     }
+    drain(&a, &b);
     assert!(
-        wait_until(|| b.recent_stored() >= early, Duration::from_secs(1)),
+        b.recent_stored() >= early,
         "B never heard the early packets"
     );
 
@@ -676,19 +692,14 @@ fn gossip_sync_only_sends_the_packets_a_peer_lacks() {
     for i in 0..late {
         a.submit_local_tx(format!("late-{i}").into_bytes());
     }
-    assert!(wait_until(
-        || a.recent_stored() >= early + late,
-        Duration::from_secs(1)
-    ));
+    a.fence();
+    assert_eq!(a.recent_stored(), early + late);
 
     // B rejoins and syncs: A should send back only the `late` packets B is missing.
     h.ether().heal("a", "b");
     b.request_sync();
-    assert!(
-        wait_until(|| b.recent_stored() >= early + late, SETTLE),
-        "B did not fill the gap"
-    );
-    assert_eq!(b.recent_stored(), early + late);
+    drain(&b, &a);
+    assert_eq!(b.recent_stored(), early + late, "B did not fill the gap");
     assert_eq!(
         a.rsr_sent(),
         late,

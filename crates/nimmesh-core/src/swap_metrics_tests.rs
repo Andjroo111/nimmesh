@@ -105,15 +105,17 @@ fn the_throttle_drop_counter_tracks_a_flood() {
             intent_frame(&intent, flooder, 100 + i as u64),
         );
     }
+    // Fence-driven drain (ADR-0005): each fence guarantees the prior inbound frames /
+    // sync tick fully processed — the wall-clock wait this used ran over budget on CI.
+    alice.fence();
     for _ in 0..4 {
         alice.poll_sync();
+        alice.fence();
     }
 
-    assert!(
-        wait_until(
-            || alice.intent_metrics().dropped_throttle == flood - cap,
-            SETTLE
-        ),
+    assert_eq!(
+        alice.intent_metrics().dropped_throttle,
+        flood - cap,
         "the over-cap intents are counted as throttle drops"
     );
     let m = alice.intent_metrics();
