@@ -164,6 +164,12 @@ impl SwapCoordinator {
         self.secret
     }
 
+    /// The full swap context — what a real [`crate::swap_signer::SwapSigner`] builds its
+    /// on-chain transactions from (hashlock, timelocks, amounts, both parties' addressing).
+    pub(crate) fn context(&self) -> &SwapContext {
+        &self.ctx
+    }
+
     /// G31: capture this coordinator's state for crash recovery (the node persists the snapshot and
     /// rebuilds the coordinator on restart so a funds-locked swap can still refund).
     pub fn to_snapshot(&self) -> CoordinatorSnapshot {

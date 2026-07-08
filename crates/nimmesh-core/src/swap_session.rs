@@ -80,6 +80,9 @@ impl From<CoordError> for SessionError {
 /// the swap (resetting the budget) within a tick or two; a very lossy one gets many retries.
 pub(crate) const RETRANSMIT_TTL: u8 = 32;
 
+/// G11: the per-swap secret drawer a session holds (see `SwapSession::with_secret_source`).
+pub type SecretSource = Box<dyn Fn(&[u8; SWAP_ID_LEN]) -> [u8; 32] + Send + Sync>;
+
 /// The last action a node emitted for a swap, buffered for retransmit. Decoupled from the
 /// coordinator's lifetime so a Settled initiator keeps re-flooding its `PreimageReveal` (the mesh's
 /// stand-in for the responder reading `S` off the on-chain claim) for a bounded window after it
@@ -116,6 +119,10 @@ pub struct SwapSession {
     /// swaps drive `SwapEngine` directly, not this session path). Selects the counterparty-leg depth
     /// from `confirm_policy`. Defaults to [`Asset::Btc`].
     counterparty_chain: Asset,
+    /// G11: draws the initiator secret `S` for a swap this node originates. Default =
+    /// deterministic `sim_secret` (tests); production injects a CSPRNG-backed PRF via
+    /// [`SwapSession::with_secret_source`].
+    pub(crate) secret_source: SecretSource,
 }
 
 impl SwapSession {
@@ -130,7 +137,17 @@ impl SwapSession {
             propose_signer: None,
             confirm_policy: ConfirmationPolicy::testnet_defaults(),
             counterparty_chain: Asset::Btc,
+            secret_source: Box::new(crate::swap_node::sim_secret),
         }
+    }
+
+    /// G11: inject the PRODUCTION per-swap secret source (a CSPRNG-backed PRF). The default is
+    /// the deterministic `sim_secret` — reproducible for the no-RNG test suite, and loudly
+    /// marked never-for-real-funds. A live participant MUST replace it before any real-money
+    /// signer is wired.
+    pub fn with_secret_source(mut self, source: SecretSource) -> Self {
+        self.secret_source = source;
+        self
     }
 
     /// Inject this node's NIM identity key so it signs each `Propose` it originates (S2 / #73). The

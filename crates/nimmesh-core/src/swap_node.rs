@@ -398,8 +398,8 @@ fn drive_swap(
     // Read this swap's action context, then build the tx via the signer and feed it to the
     // coordinator. (role/phase/secret are Copy, so the read borrow is dropped before the signer +
     // coordinator borrows.)
-    let Some((role, phase, secret)) =
-        coordinator(st, &swap_id).map(|c| (c.role(), c.phase(), c.secret()))
+    let Some((role, phase, secret, sctx)) =
+        coordinator(st, &swap_id).map(|c| (c.role(), c.phase(), c.secret(), c.context().clone()))
     else {
         return Vec::new();
     };
@@ -408,7 +408,7 @@ fn drive_swap(
     match (role, phase) {
         // Initiator: once the responder accepted, fund the NIM leg → FundingProof.
         (SwapRole::Initiator, SwapPhase::Accepted) => {
-            if let Some((wire, id)) = sign_funding(st, SwapLegId::Nim, swap_id) {
+            if let Some((wire, id)) = sign_funding(st, &sctx, SwapLegId::Nim) {
                 if let Some(c) = coordinator(st, &swap_id) {
                     if let Ok(fp) = c.fund(head, wire, id) {
                         push_env(&mut out, MessageType::SwapFundingProof, &fp);
@@ -418,7 +418,7 @@ fn drive_swap(
         }
         // Responder: once it has seen the initiator's funding, fund the BTC leg → FundingProof.
         (SwapRole::Responder, SwapPhase::InitiatorFunded) => {
-            if let Some((wire, id)) = sign_funding(st, SwapLegId::Counterparty, swap_id) {
+            if let Some((wire, id)) = sign_funding(st, &sctx, SwapLegId::Counterparty) {
                 if let Some(c) = coordinator(st, &swap_id) {
                     if let Ok(fp) = c.fund(head, wire, id) {
                         push_env(&mut out, MessageType::SwapFundingProof, &fp);
@@ -428,7 +428,7 @@ fn drive_swap(
         }
         // Initiator: once both legs are funded, claim the counterparty leg (revealing S) → settle.
         (SwapRole::Initiator, SwapPhase::BothFunded) => {
-            if let Some((wire, id)) = secret.and_then(|s| sign_claim(st, swap_id, s)) {
+            if let Some((wire, id)) = secret.and_then(|s| sign_claim(st, &sctx, s)) {
                 if let Some(c) = coordinator(st, &swap_id) {
                     if let Ok(rev) = c.claim_and_reveal(head, wire, id) {
                         push_env(&mut out, MessageType::SwapPreimageReveal, &rev);
@@ -437,8 +437,13 @@ fn drive_swap(
                 }
             }
         }
-        // Responder: S is out and it has claimed its leg — settle. No mesh message needed.
+        // Responder: S is out — claim OUR NIM leg with it (a live signer builds + lands the
+        // on-chain claim; the mock returns a stand-in), then settle. No mesh message — the
+        // claim lives on-chain, and the phase flip makes this idempotent across replays.
         (SwapRole::Responder, SwapPhase::Revealed) => {
+            if let Some(s) = secret {
+                let _ = sign_claim(st, &sctx, s);
+            }
             if let Some(c) = coordinator(st, &swap_id) {
                 let _ = c.settle();
             }
@@ -529,7 +534,10 @@ fn initiate_from_intent(
         (standing, session.ladder)
     };
 
-    let secret = sim_secret(&swap_id);
+    let secret = match st.swap.as_ref() {
+        Some(session) => (session.secret_source)(&swap_id),
+        None => return Vec::new(),
+    };
     let ctx = crate::swap_coordinator::SwapContext {
         swap_id,
         // Sim timelocks (T_A / T_B), anchored to the live mesh head so a REAL device (head in
@@ -583,7 +591,7 @@ pub(crate) fn derive_swap_id(
 /// A SIM stand-in for the swap secret `S`. **GATED:** production MUST draw `S` from a CSPRNG — a
 /// predictable secret lets an attacker pre-claim the BTC leg. This deterministic placeholder exists
 /// only so the no-RNG sim/test is reproducible; it is never used on a real-fund path.
-fn sim_secret(swap_id: &[u8; SWAP_ID_LEN]) -> [u8; 32] {
+pub(crate) fn sim_secret(swap_id: &[u8; SWAP_ID_LEN]) -> [u8; 32] {
     let mut buf = b"NIMMESH-SIM-INTENT-SECRET-DO-NOT-USE-IN-PROD".to_vec();
     buf.extend_from_slice(swap_id);
     crate::swap_leg::sha256(&buf)
@@ -592,19 +600,19 @@ fn sim_secret(swap_id: &[u8; SWAP_ID_LEN]) -> [u8; 32] {
 /// Ask this node's signer to build the funding tx for `leg` (money-path seam).
 fn sign_funding(
     st: &WorkerState,
+    ctx: &crate::swap_coordinator::SwapContext,
     leg: SwapLegId,
-    swap_id: [u8; SWAP_ID_LEN],
 ) -> Option<(Vec<u8>, [u8; 32])> {
-    st.signer.as_ref().map(|s| s.build_funding(leg, swap_id))
+    st.signer.as_ref().and_then(|s| s.build_funding(ctx, leg))
 }
 
-/// Ask this node's signer to build the claim tx revealing `secret` (money-path seam).
+/// Ask this node's signer to build the claim tx for/with `secret` (money-path seam).
 fn sign_claim(
     st: &WorkerState,
-    swap_id: [u8; SWAP_ID_LEN],
+    ctx: &crate::swap_coordinator::SwapContext,
     secret: [u8; 32],
 ) -> Option<(Vec<u8>, [u8; 32])> {
-    st.signer.as_ref().map(|s| s.build_claim(swap_id, secret))
+    st.signer.as_ref().and_then(|s| s.build_claim(ctx, secret))
 }
 
 /// Encode a driven envelope and tag it with its flood [`MessageType`].

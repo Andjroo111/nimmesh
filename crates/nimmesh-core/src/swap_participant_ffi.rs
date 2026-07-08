@@ -244,7 +244,23 @@ impl MeshNode {
             delta_safe_blocks: config.delta_safe_blocks,
             min_claim_window_blocks: config.min_claim_window_blocks,
         };
-        let session = SwapSession::new(identity, ladder).with_propose_signer(Arc::new(propose_key));
+        // G11: replace the deterministic sim secret with a CSPRNG-backed PRF — the per-swap
+        // secret is sha256(master ‖ swap_id ‖ label), master = sha256(caller's CSPRNG seed ‖
+        // label). Unpredictable without the seed, distinct per swap, domain-separated from
+        // the seed's identity use. No secret ever crosses back over FFI.
+        let secret_master = {
+            let mut buf = seed.to_vec();
+            buf.extend_from_slice(b"nimmesh-swap-secret-master-v1");
+            crate::swap_leg::sha256(&buf)
+        };
+        let session = SwapSession::new(identity, ladder)
+            .with_propose_signer(Arc::new(propose_key))
+            .with_secret_source(Box::new(move |swap_id| {
+                let mut buf = secret_master.to_vec();
+                buf.extend_from_slice(swap_id);
+                buf.extend_from_slice(b"nimmesh-swap-secret-v1");
+                crate::swap_leg::sha256(&buf)
+            }));
 
         let gateway = match gateway_rpc_url {
             None => None,

@@ -2,6 +2,23 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.62.0] — 2026-07-08
+
+### Changed — Act 2 opens: the swap signing seam is ready for real money (core only)
+
+The three seam changes a live NIM⇄USDC signer needs, all behavior-neutral for the sim:
+
+- **`SwapSigner` v2**: every method now receives the swap's full `SwapContext` (hashlock,
+  timelocks, amounts, both parties' addressing — `btc_address` is chain-agnostic bytes, so
+  an EVM claim address rides it with zero wire changes) and is fallible — a live signer
+  that can't build/broadcast simply doesn't advance, and the timelock refund stays the floor.
+- **The responder now claims its own NIM leg at Revealed** (with the secret learned from
+  the reveal) before settling — previously the driver only flipped state; a real responder
+  has money to collect.
+- **G11 secret seam**: `SwapSession::with_secret_source` replaces the deterministic
+  `sim_secret` for production — the FFI participant already injects a CSPRNG-backed PRF
+  (sha256 over a domain-separated master from the caller's entropy, per-swap unique).
+
 ## [0.61.1] — 2026-07-08
 
 ### Fixed — every amount input refuses more than you hold (Andjroo's field report)

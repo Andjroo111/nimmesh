@@ -12,20 +12,31 @@
 //! `S` (a real BTC claim embeds `S` in its witness; the sim carries `S` directly), so the responder
 //! can read it back off the `PreimageReveal`.
 
+use crate::swap_coordinator::SwapContext;
 use crate::swap_wire::{SwapLegId, SWAP_ID_LEN};
 
-/// Builds (in production: signs) the on-chain transactions a swap participant must broadcast. The
-/// driver feeds the returned `(tx_wire, tx_id)` straight into the coordinator and floods the matching
-/// envelope. `Send + Sync` so a participant node can carry it across to its worker thread.
+/// Builds (in production: signs **and broadcasts**) the on-chain transactions a swap participant
+/// must land. The driver feeds the returned `(tx_wire, tx_id)` straight into the coordinator and
+/// floods the matching envelope. `Send + Sync` so a participant node can carry it across to its
+/// worker thread.
+///
+/// v2 (Act 2): every method receives the swap's full [`SwapContext`] — hashlock, timelocks,
+/// amounts, both parties' addressing — which is everything a REAL signer needs to build the
+/// actual HTLC transactions. Methods are fallible (`None` = could not build/broadcast; the
+/// driver simply doesn't advance, and the timelock refund path remains the safety floor). A
+/// live signer does blocking chain IO here — acceptable on a dedicated rig node's worker; the
+/// phone app keeps [`MockSigner`] until its own live wiring lands.
 pub trait SwapSigner: Send + Sync {
-    /// Build the funding tx for this node's `leg` (initiator funds `Nim`, responder funds
-    /// `Counterparty`). Returns the opaque signed `tx_wire` + its 32-byte `tx_id`.
-    fn build_funding(&self, leg: SwapLegId, swap_id: [u8; SWAP_ID_LEN]) -> (Vec<u8>, [u8; 32]);
+    /// Build (live: and broadcast) the funding tx for this node's `leg` (initiator funds `Nim`,
+    /// responder funds `Counterparty`). Returns the opaque `tx_wire` + its 32-byte `tx_id`.
+    fn build_funding(&self, ctx: &SwapContext, leg: SwapLegId) -> Option<(Vec<u8>, [u8; 32])>;
 
-    /// Build the claim tx for the counterparty leg, revealing `secret`. The real claim embeds `S` in
-    /// its witness so the responder can read it back; the returned `tx_wire` MUST carry `S` in its
-    /// first 32 bytes. Returns the opaque signed `tx_wire` + its `tx_id`.
-    fn build_claim(&self, swap_id: [u8; SWAP_ID_LEN], secret: [u8; 32]) -> (Vec<u8>, [u8; 32]);
+    /// Build (live: and broadcast) this node's claim, revealing/using `secret`. For the
+    /// INITIATOR that is the counterparty-leg claim and the returned `tx_wire` MUST carry `S`
+    /// in its first 32 bytes (the responder reads it off the `PreimageReveal`); for the
+    /// RESPONDER (post-reveal) it is the NIM-leg claim, and the wire goes nowhere — the claim
+    /// lives on-chain. Returns the opaque `tx_wire` + its `tx_id`.
+    fn build_claim(&self, ctx: &SwapContext, secret: [u8; 32]) -> Option<(Vec<u8>, [u8; 32])>;
 }
 
 /// The deterministic sim signer: stand-in tx bytes, no keys, no broadcast. The funding blobs are
@@ -35,16 +46,16 @@ pub trait SwapSigner: Send + Sync {
 pub struct MockSigner;
 
 impl SwapSigner for MockSigner {
-    fn build_funding(&self, leg: SwapLegId, swap_id: [u8; SWAP_ID_LEN]) -> (Vec<u8>, [u8; 32]) {
+    fn build_funding(&self, ctx: &SwapContext, leg: SwapLegId) -> Option<(Vec<u8>, [u8; 32])> {
         let (wire, tag) = match leg {
             SwapLegId::Nim => (vec![0x11; 248], 0xF1),
             SwapLegId::Counterparty => (vec![0x22; 120], 0xF2),
         };
-        (wire, sim_tx_id(swap_id, tag))
+        Some((wire, sim_tx_id(ctx.swap_id, tag)))
     }
 
-    fn build_claim(&self, swap_id: [u8; SWAP_ID_LEN], secret: [u8; 32]) -> (Vec<u8>, [u8; 32]) {
-        (secret.to_vec(), sim_tx_id(swap_id, 0xF3))
+    fn build_claim(&self, ctx: &SwapContext, secret: [u8; 32]) -> Option<(Vec<u8>, [u8; 32])> {
+        Some((secret.to_vec(), sim_tx_id(ctx.swap_id, 0xF3)))
     }
 }
 
@@ -60,20 +71,37 @@ pub(crate) fn sim_tx_id(swap_id: [u8; SWAP_ID_LEN], tag: u8) -> [u8; 32] {
 mod tests {
     use super::*;
 
+    fn ctx() -> SwapContext {
+        SwapContext {
+            swap_id: [0x7A; SWAP_ID_LEN],
+            terms: crate::swap::SwapTerms {
+                nim_timeout: 10_000,
+                counterparty_timeout: 5_000,
+            },
+            hashlock: [0xC7; 32],
+            nim_address: [0x11; 20],
+            btc_address: vec![0x22; 20],
+            btc_pubkey: [0x02; 33],
+            give_amount: 200_000,
+            take_amount: 100_000,
+            network_id: 5,
+        }
+    }
+
     #[test]
     fn mock_signer_builds_the_expected_stand_ins() {
         let s = MockSigner;
-        let swap_id = [0x7A; SWAP_ID_LEN];
+        let c = ctx();
 
-        let (nim_wire, nim_id) = s.build_funding(SwapLegId::Nim, swap_id);
+        let (nim_wire, nim_id) = s.build_funding(&c, SwapLegId::Nim).unwrap();
         assert_eq!(nim_wire, vec![0x11; 248]);
-        let (btc_wire, btc_id) = s.build_funding(SwapLegId::Counterparty, swap_id);
+        let (btc_wire, btc_id) = s.build_funding(&c, SwapLegId::Counterparty).unwrap();
         assert_eq!(btc_wire, vec![0x22; 120]);
         assert_ne!(nim_id, btc_id); // distinct ids per leg
 
         // The claim carries S in its first 32 bytes — what the responder reads back.
         let secret = [0x42; 32];
-        let (claim_wire, _) = s.build_claim(swap_id, secret);
+        let (claim_wire, _) = s.build_claim(&c, secret).unwrap();
         assert_eq!(&claim_wire[..32], &secret);
     }
 }

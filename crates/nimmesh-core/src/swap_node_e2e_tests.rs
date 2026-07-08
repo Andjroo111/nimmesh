@@ -601,30 +601,30 @@ fn a_full_swap_drives_through_a_pluggable_signer() {
     use crate::mock_radio::MeshHarness;
     use crate::swap::{LadderParams, SwapPhase};
     use crate::swap_signer::SwapSigner;
-    use crate::swap_wire::{SwapLegId, SWAP_ID_LEN};
+    use crate::swap_wire::SwapLegId;
     use crate::test_support::{wait_until, SETTLE};
 
     struct PaddedSigner;
     impl SwapSigner for PaddedSigner {
         fn build_funding(
             &self,
+            _ctx: &crate::swap_coordinator::SwapContext,
             leg: SwapLegId,
-            _swap_id: [u8; SWAP_ID_LEN],
-        ) -> (Vec<u8>, [u8; 32]) {
+        ) -> Option<(Vec<u8>, [u8; 32])> {
             let wire = match leg {
                 SwapLegId::Nim => vec![0xAB; 200],
                 SwapLegId::Counterparty => vec![0xCD; 64],
             };
-            (wire, [0x09; 32])
+            Some((wire, [0x09; 32]))
         }
         fn build_claim(
             &self,
-            _swap_id: [u8; SWAP_ID_LEN],
+            _ctx: &crate::swap_coordinator::SwapContext,
             secret: [u8; 32],
-        ) -> (Vec<u8>, [u8; 32]) {
+        ) -> Option<(Vec<u8>, [u8; 32])> {
             let mut wire = secret.to_vec(); // S first, so the responder reads it back...
             wire.extend_from_slice(&[0xEE; 16]); // ...then padding the signer is free to add.
-            (wire, [0x08; 32])
+            Some((wire, [0x08; 32]))
         }
     }
 
