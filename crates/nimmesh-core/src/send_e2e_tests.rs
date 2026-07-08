@@ -109,10 +109,24 @@ fn a_send_into_the_void_delivers_when_the_mesh_reappears() {
 
     // Drive home: the mesh appears, and the ~15s heartbeat tick re-offers the tx
     // immediately (a void-flooded tx skips the retry cadence on its first chance).
+    // Fence-driven drain (ADR-0005) rather than a wall-clock wait — the beacon re-flood →
+    // gateway submit → receipt round-trip is deterministic once the workers quiesce, so
+    // this no longer races CI's 2-core oversubscription (the old `wait_payment` did).
     h.connect("origin", "gw");
     origin.poll_beacon();
+    for _ in 0..3 {
+        origin.fence();
+        h.ether().fence();
+        _gateway.fence();
+        h.ether().fence();
+        origin.fence();
+    }
 
-    assert_eq!(origin.wait_payment(&tx_id, SETTLE), PaymentStatus::Settled);
+    assert_eq!(
+        origin.payment_status(tx_id.clone()),
+        PaymentStatus::Settled,
+        "the pending tx must settle once the mesh reappears"
+    );
     assert_eq!(gw.submission_count(), 1);
     h.shutdown();
 }

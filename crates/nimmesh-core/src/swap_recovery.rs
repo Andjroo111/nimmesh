@@ -36,6 +36,11 @@ impl SwapSession {
         let mut session = SwapSession::new(identity, ladder);
         for snap in snapshot {
             let swap_id = snap.ctx.swap_id;
+            // #189: a restored INITIATOR swap means this node already issued that swap's
+            // secret — tombstone the id so a post-restart re-match can never reissue it.
+            if snap.role == crate::swap::SwapRole::Initiator {
+                session.initiated_ever.insert(swap_id);
+            }
             session
                 .coordinators
                 .insert(swap_id, SwapCoordinator::from_snapshot(snap, ladder));

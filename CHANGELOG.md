@@ -2,6 +2,24 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.64.1] — 2026-07-08
+
+### Fixed — #189: a revealed swap secret can never be reissued (money-path, pre-mainnet gate)
+
+Act 2's live run surfaced it: `derive_swap_id` is deterministic in the two parties'
+identities, and every secret source is a pure function of `swap_id` — so a repeat match
+between the same counterparties (which standing intents produce the moment a swap settles
+and is reaped) reissued the SAME `S`. A settled swap has already PUBLISHED that `S`, so
+the repeat HTLC was claimable with public chain data and no counterparty escrow — a
+one-sided loss against the initiator (proven live on testnet).
+
+Fix: the session permanently **tombstones every `swap_id` it initiates** (`initiated_ever`,
+rebuilt from the recovery snapshot for initiator swaps so it survives a restart). Both
+`handle_intent` (buffering) and `initiate_from_intent` (window close) refuse a tombstoned
+id, so a repeat trade must re-advertise under a fresh ephemeral identity → fresh `swap_id`
+→ fresh `S` (the G45 privacy-preferred path anyway). Two regression tests: a reaped
+coordinator leaves the tombstone standing; a restored initiator swap stays tombstoned.
+
 ## [0.64.0] — 2026-07-08
 
 ### Added — A2c: a REAL two-node NIM⇄USDC atomic swap, executed live on both testnets

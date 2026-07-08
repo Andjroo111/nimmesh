@@ -522,6 +522,10 @@ fn handle_intent(ctx: &WorkerCtx, st: &mut WorkerState, sender: [u8; PEER_ID_LEN
         if session.coordinators.contains_key(&swap_id) {
             return; // already initiating this exact swap
         }
+        if session.has_initiated(&swap_id) {
+            return; // #189: we already ran this swap once; its S may be public. A repeat
+                    // trade needs a fresh ephemeral identity (→ fresh swap_id), not a reissue.
+        }
         swap_id
     };
 
@@ -555,6 +559,7 @@ fn initiate_from_intent(
             return Vec::new();
         };
         if session.coordinators.contains_key(&swap_id)
+            || session.has_initiated(&swap_id) // #189: never reissue a used swap's secret
             || session.len() >= session.identity.max_concurrent_swaps
         {
             return Vec::new();

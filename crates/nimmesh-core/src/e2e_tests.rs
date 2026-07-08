@@ -662,16 +662,22 @@ fn gossip_sync_only_sends_the_packets_a_peer_lacks() {
     let b = h.add_node("b", &[2]);
     h.connect("a", "b");
 
-    // A round-trip drain: source's jobs+sends → ether delivery → dest's handlers, twice
-    // over so a reply produced by the first pass is itself delivered and processed.
+    // Drain to true quiescence (ADR-0005): fence both nodes + the ether in a round-trip and
+    // repeat until a full pass moves ZERO new transmits (the ether's monotonic `enqueued`
+    // counter stops advancing). A fixed round count raced a multi-hop reply (requestSync →
+    // RSR unicast → store) that occasionally needed a third pass under CI oversubscription.
     let drain = |x: &std::sync::Arc<crate::node::MeshNode>,
                  y: &std::sync::Arc<crate::node::MeshNode>| {
-        for _ in 0..2 {
+        for _ in 0..20 {
+            let before = h.ether().enqueued();
             x.fence();
             h.ether().fence();
             y.fence();
             h.ether().fence();
             x.fence();
+            if h.ether().enqueued() == before {
+                break; // no new transmits this pass — the mesh is quiescent
+            }
         }
     };
 

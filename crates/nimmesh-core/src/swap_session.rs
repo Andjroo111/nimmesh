@@ -9,7 +9,7 @@
 //! raw key material: the only key seam it holds is an opaque [`EnclaveKey`] used to *sign* (not expose)
 //! an outgoing Propose (S2 / #73) — the seed stays behind the enclave, only signed bytes leave.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::nimiq::signer::EnclaveKey;
@@ -98,6 +98,13 @@ pub struct SwapSession {
     pub(crate) identity: NodeIdentity,
     pub(crate) ladder: LadderParams,
     pub(crate) coordinators: HashMap<[u8; SWAP_ID_LEN], SwapCoordinator>,
+    /// #189 (money-path): every `swap_id` this node has EVER initiated as the NIM-giver.
+    /// The secret source is a pure function of `swap_id`, so re-initiating one would reissue
+    /// an already-revealed `S` (a settled swap published it) — the counterparty could then
+    /// claim the fresh HTLC with public data, no escrow. A permanent tombstone: an id here
+    /// is never initiated again. A legitimate repeat trade re-advertises under a fresh
+    /// ephemeral identity (G45), which yields a fresh `swap_id`.
+    pub(crate) initiated_ever: HashSet<[u8; SWAP_ID_LEN]>,
     /// G20: per-swap last-emitted action, re-flooded each tick (TTL-bounded) to recover a message
     /// dropped over a lossy mesh.
     pending: HashMap<[u8; SWAP_ID_LEN], PendingAction>,
@@ -132,6 +139,7 @@ impl SwapSession {
             identity,
             ladder,
             coordinators: HashMap::new(),
+            initiated_ever: HashSet::new(),
             pending: HashMap::new(),
             verifier: Box::new(AcceptAllVerifier),
             propose_signer: None,
@@ -205,7 +213,14 @@ impl SwapSession {
 
     /// Register an initiator coordinator this node started, so its `Accept`/`FundingProof` route to it.
     pub fn add_initiator(&mut self, swap_id: [u8; SWAP_ID_LEN], coordinator: SwapCoordinator) {
+        self.initiated_ever.insert(swap_id); // #189: never reissue this swap's secret
         self.coordinators.insert(swap_id, coordinator);
+    }
+
+    /// #189: has this node ever initiated `swap_id` (so its `S` may be public)? A repeat
+    /// initiation is refused — see [`initiated_ever`](Self::initiated_ever).
+    pub(crate) fn has_initiated(&self, swap_id: &[u8; SWAP_ID_LEN]) -> bool {
+        self.initiated_ever.contains(swap_id)
     }
 
     /// The coordinator for a swap, for the node to drive its chain actions (fund / claim / reveal).

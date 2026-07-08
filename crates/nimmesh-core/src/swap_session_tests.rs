@@ -624,3 +624,49 @@ fn the_mesh_gate_applies_the_per_chain_confirmation_policy_depth() {
         SwapPhase::InitiatorFunded
     );
 }
+
+// --- #189: a revealed secret must never be reissued ------------------------------------
+
+#[test]
+fn a_used_swap_id_is_tombstoned_so_its_secret_is_never_reissued() {
+    // #189 (money-path): `derive_swap_id` is deterministic in the two parties' identities, so
+    // a repeat match between the SAME counterparties yields the SAME `swap_id` — and every
+    // secret source is a pure function of `swap_id`, so a naive repeat would reissue the same
+    // `S`. If the first swap settled it PUBLISHED that `S`, leaving the repeat HTLC claimable
+    // with public data (a one-sided loss). The session tombstones every id it initiates.
+    let swap_id = [0x5D; SWAP_ID_LEN];
+    let mut alice = SwapSession::new(identity(0x11), LadderParams::default());
+    assert!(!alice.has_initiated(&swap_id));
+
+    let (coord, _propose) =
+        SwapCoordinator::new_initiator(ctx(swap_id, 0x11), [42u8; 32], LadderParams::default());
+    alice.add_initiator(swap_id, coord);
+
+    // The id is now tombstoned FOR GOOD — both `handle_intent` and `initiate_from_intent`
+    // gate on this, so a repeat match with the same counterparty can never re-initiate it
+    // (a legitimate repeat trade re-advertises under a fresh ephemeral identity → fresh id).
+    assert!(alice.has_initiated(&swap_id));
+
+    // Even after the coordinator is reaped (a settled swap is GC'd), the tombstone remains —
+    // exactly the window in which the live bug re-matched and reissued `S`.
+    alice.coordinators.remove(&swap_id);
+    assert!(
+        alice.has_initiated(&swap_id),
+        "the tombstone must outlive the reaped coordinator"
+    );
+}
+
+#[test]
+fn a_restored_initiator_swap_stays_tombstoned_across_a_restart() {
+    // A node that crashes mid-swap already issued that swap's secret; on restart the recovery
+    // snapshot must re-tombstone the id so a post-restart re-match can't reissue `S`.
+    let swap_id = [0x77; SWAP_ID_LEN];
+    let (coord, _) =
+        SwapCoordinator::new_initiator(ctx(swap_id, 0x11), [7u8; 32], LadderParams::default());
+    let snapshot = vec![coord.to_snapshot()];
+    let restored = SwapSession::restore(identity(0x11), LadderParams::default(), snapshot);
+    assert!(
+        restored.has_initiated(&swap_id),
+        "a restored initiator swap must be tombstoned"
+    );
+}
