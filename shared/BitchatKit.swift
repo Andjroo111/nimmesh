@@ -296,36 +296,59 @@ final class BitchatLink: NSObject {
     // MARK: inbound
 
     private func handleInbound(_ data: Data) {
-        guard let packet = BitchatPacket.decode(data) else { return }
+        guard let packet = BitchatPacket.decode(data) else {
+            onLog?("rx undecodable frame (\(data.count) B)")
+            return
+        }
         if packet.senderID == identity.peerID { return } // self-echo
         let key = packet.senderID + withUnsafeBytes(of: packet.timestampMs.bigEndian) { Data($0) }
         if seen.contains(key) { return }
         seen.insert(key)
         if seen.count > 2000 { seen.removeAll() } // crude bound; dedup window resets
+        let who = packet.senderID.prefix(4).map { String(format: "%02x", $0) }.joined()
 
         switch packet.type {
         case BitchatWire.typeAnnounce:
-            guard let ann = BitchatAnnounce.decode(packet.payload) else { return }
+            guard let ann = BitchatAnnounce.decode(packet.payload) else {
+                onLog?("rx announce from \(who): TLV undecodable")
+                return
+            }
             // peerID must be bound to the announced noise key…
             guard Data(SHA256.hash(data: ann.noisePublicKey).prefix(8)) == packet.senderID
-            else { return }
+            else {
+                onLog?("rx announce from \(who): peerID/key binding FAILED")
+                return
+            }
             // …and the packet signed by the announced Ed25519 key.
             guard let sig = packet.signature,
                   let vk = try? Curve25519.Signing.PublicKey(rawRepresentation: ann.signingPublicKey),
                   vk.isValidSignature(sig, for: packet.signingBytes())
-            else { return }
+            else {
+                onLog?("rx announce from \(who) (\(ann.nickname)): signature FAILED")
+                return
+            }
             let isNew = peers[packet.senderID] == nil
             peers[packet.senderID] = (ann.nickname, vk)
             if isNew { onPeer?(ann.nickname) }
         case BitchatWire.typeMessage:
             // Bitchat's gate: only display messages verifiable against a known announce.
-            guard let peer = peers[packet.senderID], let sig = packet.signature,
-                  peer.signingKey.isValidSignature(sig, for: packet.signingBytes()),
-                  let text = String(data: packet.payload, encoding: .utf8)
-            else { return }
+            guard let peer = peers[packet.senderID] else {
+                onLog?("rx message from \(who): UNKNOWN peer (no announce yet) — dropped")
+                return
+            }
+            guard let sig = packet.signature,
+                  peer.signingKey.isValidSignature(sig, for: packet.signingBytes())
+            else {
+                onLog?("rx message from \(who) (\(peer.nickname)): signature FAILED — dropped")
+                return
+            }
+            guard let text = String(data: packet.payload, encoding: .utf8) else {
+                onLog?("rx message from \(who): payload not UTF-8 — dropped")
+                return
+            }
             onMessage?(peer.nickname, text, packet.timestampMs)
         default:
-            break // fragments / noise / everything else: out of scope, never relayed
+            onLog?("rx type 0x\(String(format: "%02x", packet.type)) from \(who) (\(data.count) B) — ignored")
         }
     }
 }
