@@ -574,6 +574,29 @@
   /* mesh discovery state: the mesh glyph + honest copy (this is the NEW, mesh-native part) */
   .swap-discovery { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 30px 28px; text-align: center; }
   .swap-discovery[hidden], .swap-phases[hidden], #swap-setup[hidden], #swap-progress[hidden], #swap-done[hidden] { display: none !important; }
+
+  /* ---- Mesh chat sheet: public broadcast bubbles over the BLE mesh ---- */
+  .chat-scroll { height: 46vh; overflow-y: auto; padding: 12px 20px 4px; }
+  .chat-empty { text-align: center; color: rgba(31,35,72,.5); font-size: 13.5px; padding: 26px 30px; }
+  .chat-empty[hidden] { display: none; }
+  .chat-msg { max-width: 78%; margin: 3px 0; padding: 8px 12px 6px; border-radius: 14px; font-size: 14.5px;
+    line-height: 1.35; width: fit-content; word-break: break-word; }
+  .chat-msg.mine { margin-left: auto; color: #fff; border-bottom-right-radius: 4px;
+    background-image: var(--nimiq-light-blue-bg, radial-gradient(100% 100% at bottom right, #265DD7, #0582CA)); }
+  .chat-msg.theirs { background: #f1f1f4; color: #1f2348; border-bottom-left-radius: 4px; }
+  .chat-msg .cm-nick { display: block; font-size: 11px; font-weight: 800; letter-spacing: .3px; color: #0582CA; margin-bottom: 1px; }
+  .chat-msg .cm-time { display: block; font-size: 10px; opacity: .55; margin-top: 2px; text-align: right; }
+  .chat-note { margin: 6px 24px 0; text-align: center; font-size: 11.5px; font-weight: 700;
+    color: rgba(31,35,72,.45); text-transform: uppercase; letter-spacing: .06em; }
+  .chat-inputrow { display: flex; gap: 8px; margin: 8px 20px calc(16px + env(safe-area-inset-bottom)); }
+  .chat-inputrow input { flex: 1; border: 1.5px solid rgba(31,35,72,.16); border-radius: 999px; padding: 10px 16px;
+    font: inherit; font-size: 15px; color: #1f2348; outline: none; background: #fff; }
+  .chat-inputrow input:focus { border-color: #0582CA; }
+  .chat-send-btn { width: 42px; height: 42px; border-radius: 50%; border: 0; color: #fff; cursor: pointer; flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: center;
+    background-image: var(--nimiq-light-blue-bg, radial-gradient(100% 100% at bottom right, #265DD7, #0582CA)); }
+  .chat-send-btn:disabled { opacity: .4; }
+  .chat-send-btn svg { width: 18px; height: 18px; }
   .swap-discovery svg { width: 44px; height: 44px; color: var(--nimiq-green, #21bca5); }
   .swap-discovery h3 { margin: 0; font-size: 18px; font-weight: 700; color: #1f2348; }
   .swap-discovery p { margin: 0; font-size: 14.5px; line-height: 1.45; color: rgba(31,35,72,.55); }
@@ -1003,6 +1026,7 @@
     <span class="identicon" data-wallet data-address="NQ30 AM32 NHXL 29F7 XUY0 HR3R 7XHF EF4L LYBS"><img src='data:image/svg+xml,<svg width="64" height="64" viewBox="0 -4 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><path opacity=".1" d="M62.3 25.4L49.2 2.6A5.3 5.3 0 0 0 44.6 0H18.4c-1.9 0-3.6 1-4.6 2.6L.7 25.4c-1 1.6-1 3.6 0 5.2l13.1 22.8c1 1.6 2.7 2.6 4.6 2.6h26.2c1.9 0 3.6-1 4.6-2.6l13-22.8c1-1.6 1-3.6.1-5.2z" fill="url(%23identicon_radial)"/><defs><radialGradient id="identicon_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(-63.0033 0 0 -56 63 56)"><stop stop-color="%23260133"/><stop offset="1" stop-color="%231F2348"/></radialGradient></defs></svg>' alt="Account identicon"></span>
     <span data-wallet-label>Mesh Wallet</span>
   </button>
+  <button class="sm-row" id="menu-chat"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M21 12a8 8 0 0 1-8 8H4.5l2-2.7A8 8 0 1 1 21 12z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8.5 10.5h7M8.5 13.5h4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span data-i18n="chat.menu">Messages</span></button>
   <button class="sm-row" id="menu-invite"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M12 3v12M7.5 7.5 12 3l4.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="nw.invite">Invite friends to the mesh</span></button>
   <button class="sm-row" id="menu-network"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 12h17M12 3.2c-5.6 5.4-5.6 12.2 0 17.6M12 3.2c5.6 5.4 5.6 12.2 0 17.6" stroke="currentColor" stroke-width="1.6"/></svg><span data-i18n="menu.network">Network</span></button>
   <button class="sm-row" id="menu-settings"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.8"/><path d="M12 2.8l1.2 2.6 2.8-.6 1 2.7 2.8.7-.6 2.8 2 2-2 2 .6 2.8-2.8.7-1 2.7-2.8-.6L12 21.2l-1.2-2.6-2.8.6-1-2.7-2.8-.7.6-2.8-2-2 2-2-.6-2.8 2.8-.7 1-2.7 2.8.6z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg><span data-i18n="set.title">Settings</span></button>
@@ -1583,6 +1607,24 @@ Don't share them and keep them safe.</p>
   </div>
 </section>
 
+<!-- Mesh chat sheet: public broadcast messages over the same BLE mesh the payments ride.
+     Public by design (the note says so); the encrypted 1:1 lane is the Noise follow-up. -->
+<section class="sheet" id="chat-sheet" aria-label="Mesh messages">
+  <div class="sheet-header">
+    <div class="title" data-i18n="chat.title">Mesh Messages</div>
+    <button class="s-close sheet-close" aria-label="Close"><svg viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+  </div>
+  <div class="chat-scroll" id="chat-scroll">
+    <p class="chat-empty" id="chat-empty" data-i18n="chat.empty">No messages yet. Anyone on the mesh around you will see what you send.</p>
+    <div id="chat-list"></div>
+  </div>
+  <p class="chat-note" data-i18n="chat.public">Public — everyone on the mesh can read it</p>
+  <div class="chat-inputrow">
+    <input id="chat-input" maxlength="160" placeholder="Message the mesh…" data-i18n-ph="chat.ph" autocomplete="off">
+    <button class="chat-send-btn" id="chat-send" aria-label="Send" disabled><svg viewBox="0 0 24 24" fill="none"><path d="M4 12h14M12 5l7 7-7 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+  </div>
+</section>
+
 <!-- Account sheet: the wallet-pill replacement — your identicon opens YOUR account
      (address / copy / backup / log out), like the real wallet's account menu. -->
 <section class="sheet" id="account-sheet" aria-label="My account">
@@ -1673,6 +1715,9 @@ Don't share them and keep them safe.</p>
       'swap.searching': 'Buscando un socio en la malla', 'swap.searching.sub': 'Tu intención de intercambio se retransmite de teléfono en teléfono hasta que un socio compatible responde. Puede tardar un momento.',
       'swap.matched': 'Socio encontrado, negociando…', 'swap.settled': 'Intercambio liquidado',
       'swap.live': 'En vivo por Bluetooth — testnet, fondos simulados', 'swap.ended': 'Intercambio terminado',
+      'chat.menu': 'Mensajes', 'chat.title': 'Mensajes de la malla', 'chat.ph': 'Mensaje a la malla…',
+      'chat.public': 'Público — toda la malla puede leerlo',
+      'chat.empty': 'Aún no hay mensajes. Cualquiera en la malla cerca de ti verá lo que envíes.',
       'swap.ph.propose': 'Propuesta enviada', 'swap.ph.accept': 'Socio aceptó', 'swap.ph.fundnim': 'HTLC de NIM fondeado',
       'swap.ph.fundother': 'HTLC del socio fondeado', 'swap.ph.reveal': 'Secreto revelado', 'swap.ph.settled': 'Liquidado',
       'intro.title': '¡No hay recuperación de contraseña!', 'intro.warn': 'Las palabras de recuperación son la ÚNICA forma de restaurar tu cartera si pierdes este teléfono.',
@@ -1721,6 +1766,9 @@ Don't share them and keep them safe.</p>
       'swap.searching': 'Suche einen Tauschpartner im Mesh', 'swap.searching.sub': 'Deine Tauschabsicht wird von Handy zu Handy weitergereicht, bis ein passender Partner antwortet. Das kann einen Moment dauern.',
       'swap.matched': 'Partner gefunden, verhandle…', 'swap.settled': 'Tausch abgewickelt',
       'swap.live': 'Live über Bluetooth — Testnet, Sim-Guthaben', 'swap.ended': 'Tausch beendet',
+      'chat.menu': 'Nachrichten', 'chat.title': 'Mesh-Nachrichten', 'chat.ph': 'Nachricht ans Mesh…',
+      'chat.public': 'Öffentlich — das ganze Mesh kann mitlesen',
+      'chat.empty': 'Noch keine Nachrichten. Jeder im Mesh in deiner Nähe sieht, was du sendest.',
       'swap.ph.propose': 'Vorschlag gesendet', 'swap.ph.accept': 'Partner hat angenommen', 'swap.ph.fundnim': 'NIM-HTLC finanziert',
       'swap.ph.fundother': 'Partner-HTLC finanziert', 'swap.ph.reveal': 'Geheimnis enthüllt', 'swap.ph.settled': 'Abgewickelt',
       'intro.title': 'Es gibt keine Passwort-Wiederherstellung!', 'intro.warn': 'Die Wiederherstellungswörter sind der EINZIGE Weg, deine Wallet wiederherzustellen, falls dieses Handy verloren geht.',
@@ -1769,6 +1817,9 @@ Don't share them and keep them safe.</p>
       'swap.searching': 'Recherche d’un partenaire sur le mesh', 'swap.searching.sub': 'Ton intention d’échange est relayée de téléphone en téléphone jusqu’à ce qu’un partenaire compatible réponde. Cela peut prendre un moment.',
       'swap.matched': 'Partenaire trouvé, négociation…', 'swap.settled': 'Échange réglé',
       'swap.live': 'En direct via Bluetooth — testnet, fonds simulés', 'swap.ended': 'Échange terminé',
+      'chat.menu': 'Messages', 'chat.title': 'Messages du mesh', 'chat.ph': 'Message au mesh…',
+      'chat.public': 'Public — tout le mesh peut le lire',
+      'chat.empty': 'Pas encore de messages. Tout le monde sur le mesh autour de vous verra ce que vous envoyez.',
       'swap.ph.propose': 'Proposition envoyée', 'swap.ph.accept': 'Partenaire a accepté', 'swap.ph.fundnim': 'HTLC NIM financé',
       'swap.ph.fundother': 'HTLC du partenaire financé', 'swap.ph.reveal': 'Secret révélé', 'swap.ph.settled': 'Réglé',
       'intro.title': 'Il n’y a pas de récupération de mot de passe !', 'intro.warn': 'Les mots de récupération sont le SEUL moyen de restaurer ton portefeuille si tu perds ce téléphone.',
@@ -1817,6 +1868,9 @@ Don't share them and keep them safe.</p>
       'swap.searching': 'Procurando um parceiro na mesh', 'swap.searching.sub': 'Sua intenção de troca é retransmitida de telefone em telefone até um parceiro compatível responder. Pode levar um momento.',
       'swap.matched': 'Parceiro encontrado, negociando…', 'swap.settled': 'Troca liquidada',
       'swap.live': 'Ao vivo via Bluetooth — testnet, fundos simulados', 'swap.ended': 'Troca encerrada',
+      'chat.menu': 'Mensagens', 'chat.title': 'Mensagens da mesh', 'chat.ph': 'Mensagem para a mesh…',
+      'chat.public': 'Público — toda a mesh pode ler',
+      'chat.empty': 'Ainda sem mensagens. Qualquer pessoa na mesh perto de você verá o que enviar.',
       'swap.ph.propose': 'Proposta enviada', 'swap.ph.accept': 'Parceiro aceitou', 'swap.ph.fundnim': 'HTLC de NIM financiado',
       'swap.ph.fundother': 'HTLC do parceiro financiado', 'swap.ph.reveal': 'Segredo revelado', 'swap.ph.settled': 'Liquidado',
       'intro.title': 'Não existe recuperação de senha!', 'intro.warn': 'As palavras de recuperação são a ÚNICA forma de restaurar sua carteira se você perder este telefone.',
@@ -1857,6 +1911,9 @@ Don't share them and keep them safe.</p>
     'codes.how.tip': 'Email it to yourself, or message it to yourself in a chat app. Use a DIFFERENT platform for each code.',
     'swap.matched': 'Partner found, negotiating…', 'swap.settled': 'Swap settled',
     'swap.live': 'Live over Bluetooth — testnet, sim funds', 'swap.ended': 'Swap ended',
+    'chat.menu': 'Messages', 'chat.title': 'Mesh Messages', 'chat.ph': 'Message the mesh…',
+    'chat.public': 'Public — everyone on the mesh can read it',
+    'chat.empty': 'No messages yet. Anyone on the mesh around you will see what you send.',
     'swap.ph.propose': 'Proposal sent', 'swap.ph.accept': 'Partner accepted', 'swap.ph.fundnim': 'NIM HTLC funded',
     'swap.ph.fundother': 'Partner HTLC funded', 'swap.ph.reveal': 'Secret revealed', 'swap.ph.settled': 'Settled',
   };
@@ -1906,7 +1963,7 @@ Don't share them and keep them safe.</p>
     receive: document.getElementById('receive-sheet'), send: document.getElementById('send-sheet'),
     account: document.getElementById('account-sheet'), lang: document.getElementById('lang-sheet'),
     swap: document.getElementById('swap-sheet'), settings: document.getElementById('settings-sheet'),
-    txd: document.getElementById('txd-sheet'),
+    txd: document.getElementById('txd-sheet'), chat: document.getElementById('chat-sheet'),
   };
   const open = (k) => { backdrop.classList.add('open'); sheets[k].classList.add('open'); };
   const close = () => { backdrop.classList.remove('open'); Object.values(sheets).forEach(s => s.classList.remove('open')); };
@@ -1944,6 +2001,63 @@ Don't share them and keep them safe.</p>
   menuBackdrop.addEventListener('click', closeMenu);
   document.getElementById('menu-swap').addEventListener('click', () => { closeMenu(); resetSwapSheet(); open('swap'); });
   document.getElementById('menu-account').addEventListener('click', () => { closeMenu(); open('account'); });
+
+  // ---- Mesh chat (public broadcast over BLE, packet 0x50) ----
+  // Renders the node's rolling chat log; content-key gated so a poll never blanks the
+  // list (the 0.57.0 history-flicker lesson). Browser (no bridge): local echo only.
+  const chatLocal = [];
+  let chatPoll = null, chatKey = '';
+  function chatEsc(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+  function chatNick() {
+    let l = '';
+    try { l = localStorage.getItem('nimmesh.label') || ''; } catch (e) {}
+    return (l || 'Anon').slice(0, 24);
+  }
+  function renderChat(msgs) {
+    const key = msgs.map((m) => m.id).join('|');
+    if (key === chatKey) return;
+    chatKey = key;
+    document.getElementById('chat-empty').hidden = msgs.length > 0;
+    const fmt = (ts) => { const d = new Date(ts); return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; };
+    document.getElementById('chat-list').innerHTML = msgs.map((m) =>
+      `<div class="chat-msg ${m.mine ? 'mine' : 'theirs'}">` +
+      (m.mine ? '' : `<span class="cm-nick">${chatEsc(m.nickname || 'Anon')}</span>`) +
+      `${chatEsc(m.text)}<span class="cm-time">${fmt(m.timestamp)}</span></div>`).join('');
+    const sc = document.getElementById('chat-scroll');
+    sc.scrollTop = sc.scrollHeight;
+  }
+  async function pollChat() {
+    if (!sheets.chat.classList.contains('open')) {
+      if (chatPoll) { clearInterval(chatPoll); chatPoll = null; }
+      return;
+    }
+    if (window.nimmesh && window.nimmesh.chatMessages) {
+      try { const r = await window.nimmesh.chatMessages(); renderChat(r.messages || []); } catch (e) {}
+    } else { renderChat(chatLocal); }
+  }
+  const chatInput = document.getElementById('chat-input');
+  const chatSendBtn = document.getElementById('chat-send');
+  chatInput.addEventListener('input', () => { chatSendBtn.disabled = !chatInput.value.trim(); });
+  async function chatSendNow() {
+    const text = chatInput.value.trim();
+    if (!text) return;
+    chatInput.value = '';
+    chatSendBtn.disabled = true;
+    if (window.nimmesh && window.nimmesh.sendChat) {
+      try { await window.nimmesh.sendChat(chatNick(), text); } catch (e) {}
+    } else {
+      chatLocal.push({ id: `local-${chatLocal.length}`, nickname: chatNick(), text, timestamp: Date.now(), mine: true });
+    }
+    pollChat();
+  }
+  chatSendBtn.addEventListener('click', chatSendNow);
+  chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') chatSendNow(); });
+  document.getElementById('menu-chat').addEventListener('click', () => {
+    closeMenu();
+    open('chat');
+    pollChat();
+    if (!chatPoll) chatPoll = setInterval(pollChat, 2500);
+  });
   function centerNetworkMap(attempt) {
     requestAnimationFrame(() => {
       const pan = document.getElementById('nw-map-pan');

@@ -99,6 +99,8 @@ pub struct WorkerCtx {
     balances: Mutex<BalanceCache>,
     /// History over the mesh (`0x36`): last-known per-address recent txs. FFI-read.
     history: Mutex<crate::tx_history::HistoryCache>,
+    /// Public mesh chat (`0x50`): the rolling log this node has heard or sent. FFI-read.
+    pub(crate) chat: Mutex<crate::chat::ChatLog>,
     /// Count of `nimiqTxHistoryResponse` answers this gateway has flooded.
     pub(crate) history_answered: AtomicUsize,
     /// Monotonic per-node sequence used as the packet `timestamp_ms` so each flooded
@@ -159,6 +161,7 @@ impl WorkerCtx {
             head: Mutex::new(HeadCache::new(network.wire_id())),
             balances: Mutex::new(BalanceCache::new()),
             history: Mutex::new(crate::tx_history::HistoryCache::default()),
+            chat: Mutex::new(crate::chat::ChatLog::default()),
             history_answered: AtomicUsize::new(0),
             // Clock-seeded, NOT 1: a restarted node with a stable sender id would reuse
             // relay keys (type, sender, seq) a running peer has seen — all deduped.
@@ -593,6 +596,7 @@ pub(crate) fn dispatch_packet(
         | MessageType::SwapPreimageReveal
         | MessageType::SwapAbort
         | MessageType::SwapIntent => crate::swap_node::handle_swap_packet(ctx, packet, src, st),
+        MessageType::Chat => crate::chat::handle_chat_packet(ctx, packet, src, st),
         // G11 `noiseEncrypted` (0x11) and any other relayable type: blind dedup + remember
         // + adaptive TTL relay. A `noiseEncrypted` blob is **opaque** to
         // the relay (transport-privacy) — only its two endpoints decrypt it via a Noise

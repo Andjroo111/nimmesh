@@ -240,6 +240,10 @@ pub mod btc_gateway;
 // The `kind: mock | real` `provider` bundles a radio + gateway; `gateway` is the online
 // hop (mock now; real `sendRawTransaction` is G8). `transport` holds the shared ids.
 // Everything stays opaque-bytes only — no signing, no broadcast (G3/G8, money-path).
+// Public mesh chat (`0x50`) — Bitchat-style broadcast text over the same flood/relay
+// machinery as everything else, with a rolling FFI-read log. The messenger layer; the
+// encrypted 1:1 lane stays `noise`/`0x11`. Never money-path.
+pub mod chat;
 pub mod dedup;
 pub mod engine;
 pub mod gateway;

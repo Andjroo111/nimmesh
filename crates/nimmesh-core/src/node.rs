@@ -62,6 +62,8 @@ enum Job {
     BalanceQuery(Address),
     /// History over the mesh: flood a `nimiqTxHistoryQuery` for this address.
     HistoryQuery(Address),
+    /// Public mesh chat: flood a locally-authored, already-encoded `0x50` payload.
+    Chat(Vec<u8>),
     /// G14 (test): register an initiator coordinator + flood its `Propose` (swap origination).
     #[cfg(test)]
     StartSwap {
@@ -167,6 +169,11 @@ fn run_worker(
             Job::HistoryQuery(addr) => {
                 let _ = catch_unwind(AssertUnwindSafe(|| {
                     crate::tx_history::flood_local_history_query(&ctx, addr, &mut st);
+                }));
+            }
+            Job::Chat(payload) => {
+                let _ = catch_unwind(AssertUnwindSafe(|| {
+                    crate::chat::flood_local_chat(&ctx, payload, &mut st);
                 }));
             }
             #[cfg(test)]
@@ -475,6 +482,14 @@ impl MeshNode {
     fn enqueue_inbound(&self, src: Option<String>, bytes: Vec<u8>) {
         if let Some(tx) = self.job_tx.lock().unwrap().as_ref() {
             let _ = tx.send(Job::Inbound { src, bytes });
+        }
+    }
+
+    /// Public mesh chat: enqueue a locally-authored `0x50` flood (the FFI in `chat.rs`
+    /// calls this; non-blocking, worker floods + logs).
+    pub(crate) fn enqueue_chat(&self, payload: Vec<u8>) {
+        if let Some(tx) = self.job_tx.lock().unwrap().as_ref() {
+            let _ = tx.send(Job::Chat(payload));
         }
     }
 

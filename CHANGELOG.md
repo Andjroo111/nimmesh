@@ -2,6 +2,28 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.60.0] — 2026-07-08
+
+### Added — the mesh gets a messenger: public chat over Bluetooth (0x50)
+
+Andjroo's ask: "we need a messenger so we can send them messages… or other people in our
+network." Bitchat-style **public broadcast chat** riding the exact same flood machinery as
+every payment packet — dedup, TTL hop cap, store-and-forward (a peer that walks into range
+later catches up via gossip-sync), multi-hop relay. Fully offline. This is also the future
+carrier for swap invites and cashlinks between strangers.
+
+- **Core**: new `chat` module + `0x50` wire type. Payload = version ‖ wall-clock ‖ nickname
+  (≤32 B) ‖ UTF-8 text (≤160 B — the SMS discipline; over-budget is refused, never
+  truncated). Rolling 200-message log deduped by `(sender, seq)`; hostile-input decode
+  (truncation/UTF-8/trailing bytes all rejected, malformed still blind-relays — we never
+  censor what we can't parse). FFI `sendChat`/`chatMessages`.
+- **App**: "Messages" in the side menu → a chat sheet (wallet-styled bubbles, nickname from
+  the wallet label, content-key-gated rendering so polls never blank the list). Honest
+  label: *Public — everyone on the mesh can read it* (the encrypted 1:1 lane is the Noise
+  follow-up). i18n ×5.
+- **Mac node**: greets the mesh when the first phone links and logs every message heard —
+  a live chat partner for the one-phone test.
+
 ## [0.59.0] — 2026-07-08
 
 ### Added — the swap protocol goes live over real Bluetooth (Act 1: sim funds)

@@ -203,6 +203,8 @@ var lastPeers: UInt32 = 0xFFFFFFFF
 var lastPayments: UInt64 = 0
 var lastStatusPrint = Date(timeIntervalSince1970: 0)
 var lastSwapDesc = ""
+var lastChatCount = 0
+var chatGreeted = false
 
 func syncState() {
     let stats = node.relayStats()
@@ -274,6 +276,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if stats.paymentsRelayed != lastPayments {
                 line("★ payment relayed through this node (\(stats.paymentsRelayed) this session) — utility earned")
                 lastPayments = stats.paymentsRelayed
+            }
+            // Mesh chat: greet once when the first phone links, and print every message
+            // heard — the Mac is a live chat partner for the one-phone test.
+            if peers > 0 && !chatGreeted {
+                chatGreeted = true
+                _ = node.sendChat(
+                    nickname: "Mac mini",
+                    text: "Mac mini node online — mesh chat is live",
+                    timestampMs: UInt64(Date().timeIntervalSince1970 * 1000))
+                line("💬 sent greeting to the mesh")
+            }
+            let chats = node.chatMessages()
+            if chats.count > lastChatCount {
+                for m in chats.suffix(chats.count - lastChatCount) where !m.mine {
+                    line("💬 \(m.nickname): \(m.text)")
+                }
+                lastChatCount = chats.count
             }
             if swapResponder {
                 let m = node.discoveryMetrics()

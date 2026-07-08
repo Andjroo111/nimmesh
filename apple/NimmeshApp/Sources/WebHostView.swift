@@ -201,7 +201,10 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         // real Bluetooth — advertise an intent, match, negotiate — with sim tx bytes.
         swapMeshStart: function (a) { return call('swapMeshStart', a || {}); },
         swapMeshStatus: function () { return call('swapMeshStatus'); },
-        swapMeshStop: function () { return call('swapMeshStop'); }
+        swapMeshStop: function () { return call('swapMeshStop'); },
+        // Public mesh chat (0x50): broadcast text over BLE; the rolling heard/sent log.
+        sendChat: function (nick, text) { return call('sendChat', { nickname: nick, text: text }); },
+        chatMessages: function () { return call('chatMessages'); }
       };
     })();
     """
@@ -473,6 +476,28 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             return swapMeshStatus()
         case "swapMeshStop":
             return swapMeshStop()
+        case "sendChat":
+            // Public mesh chat: text + chosen nickname flood to everyone nearby (0x50).
+            // Nothing but text crosses — no keys, no addresses, not money-path.
+            let a = args as? [String: Any] ?? [:]
+            let text = (a["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            var nick = (a["nickname"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if nick.isEmpty { nick = "Anon" }
+            guard !text.isEmpty else { return (false, "empty message") }
+            let ok = node.sendChat(
+                nickname: String(nick.prefix(24)), text: text,
+                timestampMs: UInt64(Date().timeIntervalSince1970 * 1000))
+            var payload: [String: Any] = ["ok": ok]
+            if !ok { payload["reason"] = "too long" }
+            return (ok, payload)
+        case "chatMessages":
+            let msgs: [[String: Any]] = node.chatMessages().map {
+                [
+                    "id": $0.id, "nickname": $0.nickname, "text": $0.text,
+                    "timestamp": Double($0.timestampMs), "mine": $0.mine,
+                ]
+            }
+            return (true, ["messages": msgs])
         case "meshQueryHistory":
             // Transactions over the mesh: flood a nimiqTxHistoryQuery — the Mac gateway
             // answers up to 10 compact rows through the fragmenter. Fire-and-forget.

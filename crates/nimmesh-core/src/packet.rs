@@ -116,6 +116,10 @@ pub enum MessageType {
     /// rate R"). Flooded + blind-relayed like the rest; a node holding a complementary intent kicks
     /// off a `SwapPropose`. Carries amounts/rate + the advertiser's addresses, no keys, no secret.
     SwapIntent = 0x45,
+    /// `0x50` — a **public chat message** ([`crate::chat`]): Bitchat-style broadcast text
+    /// (nickname + UTF-8 body), flooded + store-and-forwarded like everything else. Public by
+    /// design; the encrypted 1:1 lane is `noiseEncrypted` (`0x11`). Never money-path.
+    Chat = 0x50,
 }
 
 impl MessageType {
@@ -146,6 +150,7 @@ impl MessageType {
             0x43 => Some(MessageType::SwapPreimageReveal),
             0x44 => Some(MessageType::SwapAbort),
             0x45 => Some(MessageType::SwapIntent),
+            0x50 => Some(MessageType::Chat),
             _ => None,
         }
     }
