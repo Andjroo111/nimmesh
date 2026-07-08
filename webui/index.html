@@ -576,7 +576,11 @@
   .swap-discovery[hidden], .swap-phases[hidden], #swap-setup[hidden], #swap-progress[hidden], #swap-done[hidden] { display: none !important; }
 
   /* ---- Mesh chat sheet: public broadcast bubbles over the BLE mesh ---- */
-  .chat-scroll { height: 46vh; overflow-y: auto; padding: 12px 20px 4px; }
+  /* No sideways travel, ever: the sheet and its scroller clip horizontally, and the
+     flex input must be allowed to SHRINK (min-width:0) or it pushes the send button
+     off-screen (Andjroo's field report). */
+  #chat-sheet { overflow-x: hidden; }
+  .chat-scroll { height: 46vh; overflow-y: auto; overflow-x: hidden; padding: 12px 20px 4px; }
   .chat-empty { text-align: center; color: rgba(31,35,72,.5); font-size: 13.5px; padding: 26px 30px; }
   .chat-empty[hidden] { display: none; }
   .chat-msg { max-width: 78%; margin: 3px 0; padding: 8px 12px 6px; border-radius: 14px; font-size: 14.5px;
@@ -589,8 +593,8 @@
   .chat-note { margin: 6px 24px 0; text-align: center; font-size: 11.5px; font-weight: 700;
     color: rgba(31,35,72,.45); text-transform: uppercase; letter-spacing: .06em; }
   .chat-inputrow { display: flex; gap: 8px; margin: 8px 20px calc(16px + env(safe-area-inset-bottom)); }
-  .chat-inputrow input { flex: 1; border: 1.5px solid rgba(31,35,72,.16); border-radius: 999px; padding: 10px 16px;
-    font: inherit; font-size: 15px; color: #1f2348; outline: none; background: #fff; }
+  .chat-inputrow input { flex: 1; min-width: 0; border: 1.5px solid rgba(31,35,72,.16); border-radius: 999px;
+    padding: 10px 16px; font: inherit; font-size: 15px; color: #1f2348; outline: none; background: #fff; }
   .chat-inputrow input:focus { border-color: #0582CA; }
   .chat-send-btn { width: 42px; height: 42px; border-radius: 50%; border: 0; color: #fff; cursor: pointer; flex: 0 0 auto;
     display: flex; align-items: center; justify-content: center;

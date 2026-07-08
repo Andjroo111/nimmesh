@@ -389,6 +389,15 @@ pub(crate) struct WorkerState {
     sync: SyncScheduler,
     /// G9: rate-limiter for the periodic gateway head-beacon emit (one per tick).
     pub(crate) beacon: BeaconScheduler,
+    /// The last head this gateway fetched LIVE — re-beaconed while the uplink is down so
+    /// the BLE keepalive never depends on the chain (an offline phone-gateway that emits
+    /// nothing gets idle-dropped by iOS ~50 s in; receivers are monotonic, so a stale
+    /// re-beacon is harmless).
+    pub(crate) last_beacon: Option<HeadBeacon>,
+    /// Beacon ticks left before the next LIVE head probe after a failure — never hammer a
+    /// dead uplink from the single worker thread (the connect timeout would block it on
+    /// every tick, which is exactly what stalled offline chat sends in the field).
+    pub(crate) beacon_rpc_backoff: u8,
     /// G12: drop a `nimiqTx` that isn't a well-formed signed transfer before relay (spam filter); off in tests.
     verify_before_relay: bool,
     /// G12: per-peer inbound rate limiter (anti-DoS — throttle a flooding peer).
@@ -421,6 +430,8 @@ impl WorkerState {
             recent: RecentCache::new(),
             sync: SyncScheduler::new(),
             beacon: BeaconScheduler::new(),
+            last_beacon: None,
+            beacon_rpc_backoff: 0,
             verify_before_relay,
             limiter: PeerRateLimiter::new(),
             acked: DedupCache::new(GATEWAY_CACHE_CAP),

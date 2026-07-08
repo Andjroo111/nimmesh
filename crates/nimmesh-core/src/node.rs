@@ -152,12 +152,12 @@ fn run_worker(
             Job::BeaconTick => {
                 let _ = catch_unwind(AssertUnwindSafe(|| {
                     emit_head_beacon(&ctx, &mut st);
-                    // Data-mule: the ~15s beacon poll is the reliable heartbeat on both
-                    // shims (neither calls pollSync), so pending-tx retry rides it too.
-                    crate::pending_retry::tick(&ctx, &mut st);
-                    // Swap upkeep rides the same heartbeat (G9 s3): intent re-advertise,
-                    // match-window close, retransmit, refund exit, GC — otherwise a real
-                    // device participant would never advertise or initiate.
+                    // The ~15s beacon poll is the ONLY reliable heartbeat on both shims
+                    // (neither ever calls pollSync), so ALL periodic upkeep rides it:
+                    // the gossip-sync request (30s-limited internally — recovers packets
+                    // a flapping BLE link dropped, Andjroo's offline-chat field bug), the
+                    // data-mule retry (inside maintenance_tick), and swap upkeep.
+                    maintenance_tick(&ctx, &mut st);
                     crate::swap_node::gc_tick(&ctx, &mut st);
                 }));
             }

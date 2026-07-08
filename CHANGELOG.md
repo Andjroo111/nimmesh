@@ -2,6 +2,31 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.60.2] — 2026-07-08
+
+### Fixed — offline chat actually sends (Andjroo's field report) + chat input overflow
+
+Bluetooth-only + airplane mode: messages "didn't send until Wi-Fi came back." Root cause
+was a chain of three since the phone became a gateway (0.56.0):
+
+- **The beacon keepalive went silent offline** — `emit_head_beacon` emitted nothing when
+  the live RPC head fetch failed, so an offline phone-gateway produced zero BLE traffic,
+  iOS idle-dropped the link (~50 s), and chat floods hit zero peers. The beacon now falls
+  back to the **last live head** (receivers are monotonic — a stale re-beacon is harmless;
+  the beacon IS the keepalive, it must not depend on the chain).
+- **The failed RPC probe blocked the worker every tick** (up to the 10 s connect timeout,
+  on the single thread that also floods chat). Probes now back off ~50 s between attempts
+  while failing; the stashed head beacons in between. Clock-free `select_beacon` helper,
+  unit-tested including "never probes during backoff."
+- **Nothing ever recovered a chat dropped during a flap** — gossip-sync (`requestSync`)
+  only ran on `poll_sync`, which no shim calls (the same class of bug as 0.58.0's
+  `gc_tick`). `maintenance_tick` now rides `BeaconTick`, the one heartbeat real devices
+  have. New regression test: a chat sent with the link down is recovered on the first
+  heartbeat after it heals.
+- **Chat input row overflow**: the flex input couldn't shrink (`min-width: 0`), pushing
+  the send button off-screen and letting the sheet wobble sideways; the sheet and scroller
+  now clip horizontally.
+
 ## [0.60.1] — 2026-07-08
 
 ### Added — the Mac node speaks Bitchat: cross-app messaging with Jack Dorsey's mesh

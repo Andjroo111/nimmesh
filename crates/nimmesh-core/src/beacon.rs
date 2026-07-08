@@ -48,6 +48,38 @@ pub const BEACON_PAYLOAD_LEN: usize = 4 + BLOCK_HASH_LEN + 1;
 /// G7 sync tick this is enforced clock-free by [`BeaconScheduler`] against a caller clock.
 pub const BEACON_TICK_MS: u64 = 10_000;
 
+/// How many beacon ticks a gateway waits before re-probing a FAILED uplink (≈50 s at the
+/// 10 s cadence). Between probes it re-beacons [`select_beacon`]'s stashed head instead —
+/// the beacon doubles as the BLE keepalive, so it must keep flowing when the chain doesn't.
+pub const BEACON_RPC_BACKOFF_TICKS: u8 = 5;
+
+/// Pick the beacon to flood this tick, clock-free (Andjroo's field bug, 2026-07-08: an
+/// OFFLINE phone-gateway emitted nothing — no keepalive → iOS dropped the BLE link → chat
+/// floods hit zero peers — and its blocking RPC probe stalled the worker every tick).
+///
+/// When `backoff` is 0, probe `live` once: success stashes + returns the fresh head;
+/// failure arms the backoff and falls back to the stash. While backing off, `live` is
+/// never called (the worker never blocks) and the stashed head re-beacons. `None` only
+/// when there has never been a live head at all.
+pub(crate) fn select_beacon(
+    live: impl FnOnce() -> Option<HeadBeacon>,
+    last: &mut Option<HeadBeacon>,
+    backoff: &mut u8,
+) -> Option<HeadBeacon> {
+    if *backoff == 0 {
+        match live() {
+            Some(b) => {
+                *last = Some(b);
+                return Some(b);
+            }
+            None => *backoff = BEACON_RPC_BACKOFF_TICKS,
+        }
+    } else {
+        *backoff -= 1;
+    }
+    *last
+}
+
 /// A decoded `nimiqHeadBeacon` (`0x32`) — a gateway's snapshot of the chain head a node
 /// anchors transaction validity to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -224,8 +256,12 @@ pub(crate) fn emit_head_beacon(ctx: &WorkerCtx, st: &mut WorkerState) {
     if !st.beacon.due(now) {
         return; // rate-limited: at most one beacon per tick.
     }
-    let Some(beacon) = gateway.head_beacon() else {
-        return; // no live head (transient RPC failure / chain-less mock): emit nothing.
+    let Some(beacon) = select_beacon(
+        || gateway.head_beacon(),
+        &mut st.last_beacon,
+        &mut st.beacon_rpc_backoff,
+    ) else {
+        return; // never had a live head (fresh boot, uplink down): nothing to anchor.
     };
     ctx.cache_head(&beacon);
     let packet = ctx.build_packet(MessageType::NimiqHeadBeacon, encode_beacon(&beacon));
@@ -350,5 +386,48 @@ mod tests {
         assert!(!s.due(BEACON_TICK_MS - 1));
         assert!(s.due(BEACON_TICK_MS)); // a full tick later — fires again.
         assert!(!s.due(BEACON_TICK_MS + 1));
+    }
+
+    #[test]
+    fn select_beacon_stashes_live_and_survives_uplink_loss() {
+        let b1 = HeadBeacon::new(100, 5);
+        let mut last = None;
+        let mut backoff = 0u8;
+        // Live success: stashed + returned fresh.
+        assert_eq!(
+            select_beacon(|| Some(b1), &mut last, &mut backoff),
+            Some(b1)
+        );
+        // The uplink dies: the failed probe arms the backoff, the stash keeps beaconing
+        // (the beacon doubles as the BLE keepalive — it must not go silent offline).
+        assert_eq!(select_beacon(|| None, &mut last, &mut backoff), Some(b1));
+        assert_eq!(backoff, BEACON_RPC_BACKOFF_TICKS);
+        // While backing off the probe must NOT run — a blocked worker was the field bug.
+        for _ in 0..BEACON_RPC_BACKOFF_TICKS {
+            let got = select_beacon(
+                || -> Option<HeadBeacon> { panic!("probed during backoff") },
+                &mut last,
+                &mut backoff,
+            );
+            assert_eq!(got, Some(b1));
+        }
+        assert_eq!(backoff, 0);
+        // Backoff spent → probes again; a recovered uplink beacons the fresh head.
+        let b2 = HeadBeacon::new(200, 5);
+        assert_eq!(
+            select_beacon(|| Some(b2), &mut last, &mut backoff),
+            Some(b2)
+        );
+        assert_eq!(last, Some(b2));
+    }
+
+    #[test]
+    fn select_beacon_stays_silent_with_no_history() {
+        // A gateway that boots offline has nothing to anchor — emit nothing (never a
+        // zeroed/invented head).
+        let mut last = None;
+        let mut backoff = 0u8;
+        assert_eq!(select_beacon(|| None, &mut last, &mut backoff), None);
+        assert_eq!(select_beacon(|| None, &mut last, &mut backoff), None);
     }
 }

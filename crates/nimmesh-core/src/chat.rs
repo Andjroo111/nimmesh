@@ -303,4 +303,37 @@ mod tests {
 
         h.shutdown();
     }
+
+    #[test]
+    fn a_chat_missed_while_the_link_was_down_is_recovered_on_the_heartbeat() {
+        use crate::mock_radio::MeshHarness;
+
+        let mut h = MeshHarness::new();
+        let a = h.add_node("a", &[1]);
+        let b = h.add_node("b", &[2]);
+
+        // A speaks while B is NOT linked — the flood reaches nobody.
+        assert!(a.send_chat("andjroo".into(), "sent into the void".into(), 1));
+        a.fence();
+        h.ether().fence();
+        b.fence();
+        assert!(b.chat_messages().is_empty(), "no link, no delivery");
+
+        // The link heals (the BLE flap ends) and B's heartbeat fires: gossip-sync asks
+        // for what it missed and A serves it back. Andjroo's field bug (2026-07-08):
+        // chats sent during a flap never arrived, because no shim ever ran the sync
+        // tick — it now rides BeaconTick, the one heartbeat real devices actually have.
+        h.connect("a", "b");
+        b.poll_beacon();
+        for _ in 0..3 {
+            b.fence();
+            h.ether().fence();
+            a.fence();
+            h.ether().fence();
+        }
+        let got = b.chat_messages();
+        assert_eq!(got.len(), 1, "the heartbeat must recover the missed chat");
+        assert_eq!(got[0].text, "sent into the void");
+        h.shutdown();
+    }
 }
