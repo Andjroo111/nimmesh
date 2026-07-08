@@ -248,6 +248,11 @@ pub mod gateway;
 // without the `gateway-rpc` feature it returns `GatewayInitError::Unsupported` so the
 // shared generated bindings never diverge between the app and Mac-node builds.
 pub mod gateway_ffi;
+// G9 slice 3: the PRODUCTION swap-participant constructor (`MeshNode::new_swap_participant`)
+// — a third `#[uniffi::export]` block on `MeshNode`. Testnet-pinned, sim-signer only (the
+// real money-path signer is a later, gated drop-in); the intent/Propose identity is an
+// ephemeral key from caller randomness (G45), never the wallet key.
+pub mod swap_participant_ffi;
 // Transaction history over the mesh (`0x35`/`0x36`) — the G15 balance pattern extended
 // to the recent tx rows, so a Bluetooth-only phone sees payments arrive, not just its
 // balance move. The gateway's answer rides the G6 fragmenter (first real user).

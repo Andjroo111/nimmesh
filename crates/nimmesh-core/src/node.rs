@@ -153,6 +153,10 @@ fn run_worker(
                     // Data-mule: the ~15s beacon poll is the reliable heartbeat on both
                     // shims (neither calls pollSync), so pending-tx retry rides it too.
                     crate::pending_retry::tick(&ctx, &mut st);
+                    // Swap upkeep rides the same heartbeat (G9 s3): intent re-advertise,
+                    // match-window close, retransmit, refund exit, GC — otherwise a real
+                    // device participant would never advertise or initiate.
+                    crate::swap_node::gc_tick(&ctx, &mut st);
                 }));
             }
             Job::BalanceQuery(addr) => {

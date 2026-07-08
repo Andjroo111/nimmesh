@@ -512,6 +512,7 @@ fn handle_intent(ctx: &WorkerCtx, st: &mut WorkerState, sender: [u8; PEER_ID_LEN
 fn initiate_from_intent(
     st: &mut WorkerState,
     swap_id: [u8; SWAP_ID_LEN],
+    head: u64,
 ) -> Vec<(MessageType, Vec<u8>)> {
     let (standing, ladder) = {
         let Some(session) = st.swap.as_ref() else {
@@ -531,11 +532,13 @@ fn initiate_from_intent(
     let secret = sim_secret(&swap_id);
     let ctx = crate::swap_coordinator::SwapContext {
         swap_id,
-        // Sim timelocks (T_A / T_B). Production derives these from the live head + the Δ_safe ladder
-        // (money-path gated); the fixed values here are safe at head 0, as the swap tests rely on.
+        // Sim timelocks (T_A / T_B), anchored to the live mesh head so a REAL device (head in
+        // the millions) doesn't mint born-expired swaps. At head 0 these are the exact fixed
+        // values the deterministic swap tests rely on (10_000 / 5_000). The real money-path
+        // derives tighter windows from the Δ_safe ladder (gated).
         terms: crate::swap::SwapTerms {
-            nim_timeout: 10_000,
-            counterparty_timeout: 5_000,
+            nim_timeout: head + 10_000,
+            counterparty_timeout: head + 5_000,
         },
         hashlock: crate::swap_leg::sha256(&secret),
         nim_address: standing.nim_address,
@@ -672,7 +675,7 @@ pub(crate) fn gc_tick(ctx: &WorkerCtx, st: &mut WorkerState) {
     // G39: close the match window (if due) and initiate against the best buffered candidate, recording
     // the Propose so a lossy mesh retransmits it.
     if let Some(swap_id) = st.intents.matcher.tick() {
-        let replies = initiate_from_intent(st, swap_id);
+        let replies = initiate_from_intent(st, swap_id, head);
         if !replies.is_empty() {
             ctx.intent_metrics.note_matched(); // a discovered swap actually started (G42)
         }

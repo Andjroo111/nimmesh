@@ -2,6 +2,36 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.58.0] — 2026-07-08
+
+### Added — the production swap-participant door (G9 slice 3): real devices can now discover and negotiate swaps over the mesh
+
+The entire mesh swap protocol (discovery, matching, signed Proposes, funding proofs,
+preimage reveal, retransmit, refund safety, GC) has been merged and tested for months —
+but every participant constructor was `#[cfg(test)]`-only, so no real device could use it.
+This opens the production door, with **sim tx bytes only** (the `MockSigner` seam): the
+protocol runs for real over real Bluetooth; no funds can move until the gated money-path
+signer drops into the same seam.
+
+- **`MeshNode::new_swap_participant` over UniFFI** (`swap_participant_ffi.rs`, the
+  `gateway_ffi` pattern): builds a full mesh node that also runs the swap session.
+  Config records `FfiParticipantConfig` + `FfiStandingIntent` (+`FfiIntentAsset`) carry
+  the trade to advertise, the Δ_safe ladder, and 32 bytes of caller randomness for the
+  **ephemeral** intent/Propose identity (G45 — never the wallet key; the same key signs
+  the intent (G41) and the Proposes (S2/#73), so `recv_propose`'s authenticity gate
+  holds end to end). Optional `gateway_rpc_url` makes it also a testnet gateway (the Mac
+  responder rig). Testnet-pinned by construction — no mainnet parameter exists.
+- **Swap upkeep now rides the beacon heartbeat**: `gc_tick` (intent re-advertise, match-
+  window close, retransmit, refund exit, GC) only ran on `poll_sync` — which neither
+  device shim ever calls. On a real phone the standing intent would never have flooded
+  and a match would never have initiated. It now also runs on `BeaconTick` (~15 s), the
+  same fix the data-mule retry needed in 0.56.0. Proven by a new test: a constructed
+  participant re-advertises within three beacon polls.
+- **Intent-initiated sim timelocks are head-anchored**: `initiate_from_intent` minted
+  `T_A/T_B = 10_000/5_000` — born-expired against a real testnet head in the millions.
+  Now `head + 10_000 / head + 5_000` (identical at head 0, so the deterministic suite
+  is untouched).
+
 ## [0.57.0] — 2026-07-07
 
 ### Changed — Send is now the wallet's two-step flow; history stops flickering
