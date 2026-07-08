@@ -32,6 +32,7 @@ swiftc \
   -I "$GEN" \
   -Xcc -fmodule-map-file="$GEN/nimmesh_coreFFI.modulemap" \
   "$GEN/nimmesh_core.swift" \
+  "$ROOT/shared/BitchatKit.swift" \
   "$ROOT/mac-node/BleMeshRadio.swift" \
   "$ROOT/mac-node/main.swift" \
   -L "$(dirname "$LIB")" -lnimmesh_core \

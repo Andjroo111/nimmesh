@@ -206,6 +206,32 @@ var lastSwapDesc = ""
 var lastChatCount = 0
 var chatGreeted = false
 
+// `--bitchat`: ALSO join the real Bitchat mesh (Jack Dorsey's app) as a peer — separate
+// CoreBluetooth managers, their GATT service + wire format (see shared/BitchatKit.swift).
+// Verified inbound public messages print here AND cross into the nimmesh chat so a
+// nimmesh phone sees them; nimmesh chats heard are forwarded to Bitchat. Marked lines
+// (₿) never bounce back — the bridge only crosses each message once.
+let useBitchat = CommandLine.arguments.contains("--bitchat")
+var bitchat: BitchatLink? = nil
+var bridgedToBitchat = 0
+if useBitchat {
+    let fails = BitchatSelfTest.run()
+    if fails.isEmpty {
+        line("₿ bitchat self-test: all checks pass")
+        let link = BitchatLink(nickname: "Mac mini (nimmesh)")
+        link.onLog = { line("₿ \($0)") }
+        link.onPeer = { nick in line("₿ bitchat peer announced: \(nick)") }
+        link.onMessage = { nick, text, ts in
+            line("₿💬 \(nick): \(text)")
+            // Cross into the nimmesh mesh, tagged so we never bridge it back out.
+            _ = node.sendChat(nickname: "₿ \(nick)", text: String(text.prefix(150)), timestampMs: ts)
+        }
+        bitchat = link
+    } else {
+        line("₿ !! bitchat self-test FAILED — link disabled: \(fails.joined(separator: ", "))")
+    }
+}
+
 func syncState() {
     let stats = node.relayStats()
     state.lifetimeUptimeSec = baseUptime + Date().timeIntervalSince(startTime)
@@ -291,6 +317,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if chats.count > lastChatCount {
                 for m in chats.suffix(chats.count - lastChatCount) where !m.mine {
                     line("💬 \(m.nickname): \(m.text)")
+                    // Bridge nimmesh → Bitchat, once per message. ₿-tagged lines came FROM
+                    // Bitchat (crossed by onMessage) and must never bounce back out.
+                    if let link = bitchat, !m.nickname.hasPrefix("₿") {
+                        link.sendPublic("\(m.nickname): \(m.text)")
+                        bridgedToBitchat += 1
+                    }
                 }
                 lastChatCount = chats.count
             }

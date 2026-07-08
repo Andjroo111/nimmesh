@@ -2,6 +2,28 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.60.1] — 2026-07-08
+
+### Added — the Mac node speaks Bitchat: cross-app messaging with Jack Dorsey's mesh
+
+`shared/BitchatKit.swift` — a byte-exact, CryptoKit-only implementation of the Bitchat
+public-chat wire protocol (their repo is public domain): their GATT service, the 14-byte
+v1 header, the dual-key identity (peerID = SHA-256(noise pubkey)[0..8]), signed announces
+(TLV nickname+keys), signed public messages, and the tricky signature canonicalization
+(ttl-zeroed, signature-less, PKCS#7-padded to their block schedule). Endpoint only —
+we never relay their packets; private (Noise) messages deferred.
+
+- **`mac-node --bitchat`**: joins the real Bitchat mesh beside the nimmesh roles (own
+  CoreBluetooth managers, zero contact with the proven radio) and **bridges**: verified
+  Bitchat public messages cross into nimmesh chat tagged `₿ nick` (never bounced back);
+  nimmesh chats heard are forwarded onto Bitchat once each. A nimmesh phone and a real
+  Bitchat app can talk through the Mac today.
+- **Startup self-test** (no test runner in this chain): padding block vectors incl. the
+  gap zones where PKCS#7's one-byte limit forbids padding, encode/decode round-trip,
+  ttl-independent signature verification, announce round-trip + peerID binding, tampered
+  payload refused. The link refuses to start if any check fails — and the first run
+  proved the point by catching a wrong pad vector.
+
 ## [0.60.0] — 2026-07-08
 
 ### Added — the mesh gets a messenger: public chat over Bluetooth (0x50)
