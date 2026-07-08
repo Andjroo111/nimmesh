@@ -490,6 +490,24 @@ impl MeshHarness {
         self.attach(peer_id, node, radio)
     }
 
+    /// A2b: add a caller-COMPOSED swap participant — a [`crate::swap_session::SwapSession`]
+    /// with its verifier/policy/secret-source already injected, plus a caller-supplied
+    /// [`crate::swap_signer::SwapSigner`]. The door the live NIM⇄USDC e2e walks through
+    /// (its two participant nodes ride this harness over the deterministic ether while the
+    /// SIGNERS talk to the real testnets). Public — the live example is a separate crate.
+    pub fn add_session_participant(
+        &mut self,
+        peer_id: &str,
+        sender_id: &[u8],
+        session: crate::swap_session::SwapSession,
+        signer: Box<dyn crate::swap_signer::SwapSigner>,
+    ) -> Arc<MeshNode> {
+        let radio = MockRadio::new(peer_id, self.ether.clone());
+        let node =
+            MeshNode::new_session_participant(sender_id.to_vec(), radio.clone(), session, signer);
+        self.attach(peer_id, node, radio)
+    }
+
     /// Add a node that also acts as a gateway (records submissions + emits receipts).
     pub fn add_gateway(
         &mut self,

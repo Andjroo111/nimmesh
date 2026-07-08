@@ -13,7 +13,7 @@
 //! can read it back off the `PreimageReveal`.
 
 use crate::swap_coordinator::SwapContext;
-use crate::swap_wire::{SwapLegId, SWAP_ID_LEN};
+use crate::swap_wire::{SwapLegId, NIM_ADDRESS_LEN, SWAP_ID_LEN};
 
 /// Builds (in production: signs **and broadcasts**) the on-chain transactions a swap participant
 /// must land. The driver feeds the returned `(tx_wire, tx_id)` straight into the coordinator and
@@ -37,6 +37,23 @@ pub trait SwapSigner: Send + Sync {
     /// RESPONDER (post-reveal) it is the NIM-leg claim, and the wire goes nowhere — the claim
     /// lives on-chain. Returns the opaque `tx_wire` + its `tx_id`.
     fn build_claim(&self, ctx: &SwapContext, secret: [u8; 32]) -> Option<(Vec<u8>, [u8; 32])>;
+
+    /// A2b: the peer-addressing seam. [`SwapContext`] carries only THIS node's identity; the
+    /// counterparty's payout addressing rides the protocol instead (`Propose` → the initiator's
+    /// NIM refund + counterparty-chain claim address, `Accept` → the responder's NIM claim +
+    /// counterparty-chain refund address). The driver reports it here — once per message, only
+    /// for a swap this node holds a coordinator for — so a LIVE signer can pay the RIGHT peer
+    /// (the initiator's NIM HTLC recipient; the responder's escrow receiver). First report wins
+    /// in a live impl, mirroring the coordinator's first-`Accept`-wins semantics (the Accept is
+    /// unauthenticated — S2 scope; see `docs/adr/0010`). Default: ignored (sim signers pay no
+    /// real peer).
+    fn note_peer(
+        &self,
+        _swap_id: [u8; SWAP_ID_LEN],
+        _peer_nim_address: [u8; NIM_ADDRESS_LEN],
+        _peer_chain_address: &[u8],
+    ) {
+    }
 }
 
 /// The deterministic sim signer: stand-in tx bytes, no keys, no broadcast. The funding blobs are

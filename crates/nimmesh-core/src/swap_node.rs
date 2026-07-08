@@ -379,6 +379,34 @@ fn drive_swap(
     };
     let swap_id = env.swap_id;
 
+    // A2b: surface the peer's protocol-carried addressing to the signer seam (a live signer
+    // needs the counterparty's payout addresses; the SwapContext holds only our own). Only for
+    // a swap this node actually holds a coordinator for — the session already vetted it (a
+    // Propose was signature-verified before its responder coordinator was built; an Accept
+    // only lands on a swap we initiated). The signer applies first-report-wins.
+    if matches!(last_kind, SwapKind::Propose | SwapKind::Accept)
+        && st
+            .swap
+            .as_ref()
+            .is_some_and(|s| s.coordinators.contains_key(&swap_id))
+    {
+        if let Some(signer) = st.signer.as_ref() {
+            match last_kind {
+                SwapKind::Propose => {
+                    if let Some(p) = crate::swap_messages::SwapProposal::from_envelope(&env) {
+                        signer.note_peer(swap_id, p.nim_address, &p.btc_address);
+                    }
+                }
+                SwapKind::Accept => {
+                    if let Some(a) = crate::swap_messages::SwapAcceptance::from_envelope(&env) {
+                        signer.note_peer(swap_id, a.nim_address, &a.btc_address);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
     // A responder learns S off an incoming PreimageReveal (the signed claim carried it; sim: the
     // tx_wire is the 32-byte secret), verifies it opens the hashlock, and advances to Revealed — it
     // then claims its leg + settles in the match below.

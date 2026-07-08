@@ -197,6 +197,28 @@ pub mod polygon_gateway;
 #[cfg(feature = "polygon-gateway")]
 pub mod polygon_verifier;
 
+// Mesh swap (#72 tail, A2b): the NIM-leg sibling — the NIM-RPC-backed FundingVerifier. Locates
+// the initiator's HTLC from the FundingProof wire (an untrusted hint, hash-bound to the chain by
+// the content-derived tx hash + contract address) and verifies inclusion depth + the live
+// contract account over any `rpc::GatewayRpc` (MockRpc offline; the testnet-guarded HTTP client
+// live). Fail-closed: no hint / RPC error / anything unexpected reads Absent.
+pub mod nim_verifier;
+
+// Mesh swap (A2b): the LIVE NIM⇄USDC money-path signer — `LiveInitiatorSigner` (funds the real
+// NIM HTLC, claims the real Amoy USDC escrow with S) + `LiveResponderSigner` (funds the escrow,
+// claims the NIM leg), plus the initiator-side Amoy funding verifier that anchors its capped log
+// scan at the FundingProof's named tx. Needs BOTH HTTP stacks, so it sits behind
+// `polygon-gateway` + `gateway-rpc` together. TESTNET/Amoy only — every chain client is guarded.
+#[cfg(all(feature = "polygon-gateway", feature = "gateway-rpc"))]
+pub mod live_swap_signer;
+
+// Mesh swap (A2b): the Polygon half of the live signer stack, split for the 800-line guard —
+// the `AmoyChain` seam, the shared `PolygonFundingStore`, and the initiator-side
+// `AmoyHtlcSwapVerifier` (log scan anchored at the FundingProof-named tx's receipt). Public
+// surface re-exported through `live_swap_signer`.
+#[cfg(all(feature = "polygon-gateway", feature = "gateway-rpc"))]
+pub mod amoy_swap_verifier;
+
 // Mesh swap: the REAL Bitcoin swap leg (behind `bitcoin-leg`) — the BTC-native analog of
 // `swap_builder::NimiqLeg`. Wraps `btc::BtcHtlcParams` + signs through the `btc::BtcEnclaveKey`
 // seam, exposing `htlc_address` / `build_claim` / `build_refund`. Supersedes the BTC half of the
@@ -412,6 +434,8 @@ mod swap_discovery_tests;
 mod swap_e2e_tests;
 #[cfg(test)]
 mod swap_health_tests;
+#[cfg(test)]
+mod swap_live_seam_tests;
 #[cfg(test)]
 mod swap_metrics_tests;
 #[cfg(test)]

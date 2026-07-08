@@ -213,6 +213,10 @@ pub struct MockRpc {
     txs: Mutex<HashMap<String, RpcTransaction>>,
     /// History rows served for any address (test seed for the mesh history answer).
     history: Mutex<Vec<RpcHistoryTx>>,
+    /// A2b: explicit per-address account states (e.g. a funded HTLC contract account for the
+    /// NIM funding-verifier tests). Addresses not seeded here keep the legacy answer (an
+    /// existing zero-balance basic account).
+    accounts: Mutex<HashMap<String, RpcAccount>>,
 }
 
 impl MockRpc {
@@ -225,7 +229,17 @@ impl MockRpc {
             sent: Mutex::new(Vec::new()),
             txs: Mutex::new(HashMap::new()),
             history: Mutex::new(Vec::new()),
+            accounts: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// A2b: seed the account state served for `address` (user-friendly `NQ…` form) — e.g. a
+    /// live HTLC contract account for the NIM verifier tests.
+    pub fn set_account(&self, address: &str, account: RpcAccount) {
+        self.accounts
+            .lock()
+            .unwrap()
+            .insert(address.to_string(), account);
     }
 
     /// Seed the history the mock serves for ANY address (`get_transactions`).
@@ -293,6 +307,9 @@ impl GatewayRpc for MockRpc {
 
     fn get_account(&self, address: &str) -> Result<Option<RpcAccount>, RpcError> {
         self.transient_guard()?;
+        if let Some(acct) = self.accounts.lock().unwrap().get(address) {
+            return Ok(Some(acct.clone()));
+        }
         Ok(Some(RpcAccount {
             balance: 0,
             account_type: "basic".to_string(),

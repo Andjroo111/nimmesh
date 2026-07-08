@@ -74,6 +74,17 @@ pub enum MismatchReason {
 pub trait FundingVerifier: Send + Sync {
     /// Report what is on-chain for `expect`.
     fn observe(&self, expect: &HtlcExpectation) -> FundingObservation;
+
+    /// A2b: hand the verifier the peer's **claimed** funding tx bytes off a `FundingProof`
+    /// (the session calls this before every verification attempt). Strictly a HINT, never a
+    /// truth: a live verifier uses it to *locate* the funding on-chain (derive the NIM HTLC
+    /// contract address from the creation bytes; anchor the Polygon log scan at the named
+    /// tx's receipt — the public RPCs cap `eth_getLogs` ranges, so a blind lookback cannot
+    /// work) and then verifies everything against the CHAIN in [`observe`](Self::observe).
+    /// A forged wire can only make the verifier look in the wrong place, which reads
+    /// `Absent` — fail-closed, exactly like no hint at all. Default: ignored (the sim and
+    /// the log-scan-only verifiers need no hint).
+    fn note_funding_wire(&self, _leg: SwapLegId, _tx_wire: &[u8]) {}
 }
 
 /// The sim default confirmation floor — a single flat depth for paths that have no per-chain context

@@ -2,6 +2,41 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.63.0] — 2026-07-08
+
+### Added — A2b: the LIVE NIM⇄USDC money-path signer + the last real funding gate
+
+The first `SwapSigner` that moves real (testnet) money, and the NIM-leg funding verifier that
+closes the #72 tail. All behind seams — the sim, the phone, and every existing test are
+byte-identical in behaviour:
+
+- **`live_swap_signer`** (behind `polygon-gateway` + `gateway-rpc`): `LiveInitiatorSigner`
+  (funds the real NIM HTLC at Accepted; lands the real Amoy `withdraw(S)` at BothFunded —
+  only a MINED success ever reveals `S`, and the reveal wire is `S ‖ raw tx`) and
+  `LiveResponderSigner` (funds `approve`+`newSwap` at InitiatorFunded with a POL budget
+  preflight that reserves the refund; claims the NIM HTLC at Revealed). Gas policy = the
+  clamps/limits the live G6/G7 runs proved. Every signing path is byte-asserted offline
+  against the proven builders over deterministic chain fakes.
+- **`nim_verifier::NimHtlcVerifier`** (always compiled, offline-tested over `MockRpc`): the
+  NIM sibling of `polygon_verifier` — locates the initiator's HTLC from the FundingProof wire
+  (an untrusted hint, HASH-BOUND to the chain: the content-derived tx hash + contract address
+  can only confirm the exact decoded creation), then gates on inclusion depth + the live
+  contract account. Fail-closed everywhere.
+- **`live_swap_signer::AmoyHtlcSwapVerifier`**: the initiator-side USDC gate — the deployed-
+  contract scan anchored at the FundingProof-named tx's receipt (the public RPC's ~50-block
+  `eth_getLogs` cap kills blind lookbacks), recording the found `swapId` for the claim.
+- **Two new default-no-op seam methods**: `SwapSigner::note_peer` (the driver reports the
+  protocol-carried counterparty addressing — `SwapContext` holds only our own) and
+  `FundingVerifier::note_funding_wire` (the session feeds each FundingProof's wire as a
+  locating hint; the chain stays the sole truth). Plus the rig door
+  `MeshNode::new_session_participant` / `MeshHarness::add_session_participant` (caller-composed
+  session + signer; testnet-pinned, not on FFI).
+- **ADR-0010**: the term↔wall-clock timeout mapping (ms on NIM, seconds on Amoy, verify-side
+  slack), the NIM⇄USDC role map + units, and the trust analysis of both new seams.
+- Seam e2e over the REAL node loop: a mesh swap whose responder runs the REAL `NimHtlcVerifier`
+  refuses to fund until the mock chain confirms the byte-exact creation, then settles both
+  sides — the S1 gate proven at node level with live parts.
+
 ## [0.62.0] — 2026-07-08
 
 ### Changed — Act 2 opens: the swap signing seam is ready for real money (core only)

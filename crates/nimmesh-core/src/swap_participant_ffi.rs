@@ -282,6 +282,37 @@ impl MeshNode {
     }
 }
 
+// --- the rig door (NOT on the FFI surface) --------------------------------------------------
+
+impl MeshNode {
+    /// A2b: the **rig/e2e** participant constructor — build a swap participant from a
+    /// caller-COMPOSED [`SwapSession`] (its funding verifier, confirmation policy,
+    /// counterparty chain, secret source, and propose signer already injected via the
+    /// session's builders) plus a caller-supplied [`SwapSigner`] — the door the live
+    /// NIM⇄USDC signer walks in through ([`crate::live_swap_signer`]). Deliberately NOT
+    /// `#[uniffi::export]`: it takes raw trait objects (a phone builds through
+    /// [`MeshNode::new_swap_participant`] instead), and it is TESTNET-pinned by
+    /// construction like every non-gated door. Deterministic relay policy — this is the
+    /// harness/rig path, never the shipping phone node.
+    pub fn new_session_participant(
+        sender_id: Vec<u8>,
+        radio: Arc<dyn BleRadio>,
+        session: SwapSession,
+        signer: Box<dyn crate::swap_signer::SwapSigner>,
+    ) -> Arc<Self> {
+        Self::build(
+            sender_id,
+            radio,
+            None,
+            crate::relay::RelayPolicy::deterministic(),
+            true,
+            Some(session),
+            Some(signer),
+            crate::NetworkId::Testnet,
+        )
+    }
+}
+
 /// The optional testnet gateway hop (`gateway-rpc` builds only; others refuse honestly so the
 /// shared bindings never diverge — the `gateway_ffi` discipline).
 #[cfg(feature = "gateway-rpc")]

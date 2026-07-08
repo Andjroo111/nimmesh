@@ -304,6 +304,13 @@ impl SwapSession {
                     .coordinators
                     .get_mut(&swap_id)
                     .ok_or(SessionError::UnknownSwap)?;
+                // A2b: hand the proof's claimed funding wire to the verifier as an UNTRUSTED
+                // locating hint (a live NIM verifier derives the HTLC contract address from it;
+                // the Polygon verifier anchors its capped log scan at the named tx). Scoped to
+                // swaps we actually track; the chain stays the sole truth in `observe`.
+                if let (Some(leg), Some(wire)) = (env.leg, env.tx_wire.as_deref()) {
+                    self.verifier.note_funding_wire(leg, wire);
+                }
                 // #74 / G3: verify at the counterparty leg's *own* chain depth, not one flat floor —
                 // the responder checks the initiator's NIM leg (NIM depth), the initiator checks the
                 // counterparty leg (BTC/USDC depth). Fields are disjoint from `coord`.
