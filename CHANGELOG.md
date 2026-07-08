@@ -2,6 +2,14 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.61.1] — 2026-07-08
+
+### Fixed — every amount input refuses more than you hold (Andjroo's field report)
+
+Swap, Cash Links, and Send all accepted any number and only failed later (or, in the
+swap's sim case, pretended). All three now check the live balance up front — "More than
+your balance," in all five languages.
+
 ## [0.61.0] — 2026-07-08
 
 ### Added — Cash Links: NIM that travels as text, claimable by anyone in a browser
