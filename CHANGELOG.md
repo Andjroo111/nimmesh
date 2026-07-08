@@ -2,6 +2,27 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.59.0] — 2026-07-08
+
+### Added — the swap protocol goes live over real Bluetooth (Act 1: sim funds)
+
+The first end-to-end delivery of 0.58.0's production participant door: a phone and the
+Mac can now discover each other and run the full HTLC swap protocol — signed intent
+advertisement, match, authenticated Propose, Accept, funding proofs, preimage reveal,
+Settled — over the real BLE mesh. **Sim transaction bytes throughout (`MockSigner`):
+the protocol is real, no value moves.** Testnet-pinned.
+
+- **`mac-node --swap-responder`**: the counterparty rig. A TESTNET participant+gateway
+  advertising a standing "gives 1000 sats, wants 10 NIM" intent (cheap ask so any
+  real-price phone offer crosses on rate); logs discovery counters and live swap phases
+  (`⇄ intents seen … · swap …`).
+- **Phone swap-demo bridge** (`swapMeshStart`/`swapMeshStatus`/`swapMeshStop`): starting
+  a swap from the Swap sheet swaps the app's node onto a TESTNET participant advertising
+  the user's ask; the sheet's phase timeline now renders the node's REAL coordinator
+  state polled live (the sim driver remains only as the browser fallback). Closing the
+  sheet (or Done) restores the normal mainnet node. The intent/Propose identity is an
+  ephemeral key from fresh randomness — the wallet key never leaves the Keychain.
+
 ## [0.58.0] — 2026-07-08
 
 ### Added — the production swap-participant door (G9 slice 3): real devices can now discover and negotiate swaps over the mesh

@@ -91,28 +91,19 @@ final class Bridge: NSObject, WKScriptMessageHandler {
     // (lazily, on the first meshStatus probe at launch); the node holds the radio strongly, the
     // radio holds the node weakly. On the simulator BLE is unsupported (0 peers, no crash); on a
     // real device it advertises + scans for real (the 2-phone interop test).
-    private let bleRadio = BleMeshRadio()
-    private lazy var node: MeshNode = {
-        var sid = Data(count: 8)
-        _ = sid.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 8, $0.baseAddress!) }
-        // The phone is a GATEWAY node whenever the framework carries the HTTP client:
-        // when this phone has internet it broadcasts other people's mesh txs, answers
-        // balance/history queries, and beacons the head — any online phone becomes an
-        // exit for everyone around it. Offline it self-gates: every RPC call fails, so
-        // it answers nothing and emits no receipt (another gateway can still carry the
-        // tx) and behaves exactly like the plain relay it falls back to below. It holds
-        // no keys for others and signs nothing — broadcast-only, same as the Mac.
-        let n: MeshNode
-        do {
-            n = try MeshNode.newGatewayMainnet(
-                senderId: sid, radio: bleRadio, rpcUrl: "https://rpc.nimiqwatch.com")
-        } catch {
-            // Framework built without gateway-rpc (or a refused URL): plain mainnet node.
-            n = MeshNode.newOnNetwork(senderId: sid, radio: bleRadio, network: NimiqRpc.network)
-        }
-        bleRadio.node = n
-        return n
-    }()
+    // The phone is a GATEWAY node whenever the framework carries the HTTP client:
+    // when this phone has internet it broadcasts other people's mesh txs, answers
+    // balance/history queries, and beacons the head — any online phone becomes an
+    // exit for everyone around it. Offline it self-gates: every RPC call fails, so
+    // it answers nothing and emits no receipt (another gateway can still carry the
+    // tx) and behaves exactly like the plain relay it falls back to. It holds no
+    // keys for others and signs nothing — broadcast-only, same as the Mac.
+    // (Construction lives in `makeNormalNode` — SwapMesh.swift — so the swap demo can
+    // temporarily replace the node with a TESTNET participant and restore it after.)
+    let bleRadio = BleMeshRadio()
+    lazy var node: MeshNode = makeNormalNode()
+    /// Whether the over-the-mesh swap demo owns the node right now (TESTNET participant).
+    var swapDemoOn = false
 
     /// Injected at document start. Exposes a tiny promise-based RPC the web UI calls:
     /// `await window.nimmesh.version()` etc. If the handler is ever absent (e.g. the
@@ -205,7 +196,12 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         // Transactions over the mesh: ask a gateway for this wallet's recent history rows
         // (the answer rides the fragmenter over BLE), then read the last-heard answer.
         meshQueryHistory: function () { return call('meshQueryHistory'); },
-        meshCachedHistory: function () { return call('meshCachedHistory'); }
+        meshCachedHistory: function () { return call('meshCachedHistory'); },
+        // Over-the-mesh swap DEMO (TESTNET, SIM funds): run the real swap protocol over
+        // real Bluetooth — advertise an intent, match, negotiate — with sim tx bytes.
+        swapMeshStart: function (a) { return call('swapMeshStart', a || {}); },
+        swapMeshStatus: function () { return call('swapMeshStatus'); },
+        swapMeshStop: function () { return call('swapMeshStop'); }
       };
     })();
     """
@@ -219,7 +215,7 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         // when they complete. Everything else is synchronous (pure-core reads).
         switch method {
         case "headHeight", "walletBalance", "walletHistory", "sendTransaction", "meshSendTransaction",
-             "prices", "market":
+             "prices", "market", "swapMeshStart":
             Task { let (ok, payload) = await self.handleAsync(method: method, args: args)
                 self.resolve(id: id, ok: ok, payload: payload) }
         case "authenticate":
@@ -445,6 +441,9 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             } catch {
                 return (false, "\(error)")
             }
+        case "swapMeshStart":
+            // The over-the-mesh swap demo: swaps the node onto TESTNET as a participant.
+            return await swapMeshStart(args: args)
         default:
             return (false, "unknown async method: \(method)")
         }
@@ -470,6 +469,10 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             // idle-dropping the mesh link (the ~50s flap). No-op if there are no peers.
             node.pollBeacon()
             return (true, ["ok": true])
+        case "swapMeshStatus":
+            return swapMeshStatus()
+        case "swapMeshStop":
+            return swapMeshStop()
         case "meshQueryHistory":
             // Transactions over the mesh: flood a nimiqTxHistoryQuery — the Mac gateway
             // answers up to 10 compact rows through the fragmenter. Fire-and-forget.

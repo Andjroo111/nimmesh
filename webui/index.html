@@ -1672,6 +1672,7 @@ Don't share them and keep them safe.</p>
       'swap.cta': 'Confirmar', 'swap.simnote': 'Simulación: todavía no se mueven fondos reales',
       'swap.searching': 'Buscando un socio en la malla', 'swap.searching.sub': 'Tu intención de intercambio se retransmite de teléfono en teléfono hasta que un socio compatible responde. Puede tardar un momento.',
       'swap.matched': 'Socio encontrado, negociando…', 'swap.settled': 'Intercambio liquidado',
+      'swap.live': 'En vivo por Bluetooth — testnet, fondos simulados', 'swap.ended': 'Intercambio terminado',
       'swap.ph.propose': 'Propuesta enviada', 'swap.ph.accept': 'Socio aceptó', 'swap.ph.fundnim': 'HTLC de NIM fondeado',
       'swap.ph.fundother': 'HTLC del socio fondeado', 'swap.ph.reveal': 'Secreto revelado', 'swap.ph.settled': 'Liquidado',
       'intro.title': '¡No hay recuperación de contraseña!', 'intro.warn': 'Las palabras de recuperación son la ÚNICA forma de restaurar tu cartera si pierdes este teléfono.',
@@ -1719,6 +1720,7 @@ Don't share them and keep them safe.</p>
       'swap.cta': 'Bestätigen', 'swap.simnote': 'Simulation: noch bewegen sich keine echten Gelder',
       'swap.searching': 'Suche einen Tauschpartner im Mesh', 'swap.searching.sub': 'Deine Tauschabsicht wird von Handy zu Handy weitergereicht, bis ein passender Partner antwortet. Das kann einen Moment dauern.',
       'swap.matched': 'Partner gefunden, verhandle…', 'swap.settled': 'Tausch abgewickelt',
+      'swap.live': 'Live über Bluetooth — Testnet, Sim-Guthaben', 'swap.ended': 'Tausch beendet',
       'swap.ph.propose': 'Vorschlag gesendet', 'swap.ph.accept': 'Partner hat angenommen', 'swap.ph.fundnim': 'NIM-HTLC finanziert',
       'swap.ph.fundother': 'Partner-HTLC finanziert', 'swap.ph.reveal': 'Geheimnis enthüllt', 'swap.ph.settled': 'Abgewickelt',
       'intro.title': 'Es gibt keine Passwort-Wiederherstellung!', 'intro.warn': 'Die Wiederherstellungswörter sind der EINZIGE Weg, deine Wallet wiederherzustellen, falls dieses Handy verloren geht.',
@@ -1766,6 +1768,7 @@ Don't share them and keep them safe.</p>
       'swap.cta': 'Confirmer', 'swap.simnote': 'Simulation : aucun fonds réel ne bouge encore',
       'swap.searching': 'Recherche d’un partenaire sur le mesh', 'swap.searching.sub': 'Ton intention d’échange est relayée de téléphone en téléphone jusqu’à ce qu’un partenaire compatible réponde. Cela peut prendre un moment.',
       'swap.matched': 'Partenaire trouvé, négociation…', 'swap.settled': 'Échange réglé',
+      'swap.live': 'En direct via Bluetooth — testnet, fonds simulés', 'swap.ended': 'Échange terminé',
       'swap.ph.propose': 'Proposition envoyée', 'swap.ph.accept': 'Partenaire a accepté', 'swap.ph.fundnim': 'HTLC NIM financé',
       'swap.ph.fundother': 'HTLC du partenaire financé', 'swap.ph.reveal': 'Secret révélé', 'swap.ph.settled': 'Réglé',
       'intro.title': 'Il n’y a pas de récupération de mot de passe !', 'intro.warn': 'Les mots de récupération sont le SEUL moyen de restaurer ton portefeuille si tu perds ce téléphone.',
@@ -1813,6 +1816,7 @@ Don't share them and keep them safe.</p>
       'swap.cta': 'Confirmar', 'swap.simnote': 'Simulação: nenhum fundo real se move ainda',
       'swap.searching': 'Procurando um parceiro na mesh', 'swap.searching.sub': 'Sua intenção de troca é retransmitida de telefone em telefone até um parceiro compatível responder. Pode levar um momento.',
       'swap.matched': 'Parceiro encontrado, negociando…', 'swap.settled': 'Troca liquidada',
+      'swap.live': 'Ao vivo via Bluetooth — testnet, fundos simulados', 'swap.ended': 'Troca encerrada',
       'swap.ph.propose': 'Proposta enviada', 'swap.ph.accept': 'Parceiro aceitou', 'swap.ph.fundnim': 'HTLC de NIM financiado',
       'swap.ph.fundother': 'HTLC do parceiro financiado', 'swap.ph.reveal': 'Segredo revelado', 'swap.ph.settled': 'Liquidado',
       'intro.title': 'Não existe recuperação de senha!', 'intro.warn': 'As palavras de recuperação são a ÚNICA forma de restaurar sua carteira se você perder este telefone.',
@@ -1852,6 +1856,7 @@ Don't share them and keep them safe.</p>
     'codes.copy': 'Copy code',
     'codes.how.tip': 'Email it to yourself, or message it to yourself in a chat app. Use a DIFFERENT platform for each code.',
     'swap.matched': 'Partner found, negotiating…', 'swap.settled': 'Swap settled',
+    'swap.live': 'Live over Bluetooth — testnet, sim funds', 'swap.ended': 'Swap ended',
     'swap.ph.propose': 'Proposal sent', 'swap.ph.accept': 'Partner accepted', 'swap.ph.fundnim': 'NIM HTLC funded',
     'swap.ph.fundother': 'Partner HTLC funded', 'swap.ph.reveal': 'Secret revealed', 'swap.ph.settled': 'Settled',
   };
@@ -2238,6 +2243,12 @@ Don't share them and keep them safe.</p>
   }
   function resetSwapSheet() {
     if (swapTimer) { clearTimeout(swapTimer); swapTimer = null; }
+    if (swapPoll) { clearInterval(swapPoll); swapPoll = null; }
+    if (swapMeshLive) {
+      // End the demo: the bridge restores the normal mainnet node.
+      swapMeshLive = false;
+      try { window.nimmesh.swapMeshStop(); } catch (e) {}
+    }
     swapPct = 95;
     if (typeof swapBarPaint === 'function') { try { swapBarPaint(); } catch (e) {} }
     if (typeof updateSwapAmounts === 'function') { try { updateSwapAmounts(); } catch (e) {} }
@@ -2340,13 +2351,65 @@ Don't share them and keep them safe.</p>
     if (avail) avail.textContent = fiatText(window.__lastLuna || 0);
   }
   document.getElementById('swap-amount').addEventListener('input', updateSwapAmounts);
-  document.getElementById('swap-start').addEventListener('click', () => {
+
+  // ---- the OVER-THE-MESH driver (device): the bridge swaps the node onto TESTNET as a
+  // swap participant — discovery, the signed Propose, funding proofs, and the preimage
+  // reveal all run for REAL over Bluetooth; only the tx bytes are sim (no funds move).
+  // The phase timeline below is the node's actual coordinator state, polled live.
+  // In a plain browser (no bridge) the sim driver below keeps the sheet demoable.
+  const PHASE_STEP = { proposed: 1, accepted: 2, selfFunded: 3, initiatorFunded: 3,
+                       bothFunded: 4, revealed: 5, settled: 6, aborted: -1, refunded: -1 };
+  let swapPoll = null;
+  let swapMeshLive = false;
+  async function pollMeshSwap() {
+    let st;
+    try { st = await window.nimmesh.swapMeshStatus(); } catch (e) { return; }
+    const statusEl = document.getElementById('swap-status');
+    const sw = (st.swaps || [])[0];
+    if (!sw) {
+      statusEl.textContent = `${T('swap.live')} · ${st.peers} peers · ${st.seen} intents`;
+      return;
+    }
+    const step = PHASE_STEP[sw.phase] != null ? PHASE_STEP[sw.phase] : 0;
+    document.getElementById('swap-discovery').hidden = true;
+    document.getElementById('swap-phases').hidden = false;
+    if (step < 0) {   // aborted / refunded — say so honestly, never fake success
+      renderSwapPhases(0);
+      statusEl.textContent = `${T('swap.ended')} (${sw.phase})`;
+      document.getElementById('swap-done').hidden = false;
+      clearInterval(swapPoll); swapPoll = null;
+      return;
+    }
+    renderSwapPhases(step);
+    statusEl.textContent = step >= 6 ? T('swap.settled') : T('swap.matched');
+    if (step >= 6) {
+      document.getElementById('swap-done').hidden = false;
+      clearInterval(swapPoll); swapPoll = null;
+    }
+  }
+  document.getElementById('swap-start').addEventListener('click', async () => {
     const nim = parseFloat(document.getElementById('swap-amount').value);
     if (!(nim > 0)) { alert(T('send.needamount')); return; }
     document.getElementById('swap-setup').hidden = true;
     document.getElementById('swap-progress').hidden = false;
-    // SIM: discovery finds a partner after a moment, then the phases advance on the same
-    // rhythm the real engine reports them (slice 2 swaps this driver for SwapEngine state).
+    if (window.nimmesh && window.nimmesh.swapMeshStart) {
+      // The live demo runs the NIM->BTC pair (the responder rig advertises BTC).
+      if (swapAsset !== 'btc') setSwapAsset('btc');
+      // Sats from the indicative price; a fixed sim ask when prices are unavailable.
+      const sat = (btcPrice && nimPrice)
+        ? Math.max(1, Math.round((nim * nimPrice / btcPrice) * 1e8)) : 1000;
+      document.getElementById('swap-status').textContent = T('swap.live');
+      try {
+        await window.nimmesh.swapMeshStart({ nimLuna: Math.round(nim * 1e5), counterSat: sat });
+        swapMeshLive = true;
+        swapPoll = setInterval(pollMeshSwap, 2000);
+      } catch (e) {
+        document.getElementById('swap-status').textContent = String((e && e.message) || e);
+      }
+      return;
+    }
+    // SIM (browser): discovery finds a partner after a moment, then the phases advance on
+    // the same rhythm the real engine reports them.
     let step = -1;
     const tick = () => {
       step += 1;
@@ -2366,6 +2429,9 @@ Don't share them and keep them safe.</p>
     swapTimer = setTimeout(tick, 2600);   // the mesh-search beat
   });
   document.getElementById('swap-done').addEventListener('click', () => { close(); resetSwapSheet(); });
+  // Closing the sheet mid-demo must also hand the node back to mainnet.
+  document.querySelectorAll('#swap-sheet .sheet-close').forEach((b) =>
+    b.addEventListener('click', resetSwapSheet));
 
   // The wallet's privacy eye: one tap hides every amount (the wallet's TOTAL BALANCE eye).
   let privacyOn = false;

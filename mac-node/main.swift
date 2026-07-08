@@ -114,10 +114,65 @@ let radio = BleMeshRadio()
 // device — this node holds no keys and signs nothing. Never launched autonomously.
 // If the core was built without the gateway-rpc feature the constructor throws; fall
 // back to a plain relay so the mesh still works, but say so loudly.
+// `--swap-responder`: the Act-1 swap counterparty rig. The node becomes a TESTNET swap
+// PARTICIPANT (plus gateway): it advertises a standing "gives BTC, wants NIM" intent and
+// answers a phone's swap over real Bluetooth — discovery, signed Propose, funding proofs,
+// preimage reveal, the whole protocol. SIM tx bytes only (MockSigner in the core): no
+// funds can move; the real money-path signer is a later, gated drop-in. Mutually
+// exclusive with --mainnet by design (the participant ctor is testnet-pinned).
+let swapResponder = CommandLine.arguments.contains("--swap-responder")
+
+/// The current TESTNET head (for the intent's expiry anchor). Synchronous one-shot;
+/// 0 when offline — the core treats an unknown head as "fresh" and the huge fallback
+/// expiry below keeps the ad valid either way.
+func fetchTestnetHead() -> UInt64 {
+    var req = URLRequest(url: URL(string: "https://rpc.testnet.nimiqwatch.com")!)
+    req.httpMethod = "POST"
+    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    req.httpBody = try? JSONSerialization.data(withJSONObject: [
+        "jsonrpc": "2.0", "method": "getBlockNumber", "params": [], "id": 1,
+    ])
+    let sem = DispatchSemaphore(value: 0)
+    var head: UInt64 = 0
+    URLSession.shared.dataTask(with: req) { data, _, _ in
+        defer { sem.signal() }
+        guard let d = data,
+              let json = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else { return }
+        if let r = json["result"] as? [String: Any], let n = r["data"] as? NSNumber {
+            head = n.uint64Value
+        } else if let n = json["result"] as? NSNumber {
+            head = n.uint64Value
+        }
+    }.resume()
+    _ = sem.wait(timeout: .now() + 8)
+    return head
+}
+
 let useMainnet = CommandLine.arguments.contains("--mainnet")
 let node: MeshNode
 do {
-    if useMainnet {
+    if swapResponder {
+        let head = fetchTestnetHead()
+        var seed = Data(count: 32)
+        _ = seed.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!) }
+        // A cheap ask (10 NIM for 1000 sats) so any real-price phone offer crosses on rate.
+        let intent = FfiStandingIntent(
+            gives: .btc, counterAsset: .btc,
+            nimAmount: 1_000_000, counterAmount: 1_000,
+            expiryHeight: head > 0 ? head + 20_000 : UInt64.max / 2,
+            minNim: 0, maxNim: UInt64.max)
+        let cfg = FfiParticipantConfig(
+            btcPubkey: Data([0x02] + [UInt8](repeating: 0x4D, count: 32)), // sim placeholder
+            btcAddress: Data("tb1q-sim-mac-responder".utf8),
+            maxConcurrentSwaps: 0,
+            deltaSafeBlocks: 600, minClaimWindowBlocks: 600,
+            standingIntent: intent, intentSeed: seed)
+        node = try MeshNode.newSwapParticipant(
+            senderId: sid, radio: radio, config: cfg,
+            gatewayRpcUrl: "https://rpc.testnet.nimiqwatch.com")
+        line("SWAP RESPONDER (TESTNET, SIM funds — protocol live, no value moves)")
+        line("advertising: gives 1000 sats, wants 10 NIM · intent expiry @ head \(head > 0 ? String(head + 20_000) : "∞")")
+    } else if useMainnet {
         let mainnetRpcUrl = "https://rpc.nimiqwatch.com"
         node = try MeshNode.newGatewayMainnet(senderId: sid, radio: radio, rpcUrl: mainnetRpcUrl)
         line("★★ MAINNET GATEWAY — broadcasting mesh txs to \(mainnetRpcUrl) (REAL FUNDS)")
@@ -147,6 +202,7 @@ var startTime = Date()
 var lastPeers: UInt32 = 0xFFFFFFFF
 var lastPayments: UInt64 = 0
 var lastStatusPrint = Date(timeIntervalSince1970: 0)
+var lastSwapDesc = ""
 
 func syncState() {
     let stats = node.relayStats()
@@ -218,6 +274,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if stats.paymentsRelayed != lastPayments {
                 line("★ payment relayed through this node (\(stats.paymentsRelayed) this session) — utility earned")
                 lastPayments = stats.paymentsRelayed
+            }
+            if swapResponder {
+                let m = node.discoveryMetrics()
+                let swaps = node.activeSwaps()
+                let desc = "intents seen \(m.seen) · matched \(m.matched) · re-adverts \(m.readvertised)"
+                    + (swaps.isEmpty ? "" : " · " + swaps.map { s in
+                        "swap \(s.swapId.prefix(8))… \(s.phase)"
+                    }.joined(separator: ", "))
+                if desc != lastSwapDesc {
+                    line("⇄ \(desc)")
+                    lastSwapDesc = desc
+                }
             }
             if let w = watchBalanceAddr, beatCount % 5 == 0 {
                 if let c = node.cachedBalance(address: w) {
