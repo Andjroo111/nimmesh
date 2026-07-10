@@ -2,6 +2,17 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.72.0] — 2026-07-10
+
+### Wired — G8 M5: the funds-moving Amoy verifier example now cross-reads
+
+`examples/live_amoy_verifier.rs` constructs its `PolygonHtlcVerifier` with
+`.with_secondary(HttpPolygonRpc::new(AMOY_RPC_URL_2))` (default: an independent public Amoy
+endpoint), so the verifier's real `observe()` path exercises the M5 head cross-read against two
+genuinely different providers on the live money path. The run moves real testnet USDC/POL and is
+human-gated (needs `AMOY_TEST_KEY` + a funded key); the wiring compiles in CI and runs whenever
+Andjroo supplies the key. `docs/swap/M5-RECEIPTS.md` §1b. Testnet/Amoy only.
+
 ## [0.71.0] — 2026-07-10
 
 ### Hardened — G8 M5: verifier cross-read + independent reveal confirmation (ADR-0011)

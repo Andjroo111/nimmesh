@@ -16,7 +16,8 @@
 //!
 //! **TESTNET ONLY.** Run: `cargo run --example live_amoy_verifier --features polygon-gateway`
 //! Env: `AMOY_TEST_KEY` · `AMOY_HTLC2_ADDRESS` (or `AMOY_HTLC_ADDRESS`) · `AMOY_RPC_URL`/
-//! `AMOY_USDC_ADDRESS` (defaults). See `docs/swap/AMOY.md`.
+//! `AMOY_RPC_URL_2` (the M5 cross-read's independent secondary) / `AMOY_USDC_ADDRESS` (defaults).
+//! See `docs/swap/AMOY.md`.
 
 use std::error::Error;
 use std::io::Write;
@@ -40,6 +41,8 @@ use nimmesh_core::swap_usdc_leg::{usdc_swap_id, EvmAddress, MICRO_USDC};
 use nimmesh_core::swap_wire::SwapLegId;
 
 const DEFAULT_AMOY_USDC: &str = "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582";
+/// A second, genuinely independent public Amoy endpoint (M5 cross-read secondary).
+const DEFAULT_AMOY_RPC_URL_2: &str = "https://polygon-amoy-bor-rpc.publicnode.com";
 const EXPLORER_TX_BASE: &str = "https://amoy.polygonscan.com/tx";
 const INCLUSION_TIMEOUT: Duration = Duration::from_secs(180);
 const AMOUNT: u64 = MICRO_USDC; // 1 USDC
@@ -133,6 +136,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     let me = key.address();
 
     let rpc_url = env("AMOY_RPC_URL").unwrap_or_else(|| DEFAULT_AMOY_RPC_URL.to_string());
+    // M5: a SECOND, genuinely independent Amoy endpoint for the verifier's cross-read (a
+    // different operator than the default). The verifier trusts a depth only when both heads
+    // agree within HEAD_CROSS_TOLERANCE_BLOCKS; the conservative (lower) head drives it.
+    let rpc_url_2 = env("AMOY_RPC_URL_2").unwrap_or_else(|| DEFAULT_AMOY_RPC_URL_2.to_string());
     let htlc = parse_addr(
         &env("AMOY_HTLC2_ADDRESS")
             .or_else(|| env("AMOY_HTLC_ADDRESS"))
@@ -187,13 +194,17 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // The verifier under test — its own rpc client, scanning from just before the funding
     // block (the public RPC's tiny getLogs cap makes lookback windows useless — see above).
+    // M5: wired with a real INDEPENDENT secondary endpoint so `observe()` exercises the head
+    // cross-read against two genuinely different Amoy providers on the live money path.
     let from_block = fund_block.saturating_sub(FROM_BLOCK_MARGIN);
     let verifier = PolygonHtlcVerifier::new(
         HttpPolygonRpc::new(rpc_url).map_err(|e| format!("{e:?}"))?,
         htlc,
         from_block,
-    );
+    )
+    .with_secondary(HttpPolygonRpc::new(rpc_url_2.clone()).map_err(|e| format!("{e:?}"))?);
     println!("   verifier scans from block {from_block}");
+    println!("   M5 cross-read secondary endpoint: {rpc_url_2}");
 
     // Preflight the log query LOUDLY: the verifier itself is fail-closed (an RPC error reads
     // `Absent`, which can only delay a swap) — right for the money path, wrong for diagnosing a

@@ -38,6 +38,16 @@ INDEPENDENT testnet RPC is a self-hosted node (an M5/mainnet-gating item, ADR-00
 cross-read is *seam-ready* (`NimHtlcVerifier::with_secondary`) but not exercised against two public
 NIM endpoints today.
 
+### 1b. The funds-moving verifier is wired to cross-read too (Andjroo-gated run)
+
+`examples/live_amoy_verifier.rs` (the #72 verifier vs a REAL 1-USDC self-escrow) now constructs
+its `PolygonHtlcVerifier` with `.with_secondary(HttpPolygonRpc::new(AMOY_RPC_URL_2))`, so the
+verifier's actual `observe()` path exercises the head cross-read against two genuinely independent
+Amoy providers on the money path. It moves real testnet USDC + POL, so the RUN is human-gated
+(`AMOY_TEST_KEY` + a funded key + POL — not available to the loop); the wiring compiles in CI and
+runs whenever Andjroo supplies the key. The read-only `live_rpc_cross_read` above proves the same
+head-agreement gate without funds.
+
 ## 2. Lying-RPC unit tests (offline, deterministic mock seams)
 
 Each fails **closed** when the RPC lies, and **passes** when the sources agree:
