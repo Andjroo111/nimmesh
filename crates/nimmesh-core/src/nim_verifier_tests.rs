@@ -105,6 +105,38 @@ fn a_correct_deep_funding_verifies_end_to_end() {
 }
 
 #[test]
+fn a_returned_tx_whose_hash_is_not_the_content_digest_is_refused() {
+    // M5 content-hash bind: a lying/confused node echoes the queried hash back as a DIFFERENT
+    // reported hash while attaching a real-looking inclusion height. The verifier recomputes
+    // Blake2b(content) and refuses any returned tx whose identity is not that digest → Absent
+    // (never trusts the fabricated height), even though the contract account is fully funded.
+    let rpc = Arc::new(MockRpc::new(105));
+    let c = creation();
+    // Contract account is live + funded (so ONLY the tx-hash bind can refuse it).
+    rpc.set_head(105);
+    rpc.set_account(
+        &c.contract_address().to_user_friendly(),
+        RpcAccount {
+            balance: AMOUNT,
+            account_type: "htlc".to_string(),
+            address: Some(c.contract_address().to_user_friendly()),
+        },
+    );
+    // The node answers getTransactionByHash(our digest) with a tx that reports a FOREIGN hash.
+    rpc.confirm_as(&bytes_to_hex(&c.tx_hash()), &"ab".repeat(32), 100);
+    let v = verifier_over(rpc.clone());
+    v.note_funding_wire(SwapLegId::Nim, &c.serialize_wire(&[0u8; 98]));
+    assert_eq!(v.observe(&expect()), FundingObservation::Absent);
+
+    // Control: the SAME chain but the node reports the honest (matching) hash → Found.
+    rpc.confirm(&bytes_to_hex(&c.tx_hash()), 100);
+    assert!(matches!(
+        v.observe(&expect()),
+        FundingObservation::Found { .. }
+    ));
+}
+
+#[test]
 fn no_hint_reads_absent_fail_closed() {
     let rpc = Arc::new(MockRpc::new(105));
     let c = creation();

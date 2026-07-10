@@ -230,11 +230,24 @@ impl NimHtlcVerifier {
             return FundingObservation::Absent; // wrong chain — never ours to advance on
         }
 
-        // Chain truth #1 — inclusion + depth of the exact claimed creation tx (its hash is the
-        // content digest, so the included tx IS the decoded one).
-        let confirmations = match self.rpc.get_transaction(&rec.tx_hash_hex) {
+        // Chain truth #1 — inclusion + depth of the exact claimed creation tx.
+        //
+        // M5 (content-hash bind): the canonical NIM tx hash IS `Blake2b-256(serializeContent)`,
+        // so we RECOMPUTE it from the decoded creation here and require the RPC-returned tx to
+        // report EXACTLY that digest before its `block_number` is trusted. Blake2b is
+        // collision-resistant, so a node cannot bind an inclusion height to a tx whose content
+        // is not the one we decoded — a returned tx whose reported hash is not our recomputed
+        // content digest reads `Absent` (fail-closed). (A node that ECHOES the right hash with a
+        // FAKE height is a lying-RPC threat the cross-read catches; see [`Self::with_secondary`].)
+        let expected_hash = bytes_to_hex(&rec.creation.tx_hash());
+        let confirmations = match self.rpc.get_transaction(&expected_hash) {
             Err(_) => return FundingObservation::Absent, // fail-closed on transport
             Ok(None) => return FundingObservation::Absent, // the node has never seen it
+            Ok(Some(tx)) if !tx.hash.eq_ignore_ascii_case(&expected_hash) => {
+                // The node returned inclusion data for a tx whose identity is NOT our content
+                // digest — never trust its height.
+                return FundingObservation::Absent;
+            }
             Ok(Some(tx)) => match tx.block_number {
                 None => 0, // known, still in the mempool
                 Some(block) => match self.rpc.block_number() {

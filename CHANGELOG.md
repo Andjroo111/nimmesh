@@ -2,7 +2,26 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
-## [0.69.0] — 2026-07-10
+## [0.70.0] — 2026-07-10
+
+### Hardened — G8 M5: the NIM verifier's content-hash bind
+
+`NimHtlcVerifier` queried `getTransactionByHash(Blake2b(content))` and trusted the returned
+`block_number` without ever confirming the RPC's returned tx actually IDENTIFIES as that digest —
+a node could attach a fabricated inclusion height to a response whose tx identity is not the one
+we decoded. Now `observe` **recomputes** `Blake2b-256(serializeContent)` fresh from the decoded
+creation and requires the returned tx's reported `hash` to equal it before trusting the height; a
+mismatch reads `Absent` (fail-closed). The HTTP `get_transaction` now reports the node's OWN hash
+faithfully (no fall-back to the queried hash), so the bind reflects the node's real answer.
+
+This binds the returned inclusion data to our decoded content identity. Full protection against a
+node that echoes the RIGHT hash with a FAKE height is the cross-read (next slice) — noted in code
+and the forthcoming ADR-0011. Testnet-only.
+
+Test: a node that returns a foreign reported hash with a real-looking height → `Absent` even
+against a fully-funded contract account; the honest matching hash → `Found`.
+
+
 
 ### Hardened — G8 M5 (LOW): the `word_u64` over-`u64` overflow guard
 

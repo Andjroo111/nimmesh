@@ -285,6 +285,21 @@ impl MockRpc {
         );
     }
 
+    /// M5 test seam: seed `get_transaction(query_hash)` to answer with a tx whose REPORTED hash
+    /// is `returned_hash` (≠ `query_hash`) at `block` — models a lying/confused node that
+    /// attaches an inclusion height to a response whose tx identity is not the queried digest.
+    /// The content-hash bind must refuse it.
+    pub fn confirm_as(&self, query_hash: &str, returned_hash: &str, block: u32) {
+        self.txs.lock().unwrap().insert(
+            query_hash.to_string(),
+            RpcTransaction {
+                hash: returned_hash.to_string(),
+                block_number: Some(block),
+                confirmations: Some(1),
+            },
+        );
+    }
+
     /// The deterministic hash this mock assigns a broadcast blob (a stand-in for the real
     /// Blake2b tx hash, derived from the raw bytes so it is stable across calls).
     pub fn hash_of(raw_hex: &str) -> String {
@@ -533,10 +548,14 @@ mod http {
                 return Ok(None);
             }
             Ok(Some(RpcTransaction {
+                // M5: report the node's OWN `hash` faithfully (no fall back to the queried
+                // hash) so the NIM verifier's content-hash bind reflects what the node actually
+                // returned — a response missing/altering the hash reads empty and fails the
+                // bind (fail-closed). Honest Albatross always echoes the tx hash.
                 hash: v
                     .get("hash")
                     .and_then(|h| h.as_str())
-                    .unwrap_or(hash)
+                    .unwrap_or_default()
                     .to_string(),
                 block_number: v
                     .get("blockNumber")
