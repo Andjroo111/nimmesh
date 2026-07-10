@@ -111,30 +111,39 @@ fn get_swap_calldata(swap_id: &[u8; 32]) -> Vec<u8> {
 }
 
 /// The low 8 bytes of a 32-byte ABI word (amounts/times/states all fit `u64` in our domain).
-fn word_u64(word: &[u8]) -> u64 {
+///
+/// LOW (G8 M5): a well-formed word in our domain has its high **24 bytes zero**. A word whose
+/// value would not fit `u64` is a malformed or hostile response — it reads `None` (fail-closed,
+/// the log/state is skipped) rather than SILENTLY TRUNCATING to a plausible-looking low-64-bit
+/// number. Defense-in-depth: a `> 2^64` amount/timelock/state must never masquerade as a small
+/// one.
+fn word_u64(word: &[u8]) -> Option<u64> {
+    if word.len() != 32 || word[..24].iter().any(|&b| b != 0) {
+        return None;
+    }
     let mut be = [0u8; 8];
     be.copy_from_slice(&word[24..32]);
-    u64::from_be_bytes(be)
+    Some(u64::from_be_bytes(be))
 }
 
 /// The `NewSwap` data words: `(amount, hashlock, timelock)`. `None` if the payload isn't the
-/// event's exact 3-word shape.
+/// event's exact 3-word shape (or any numeric word would overflow `u64`).
 fn decode_new_swap_data(data: &[u8]) -> Option<(u64, [u8; 32], u64)> {
     if data.len() != 96 {
         return None;
     }
     let mut hashlock = [0u8; 32];
     hashlock.copy_from_slice(&data[32..64]);
-    Some((word_u64(&data[..32]), hashlock, word_u64(&data[64..96])))
+    Some((word_u64(&data[..32])?, hashlock, word_u64(&data[64..96])?))
 }
 
 /// The `getSwap` return slice the verifier needs: `(state, )` — state word 6 of 6.
-/// `None` on a malformed response.
+/// `None` on a malformed response (or an over-`u64` state word).
 fn decode_get_swap_state(bytes: &[u8]) -> Option<u64> {
     if bytes.len() < 6 * 32 {
         return None;
     }
-    Some(word_u64(&bytes[5 * 32..6 * 32]))
+    word_u64(&bytes[5 * 32..6 * 32])
 }
 
 /// `NimmeshHtlc.State.Live` — the only state that counts as funding.
@@ -334,6 +343,36 @@ mod tests {
 
     fn verifier(fake: FakeReads) -> PolygonHtlcVerifier<FakeReads> {
         PolygonHtlcVerifier::new(fake, HTLC, 0)
+    }
+
+    #[test]
+    fn word_u64_refuses_over_64_bit_words_instead_of_truncating() {
+        // A word that fits u64 decodes; a word with ANY byte set above the low 8 reads None
+        // (LOW / G8 M5 — never a silent truncation of a > 2^64 value).
+        let mut w = [0u8; 32];
+        w[24..].copy_from_slice(&12_345u64.to_be_bytes());
+        assert_eq!(word_u64(&w), Some(12_345));
+        w[23] = 0x01; // the byte just above the low 8 → would overflow u64
+        assert_eq!(word_u64(&w), None);
+        // A short word is malformed, not zero.
+        assert_eq!(word_u64(&[0u8; 31]), None);
+    }
+
+    #[test]
+    fn a_newswap_log_with_an_over_u64_amount_is_skipped_not_truncated() {
+        // A hostile/garbled log whose amount word overflows u64 must not be read as a small
+        // amount — decode returns None, the log is skipped, and (its being the only match)
+        // the observation is Absent (fail-closed).
+        let h = sha256(&[20u8; 32]);
+        let mut bad = log([0x0A; 32], 1_000_000, h, 9_000, 50);
+        bad.data[0] = 0x01; // high byte of the amount word set
+        let v = verifier(FakeReads {
+            logs: vec![bad],
+            states: vec![([0x0A; 32], STATE_LIVE)],
+            head: 60,
+            broken: AtomicBool::new(false),
+        });
+        assert_eq!(v.observe(&expectation(h)), FundingObservation::Absent);
     }
 
     #[test]

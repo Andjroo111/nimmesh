@@ -144,13 +144,21 @@ impl AmoyChain for HttpPolygonRpc {
 }
 
 /// The low 8 bytes of a 32-byte ABI word.
-fn word_u64(word: &[u8]) -> u64 {
+///
+/// LOW (G8 M5): a well-formed word in our domain has its high 24 bytes zero; a word that would
+/// overflow `u64` is a malformed/hostile response and reads `None` (fail-closed) rather than
+/// SILENTLY TRUNCATING to a plausible low-64-bit number.
+fn word_u64(word: &[u8]) -> Option<u64> {
+    if word.len() != WORD || word[..WORD - 8].iter().any(|&b| b != 0) {
+        return None;
+    }
     let mut be = [0u8; 8];
     be.copy_from_slice(&word[WORD - 8..WORD]);
-    u64::from_be_bytes(be)
+    Some(u64::from_be_bytes(be))
 }
 
-/// The `NewSwap` data words `(amount, hashlock, timelock)`; `None` on a foreign shape.
+/// The `NewSwap` data words `(amount, hashlock, timelock)`; `None` on a foreign shape (or a
+/// numeric word that would overflow `u64`).
 fn decode_new_swap_data(data: &[u8]) -> Option<(u64, [u8; 32], u64)> {
     if data.len() != 3 * WORD {
         return None;
@@ -158,9 +166,9 @@ fn decode_new_swap_data(data: &[u8]) -> Option<(u64, [u8; 32], u64)> {
     let mut hashlock = [0u8; 32];
     hashlock.copy_from_slice(&data[WORD..2 * WORD]);
     Some((
-        word_u64(&data[..WORD]),
+        word_u64(&data[..WORD])?,
         hashlock,
-        word_u64(&data[2 * WORD..3 * WORD]),
+        word_u64(&data[2 * WORD..3 * WORD])?,
     ))
 }
 
@@ -181,7 +189,7 @@ pub(crate) fn escrow_state(
     if out.len() < 6 * WORD {
         return None;
     }
-    Some(word_u64(&out[5 * WORD..6 * WORD]))
+    word_u64(&out[5 * WORD..6 * WORD])
 }
 
 // --- the initiator-side Amoy funding store + verifier ----------------------------------------------
@@ -391,5 +399,32 @@ impl FundingVerifier for AmoyHtlcSwapVerifier {
 
     fn chain_backed(&self) -> bool {
         true // C1: reads the DEPLOYED Amoy HTLC — live-signer eligible
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn word_u64_refuses_over_64_bit_words_instead_of_truncating() {
+        // A domain word (high 24 bytes zero) decodes; a word with ANY byte set above the low 8
+        // reads None (LOW / G8 M5 — never a silent truncation of a > 2^64 value).
+        let mut w = [0u8; WORD];
+        w[WORD - 8..].copy_from_slice(&999_u64.to_be_bytes());
+        assert_eq!(word_u64(&w), Some(999));
+        w[WORD - 9] = 0x01; // the byte just above the low 8 → would overflow u64
+        assert_eq!(word_u64(&w), None);
+        assert_eq!(word_u64(&[0u8; WORD - 1]), None); // malformed short word
+    }
+
+    #[test]
+    fn decode_new_swap_data_rejects_an_over_u64_timelock_word() {
+        // Shape-valid 3-word payload, but the timelock word overflows u64 → the whole decode
+        // is None (the log is skipped upstream, never advanced on a truncated value).
+        let mut data = vec![0u8; 3 * WORD];
+        data[WORD - 8..WORD].copy_from_slice(&1_000_000_u64.to_be_bytes()); // amount, valid
+        data[2 * WORD] = 0x01; // high byte of the timelock word set
+        assert_eq!(decode_new_swap_data(&data), None);
     }
 }

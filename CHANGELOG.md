@@ -2,7 +2,19 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
-## [0.68.0] — 2026-07-10
+## [0.69.0] — 2026-07-10
+
+### Hardened — G8 M5 (LOW): the `word_u64` over-`u64` overflow guard
+
+The USDC-leg verifiers decoded 32-byte ABI words to `u64` by copying the low 8 bytes and
+IGNORING the high 24 — a `> 2^64` amount / timelock / escrow-state word would silently truncate
+to a plausible-looking small number. `polygon_verifier::word_u64` and
+`amoy_swap_verifier::word_u64` now assert the high 24 bytes are zero and return `Option`; a word
+that would overflow reads `None`, so the log/state is skipped (fail-closed) rather than advanced
+on a truncated value. Defense-in-depth against a malformed or hostile RPC response; no honest
+contract ever emits such a word. First slice of the G8 M5 RPC-trust hardening (testnet-only).
+
+
 
 ### Added — G10c: the LIVE proof through the app-facing FFI constructors
 
