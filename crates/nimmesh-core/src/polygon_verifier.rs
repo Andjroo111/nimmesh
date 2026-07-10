@@ -228,6 +228,11 @@ impl<R: PolygonReads + Send + Sync> FundingVerifier for PolygonHtlcVerifier<R> {
         }
         self.observe_usdc(expect)
     }
+
+    // C1 note: `chain_backed` deliberately stays the DEFAULT `false` here even though this
+    // scan can read the real deployed contract — its `timeout` is the RAW on-chain seconds
+    // (no ADR-0010 term mapping), so against term-unit expectations the timeout floor would
+    // be vacuous. The live-eligible Amoy verifier is `AmoyHtlcSwapVerifier`, which maps.
 }
 
 #[cfg(test)]
@@ -322,6 +327,7 @@ mod tests {
             min_amount: 1_000_000,
             min_timeout: 5_000,
             recipient: US.to_vec(),
+            term_anchor: 0,
         }
     }
 

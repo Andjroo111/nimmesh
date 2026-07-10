@@ -391,6 +391,7 @@ fn many_concurrent_swaps_all_settle_over_a_lossy_mesh() {
             give_amount: GIVE_NIM,
             take_amount: TAKE_BTC,
             network_id: 5,
+            term_anchor: 0,
         };
         let (coord, propose) = new_initiator_signed(ctx, secret, LadderParams::default());
         alice.start_swap(*sid, coord, propose);

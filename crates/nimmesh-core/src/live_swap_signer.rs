@@ -63,6 +63,17 @@ pub use crate::amoy_swap_verifier::{
 /// Bound on the peer book (one live swap needs 1 entry; a flooder is capped).
 const MAX_BOOK_ENTRIES: usize = 32;
 
+/// M4: the absolute cap on how far ahead a live leg's on-chain timelock may sit, in seconds.
+/// The ADR-0010 mapping is `now + (term − term_anchor)`; a mis-anchored term (anchor 0 against
+/// a real head in the millions) would otherwise mint a multi-week lock. Real swaps run in
+/// hours (`T_A ≈ 2.8 h`); anything past this bound is a wiring bug, refused BEFORE funds move.
+pub const MAX_LEG_TIMELOCK_AHEAD_S: u64 = 6 * 3600;
+
+/// M3: how deep the initiator's `withdraw(S)` must be buried before the reveal wire is handed
+/// to the mesh — the claim is mined first (1 conf), then held until one more block passes so a
+/// same-block reorg can't orphan the claim while the mesh already carries `S`. Mainnet retunes.
+pub const REVEAL_MIN_CONFIRMATIONS: u64 = 2;
+
 /// A landed responder funding: `(newSwap raw wire, tx id, on-chain swapId)`.
 type LandedFunding = (Vec<u8>, [u8; 32], [u8; 32]);
 
@@ -259,12 +270,11 @@ pub struct LiveInitiatorConfig {
     pub gas: EvmGasConfig,
     /// Blocking-wait policy.
     pub poll: LivePollConfig,
-    /// The mesh-head anchor the session terms are relative to (ADR-0010; 0 on a beacon-silent rig).
-    pub term_anchor: u64,
 }
 
 /// The NIM-giver's live [`SwapSigner`]: funds the real NIM HTLC at `Accepted`, lands the real
 /// Amoy `withdraw(S)` at `BothFunded` (the on-chain reveal), never touches any other leg.
+/// The term anchor rides each swap's [`SwapContext`] (M4) — never a constructor-frozen zero.
 pub struct LiveInitiatorSigner {
     cfg: LiveInitiatorConfig,
     clock_ms: Box<dyn Fn() -> u64 + Send + Sync>,
@@ -309,6 +319,17 @@ impl LiveInitiatorSigner {
         };
         let funder_pk: [u8; 32] = self.cfg.nim_key.public_key().try_into().ok()?;
         let funder = Address::from_public_key(&funder_pk);
+        let now_ms = (self.clock_ms)();
+        // M4: map T_A against the swap's own head anchor, then sanity-bound the absolute
+        // wall-clock lock — a mis-anchored term must never strand funds for weeks.
+        let timeout_ms = nim_htlc_timeout_ms(ctx.terms.nim_timeout, ctx.term_anchor, now_ms);
+        if timeout_ms <= now_ms || timeout_ms > now_ms + MAX_LEG_TIMELOCK_AHEAD_S * 1000 {
+            eprintln!(
+                "[live-swap] fund_nim: refused implausible timelock ({timeout_ms} ms vs now {now_ms}; term {} anchor {})",
+                ctx.terms.nim_timeout, ctx.term_anchor
+            );
+            return None;
+        }
         let creation = HtlcCreation {
             funder,
             data: HtlcCreationData {
@@ -317,11 +338,7 @@ impl LiveInitiatorSigner {
                 hash_algorithm: HashAlgorithm::Sha256,
                 hash_root: ctx.hashlock,
                 hash_count: 1,
-                timeout: nim_htlc_timeout_ms(
-                    ctx.terms.nim_timeout,
-                    self.cfg.term_anchor,
-                    (self.clock_ms)(),
-                ),
+                timeout: timeout_ms,
             },
             value: ctx.give_amount,
             fee: 0,
@@ -353,13 +370,16 @@ impl LiveInitiatorSigner {
     /// so the responder reads `S` off its first 32 bytes.
     fn claim_usdc(&self, ctx: &SwapContext, secret: [u8; 32]) -> Option<(Vec<u8>, [u8; 32])> {
         let escrow = self.cfg.store.found(&ctx.hashlock)?;
-        // A prior attempt that timed out at the receipt poll may have landed after all —
-        // replay it rather than double-spending the nonce.
+        // A prior attempt already broadcast a withdraw: NEVER build a second one (it would
+        // revert and burn gas). Replay the reveal only once the escrow reads Claimed AND the
+        // withdraw is buried to the reveal depth (M3); otherwise wait for the next retry.
         if let Some((wire, id)) = self.last_claim.lock().unwrap().clone() {
             if escrow_state(&self.cfg.amoy, &self.cfg.htlc, &escrow.swap_id) == Some(STATE_CLAIMED)
+                && self.withdraw_deep_enough(&id)
             {
                 return Some((wire, id));
             }
+            return None;
         }
         let me = self.cfg.evm_gas_key.address();
         let gas_price = self
@@ -391,12 +411,47 @@ impl LiveInitiatorSigner {
         );
         let mut wire = secret.to_vec(); // S first — the responder reads it off the reveal
         wire.extend_from_slice(&raw);
+        // Remember the landed claim FIRST (never a second broadcast), then hold the reveal
+        // until the withdraw is buried to the M3 depth — a same-block reorg must not orphan
+        // the claim while the mesh already carries S. Not deep yet → None; the driver's
+        // retry replays the cached claim once the depth is there.
         *self.last_claim.lock().unwrap() = Some((wire.clone(), hash));
-        Some((wire, hash))
+        for _ in 0..self.cfg.poll.attempts.max(1) {
+            if self.withdraw_deep_enough(&hash) {
+                return Some((wire, hash));
+            }
+            self.cfg.poll.pause();
+        }
+        eprintln!(
+            "[live-swap] withdraw mined but not yet at reveal depth {REVEAL_MIN_CONFIRMATIONS} — holding S off the mesh until it is"
+        );
+        None
+    }
+
+    /// M3: whether the mined withdraw at `tx_hash` is buried to [`REVEAL_MIN_CONFIRMATIONS`].
+    /// Fail-closed on any RPC error or a still-pending receipt.
+    fn withdraw_deep_enough(&self, tx_hash: &[u8; 32]) -> bool {
+        let Ok(Some(receipt)) = self.cfg.amoy.receipt(tx_hash) else {
+            return false;
+        };
+        if !receipt.success {
+            return false;
+        }
+        match self.cfg.amoy.head() {
+            Ok(head) => {
+                head.saturating_sub(receipt.block_number).saturating_add(1)
+                    >= REVEAL_MIN_CONFIRMATIONS
+            }
+            Err(_) => false,
+        }
     }
 }
 
 impl SwapSigner for LiveInitiatorSigner {
+    fn is_live(&self) -> bool {
+        true // C1: real funds — MeshNode::build enforces a live-safe session
+    }
+
     fn build_funding(&self, ctx: &SwapContext, leg: SwapLegId) -> Option<(Vec<u8>, [u8; 32])> {
         match leg {
             SwapLegId::Nim => self.fund_nim(ctx),
@@ -463,8 +518,6 @@ pub struct LiveResponderConfig {
     pub gas: EvmGasConfig,
     /// Blocking-wait policy.
     pub poll: LivePollConfig,
-    /// The mesh-head anchor the session terms are relative to (ADR-0010).
-    pub term_anchor: u64,
 }
 
 /// The USDC-giver's live [`SwapSigner`]: lands `approve` + `newSwap` at `InitiatorFunded`
@@ -518,11 +571,16 @@ impl LiveResponderSigner {
         };
         let me = self.cfg.evm_key.address();
         let amount = ctx.take_amount; // micro-USDC for this pair (ADR-0010)
-        let timelock_s = usdc_timelock_s(
-            ctx.terms.counterparty_timeout,
-            self.cfg.term_anchor,
-            (self.clock_s)(),
-        );
+        let now_s = (self.clock_s)();
+        // M4: map T_B against the swap's own head anchor + sanity-bound the absolute lock.
+        let timelock_s = usdc_timelock_s(ctx.terms.counterparty_timeout, ctx.term_anchor, now_s);
+        if timelock_s <= now_s || timelock_s > now_s + MAX_LEG_TIMELOCK_AHEAD_S {
+            eprintln!(
+                "[live-swap] fund_usdc: refused implausible timelock ({timelock_s} s vs now {now_s}; term {} anchor {})",
+                ctx.terms.counterparty_timeout, ctx.term_anchor
+            );
+            return None;
+        }
         let gas_price = self
             .cfg
             .amoy
@@ -644,6 +702,10 @@ impl LiveResponderSigner {
 }
 
 impl SwapSigner for LiveResponderSigner {
+    fn is_live(&self) -> bool {
+        true // C1: real funds — MeshNode::build enforces a live-safe session
+    }
+
     fn build_funding(&self, ctx: &SwapContext, leg: SwapLegId) -> Option<(Vec<u8>, [u8; 32])> {
         match leg {
             SwapLegId::Counterparty => self.fund_usdc(ctx),
@@ -672,5 +734,8 @@ impl SwapSigner for LiveResponderSigner {
 }
 
 #[cfg(test)]
+#[path = "live_swap_signer_sec_tests.rs"]
+mod sec_tests;
+#[cfg(test)]
 #[path = "live_swap_signer_tests.rs"]
-mod tests;
+pub(crate) mod tests;

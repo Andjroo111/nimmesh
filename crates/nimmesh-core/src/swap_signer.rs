@@ -54,6 +54,16 @@ pub trait SwapSigner: Send + Sync {
         _peer_chain_address: &[u8],
     ) {
     }
+
+    /// C1 (money-path eligibility): whether this signer moves REAL funds. Default `false`
+    /// (sim/mock signers); the live NIM⇄USDC signers answer `true` — and any wrapper around
+    /// a live signer MUST forward this. [`crate::node::MeshNode`] refuses to build a node
+    /// whose signer answers `true` over a session that fails
+    /// [`crate::swap_session::SwapSession::live_safety`], so a live signer can never ride
+    /// the sim verifier or the sim secret source through ANY constructor.
+    fn is_live(&self) -> bool {
+        false
+    }
 }
 
 /// The deterministic sim signer: stand-in tx bytes, no keys, no broadcast. The funding blobs are
@@ -102,6 +112,7 @@ mod tests {
             give_amount: 200_000,
             take_amount: 100_000,
             network_id: 5,
+            term_anchor: 0,
         }
     }
 

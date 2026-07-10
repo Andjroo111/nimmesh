@@ -38,6 +38,12 @@ pub struct HtlcExpectation {
     /// Who the HTLC must pay on claim: *this* node's own claim key/address on this leg (raw bytes).
     /// If the on-chain HTLC pays someone else, the funds are not ours to take and we must not proceed.
     pub recipient: Vec<u8>,
+    /// M4 (ADR-0010): the mesh-head anchor `min_timeout`'s term units are relative to — the head the
+    /// swap's terms were minted against, carried in the [`crate::swap_coordinator::SwapContext`]. A
+    /// live verifier maps an on-chain wall-clock timeout back into term units against THIS anchor
+    /// (`(on_chain − now) + slack + term_anchor`), so the single `timeout ≥ min_timeout` gate is the
+    /// intended wall-clock floor even when real heads are in the millions. Sim verifiers ignore it.
+    pub term_anchor: u64,
 }
 
 /// What a [`FundingVerifier`] found on-chain for a given [`HtlcExpectation`].
@@ -85,6 +91,17 @@ pub trait FundingVerifier: Send + Sync {
     /// `Absent` — fail-closed, exactly like no hint at all. Default: ignored (the sim and
     /// the log-scan-only verifiers need no hint).
     fn note_funding_wire(&self, _leg: SwapLegId, _tx_wire: &[u8]) {}
+
+    /// C1 (money-path eligibility): whether this verifier's `observe` reads a REAL chain.
+    /// **Default `false` — fail-closed:** only the gateway-backed verifiers (NIM RPC,
+    /// deployed-Amoy log scans) opt in. [`crate::swap_session::SwapSession::live_safety`]
+    /// refuses to pair a LIVE signer with any verifier that answers `false` here — so the
+    /// sim [`AcceptAllVerifier`] (whose unconditional `Found{MAX,MAX,MAX}` would fully
+    /// reopen the S1 fund-on-message theft) can never guard real funds, and a new verifier
+    /// must *deliberately* declare itself chain-backed before it may.
+    fn chain_backed(&self) -> bool {
+        false
+    }
 }
 
 /// The sim default confirmation floor — a single flat depth for paths that have no per-chain context
@@ -397,6 +414,7 @@ mod tests {
             min_amount: 100_000,
             min_timeout: 10_000,
             recipient: vec![0xA1; 20],
+            term_anchor: 0,
         }
     }
 

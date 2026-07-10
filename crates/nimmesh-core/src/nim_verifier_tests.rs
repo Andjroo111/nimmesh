@@ -54,6 +54,7 @@ fn expect() -> HtlcExpectation {
         min_amount: AMOUNT,
         min_timeout: T_A,
         recipient: recipient().to_vec(),
+        term_anchor: 0,
     }
 }
 

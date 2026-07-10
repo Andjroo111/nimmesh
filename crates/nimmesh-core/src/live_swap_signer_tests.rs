@@ -3,7 +3,7 @@
 //! the initiator-side Amoy verifier's anchor/found/mismatch/fail-closed behaviour. No network.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use super::*;
 use crate::evm_abi::WORD;
@@ -16,19 +16,19 @@ use crate::swap_funding_verify::{
 };
 use crate::swap_leg::sha256;
 
-const SECRET: [u8; 32] = [0x42; 32];
-const HTLC: EvmAddress = [0xDD; 20];
-const USDC: EvmAddress = [0xCC; 20];
-const ALICE_EVM_CLAIM: EvmAddress = [0xA5; 20];
-const NOW_S: u64 = 1_000_000;
-const NOW_MS: u64 = NOW_S * 1000;
-const EVM_SECRET: [u8; 32] = [0x46; 32]; // the public EIP-155 spec key — never real/funded
+pub(crate) const SECRET: [u8; 32] = [0x42; 32];
+pub(crate) const HTLC: EvmAddress = [0xDD; 20];
+pub(crate) const USDC: EvmAddress = [0xCC; 20];
+pub(crate) const ALICE_EVM_CLAIM: EvmAddress = [0xA5; 20];
+pub(crate) const NOW_S: u64 = 1_000_000;
+pub(crate) const NOW_MS: u64 = NOW_S * 1000;
+pub(crate) const EVM_SECRET: [u8; 32] = [0x46; 32]; // the public EIP-155 spec key — never real/funded
 
-fn hashlock() -> [u8; 32] {
+pub(crate) fn hashlock() -> [u8; 32] {
     sha256(&SECRET)
 }
 
-fn ctx() -> SwapContext {
+pub(crate) fn ctx() -> SwapContext {
     SwapContext {
         swap_id: [0x7A; SWAP_ID_LEN],
         terms: SwapTerms {
@@ -46,10 +46,11 @@ fn ctx() -> SwapContext {
         give_amount: 500_000,   // 5 tNIM in luna
         take_amount: 1_000_000, // 1 USDC in micro-USDC
         network_id: crate::NetworkId::Testnet.wire_id(),
+        term_anchor: 0,
     }
 }
 
-fn instant_poll() -> LivePollConfig {
+pub(crate) fn instant_poll() -> LivePollConfig {
     LivePollConfig {
         attempts: 3,
         interval_ms: 0,
@@ -59,20 +60,20 @@ fn instant_poll() -> LivePollConfig {
 // --- a deterministic Amoy fake ---------------------------------------------------------------
 
 #[derive(Default)]
-struct MockAmoy {
-    gas_price: u64,
-    nonce: u64,
-    balance: u128,
+pub(crate) struct MockAmoy {
+    pub(crate) gas_price: u64,
+    pub(crate) nonce: u64,
+    pub(crate) balance: u128,
     /// Every raw broadcast, in order (byte-assert against locally built txs).
-    broadcasts: Mutex<Vec<Vec<u8>>>,
-    receipts: Mutex<HashMap<[u8; 32], EvmReceipt>>,
+    pub(crate) broadcasts: Mutex<Vec<Vec<u8>>>,
+    pub(crate) receipts: Mutex<HashMap<[u8; 32], EvmReceipt>>,
     /// When set, a broadcast is auto-mined successfully in this block.
-    auto_mine_block: Option<u64>,
+    pub(crate) auto_mine_block: Option<u64>,
     /// swap_id → getSwap state word.
-    swap_states: Mutex<HashMap<[u8; 32], u64>>,
-    logs: Mutex<Vec<EvmLog>>,
-    head: u64,
-    broken: AtomicBool,
+    pub(crate) swap_states: Mutex<HashMap<[u8; 32], u64>>,
+    pub(crate) logs: Mutex<Vec<EvmLog>>,
+    pub(crate) head: AtomicU64,
+    pub(crate) broken: AtomicBool,
 }
 
 impl MockAmoy {
@@ -85,7 +86,7 @@ impl MockAmoy {
         }
         Ok(())
     }
-    fn add_receipt(&self, tx_hash: [u8; 32], success: bool, block_number: u64) {
+    pub(crate) fn add_receipt(&self, tx_hash: [u8; 32], success: bool, block_number: u64) {
         self.receipts.lock().unwrap().insert(
             tx_hash,
             EvmReceipt {
@@ -95,7 +96,7 @@ impl MockAmoy {
             },
         );
     }
-    fn broadcasts(&self) -> Vec<Vec<u8>> {
+    pub(crate) fn broadcasts(&self) -> Vec<Vec<u8>> {
         self.broadcasts.lock().unwrap().clone()
     }
 }
@@ -153,11 +154,11 @@ impl AmoyChain for MockAmoy {
     }
     fn head(&self) -> Result<u64, EvmRpcError> {
         self.guard()?;
-        Ok(self.head)
+        Ok(self.head.load(Ordering::Relaxed))
     }
 }
 
-fn new_swap_log(
+pub(crate) fn new_swap_log(
     swap_id: [u8; 32],
     amount: u64,
     hashlock: [u8; 32],
@@ -177,7 +178,7 @@ fn new_swap_log(
 
 // --- responder: fund_usdc --------------------------------------------------------------------
 
-fn responder(
+pub(crate) fn responder(
     amoy: Arc<MockAmoy>,
     book: Arc<PeerBook>,
     store: Arc<NimFundingStore>,
@@ -193,7 +194,6 @@ fn responder(
         nim_store: store,
         gas: EvmGasConfig::default(),
         poll: instant_poll(),
-        term_anchor: 0,
     })
     .with_clock(Box::new(|| NOW_S))
 }
@@ -332,7 +332,6 @@ fn responder_nim_claim_is_byte_exact_against_the_proven_redeem_builder() {
         nim_store: store,
         gas: EvmGasConfig::default(),
         poll: instant_poll(),
-        term_anchor: 0,
     });
 
     let mut c = ctx();
@@ -373,7 +372,7 @@ fn responder_nim_claim_is_byte_exact_against_the_proven_redeem_builder() {
 
 // --- initiator: fund_nim + claim_usdc ---------------------------------------------------------
 
-fn initiator(
+pub(crate) fn initiator(
     nim_rpc: Arc<MockRpc>,
     amoy: Arc<MockAmoy>,
     book: Arc<PeerBook>,
@@ -389,7 +388,6 @@ fn initiator(
         peer_book: book,
         gas: EvmGasConfig::default(),
         poll: instant_poll(),
-        term_anchor: 0,
     })
     .with_clock(Box::new(|| NOW_MS))
 }
@@ -472,6 +470,7 @@ fn initiator_claim_carries_s_first_and_matches_the_withdraw_tx() {
         nonce: 3,
         balance: u128::MAX,
         auto_mine_block: Some(2000),
+        head: AtomicU64::new(2001), // depth 2 — past the M3 reveal hold
         ..MockAmoy::default()
     });
     let store = Arc::new(PolygonFundingStore::new());
@@ -558,20 +557,21 @@ fn amoy_verifier(chain: Arc<MockAmoy>, store: Arc<PolygonFundingStore>) -> AmoyH
     AmoyHtlcSwapVerifier::new(chain, HTLC, ALICE_EVM_CLAIM, store).with_clock(Box::new(|| NOW_S))
 }
 
-fn counterparty_expect() -> HtlcExpectation {
+pub(crate) fn counterparty_expect() -> HtlcExpectation {
     HtlcExpectation {
         leg: SwapLegId::Counterparty,
         hashlock: hashlock(),
         min_amount: 1_000_000,
         min_timeout: 5_000, // term units — the verifier maps the on-chain seconds back
         recipient: ctx().btc_pubkey.to_vec(), // the session's 33-byte key bytes — IGNORED by design
+        term_anchor: 0,
     }
 }
 
 #[test]
 fn amoy_verifier_is_absent_until_the_funding_proof_names_a_mined_tx() {
     let chain = Arc::new(MockAmoy {
-        head: 200,
+        head: AtomicU64::new(200),
         ..MockAmoy::default()
     });
     let store = Arc::new(PolygonFundingStore::new());
@@ -627,7 +627,7 @@ fn amoy_verifier_is_absent_until_the_funding_proof_names_a_mined_tx() {
 fn amoy_verifier_mismatch_resolved_and_failure_semantics() {
     // An escrow paying us under a DIFFERENT hashlock → Mismatch(Hashlock).
     let chain = Arc::new(MockAmoy {
-        head: 200,
+        head: AtomicU64::new(200),
         ..MockAmoy::default()
     });
     let store = Arc::new(PolygonFundingStore::new());

@@ -45,6 +45,7 @@ fn ctx(seed: u8, nim: u8) -> SwapContext {
         give_amount: 100_000,
         take_amount: 50_000,
         network_id: 5,
+        term_anchor: 0,
     }
 }
 
@@ -470,4 +471,19 @@ fn a_responder_advances_only_when_the_nim_htlc_appears_on_the_ledger() {
     chain.fund(nim_htlc(3));
     bob.verify_and_observe_funding(&chain, 3).unwrap();
     assert_eq!(bob.phase(), SwapPhase::InitiatorFunded);
+}
+
+// --- M3 (G8 review): the pre-signer reveal-deadline read ----------------------------------------
+
+#[test]
+fn reveal_deadline_ok_mirrors_the_claim_window_gate() {
+    // T_B = 5_000 with the default 1_800-block claim window: the last safe reveal head is
+    // 3_200 — one past it the driver must keep S away from the signer entirely (a live
+    // claim broadcasts withdraw(S); the coordinator's own gate would fire too late).
+    let (coord, _propose) =
+        SwapCoordinator::new_initiator(ctx(0x11, 1), [42u8; 32], LadderParams::default());
+    assert!(coord.reveal_deadline_ok(0));
+    assert!(coord.reveal_deadline_ok(3_200));
+    assert!(!coord.reveal_deadline_ok(3_201));
+    assert!(!coord.reveal_deadline_ok(6_000));
 }

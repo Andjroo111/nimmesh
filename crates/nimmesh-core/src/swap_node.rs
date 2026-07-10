@@ -456,6 +456,14 @@ fn drive_swap(
         }
         // Initiator: once both legs are funded, claim the counterparty leg (revealing S) → settle.
         (SwapRole::Initiator, SwapPhase::BothFunded) => {
+            // M3: gate the reveal deadline BEFORE the signer acts. A LIVE claim broadcasts
+            // `withdraw(S)` — the on-chain reveal — so the coordinator's identical gate
+            // inside `claim_and_reveal` would fire only after S was already public. Too
+            // close to `T_B` → keep S secret and take the refund path once it passes.
+            let deadline_ok = coordinator(st, &swap_id).is_some_and(|c| c.reveal_deadline_ok(head));
+            if !deadline_ok {
+                return out;
+            }
             if let Some((wire, id)) = secret.and_then(|s| sign_claim(st, &sctx, s)) {
                 if let Some(c) = coordinator(st, &swap_id) {
                     if let Ok(rev) = c.claim_and_reveal(head, wire, id) {
@@ -588,6 +596,9 @@ fn initiate_from_intent(
         give_amount: standing.nim_amount,
         take_amount: standing.btc_amount,
         network_id: standing.network_id,
+        // M4: the head these terms were just minted against IS the anchor the live
+        // timeout mappings subtract (ADR-0010) — never 0 against a real, million-high head.
+        term_anchor: head,
     };
     let (coord, propose) =
         crate::swap_coordinator::SwapCoordinator::new_initiator(ctx, secret, ladder);

@@ -105,6 +105,9 @@ impl<S: SwapSigner> SwapSigner for OneShot<S> {
         self.inner
             .note_peer(swap_id, peer_nim_address, peer_chain_address);
     }
+    fn is_live(&self) -> bool {
+        self.inner.is_live() // C1: a wrapper must never hide a live signer
+    }
 }
 
 /// 5 tNIM, in luna — what alice gives.
@@ -560,7 +563,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         peer_book: alice_peer_book,
         gas,
         poll: LivePollConfig::default(),
-        term_anchor: 0,
     });
 
     let bob_identity = NodeIdentity {
@@ -588,7 +590,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         nim_store: nim_store.clone(),
         gas,
         poll: LivePollConfig::default(),
-        term_anchor: 0,
     });
 
     let mut h = MeshHarness::new();

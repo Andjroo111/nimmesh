@@ -50,8 +50,20 @@ impl SwapSession {
 
     /// G32: the whole session's recovery state as **bytes** the node writes to disk (the persistent
     /// form of [`snapshot`](Self::snapshot)). Restore with [`restore_bytes`](Self::restore_bytes).
+    ///
+    /// H2 (#189): the blob ALSO carries every `initiated_ever` tombstone — a SETTLED initiator
+    /// swap is reaped from the coordinator map before a snapshot, so without the trailer a
+    /// settle → reap → restart would forget the id and the deterministic secret source could
+    /// reissue its now-PUBLIC `S` to a re-derived swap. Tombstones are 16-byte ids only.
     pub fn encode_snapshot(&self) -> Vec<u8> {
-        encode_snapshot(&self.snapshot())
+        let mut out = encode_snapshot(&self.snapshot());
+        let mut ids: Vec<[u8; 16]> = self.initiated_ever.iter().copied().collect();
+        ids.sort_unstable(); // deterministic bytes
+        out.extend_from_slice(&(ids.len() as u16).to_be_bytes());
+        for id in &ids {
+            out.extend_from_slice(id);
+        }
+        out
     }
 
     /// G32: rebuild a session from persisted bytes. `Err` (never a panic) on truncated/malformed
@@ -61,11 +73,12 @@ impl SwapSession {
         ladder: LadderParams,
         bytes: &[u8],
     ) -> Result<Self, SnapshotError> {
-        Ok(SwapSession::restore(
-            identity,
-            ladder,
-            decode_snapshot(bytes)?,
-        ))
+        let (snaps, tombstones) = decode_snapshot_with_tombstones(bytes)?;
+        let mut session = SwapSession::restore(identity, ladder, snaps);
+        // H2: re-arm every persisted tombstone, including those whose coordinator was
+        // already reaped (the settle → reap → restart hole the review flagged).
+        session.initiated_ever.extend(tombstones);
+        Ok(session)
     }
 }
 
@@ -95,6 +108,7 @@ pub fn encode_snapshot(snaps: &[CoordinatorSnapshot]) -> Vec<u8> {
         out.extend_from_slice(&s.ctx.btc_pubkey);
         out.extend_from_slice(&s.ctx.give_amount.to_be_bytes());
         out.extend_from_slice(&s.ctx.take_amount.to_be_bytes());
+        out.extend_from_slice(&s.ctx.term_anchor.to_be_bytes());
         out.push(s.ctx.network_id);
         out.extend_from_slice(&(s.ctx.btc_address.len() as u16).to_be_bytes());
         out.extend_from_slice(&s.ctx.btc_address);
@@ -119,13 +133,29 @@ pub fn encode_snapshot(snaps: &[CoordinatorSnapshot]) -> Vec<u8> {
 /// G32: decode snapshots from bytes. Panic-free on arbitrary input (every read is bounds-checked); a
 /// huge length field can't allocate because the slice read fails first.
 pub fn decode_snapshot(bytes: &[u8]) -> Result<Vec<CoordinatorSnapshot>, SnapshotError> {
+    decode_snapshot_with_tombstones(bytes).map(|(snaps, _)| snaps)
+}
+
+/// H2: decode snapshots + the `initiated_ever` tombstone trailer. A blob written before the
+/// trailer existed simply ends after the records — that reads as zero tombstones (backward
+/// compatible); a PRESENT-but-truncated trailer is a hard `Truncated` (never silently drop a
+/// tombstone).
+pub fn decode_snapshot_with_tombstones(
+    bytes: &[u8],
+) -> Result<(Vec<CoordinatorSnapshot>, Vec<[u8; 16]>), SnapshotError> {
     let mut r = Reader { buf: bytes, pos: 0 };
     let count = r.u16().ok_or(SnapshotError::Truncated)?;
     let mut out = Vec::new();
     for _ in 0..count {
         out.push(decode_one(&mut r)?);
     }
-    Ok(out)
+    let mut tombstones = Vec::new();
+    if let Some(tcount) = r.u16() {
+        for _ in 0..tcount {
+            tombstones.push(r.arr::<16>().ok_or(SnapshotError::Truncated)?);
+        }
+    }
+    Ok((out, tombstones))
 }
 
 fn decode_one(r: &mut Reader) -> Result<CoordinatorSnapshot, SnapshotError> {
@@ -140,6 +170,7 @@ fn decode_one(r: &mut Reader) -> Result<CoordinatorSnapshot, SnapshotError> {
     let btc_pubkey = r.arr::<33>().ok_or(t)?;
     let give_amount = r.u64().ok_or(t)?;
     let take_amount = r.u64().ok_or(t)?;
+    let term_anchor = r.u64().ok_or(t)?;
     let network_id = r.u8().ok_or(t)?;
     let addr_len = r.u16().ok_or(t)? as usize;
     let btc_address = r.take(addr_len).ok_or(t)?.to_vec();
@@ -169,6 +200,7 @@ fn decode_one(r: &mut Reader) -> Result<CoordinatorSnapshot, SnapshotError> {
             give_amount,
             take_amount,
             network_id,
+            term_anchor,
         },
         secret,
         peer_btc_pubkey,
@@ -288,6 +320,7 @@ mod tests {
             give_amount: 100_000,
             take_amount: 50_000,
             network_id: 5,
+            term_anchor: 0,
         };
         let (mut coord, _propose) = SwapCoordinator::new_initiator(ctx, secret, ladder);
         let accept = SwapAcceptance {
@@ -368,6 +401,64 @@ mod tests {
             .has_funds_locked());
         after.tick(10_001);
         assert!(after.is_empty());
+    }
+
+    #[test]
+    fn a_settled_reaped_initiator_swap_stays_tombstoned_across_restart() {
+        // H2 (#189): a SETTLED initiator swap is reaped from the coordinator map before a
+        // snapshot, so the tombstone must ride the snapshot bytes themselves — otherwise a
+        // settle → reap → restart forgets the id and the deterministic secret source could
+        // reissue its now-PUBLIC `S` to a re-derived swap.
+        use crate::swap_messages::tx_envelope;
+        use crate::swap_wire::SwapLegId;
+        let swap_id = [0x5D; 16];
+        let mut s = funds_locked_session(swap_id, [42u8; 32]);
+        {
+            let c = s.coordinator(&swap_id).unwrap();
+            c.recv_funding_proof(&tx_envelope(
+                swap_id,
+                SwapLegId::Counterparty,
+                vec![0x22; 120],
+                [0xF2; 32],
+            ))
+            .unwrap();
+            c.claim_and_reveal(0, vec![0x42; 32], [0xF3; 32]).unwrap();
+            c.settle().unwrap();
+        }
+        s.tick(0); // the settled coordinator is reaped — only the tombstone remains
+        assert!(s.is_empty());
+        assert!(s.has_initiated(&swap_id));
+
+        let bytes = s.encode_snapshot();
+        let restored =
+            SwapSession::restore_bytes(identity(), LadderParams::default(), &bytes).unwrap();
+        assert!(restored.is_empty());
+        assert!(
+            restored.has_initiated(&swap_id),
+            "the tombstone must survive settle → reap → restart"
+        );
+    }
+
+    #[test]
+    fn a_pre_trailer_blob_still_restores_and_a_torn_trailer_is_refused() {
+        // Backward compat: bytes written before the tombstone trailer existed (records
+        // only) still restore — the in-flight initiator swap re-tombstones off its record.
+        let swap_id = [0x5E; 16];
+        let s = funds_locked_session(swap_id, [42u8; 32]);
+        let old_bytes = super::encode_snapshot(&s.snapshot()); // record bytes, no trailer
+        let mut restored =
+            SwapSession::restore_bytes(identity(), LadderParams::default(), &old_bytes).unwrap();
+        assert!(restored.has_initiated(&swap_id));
+        assert!(restored.coordinator(&swap_id).is_some());
+
+        // A trailer that CLAIMS tombstones but ends short is a hard error — never silently
+        // drop a tombstone.
+        let mut torn = s.encode_snapshot();
+        torn.truncate(torn.len() - 1);
+        assert!(matches!(
+            SwapSession::restore_bytes(identity(), LadderParams::default(), &torn),
+            Err(super::SnapshotError::Truncated)
+        ));
     }
 
     #[test]

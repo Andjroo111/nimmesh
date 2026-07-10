@@ -213,6 +213,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         min_amount: AMOUNT,
         min_timeout: timelock,
         recipient: me.to_vec(),
+        term_anchor: 0,
     };
 
     // ── 2. Found, with REAL depth, until the gate passes ────────────────────────────────────

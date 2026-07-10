@@ -178,9 +178,6 @@ fn system_now_ms() -> u64 {
 pub struct NimHtlcVerifier {
     rpc: Arc<dyn GatewayRpc>,
     store: Arc<NimFundingStore>,
-    /// The mesh-head anchor the session terms were built against (0 when no beacon has been
-    /// heard — the deterministic-harness case; see ADR-0010).
-    term_anchor: u64,
     /// Verify-side slack for the timeout mapping, in seconds.
     timeout_slack_s: u64,
     /// The Albatross network the funding tx must be for (pinned testnet by the constructor).
@@ -196,17 +193,10 @@ impl NimHtlcVerifier {
         NimHtlcVerifier {
             rpc,
             store,
-            term_anchor: 0,
             timeout_slack_s: DEFAULT_TIMEOUT_SLACK_S,
             network_id: crate::NetworkId::Testnet.wire_id(),
             clock_ms: Box::new(system_now_ms),
         }
-    }
-
-    /// Set the mesh-head anchor the session terms are relative to (default 0).
-    pub fn with_term_anchor(mut self, anchor: u64) -> Self {
-        self.term_anchor = anchor;
-        self
     }
 
     /// Override the verify-side timeout slack (seconds).
@@ -275,7 +265,9 @@ impl NimHtlcVerifier {
             timeout: term_equivalent_of_timeout_ms(
                 rec.creation.data.timeout,
                 (self.clock_ms)(),
-                self.term_anchor,
+                // M4: the anchor rides the expectation (= the swap's SwapContext), never a
+                // constructor-frozen zero.
+                expect.term_anchor,
                 self.timeout_slack_s,
             ),
             confirmations,
@@ -296,6 +288,10 @@ impl FundingVerifier for NimHtlcVerifier {
         if leg == SwapLegId::Nim {
             self.store.note_wire(tx_wire);
         }
+    }
+
+    fn chain_backed(&self) -> bool {
+        true // C1: reads the real Albatross testnet — live-signer eligible
     }
 }
 

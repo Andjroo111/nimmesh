@@ -282,6 +282,7 @@ pub(crate) fn participant_fixtures() -> (
         give_amount: GIVE_NIM,
         take_amount: TAKE_BTC,
         network_id: 5,
+        term_anchor: 0,
     };
     (swap_id, alice_id, bob_id, alice_ctx)
 }

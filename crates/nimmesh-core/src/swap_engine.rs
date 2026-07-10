@@ -190,6 +190,8 @@ impl SwapEngine {
             min_amount: self.nim_amount,
             min_timeout: self.swap.terms.nim_timeout,
             recipient: self.counterparty_nim_address.clone(),
+            // The engine path's terms are already absolute Unix-ms (no mesh anchor).
+            term_anchor: 0,
         };
         require_funded(&observed, &expect, min_confirmations)
             .map_err(EngineError::FundingUnverified)?;
@@ -255,6 +257,8 @@ impl SwapEngine {
             min_amount: self.btc_amount_sat,
             min_timeout: self.swap.terms.counterparty_timeout,
             recipient: Vec::new(),
+            // The engine path's terms are already absolute Unix-ms (no mesh anchor).
+            term_anchor: 0,
         };
         require_funded(&observed, &expect, min_confirmations)
             .map_err(EngineError::FundingUnverified)?;

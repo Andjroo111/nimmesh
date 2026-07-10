@@ -2,6 +2,48 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.65.0] — 2026-07-09
+
+### Security — the G8 money-path review's testnet fixes (C1 / H2 / M3 / M4), enforced in the core
+
+The independent G8 review of the live money-path came back NO-GO for mainnet until specific
+fixes land. This PR lands every **testnet-scope** fix at the structural level, so the G10
+live-participant constructors (next PR) are safe by construction — no guard was lifted,
+nothing here touches mainnet.
+
+- **C1 — a live signer can never ride an unsafe session, through ANY door.**
+  `SwapSigner::is_live()` (default `false`; the live NIM⇄USDC signers answer `true`) ×
+  `FundingVerifier::chain_backed()` (default `false` — fail-closed; only `NimHtlcVerifier` +
+  `AmoyHtlcSwapVerifier` opt in) × `SwapSession::live_safety()` (chain-backed verifier, non-sim
+  secret source, non-zero confirmation floors). `MeshNode::build` — the funnel every
+  constructor passes through — now refuses (loud panic; the FFI doors will surface it as an
+  `Err` first) to build a node whose signer is live over a session that fails `live_safety`,
+  or on any network but testnet. The `AcceptAllVerifier`/`sim_secret` footguns can no longer
+  guard real funds by omission. (`PolygonHtlcVerifier` deliberately stays non-eligible: its
+  raw-seconds timeout would make the floor vacuous — the mapped `AmoyHtlcSwapVerifier` is the
+  live Amoy gate.)
+- **H2 — the #189 tombstone now survives settle → reap → restart.** `initiated_ever` is
+  persisted in the session snapshot (a backward-compatible trailer of 16-byte ids; a torn
+  trailer is a hard `Truncated`, never a silently dropped tombstone) and re-armed by
+  `restore_bytes`. Regression: a SETTLED, reaped initiator swap stays tombstoned across the
+  byte round-trip.
+- **M3 — the reveal deadline gates BEFORE the signer, and the reveal is held until buried.**
+  The driver now checks `reveal_deadline_ok` before handing `S` to the signer (a live claim
+  broadcasts `withdraw(S)` — the coordinator's own gate inside `claim_and_reveal` fired too
+  late for a live signer). The live initiator additionally holds the `PreimageReveal` off the
+  mesh until the withdraw is buried past 1 confirmation (`REVEAL_MIN_CONFIRMATIONS = 2`), and
+  a landed withdraw is never rebroadcast (the replay path releases the same claim later).
+- **M4 — term anchors are wired to the head, and absolute timelocks are sanity-bounded.**
+  `SwapContext`/`HtlcExpectation` now CARRY the mesh-head anchor the terms were minted
+  against (initiator stamps it at initiation, responder on the `Propose`); the live signers
+  and both live verifiers map against that per-swap anchor instead of a constructor-frozen
+  zero (the `term_anchor` config fields are gone). Both funders refuse any mapped on-chain
+  timelock beyond `now + 6 h` (or at/behind now) BEFORE broadcasting — a mis-anchored term
+  can no longer mint a multi-week lock. Snapshot codec extended accordingly.
+
+M5/M6 (independent reveal confirmation, mainnet depth retune, the mainnet guard lifts) are
+the MAINNET-only remainder — deliberately not touched; they stay in the Andjroo-gated Phase 4.
+
 ## [0.64.1] — 2026-07-08
 
 ### Fixed — #189: a revealed swap secret can never be reissued (money-path, pre-mainnet gate)

@@ -68,6 +68,13 @@ pub struct SwapContext {
     pub take_amount: u64,
     /// The Albatross network id for the NIM leg.
     pub network_id: u8,
+    /// M4 (ADR-0010): the mesh head the `terms` were minted against — the anchor every live
+    /// term↔wall-clock timeout mapping subtracts (`on_chain = now + (term − term_anchor)`).
+    /// Each side stamps its OWN cached head at coordinator creation (initiator at
+    /// initiation, responder on the `Propose`); beacon sync keeps the two within the
+    /// verify-side slack. `0` on the beacon-silent sim/harness, where terms are small
+    /// absolute heights — exactly the historic behaviour.
+    pub term_anchor: u64,
 }
 
 /// One side of a swap. Construct via [`new_initiator`](Self::new_initiator) /
@@ -345,6 +352,7 @@ impl SwapCoordinator {
                 min_amount: self.ctx.give_amount,
                 min_timeout: self.ctx.terms.nim_timeout,
                 recipient: self.ctx.nim_address.to_vec(),
+                term_anchor: self.ctx.term_anchor,
             },
             // Initiator verifies the responder's counterparty (BTC) funding (claimable by us with `S`).
             SwapRole::Initiator => HtlcExpectation {
@@ -353,8 +361,21 @@ impl SwapCoordinator {
                 min_amount: self.ctx.take_amount,
                 min_timeout: self.ctx.terms.counterparty_timeout,
                 recipient: self.ctx.btc_pubkey.to_vec(),
+                term_anchor: self.ctx.term_anchor,
             },
         }
+    }
+
+    /// M3: whether revealing `S` NOW is inside the safety window (G4 / #75) — the check the
+    /// node's driver MUST run **before** handing the secret to a signer. A live claim
+    /// broadcasts `withdraw(S)` (the on-chain reveal), so the coordinator's identical gate
+    /// inside [`claim_and_reveal`](Self::claim_and_reveal) would fire only after `S` was
+    /// already public. Pure and clock-free.
+    pub fn reveal_deadline_ok(&self, head: u64) -> bool {
+        matches!(
+            crate::swap::assess_reveal_deadline(&self.ctx.terms, head, &self.ladder),
+            crate::swap::RevealVerdict::Safe
+        )
     }
 
     /// Gate the funded-observed transition on an ON-CHAIN check of the counterparty's HTLC (S1 / #72).

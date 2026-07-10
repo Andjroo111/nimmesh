@@ -276,7 +276,6 @@ pub struct AmoyHtlcSwapVerifier {
     htlc: EvmAddress,
     own_claim_address: EvmAddress,
     store: Arc<PolygonFundingStore>,
-    term_anchor: u64,
     slack_s: u64,
     from_block_margin: u64,
     clock_s: Box<dyn Fn() -> u64 + Send + Sync>,
@@ -296,17 +295,10 @@ impl AmoyHtlcSwapVerifier {
             htlc,
             own_claim_address,
             store,
-            term_anchor: 0,
             slack_s: DEFAULT_TIMELOCK_SLACK_S,
             from_block_margin: DEFAULT_FROM_BLOCK_MARGIN,
             clock_s: Box::new(system_now_s),
         }
-    }
-
-    /// Set the mesh-head anchor the session terms are relative to (default 0).
-    pub fn with_term_anchor(mut self, anchor: u64) -> Self {
-        self.term_anchor = anchor;
-        self
     }
 
     /// Inject a deterministic clock (tests).
@@ -375,7 +367,9 @@ impl FundingVerifier for AmoyHtlcSwapVerifier {
                     timeout: term_equivalent_of_timelock_s(
                         escrow.timelock_s,
                         (self.clock_s)(),
-                        self.term_anchor,
+                        // M4: the anchor rides the expectation (= the swap's SwapContext),
+                        // never a constructor-frozen zero.
+                        expect.term_anchor,
                         self.slack_s,
                     ),
                     confirmations: u32::try_from(head.saturating_sub(block).saturating_add(1))
@@ -393,5 +387,9 @@ impl FundingVerifier for AmoyHtlcSwapVerifier {
         if leg == SwapLegId::Counterparty {
             self.store.note_candidate(tx_wire);
         }
+    }
+
+    fn chain_backed(&self) -> bool {
+        true // C1: reads the DEPLOYED Amoy HTLC — live-signer eligible
     }
 }

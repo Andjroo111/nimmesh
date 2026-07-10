@@ -520,6 +520,26 @@ impl MeshNode {
         signer: Option<Box<dyn crate::swap_signer::SwapSigner>>,
         network: crate::NetworkId,
     ) -> Arc<Self> {
+        // C1 (money-path): a LIVE signer must never ride an unsafe session — chain-backed
+        // funding verifier, non-sim secret source, non-zero confirmation floors, TESTNET
+        // only. Enforced HERE so no constructor (present or future) can skip it; the live
+        // FFI doors surface the same condition as an `Err` before this can ever trip, so
+        // hitting this panic is a programming error worth a loud stop, never a user path.
+        if signer.as_ref().is_some_and(|s| s.is_live()) {
+            assert_eq!(
+                network,
+                crate::NetworkId::Testnet,
+                "refusing to build a live-signer node off testnet (mainnet is Andjroo-gated)"
+            );
+            match swap.as_ref() {
+                None => panic!("refusing to build a live-signer node with no swap session"),
+                Some(session) => {
+                    if let Err(reason) = session.live_safety() {
+                        panic!("refusing to build a live-signer node: {reason}");
+                    }
+                }
+            }
+        }
         let ctx = Arc::new(WorkerCtx::new(
             to_sender_id(&sender_id),
             radio.clone(),

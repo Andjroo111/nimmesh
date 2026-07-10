@@ -66,6 +66,7 @@ fn ctx(swap_id: [u8; SWAP_ID_LEN], seed: u8) -> SwapContext {
         give_amount: 100_000,
         take_amount: 50_000,
         network_id: 5,
+        term_anchor: 0,
     }
 }
 
@@ -668,5 +669,42 @@ fn a_restored_initiator_swap_stays_tombstoned_across_a_restart() {
     assert!(
         restored.has_initiated(&swap_id),
         "a restored initiator swap must be tombstoned"
+    );
+}
+
+// --- C1 (G8 review): the money-path construction gate -------------------------------------------
+
+#[test]
+fn live_safety_flags_each_unsafe_default() {
+    use crate::nim_verifier::{NimFundingStore, NimHtlcVerifier};
+    use crate::rpc::MockRpc;
+    use std::sync::Arc;
+
+    // Fresh defaults: the accept-all verifier is the first refusal.
+    let s = SwapSession::new(identity(1), LadderParams::default());
+    assert_eq!(
+        s.live_safety(),
+        Err("funding verifier is not chain-backed (sim/accept-all)")
+    );
+
+    // A chain-backed verifier alone is not enough — the sim secret is public-derivable.
+    let s = s.with_funding_verifier(Box::new(NimHtlcVerifier::new(
+        Arc::new(MockRpc::new(1)),
+        Arc::new(NimFundingStore::new()),
+    )));
+    assert_eq!(
+        s.live_safety(),
+        Err("secret source is the deterministic sim stand-in")
+    );
+
+    // A real secret source flips it safe…
+    let s = s.with_secret_source(Box::new(|swap_id| sha256(swap_id)));
+    assert_eq!(s.live_safety(), Ok(()));
+
+    // …and a zero-confirmation policy re-refuses (never zero-conf real funds).
+    let s = s.with_confirmation_policy(ConfirmationPolicy::uniform(0));
+    assert_eq!(
+        s.live_safety(),
+        Err("confirmation policy allows zero-confirmation funding")
     );
 }

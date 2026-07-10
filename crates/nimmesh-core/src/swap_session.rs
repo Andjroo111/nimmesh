@@ -130,6 +130,10 @@ pub struct SwapSession {
     /// deterministic `sim_secret` (tests); production injects a CSPRNG-backed PRF via
     /// [`SwapSession::with_secret_source`].
     pub(crate) secret_source: SecretSource,
+    /// C1: whether `secret_source` is still the deterministic sim default. Flipped false by
+    /// [`with_secret_source`](Self::with_secret_source); [`live_safety`](Self::live_safety)
+    /// refuses a live pairing while it is true (a public-derivable `S` loses both legs).
+    secret_is_sim: bool,
 }
 
 impl SwapSession {
@@ -146,6 +150,7 @@ impl SwapSession {
             confirm_policy: ConfirmationPolicy::testnet_defaults(),
             counterparty_chain: Asset::Btc,
             secret_source: Box::new(crate::swap_node::sim_secret),
+            secret_is_sim: true,
         }
     }
 
@@ -155,7 +160,37 @@ impl SwapSession {
     /// signer is wired.
     pub fn with_secret_source(mut self, source: SecretSource) -> Self {
         self.secret_source = source;
+        self.secret_is_sim = false;
         self
+    }
+
+    /// C1 (the money-path construction gate): whether this session is safe to pair with a
+    /// LIVE [`crate::swap_signer::SwapSigner`]. Every live-unsafe default must have been
+    /// replaced: the funding verifier must be chain-backed (never the sim
+    /// [`AcceptAllVerifier`], whose unconditional `Found` reopens the S1 fund-on-message
+    /// theft), the secret source must not be the deterministic sim stand-in (its `S` is
+    /// public-derivable), and the per-chain confirmation floors must be non-zero.
+    /// [`crate::node::MeshNode`] refuses to build a live-signer node that fails this — the
+    /// safety no longer rests on remembering `.with_*()` calls.
+    pub fn live_safety(&self) -> Result<(), &'static str> {
+        if !self.verifier.chain_backed() {
+            return Err("funding verifier is not chain-backed (sim/accept-all)");
+        }
+        if self.secret_is_sim {
+            return Err("secret source is the deterministic sim stand-in");
+        }
+        if self
+            .confirm_policy
+            .required_for_leg(crate::swap_wire::SwapLegId::Nim, self.counterparty_chain)
+            == 0
+            || self.confirm_policy.required_for_leg(
+                crate::swap_wire::SwapLegId::Counterparty,
+                self.counterparty_chain,
+            ) == 0
+        {
+            return Err("confirmation policy allows zero-confirmation funding");
+        }
+        Ok(())
     }
 
     /// Inject this node's NIM identity key so it signs each `Propose` it originates (S2 / #73). The
@@ -297,6 +332,9 @@ impl SwapSession {
                     give_amount: p.give_amount,
                     take_amount: p.take_amount,
                     network_id: p.network_id,
+                    // M4: OUR head is the anchor the live timeout mappings subtract — the
+                    // initiator minted the terms against its own (beacon-synced) head.
+                    term_anchor: head,
                 };
                 let mut coord = SwapCoordinator::new_responder(ctx, self.ladder);
                 // Gate BEFORE inserting: a rejected `Propose` (unsafe ladder, mismatched fields)
