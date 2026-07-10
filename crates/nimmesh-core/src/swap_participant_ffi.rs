@@ -314,9 +314,10 @@ impl MeshNode {
 }
 
 /// The optional testnet gateway hop (`gateway-rpc` builds only; others refuse honestly so the
-/// shared bindings never diverge — the `gateway_ffi` discipline).
+/// shared bindings never diverge — the `gateway_ffi` discipline). `pub(crate)`: the live
+/// swap constructors (`swap_live_ffi`) reuse the same guarded hop.
 #[cfg(feature = "gateway-rpc")]
-fn build_testnet_gateway(
+pub(crate) fn build_testnet_gateway(
     url: String,
 ) -> Result<Arc<dyn crate::gateway::MeshGateway>, ParticipantInitError> {
     let rpc = crate::rpc::HttpGatewayRpc::new(url, crate::NetworkId::Testnet).map_err(|e| {
@@ -328,7 +329,7 @@ fn build_testnet_gateway(
 }
 
 #[cfg(not(feature = "gateway-rpc"))]
-fn build_testnet_gateway(
+pub(crate) fn build_testnet_gateway(
     _url: String,
 ) -> Result<Arc<dyn crate::gateway::MeshGateway>, ParticipantInitError> {
     Err(ParticipantInitError::Gateway {

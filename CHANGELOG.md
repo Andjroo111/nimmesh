@@ -2,6 +2,34 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.66.0] — 2026-07-10
+
+### Added — G10a: the LIVE swap-participant constructors over UniFFI (testnet/Amoy, app-facing)
+
+`swap_live_ffi` — the production door that carries Act 2's live-proven NIM⇄USDC money path
+onto the app surface, built directly on the 0.65.0 review fixes:
+
+- **`MeshNode::new_live_swap_initiator`** (the phone, NIM-giver): wallet enclave key over the
+  `EnclaveKey` foreign trait (funds + refunds the real NIM HTLC; the seed never crosses),
+  ephemeral intent identity + CSPRNG secret PRF from caller randomness (G45/G11), the real
+  `AmoyHtlcSwapVerifier` gate, an EVM receive address for the claimed USDC (no key custody to
+  receive) + a caller-held Amoy gas key for `withdraw(S)` (ADR-0011).
+- **`MeshNode::new_live_swap_responder`** (the Mac rig, USDC-giver): funds NOTHING until the
+  real `NimHtlcVerifier` sees the initiator's HTLC at depth; escrows real Amoy USDC and
+  claims the NIM leg with the revealed `S`.
+- **Safety in the door, not the caller:** both ctors assert `SwapSession::live_safety()` and
+  are pinned by `guard_testnet`/`guard_amoy` at construction (no network parameter exists);
+  a one-shot funding latch means one construction can never move more than the one
+  advertised trade; a `LiveLockBook` (caller-held) records every real NIM lock off the exact
+  broadcast wire, and `NimHtlcRefunder` turns an expired lock back into the wallet's funds
+  (`StillLocked` / `Refunded` / `AlreadyResolved` — idempotent, chain-truth-released).
+- `evm_address_for_secret` (behind `polygon-leg`) so the app derives its Amoy accounts
+  without native EVM math. Every door refuses honestly (`Unsupported`) in builds without
+  `polygon-gateway`+`gateway-rpc` — the shared bindings never diverge.
+
+Swift bindings regenerated; the new symbols verified in `generated/nimmesh_core.swift`.
+Offline tests: validation, guard pinning, C1-at-the-door, latch, lock book, byte-exact refund.
+
 ## [0.65.0] — 2026-07-09
 
 ### Security — the G8 money-path review's testnet fixes (C1 / H2 / M3 / M4), enforced in the core
