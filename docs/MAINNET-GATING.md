@@ -127,3 +127,120 @@ What did NOT change: every default constructor and the autonomous loop remain
 testnet-only; `guard_testnet` still refuses mainnet hosts everywhere else; the agent
 still never signs or initiates a mainnet transfer — the human sender does, on their
 own device, exactly like the online Send path.
+
+## 8. The mainnet SWAP gate — first real-funds cross-chain atomic swap
+
+A swap is a bigger, more dangerous surface than the mesh payment (§7): **two chains, two
+funding transactions, a secret reveal, timelocks, and a responder that funds a leg
+automatically.** That last point is the crux — unlike a payment, where the human signs the
+one and only transaction, a swap has a counterparty leg that a *node* funds on-chain. On
+mainnet that is real value moving without a per-transaction human tap. So the swap gate is
+stricter than the payment gate, and it is exercised in this order.
+
+### 8.0 What is already true (testnet-proven, in code)
+
+- The **real money-path is proven end to end on testnet + Amoy** (Act 2, `docs/swap/ACT2-RECEIPTS.md`;
+  G10, `docs/swap/G10-RECEIPTS.md`): a real NIM HTLC on Albatross testnet ⇄ a real USDC HTLC on
+  Polygon Amoy, secret revealed on-chain, both legs settled, nothing stranded.
+- **Atomicity holds**: the S1 fund-on-message vector is closed (on-chain funding verification
+  before either side funds — `swap_funding_verify.rs`), and the #189 secret-reuse vector is
+  closed (the session tombstones every `swap_id` it initiates — `swap_session.rs`). The Δ_safe
+  timelock ladder (ADR-0004) refuses to fund a swap whose timeouts can't be made safe.
+- Every constructor is **testnet/Amoy-guarded** (`guard_testnet` / `guard_amoy`); the app node,
+  the Mac responder, and the loop are all testnet by default.
+
+### 8.1 The invariants a mainnet swap must NOT break
+
+1. **The agent never autonomously moves mainnet funds.** Same floor as §3/§5. A mainnet swap
+   leg is only ever funded by (a) Andjroo signing on his own device, or (b) a rig whose mainnet
+   funding is **explicitly launched by Andjroo with a hard per-swap cap** — never the loop, never
+   a default constructor.
+2. **The secret leaves the initiator only inside a public claim tx.** No seed / no
+   preimage-before-reveal crosses FFI, the mesh, or a log (audited in G8).
+3. **The timelock refund is the safety floor.** Worst case is always: each side reclaims its own
+   funds after its timeout. The confirmation-depth policy (ADR-0003) must be re-tuned for mainnet
+   finality before any real leg is funded — Amoy's testnet depths are NOT safe against a Polygon
+   or Bitcoin mainnet reorg.
+
+### 8.2 Pre-mainnet-swap checklist (all green first)
+
+- [x] **G8 independent contract + money-path review DONE (2026-07-09)** — the Solidity contracts
+      and pure decision layers (ladder, `require_funded`, coordinator gates, checks-effects order)
+      are SOLID; every finding is in the *wiring* / *live driver*. Verdict: **NO-GO until the below
+      land** — but the code correctly hard-refuses mainnet today (Amoy chain-id pin, `fund_nim`
+      testnet check, NIM-verifier pin), so this is a "what must be true when guards lift" verdict,
+      not a live exploit.
+  - [ ] **C1 (CRIT)** — one audited live-participant constructor that bakes in + ASSERTS the real
+        gateway verifier (never `AcceptAllVerifier` — its default reopens S1), a CSPRNG secret
+        source (never the public-derivable `sim_secret`), mainnet confirmation depths, and
+        `term_anchor`. *(folded into the G10 build.)*
+  - [ ] **H2 (HIGH)** — persist the #189 `initiated_ever` tombstone across restart (settled+reaped
+        swaps currently lose it → the deterministic secret source could reissue a public `S`).
+        *(folded into the G10 build.)*
+  - [ ] **M3 (MED)** — evaluate the reveal-deadline BEFORE the on-chain `withdraw`; don't flood `S`
+        until the reveal is buried beyond 1 confirmation. *(folded into the G10 build.)*
+  - [ ] **M4 (MED)** — wire `term_anchor = head` on both signers + both verifiers; add an
+        absolute-timelock sanity bound. *(folded into the G10 build.)*
+  - [ ] **M5/M6 (mainnet-only)** — trusted/cross-checked RPC + independent reveal confirmation;
+        mainnet confirmation-depth retune; the guard-lift (evm_rlp Amoy pin, `fund_nim`, NIM
+        verifier pin) is its OWN dedicated review, not a config flip.
+- [ ] **Mainnet confirmation depths tuned** (ADR-0003 revisited) — NIM / Polygon / BTC each get a
+      finality-safe depth, not the Amoy testnet values. Reorg re-verification path exercised.
+- [ ] **Mainnet HTLC contract deployed + verified** on the counterparty chain (a fresh
+      `NimmeshHtlc` on Polygon **mainnet**, forwarder-bound, source-verified on the explorer), if
+      the counterparty asset is USDC. Its address recorded here.
+- [ ] **Gas + dust reviewed for the real chain** — Polygon mainnet fee market (not Amoy), or BTC
+      dust/fee; the responder's refund-reserving preflight re-checked against real gas.
+- [ ] **Refund-recovery rehearsed on mainnet-shaped values** — a deliberately-abandoned swap
+      refunds cleanly on both legs.
+- [ ] **Hard per-swap cap wired** — the responder rig refuses any swap above a small cap
+      (≤ the agreed test size, e.g. 1–5 USDC / a few NIM), enforced in code, not just config.
+- [ ] **Andjroo's explicit written authorization** for the first mainnet swap, naming the asset,
+      the cap, and which side he controls.
+
+### 8.3 The chosen shape of the first mainnet swap (fill in once Andjroo picks the asset)
+
+**Andjroo chose USDC on Polygon (2026-07-09)** — the path of least new risk: the HTLC contract
+stack (`NimmeshHtlc` v2 + forwarder) is already deployed and live-proven on Amoy, so the only new
+on-chain step is a **verified mainnet deploy of `NimmeshHtlc` on Polygon PoS** (source-verified on
+polygonscan) plus a gated guard-lift. USDC on Polygon PoS = **verify the current canonical address
+from Circle's docs before use** (native USDC vs bridged USDC.e differ — do NOT hardcode from
+memory). Andjroo provides a small amount of mainnet USDC + a few POL for gas.
+
+The safest first mainnet run keeps **both sides under Andjroo's control**: he funds the NIM leg
+from his phone (signing on-device, exactly like the §7 payment) AND he controls the counterparty
+responder — either running it himself, or launching the capped rig with an explicit go and
+watching each broadcast. This is a swap *with himself* across two chains: it proves the mainnet
+money-path with zero counterparty-trust exposure and a self-refund floor. Only after that proves
+clean is a swap with a real third-party counterparty considered.
+
+### 8.4 What lifts, exactly, and who does it (against the merged G10 code, v0.68.0)
+
+The testnet swap runs entirely through two FFI constructors — `MeshNode::new_live_swap_initiator`
+(the phone) and `new_live_swap_responder` (the Mac), both **hard-pinned to testnet/Amoy and
+C1-asserted at the door** (a live signer cannot be built with `AcceptAllVerifier` or `sim_secret`,
+enforced in `MeshNode::build`). A mainnet swap is a *new, off-by-default, `money-path` +
+`needs:owner` PR* (never auto-merged) that lifts exactly these points — each a deliberate change,
+not a config flip:
+
+1. `rpc::HttpGatewayRpc::new_mainnet` + the `polygon_gateway` mainnet host allow-list.
+2. The `guard_testnet` / `guard_amoy` constructor guards.
+3. `fund_nim`'s testnet-network assertion (the NIM leg's network pin).
+4. `MeshNode::build`'s testnet-only live-signer assertion (so a live signer may ride a mainnet node).
+5. The `ConfirmationPolicy` testnet depths → mainnet-finality depths (M6 / ADR-0003).
+
+And it requires, per the G8 review, the two mainnet-only fixes that were deliberately NOT done on
+testnet: **M5** (trusted / cross-checked RPC + independent confirmation that the reveal is really
+on-chain before treating a swap as settled) and **M6** (the depth retune above). Plus a fresh,
+source-verified `NimmeshHtlc` deployed on Polygon mainnet, a hard per-swap cap enforced in code,
+the §8.2 checklist all green, an independent review of the guard-lift diff, and Andjroo's written
+authorization.
+
+Who does what on the first run: **Andjroo signs the NIM leg on his phone** (on-device, exactly like
+§7 — no new autonomous surface) and **controls the USDC responder** (running it himself, or
+launching the capped rig with an explicit go and watching each broadcast). The responder's `newSwap`
+is the one real-value action a *node* takes — which is why it is capped, explicitly launched, and
+his to trigger, never the loop's. Everything else stays testnet; no default constructor changes.
+
+*(The cap value + the mainnet HTLC address get filled in with the guard-lift PR; the go/no-go from
+G8 review get filled in before it is proposed as a PR.)*
