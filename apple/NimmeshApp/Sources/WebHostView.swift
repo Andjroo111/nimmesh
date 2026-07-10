@@ -104,6 +104,14 @@ final class Bridge: NSObject, WKScriptMessageHandler {
     lazy var node: MeshNode = makeNormalNode()
     /// Whether the over-the-mesh swap demo owns the node right now (TESTNET participant).
     var swapDemoOn = false
+    /// G10b: whether the CURRENT swap participant is the LIVE one (real testnet/Amoy coins
+    /// moving) rather than the Act-1 sim. Drives the honest labels + the lock reporting.
+    var swapLiveOn = false
+    /// G10b: the caller-held book of REAL NIM HTLC locks the live initiator funded — kept
+    /// for the never-strand refund path (mirrored into UserDefaults on every status read).
+    var liveLockBook: LiveLockBook?
+    /// G10b: the derived Amoy gas account (0x…) shown so it can be topped up with POL.
+    var liveGasAddress: String?
 
     /// Injected at document start. Exposes a tiny promise-based RPC the web UI calls:
     /// `await window.nimmesh.version()` etc. If the handler is ever absent (e.g. the
@@ -197,11 +205,15 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         // (the answer rides the fragmenter over BLE), then read the last-heard answer.
         meshQueryHistory: function () { return call('meshQueryHistory'); },
         meshCachedHistory: function () { return call('meshCachedHistory'); },
-        // Over-the-mesh swap DEMO (TESTNET, SIM funds): run the real swap protocol over
-        // real Bluetooth — advertise an intent, match, negotiate — with sim tx bytes.
+        // Over-the-mesh swap: the real swap protocol over real Bluetooth. Default = the
+        // Act-1 DEMO (TESTNET, SIM tx bytes — no funds move). Pass { real: true } for the
+        // G10 LIVE path: real TEST coins move (NIM on Albatross testnet ⇄ USDC on Amoy),
+        // honestly labeled; mainnet is never touched. swapMeshRefund sweeps any expired
+        // real NIM lock back to the wallet (never-strand).
         swapMeshStart: function (a) { return call('swapMeshStart', a || {}); },
         swapMeshStatus: function () { return call('swapMeshStatus'); },
         swapMeshStop: function () { return call('swapMeshStop'); },
+        swapMeshRefund: function () { return call('swapMeshRefund'); },
         // Public mesh chat (0x50): broadcast text over BLE; the rolling heard/sent log.
         sendChat: function (nick, text) { return call('sendChat', { nickname: nick, text: text }); },
         chatMessages: function () { return call('chatMessages'); },
@@ -223,7 +235,7 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         // when they complete. Everything else is synchronous (pure-core reads).
         switch method {
         case "headHeight", "walletBalance", "walletHistory", "sendTransaction", "meshSendTransaction",
-             "prices", "market", "swapMeshStart", "cashlinkCreate", "cashlinkStatus":
+             "prices", "market", "swapMeshStart", "swapMeshRefund", "cashlinkCreate", "cashlinkStatus":
             Task { let (ok, payload) = await self.handleAsync(method: method, args: args)
                 self.resolve(id: id, ok: ok, payload: payload) }
         case "authenticate":
@@ -450,8 +462,12 @@ final class Bridge: NSObject, WKScriptMessageHandler {
                 return (false, "\(error)")
             }
         case "swapMeshStart":
-            // The over-the-mesh swap demo: swaps the node onto TESTNET as a participant.
+            // The over-the-mesh swap: swaps the node onto TESTNET as a participant (sim by
+            // default; { real: true } = the G10 live testnet⇄Amoy money path).
             return await swapMeshStart(args: args)
+        case "swapMeshRefund":
+            // Never-strand: refund expired REAL NIM locks back to the wallet (chain IO).
+            return await swapMeshRefund()
         case "cashlinkCreate":
             return await cashlinkCreate(args: args)
         case "cashlinkStatus":

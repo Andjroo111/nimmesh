@@ -54,7 +54,9 @@ echo "==> nimmesh $MARKETING_VERSION (build $BUILD_NUMBER) -> Ad Hoc ipa (team $
 
 if [ "$SKIP_RUST" -eq 0 ]; then
   echo "==> cargo swift package (iOS framework)"
-  ( cd "$REPO/crates/nimmesh-core" && cargo swift package -n NimmeshCore -p ios -y -F gateway-rpc >/dev/null )
+  # gateway-rpc = the NIM HTTP client (mesh gateway); polygon-gateway (implies polygon-leg)
+# = the Amoy stack, so the LIVE swap participant (G10) compiles into the framework.
+( cd "$REPO/crates/nimmesh-core" && cargo swift package -n NimmeshCore -p ios -y -F gateway-rpc -F polygon-gateway >/dev/null )
 fi
 echo "==> xcodegen generate"
 ( cd "$APPLE" && xcodegen generate >/dev/null )

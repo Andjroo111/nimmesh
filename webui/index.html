@@ -561,6 +561,10 @@
   .sa-fiat { flex: 1 0 100%; margin-top: 6px; font-size: 17px; font-weight: 600; color: rgba(31,35,72,.5); }
   .sa-fiat.in { color: var(--nimiq-green, #21bca5); }
   #swap-start { text-transform: uppercase; letter-spacing: .034em; }
+  .swap-real-row { display: flex; align-items: center; justify-content: center; gap: 8px;
+    margin: 14px 0 0; font-size: 14px; color: rgba(31,35,72,.7); cursor: pointer; }
+  .swap-real-row input { width: 16px; height: 16px; accent-color: #0582CA; }
+  .swap-sim-note.live { color: #c4510b; font-weight: 600; }
   /* the SwapBalanceBar inside the sheet (component sizes via container; 8px-root rem page) */
   #swap-bar { margin: 20px 24px 0; }
   #swap-bar .balance-bar-header .identicon img { width: 100%; height: 100%; }
@@ -1636,6 +1640,13 @@ Don't share them and keep them safe.</p>
       </div>
     </div>
     <p class="swap-rate" id="swap-rate" data-i18n="swap.rate">Rate and fees are agreed directly with your swap partner</p>
+    <!-- G10b: the honest mode switch — OFF = the Act-1 sim (no funds move); ON = the LIVE
+         TESTNET path (real test coins move: NIM on Albatross testnet ⇄ USDC on Amoy).
+         Only shown inside the app (the bridge exists); a plain browser stays sim-only. -->
+    <label class="swap-real-row" id="swap-real-row" hidden>
+      <input type="checkbox" id="swap-real-toggle">
+      <span data-i18n="swap.real.label">Real testnet coins (NIM ⇄ USDC)</span>
+    </label>
     <button class="send-btn" id="swap-start" data-i18n="swap.cta">Confirm</button>
     <p class="swap-sim-note" data-i18n="swap.simnote">Simulation: no real funds move yet</p>
   </div>
@@ -2024,6 +2035,12 @@ Don't share them and keep them safe.</p>
     'codes.how.tip': 'Email it to yourself, or message it to yourself in a chat app. Use a DIFFERENT platform for each code.',
     'swap.matched': 'Partner found, negotiating…', 'swap.settled': 'Swap settled',
     'swap.live': 'Live over Bluetooth — testnet, sim funds', 'swap.ended': 'Swap ended',
+    'swap.simnote': 'Simulation: no real funds move yet',
+    'swap.real.label': 'Real testnet coins (NIM \u21c4 USDC)',
+    'swap.livenote': 'TESTNET — real test coins are moving (NIM \u21c4 USDC)',
+    'swap.real.live': 'Live over Bluetooth — TESTNET, real test coins',
+    'swap.real.noprices': 'Live prices unavailable — try again in a moment',
+    'swap.locks': 'NIM lock pending refund',
     'chat.menu': 'Messages', 'chat.title': 'Mesh Messages', 'chat.ph': 'Message the mesh…',
     'chat.public': 'Public — everyone on the mesh can read it',
     'chat.empty': 'No messages yet. Anyone on the mesh around you will see what you send.',
@@ -2619,6 +2636,9 @@ Don't share them and keep them safe.</p>
       swapMeshLive = false;
       try { window.nimmesh.swapMeshStop(); } catch (e) {}
     }
+    const realToggle = document.getElementById('swap-real-toggle');
+    if (realToggle) { realToggle.checked = false; }
+    updateSwapHonestyNotes();
     swapPct = 95;
     if (typeof swapBarPaint === 'function') { try { swapBarPaint(); } catch (e) {} }
     if (typeof updateSwapAmounts === 'function') { try { updateSwapAmounts(); } catch (e) {} }
@@ -2722,6 +2742,28 @@ Don't share them and keep them safe.</p>
   }
   document.getElementById('swap-amount').addEventListener('input', updateSwapAmounts);
 
+  // ---- G10b: the honest mode switch. OFF = Act-1 sim (no funds move). ON = the LIVE
+  // TESTNET path — real test coins move (NIM \u21c4 USDC pair forced), said out loud on
+  // every screen of the sheet. Only visible inside the app (the bridge exists).
+  function updateSwapHonestyNotes() {
+    const realToggle = document.getElementById('swap-real-toggle');
+    const real = !!(realToggle && realToggle.checked);
+    document.querySelectorAll('.swap-sim-note').forEach((el) => {
+      el.textContent = real ? T('swap.livenote') : T('swap.simnote');
+      el.classList.toggle('live', real);
+    });
+  }
+  (function wireSwapRealToggle() {
+    const row = document.getElementById('swap-real-row');
+    const toggle = document.getElementById('swap-real-toggle');
+    if (!row || !toggle) return;
+    if (window.nimmesh && window.nimmesh.swapMeshStart) row.hidden = false;
+    toggle.addEventListener('change', () => {
+      if (toggle.checked && swapAsset !== 'usdc') setSwapAsset('usdc'); // the live pair
+      updateSwapHonestyNotes();
+    });
+  })();
+
   // ---- the OVER-THE-MESH driver (device): the bridge swaps the node onto TESTNET as a
   // swap participant — discovery, the signed Propose, funding proofs, and the preimage
   // reveal all run for REAL over Bluetooth; only the tx bytes are sim (no funds move).
@@ -2735,9 +2777,13 @@ Don't share them and keep them safe.</p>
     let st;
     try { st = await window.nimmesh.swapMeshStatus(); } catch (e) { return; }
     const statusEl = document.getElementById('swap-status');
+    const liveMode = st.mode === 'live';
+    const lockNote = (st.locks && st.locks.length)
+      ? ` · ${st.locks.length} ${T('swap.locks')}` : '';
     const sw = (st.swaps || [])[0];
     if (!sw) {
-      statusEl.textContent = `${T('swap.live')} · ${st.peers} peers · ${st.seen} intents`;
+      statusEl.textContent =
+        `${T(liveMode ? 'swap.real.live' : 'swap.live')} · ${st.peers} peers · ${st.seen} intents${lockNote}`;
       return;
     }
     const step = PHASE_STEP[sw.phase] != null ? PHASE_STEP[sw.phase] : 0;
@@ -2751,7 +2797,8 @@ Don't share them and keep them safe.</p>
       return;
     }
     renderSwapPhases(step);
-    statusEl.textContent = step >= 6 ? T('swap.settled') : T('swap.matched');
+    statusEl.textContent = (step >= 6 ? T('swap.settled') : T('swap.matched'))
+      + (liveMode ? ` · ${T('swap.real.live')}` : '') + lockNote;
     if (step >= 6) {
       document.getElementById('swap-done').hidden = false;
       clearInterval(swapPoll); swapPoll = null;
@@ -2766,7 +2813,33 @@ Don't share them and keep them safe.</p>
     document.getElementById('swap-setup').hidden = true;
     document.getElementById('swap-progress').hidden = false;
     if (window.nimmesh && window.nimmesh.swapMeshStart) {
-      // The live demo runs the NIM->BTC pair (the responder rig advertises BTC).
+      const realToggle = document.getElementById('swap-real-toggle');
+      if (realToggle && realToggle.checked) {
+        // G10b: the LIVE TESTNET path — real test coins move (NIM \u21c4 USDC). The
+        // micro-USDC ask comes from the live indicative prices; without prices we refuse
+        // rather than invent a rate for real coins.
+        if (swapAsset !== 'usdc') setSwapAsset('usdc');
+        if (!(usdcPrice && nimPrice)) {
+          alert(T('swap.real.noprices'));
+          document.getElementById('swap-setup').hidden = false;
+          document.getElementById('swap-progress').hidden = true;
+          return;
+        }
+        const usdcMicro = Math.max(1, Math.round((nim * nimPrice / usdcPrice) * 1e6));
+        document.getElementById('swap-status').textContent = T('swap.real.live');
+        updateSwapHonestyNotes();
+        try {
+          await window.nimmesh.swapMeshStart({
+            real: true, nimLuna: Math.round(nim * 1e5), usdcMicro: usdcMicro,
+          });
+          swapMeshLive = true;
+          swapPoll = setInterval(pollMeshSwap, 2000);
+        } catch (e) {
+          document.getElementById('swap-status').textContent = String((e && e.message) || e);
+        }
+        return;
+      }
+      // The sim demo runs the NIM->BTC pair (the responder rig advertises BTC).
       if (swapAsset !== 'btc') setSwapAsset('btc');
       // Sats from the indicative price; a fixed sim ask when prices are unavailable.
       const sat = (btcPrice && nimPrice)

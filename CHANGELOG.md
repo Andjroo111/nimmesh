@@ -2,6 +2,33 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.67.0] — 2026-07-10
+
+### Added — G10b: the app wiring for the LIVE testnet swap
+
+`SwapMesh.swift` gains a "real testnet" path beside the Act-1 sim, driven by a new
+`{ real: true }` flag on `swapMeshStart`:
+
+- **`swapLiveStart`** builds the live participant via `MeshNode.newLiveSwapInitiator`: the
+  wallet's enclave key funds the real NIM HTLC (via `Wallet.enclaveKey`, the same key the
+  wallet signs with — the seed never crosses FFI); the claimed USDC pays out to a
+  wallet-derived Amoy receive address; a wallet-derived Amoy gas account pays `withdraw(S)`
+  (both derived HKDF-off-entropy in `Wallet.swapEvmSecrets`, so a reinstall strands nothing,
+  and the gas address is surfaced for topping up with POL). TESTNET/Amoy pinned.
+- **Honest labels**: the Swap sheet gains a "Real testnet coins (NIM ⇄ USDC)" toggle (shown
+  only inside the app); flipping it swaps the sim's "Simulation: no real funds move yet" for
+  "TESTNET — real test coins are moving", forces the NIM⇄USDC pair, and the live status line
+  reads "Live over Bluetooth — TESTNET, real test coins" through the real coordinator phases.
+- **Never-strand in the app**: every real NIM lock is mirrored to `UserDefaults`, surfaced in
+  the status line ("N NIM lock pending refund"), and `swapMeshRefund` drives the core's
+  `NimHtlcRefunder` (idempotent — `still-locked` / `refund-broadcast` / chain-truth `resolved`).
+- The iOS framework build (`build-adhoc.sh`) now compiles `-F gateway-rpc -F polygon-gateway`
+  so the live signer + Amoy stack are in the app.
+
+Verified: the UI flow (toggle → honest label → NIM⇄USDC pair → `swapMeshStart({real:true})`
+with a computed `usdcMicro` → live phases advance → lock note) driven headlessly against a
+mocked bridge (Playwright).
+
 ## [0.66.0] — 2026-07-10
 
 ### Added — G10a: the LIVE swap-participant constructors over UniFFI (testnet/Amoy, app-facing)

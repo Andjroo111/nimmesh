@@ -162,6 +162,38 @@ enum Wallet {
     /// The wallet's user-friendly `NQ…` address, or `nil` if no wallet / can't derive.
     static func address() -> String? { try? signer?.address() }
 
+    /// G10b: the wallet's raw enclave key — the SAME Ed25519 key `signer` signs with, handed
+    /// to the Rust core only as the `EnclaveKey` foreign trait (public key + detached
+    /// signatures cross the FFI; the phrase/seed never does). The live swap's NIM HTLC is
+    /// funded and refunded by THIS key. `nil` before onboarding.
+    static var enclaveKey: KeychainEnclaveKey? {
+        guard let phrase = readMnemonic(), let bip39 = bip39(),
+              let keyData = NimiqHD.privateKey(mnemonic: phrase, bip39: bip39), keyData.count == 32,
+              let ck = try? Curve25519.Signing.PrivateKey(rawRepresentation: keyData)
+        else { return nil }
+        return KeychainEnclaveKey(privateKey: ck)
+    }
+
+    /// G10b: the wallet's two DERIVED Amoy (EVM) secrets for the live testnet swap — the
+    /// claim-GAS payer and the USDC RECEIVE account — HKDF-SHA256 off the wallet entropy
+    /// with distinct labels, so both accounts are recoverable from the recovery phrase alone
+    /// (a reinstall strands nothing). The gas secret enters the Rust core once (it must sign
+    /// Amoy gas transactions) and never crosses back; the claim secret never leaves Swift —
+    /// only its derived ADDRESS does (receiving needs no key custody).
+    static func swapEvmSecrets() -> (gas: Data, claim: Data)? {
+        guard let phrase = readMnemonic(), let bip39 = bip39(),
+              let entropy = bip39.entropy(fromMnemonic: phrase), entropy.count == 32
+        else { return nil }
+        func derive(_ label: String) -> Data {
+            HKDF<SHA256>.deriveKey(
+                inputKeyMaterial: SymmetricKey(data: entropy),
+                info: Data(label.utf8),
+                outputByteCount: 32
+            ).withUnsafeBytes { Data($0) }
+        }
+        return (derive("nimmesh-swap-evm-gas-v1"), derive("nimmesh-swap-evm-claim-v1"))
+    }
+
     /// Prove the native signer interoperates with the Rust verifier (CryptoKit ↔ ed25519-dalek):
     /// sign a fixed transfer and confirm the core accepts it. `false` if there's no wallet yet.
     static func selfTest() -> Bool {
