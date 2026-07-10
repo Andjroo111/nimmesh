@@ -2,6 +2,34 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.71.0] — 2026-07-10
+
+### Hardened — G8 M5: verifier cross-read + independent reveal confirmation (ADR-0011)
+
+The core of the M5 RPC-trust hardening (testnet-only). Each verifier previously trusted its OWN
+node's RPC for the data that moves money (depth, inclusion height, escrow state, the withdraw
+receipt) — a compromised/MITM'd endpoint could fake "funded + deep" or a settled reveal.
+
+- **Optional independent cross-read** on all three funding verifiers via `with_secondary(...)`.
+  When a second endpoint is configured a depth is only trusted if the sources agree, else
+  fail-closed: NIM requires exact **inclusion-block** agreement and folds in the conservative
+  (min) head; Amoy/Polygon require the two `head`s within `HEAD_CROSS_TOLERANCE_BLOCKS` (12) and
+  drive depth from the conservative head; `AmoyHtlcSwapVerifier` additionally re-reads the winning
+  escrow as still `Live` on the secondary. When none is configured, the single-RPC trust
+  assumption holds and is documented loudly (ADR-0011).
+- **Independent reveal confirmation (M5 × M3):** the initiator no longer treats a `withdraw(S)`
+  RECEIPT as settlement — before `S` reaches the mesh it re-reads `getSwap(swapId).state == CLAIMED`
+  on-chain (and still holds until buried past the reveal depth; the M3 burial hold is not
+  regressed). A faked/optimistic receipt can no longer flood `S` while the USDC has not moved.
+- **ADR-0011** documents the RPC-trust model (single-RPC assumption, the optional cross-read, the
+  content-hash bind, the reveal confirmation) and what mainnet additionally needs (M6 depths + a
+  trusted/self-hosted endpoint). `docs/MAINNET-GATING.md` §8.2/§8.4 M5 checkbox updated.
+
+Proof: lying-RPC unit tests (head/depth lies, mismatched content hash, un-`CLAIMED` receipt) all
+fail closed and pass on agreement; `examples/live_rpc_cross_read.rs` shows the head cross-read
+AGREEING on two independent public Amoy endpoints, read-only, no funds
+(`docs/swap/M5-RECEIPTS.md`). **Testnet/Amoy only — no mainnet guard touched.**
+
 ## [0.70.0] — 2026-07-10
 
 ### Hardened — G8 M5: the NIM verifier's content-hash bind

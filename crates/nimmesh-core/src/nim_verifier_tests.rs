@@ -136,6 +136,67 @@ fn a_returned_tx_whose_hash_is_not_the_content_digest_is_refused() {
     ));
 }
 
+fn with_secondary(primary: Arc<MockRpc>, secondary: Arc<MockRpc>) -> NimHtlcVerifier {
+    NimHtlcVerifier::new(primary, Arc::new(NimFundingStore::new()))
+        .with_clock(Box::new(|| VERIFY_NOW_MS))
+        .with_secondary(secondary)
+}
+
+#[test]
+fn a_secondary_that_disagrees_on_inclusion_fails_closed_and_agreement_passes() {
+    // M5 cross-read: the primary is honest (tx at block 100, funded, head 105), but the trusted
+    // depth is only reported when an INDEPENDENT endpoint agrees on the inclusion block.
+    let c = creation();
+    let primary = Arc::new(MockRpc::new(105));
+    seed_chain(&primary, &c, 100, 105, AMOUNT);
+    let digest = bytes_to_hex(&c.tx_hash());
+
+    // (a) secondary has never seen the tx → cross-read fails closed.
+    let sec_absent = Arc::new(MockRpc::new(105));
+    let v = with_secondary(primary.clone(), sec_absent);
+    v.note_funding_wire(SwapLegId::Nim, &c.serialize_wire(&[0u8; 98]));
+    assert_eq!(v.observe(&expect()), FundingObservation::Absent);
+
+    // (b) secondary disagrees on the inclusion block (says 50, not 100) → fail-closed.
+    let sec_wrong = Arc::new(MockRpc::new(105));
+    sec_wrong.confirm(&digest, 50);
+    let v2 = with_secondary(primary.clone(), sec_wrong);
+    v2.note_funding_wire(SwapLegId::Nim, &c.serialize_wire(&[0u8; 98]));
+    assert_eq!(v2.observe(&expect()), FundingObservation::Absent);
+
+    // (c) secondary AGREES on the block (100) → the cross-checked observation is Found.
+    let sec_ok = Arc::new(MockRpc::new(106));
+    sec_ok.confirm(&digest, 100);
+    let v3 = with_secondary(primary, sec_ok);
+    v3.note_funding_wire(SwapLegId::Nim, &c.serialize_wire(&[0u8; 98]));
+    assert!(matches!(
+        v3.observe(&expect()),
+        FundingObservation::Found { .. }
+    ));
+}
+
+#[test]
+fn a_shallower_secondary_head_defeats_a_primary_that_inflates_depth() {
+    // The primary lies about `head` (10_000) to fake a huge depth; the tx is really at block 100.
+    // The honest secondary agrees on the block but reports head 100 — the cross-read folds in the
+    // CONSERVATIVE head, so the depth reads shallow and the gate refuses it (never over-advances).
+    let c = creation();
+    let primary = Arc::new(MockRpc::new(10_000));
+    seed_chain(&primary, &c, 100, 10_000, AMOUNT);
+    let sec = Arc::new(MockRpc::new(100));
+    sec.confirm(&bytes_to_hex(&c.tx_hash()), 100);
+    let v = with_secondary(primary, sec);
+    v.note_funding_wire(SwapLegId::Nim, &c.serialize_wire(&[0u8; 98]));
+    match v.observe(&expect()) {
+        FundingObservation::Found { confirmations, .. } => assert_eq!(confirmations, 1), // 100-100+1
+        other => panic!("expected a conservative depth-1 Found, got {other:?}"),
+    }
+    assert!(matches!(
+        require_funded(&v.observe(&expect()), &expect(), 2),
+        Err(FundingRejected::TooShallow { .. })
+    ));
+}
+
 #[test]
 fn no_hint_reads_absent_fail_closed() {
     let rpc = Arc::new(MockRpc::new(105));

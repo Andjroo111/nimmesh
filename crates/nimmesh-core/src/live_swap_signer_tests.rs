@@ -481,6 +481,9 @@ fn initiator_claim_carries_s_first_and_matches_the_withdraw_tx() {
         timelock_s: NOW_S + 5_000,
     };
     store.record_found(hashlock(), escrow);
+    // The successful withdraw settles the escrow on-chain; the M5 × M3 reveal confirmation
+    // independently re-reads it as CLAIMED before releasing S.
+    amoy.swap_states.lock().unwrap().insert([0x9F; 32], 2);
     let signer = initiator(
         Arc::new(MockRpc::new(1)),
         amoy.clone(),
@@ -622,6 +625,78 @@ fn amoy_verifier_is_absent_until_the_funding_proof_names_a_mined_tx() {
     // And the full gate passes at the testnet USDC depth.
     use crate::swap_funding_verify::require_funded;
     assert!(require_funded(&obs, &counterparty_expect(), 5).is_ok());
+}
+
+#[test]
+fn amoy_verifier_cross_read_requires_an_agreeing_secondary() {
+    // M5 cross-read: an honest primary (funding mined at block 100, live escrow [0x9F;32], head
+    // 200) — but a depth is only trusted when an INDEPENDENT second Amoy endpoint agrees on head
+    // AND re-reads the winning escrow as still Live.
+    let raw = vec![0xF0; 100];
+    let primary = || -> Arc<MockAmoy> {
+        let chain = Arc::new(MockAmoy {
+            head: AtomicU64::new(200),
+            ..MockAmoy::default()
+        });
+        chain.add_receipt(keccak256(&raw), true, 100);
+        chain.logs.lock().unwrap().push(new_swap_log(
+            [0x9F; 32],
+            1_000_000,
+            hashlock(),
+            NOW_S + 5_000,
+            100,
+        ));
+        chain.swap_states.lock().unwrap().insert([0x9F; 32], 1); // Live
+        chain
+    };
+    let build =
+        |primary: Arc<MockAmoy>, secondary: Arc<MockAmoy>, store: Arc<PolygonFundingStore>| {
+            let v = AmoyHtlcSwapVerifier::new(primary, HTLC, ALICE_EVM_CLAIM, store)
+                .with_clock(Box::new(|| NOW_S))
+                .with_secondary(secondary);
+            v.note_funding_wire(SwapLegId::Counterparty, &raw);
+            v
+        };
+
+    // (a) secondary head disagrees far beyond tolerance → fail-closed.
+    let sec_bad = Arc::new(MockAmoy {
+        head: AtomicU64::new(50),
+        ..MockAmoy::default()
+    });
+    let v = build(primary(), sec_bad, Arc::new(PolygonFundingStore::new()));
+    assert_eq!(
+        v.observe(&counterparty_expect()),
+        FundingObservation::Absent
+    );
+
+    // (b) secondary head agrees, but it re-reads the escrow as NOT Live → fail-closed, never
+    // recorded (a primary faking a live escrow is caught).
+    let sec_notlive = Arc::new(MockAmoy {
+        head: AtomicU64::new(200),
+        ..MockAmoy::default()
+    });
+    let store_b = Arc::new(PolygonFundingStore::new());
+    let v2 = build(primary(), sec_notlive, store_b.clone());
+    assert_eq!(
+        v2.observe(&counterparty_expect()),
+        FundingObservation::Absent
+    );
+    assert_eq!(store_b.found(&hashlock()), None);
+
+    // (c) secondary agrees on head AND reads the escrow Live → Found (conservative depth) +
+    // recorded.
+    let sec_ok = Arc::new(MockAmoy {
+        head: AtomicU64::new(205),
+        ..MockAmoy::default()
+    });
+    sec_ok.swap_states.lock().unwrap().insert([0x9F; 32], 1);
+    let store_c = Arc::new(PolygonFundingStore::new());
+    let v3 = build(primary(), sec_ok, store_c.clone());
+    match v3.observe(&counterparty_expect()) {
+        FundingObservation::Found { confirmations, .. } => assert_eq!(confirmations, 101), // min(200,205)-100+1
+        other => panic!("expected Found, got {other:?}"),
+    }
+    assert!(store_c.found(&hashlock()).is_some());
 }
 
 #[test]

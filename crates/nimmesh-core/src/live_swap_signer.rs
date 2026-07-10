@@ -374,9 +374,7 @@ impl LiveInitiatorSigner {
         // revert and burn gas). Replay the reveal only once the escrow reads Claimed AND the
         // withdraw is buried to the reveal depth (M3); otherwise wait for the next retry.
         if let Some((wire, id)) = self.last_claim.lock().unwrap().clone() {
-            if escrow_state(&self.cfg.amoy, &self.cfg.htlc, &escrow.swap_id) == Some(STATE_CLAIMED)
-                && self.withdraw_deep_enough(&id)
-            {
+            if self.reveal_confirmed(&escrow.swap_id, &id) {
                 return Some((wire, id));
             }
             return None;
@@ -412,20 +410,30 @@ impl LiveInitiatorSigner {
         let mut wire = secret.to_vec(); // S first — the responder reads it off the reveal
         wire.extend_from_slice(&raw);
         // Remember the landed claim FIRST (never a second broadcast), then hold the reveal
-        // until the withdraw is buried to the M3 depth — a same-block reorg must not orphan
-        // the claim while the mesh already carries S. Not deep yet → None; the driver's
-        // retry replays the cached claim once the depth is there.
+        // until it is INDEPENDENTLY confirmed — a same-block reorg must not orphan the claim
+        // while the mesh already carries S. Not confirmed yet → None; the driver's retry replays
+        // the cached claim once it is.
         *self.last_claim.lock().unwrap() = Some((wire.clone(), hash));
         for _ in 0..self.cfg.poll.attempts.max(1) {
-            if self.withdraw_deep_enough(&hash) {
+            if self.reveal_confirmed(&escrow.swap_id, &hash) {
                 return Some((wire, hash));
             }
             self.cfg.poll.pause();
         }
         eprintln!(
-            "[live-swap] withdraw mined but not yet at reveal depth {REVEAL_MIN_CONFIRMATIONS} — holding S off the mesh until it is"
+            "[live-swap] withdraw mined but the escrow is not yet CLAIMED+buried at reveal depth {REVEAL_MIN_CONFIRMATIONS} — holding S off the mesh"
         );
         None
+    }
+
+    /// M5 × M3: the reveal is trustworthy only when the swap is INDEPENDENTLY confirmed settled —
+    /// the withdraw RECEIPT alone is never enough. Re-reads that the escrow really reads `CLAIMED`
+    /// on-chain (a faked/optimistic receipt cannot flood `S` while the USDC has not moved) AND
+    /// that the withdraw is buried past [`REVEAL_MIN_CONFIRMATIONS`] (the M3 same-block-reorg
+    /// hold, never regressed). Fail-closed on any RPC error.
+    fn reveal_confirmed(&self, swap_id: &[u8; 32], tx_hash: &[u8; 32]) -> bool {
+        escrow_state(&self.cfg.amoy, &self.cfg.htlc, swap_id) == Some(STATE_CLAIMED)
+            && self.withdraw_deep_enough(tx_hash)
     }
 
     /// M3: whether the mined withdraw at `tx_hash` is buried to [`REVEAL_MIN_CONFIRMATIONS`].

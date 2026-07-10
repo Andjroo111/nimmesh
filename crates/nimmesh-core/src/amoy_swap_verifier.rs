@@ -23,7 +23,7 @@ use crate::evm::{function_selector, keccak256};
 use crate::evm_abi::WORD;
 use crate::nimiq::hex::bytes_to_hex;
 use crate::polygon_gateway::{EvmLog, EvmReceipt, EvmRpcError, HttpPolygonRpc};
-use crate::polygon_verifier::new_swap_topic0;
+use crate::polygon_verifier::{new_swap_topic0, HEAD_CROSS_TOLERANCE_BLOCKS};
 use crate::swap_funding_verify::{
     FundingObservation, FundingVerifier, HtlcExpectation, MismatchReason,
 };
@@ -281,6 +281,12 @@ impl PolygonFundingStore {
 /// Fail-closed everywhere: no anchor yet, any RPC error, or a resolved slot reads `Absent`.
 pub struct AmoyHtlcSwapVerifier {
     chain: Arc<dyn AmoyChain>,
+    /// M5: an OPTIONAL independent second Amoy chain. When set, the primary's `head` is
+    /// cross-checked against it (within [`HEAD_CROSS_TOLERANCE_BLOCKS`], more conservative head
+    /// wins) AND the winning escrow is re-read there as still `Live` before it is recorded — a
+    /// single lying/MITM'd endpoint can neither inflate depth nor fake a live escrow. When
+    /// `None`, the single-RPC trust assumption holds (ADR-0011).
+    secondary: Option<Arc<dyn AmoyChain>>,
     htlc: EvmAddress,
     own_claim_address: EvmAddress,
     store: Arc<PolygonFundingStore>,
@@ -300,6 +306,7 @@ impl AmoyHtlcSwapVerifier {
     ) -> Self {
         AmoyHtlcSwapVerifier {
             chain,
+            secondary: None,
             htlc,
             own_claim_address,
             store,
@@ -307,6 +314,14 @@ impl AmoyHtlcSwapVerifier {
             from_block_margin: DEFAULT_FROM_BLOCK_MARGIN,
             clock_s: Box::new(system_now_s),
         }
+    }
+
+    /// M5: add an INDEPENDENT secondary Amoy chain (a second endpoint). A reported depth is then
+    /// only trusted when the two heads agree within [`HEAD_CROSS_TOLERANCE_BLOCKS`] and the
+    /// found escrow re-reads `Live` there; disagreement reads `Absent` (fail-closed).
+    pub fn with_secondary(mut self, secondary: Arc<dyn AmoyChain>) -> Self {
+        self.secondary = Some(secondary);
+        self
     }
 
     /// Inject a deterministic clock (tests).
@@ -335,10 +350,19 @@ impl FundingVerifier for AmoyHtlcSwapVerifier {
                 Ok(l) => l,
                 Err(_) => return FundingObservation::Absent,
             };
-        let head = match self.chain.head() {
+        let mut head = match self.chain.head() {
             Ok(h) => h,
             Err(_) => return FundingObservation::Absent,
         };
+        // M5 cross-read: an independent endpoint's head must agree within tolerance before we
+        // trust a depth; the more conservative (lower) head then drives it. Disagreement beyond
+        // tolerance → fail-closed.
+        if let Some(sec) = &self.secondary {
+            match sec.head() {
+                Ok(sh) if head.abs_diff(sh) <= HEAD_CROSS_TOLERANCE_BLOCKS => head = head.min(sh),
+                _ => return FundingObservation::Absent,
+            }
+        }
 
         let mut other_hashlock_pays_us = false;
         let mut best: Option<(u64, FoundEscrow)> = None; // (block, escrow)
@@ -369,6 +393,13 @@ impl FundingVerifier for AmoyHtlcSwapVerifier {
 
         match best {
             Some((block, escrow)) => {
+                // M5 cross-read: independently confirm the winning escrow STILL reads Live on the
+                // secondary before recording it — a primary faking a live escrow is caught.
+                if let Some(sec) = &self.secondary {
+                    if escrow_state(sec, &self.htlc, &escrow.swap_id) != Some(STATE_LIVE) {
+                        return FundingObservation::Absent;
+                    }
+                }
                 self.store.record_found(expect.hashlock, escrow);
                 FundingObservation::Found {
                     amount: escrow.amount,

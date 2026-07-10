@@ -72,6 +72,12 @@ required-features = ["polygon-gateway", "gateway-rpc"]
 name = "live_ffi_mesh_swap"
 required-features = ["polygon-gateway", "gateway-rpc"]
 
+# G8 M5: the read-only proof that the verifier head cross-read AGREES on honest infra — two
+# independent public Amoy endpoints + the NIM testnet head. No key, no funds, no tx.
+[[example]]
+name = "live_rpc_cross_read"
+required-features = ["polygon-gateway", "gateway-rpc"]
+
 # Swap demo: a std-only HTTP server that runs the REAL engine (swap_sim) against an in-memory sim
 # chain and serves webui/, so the browser UI is powered by the actual SwapEngine. Sim-only, no funds.
 [[example]]

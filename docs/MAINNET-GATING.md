@@ -181,9 +181,22 @@ stricter than the payment gate, and it is exercised in this order.
         until the reveal is buried beyond 1 confirmation. *(folded into the G10 build.)*
   - [ ] **M4 (MED)** — wire `term_anchor = head` on both signers + both verifiers; add an
         absolute-timelock sanity bound. *(folded into the G10 build.)*
-  - [ ] **M5/M6 (mainnet-only)** — trusted/cross-checked RPC + independent reveal confirmation;
-        mainnet confirmation-depth retune; the guard-lift (evm_rlp Amoy pin, `fund_nim`, NIM
-        verifier pin) is its OWN dedicated review, not a config flip.
+  - [x] **M5 — RPC-trust hardening, testnet parts BUILT (2026-07-09, ADR-0011)** — the verifier
+        cross-read seam (`with_secondary` on all three funding verifiers: NIM inclusion-block +
+        conservative head; Amoy/Polygon head-within-tolerance + escrow re-read), the NIM
+        content-hash bind (recompute `Blake2b(content)`), the `word_u64` overflow guard, and the
+        independent reveal confirmation (the initiator re-reads the escrow `CLAIMED` on-chain
+        before treating the swap settled — never the withdraw receipt alone; M5 × M3). Proven by
+        lying-RPC unit tests + a live read-only cross-read on two independent Amoy endpoints
+        (`docs/swap/M5-RECEIPTS.md`).
+  - [ ] **M5 — mainnet operational remainder (needs:owner)** — actually WIRE a trusted /
+        self-hosted secondary endpoint on the live path (a second INDEPENDENT NIM *testnet* RPC is
+        already a self-hosted node — only `rpc.testnet.nimiqwatch.com` is public), and the
+        guard-lift review. On mainnet the secondary should be a node the operator controls.
+  - [ ] **M6 (mainnet-only)** — mainnet confirmation-depth retune (ADR-0003); Amoy/testnet depths
+        are NOT reorg-safe on a mainnet chain (a secondary agreeing on a *shallow* head is still
+        shallow). The guard-lift (evm_rlp Amoy pin, `fund_nim`, NIM verifier pin) is its OWN
+        dedicated review, not a config flip.
 - [ ] **Mainnet confirmation depths tuned** (ADR-0003 revisited) — NIM / Polygon / BTC each get a
       finality-safe depth, not the Amoy testnet values. Reorg re-verification path exercised.
 - [ ] **Mainnet HTLC contract deployed + verified** on the counterparty chain (a fresh
@@ -229,12 +242,15 @@ not a config flip:
 4. `MeshNode::build`'s testnet-only live-signer assertion (so a live signer may ride a mainnet node).
 5. The `ConfirmationPolicy` testnet depths → mainnet-finality depths (M6 / ADR-0003).
 
-And it requires, per the G8 review, the two mainnet-only fixes that were deliberately NOT done on
-testnet: **M5** (trusted / cross-checked RPC + independent confirmation that the reveal is really
-on-chain before treating a swap as settled) and **M6** (the depth retune above). Plus a fresh,
-source-verified `NimmeshHtlc` deployed on Polygon mainnet, a hard per-swap cap enforced in code,
-the §8.2 checklist all green, an independent review of the guard-lift diff, and Andjroo's written
-authorization.
+And it requires, per the G8 review, **M6** (the depth retune above) plus the **mainnet operational
+remainder of M5**. M5's *testnet-buildable* half is DONE (ADR-0011): the verifier cross-read seam,
+the NIM content-hash bind, the `word_u64` guard, and the independent reveal confirmation (the
+initiator re-reads the escrow `CLAIMED` on-chain before treating a swap settled — never the
+withdraw receipt alone). What remains for mainnet is wiring a **trusted / self-hosted** secondary
+endpoint on the live path (not two third-party public endpoints) and the depth retune. Plus a
+fresh, source-verified `NimmeshHtlc` deployed on Polygon mainnet, a hard per-swap cap enforced in
+code, the §8.2 checklist all green, an independent review of the guard-lift diff, and Andjroo's
+written authorization.
 
 Who does what on the first run: **Andjroo signs the NIM leg on his phone** (on-device, exactly like
 §7 — no new autonomous surface) and **controls the USDC responder** (running it himself, or

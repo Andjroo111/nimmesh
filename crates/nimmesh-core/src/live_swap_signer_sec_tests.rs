@@ -130,6 +130,52 @@ fn the_reveal_is_held_until_the_withdraw_is_buried_and_never_rebroadcast() {
     assert_eq!(amoy.broadcasts().len(), 1);
 }
 
+#[test]
+fn a_withdraw_receipt_not_backed_by_a_claimed_escrow_withholds_the_reveal() {
+    // M5 × M3: the withdraw mines successfully AND is buried deep, but the escrow does NOT
+    // independently read CLAIMED (models a faked/optimistic receipt). S must stay off the mesh —
+    // the receipt alone is never trusted; only an on-chain CLAIMED re-read releases the reveal.
+    let amoy = Arc::new(MockAmoy {
+        gas_price: 30_000_000_000,
+        nonce: 3,
+        balance: u128::MAX,
+        auto_mine_block: Some(100),
+        head: std::sync::atomic::AtomicU64::new(1000), // buried deep: burial ALONE would pass
+        ..MockAmoy::default()
+    });
+    let store = Arc::new(PolygonFundingStore::new());
+    let escrow_id = [0x9F; 32];
+    store.record_found(
+        hashlock(),
+        FoundEscrow {
+            swap_id: escrow_id,
+            amount: 1_000_000,
+            timelock_s: NOW_S + 5_000,
+        },
+    );
+    let signer = initiator(
+        Arc::new(MockRpc::new(1)),
+        amoy.clone(),
+        Arc::new(PeerBook::new()),
+        store,
+    );
+
+    // Withdraw lands + is buried, but the escrow reads its default (NOT Claimed) → reveal withheld.
+    assert!(signer.build_claim(&ctx(), SECRET).is_none());
+    assert_eq!(amoy.broadcasts().len(), 1);
+    // Retry while still un-CLAIMED → still withheld, never a second withdraw.
+    assert!(signer.build_claim(&ctx(), SECRET).is_none());
+    assert_eq!(amoy.broadcasts().len(), 1);
+
+    // Once the escrow independently re-reads CLAIMED, the SAME landed claim is released.
+    amoy.swap_states.lock().unwrap().insert(escrow_id, 2); // Claimed
+    let (wire, _) = signer
+        .build_claim(&ctx(), SECRET)
+        .expect("reveal releases once the escrow reads CLAIMED");
+    assert_eq!(&wire[..32], &SECRET);
+    assert_eq!(amoy.broadcasts().len(), 1);
+}
+
 // --- M4: the verifier maps against the expectation's own anchor --------------------------------
 
 #[test]

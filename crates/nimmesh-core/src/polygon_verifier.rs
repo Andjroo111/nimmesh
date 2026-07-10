@@ -149,11 +149,22 @@ fn decode_get_swap_state(bytes: &[u8]) -> Option<u64> {
 /// `NimmeshHtlc.State.Live` — the only state that counts as funding.
 const STATE_LIVE: u64 = 1;
 
+/// M5: the small block tolerance an independent secondary head may differ from the primary
+/// before the cross-read fails closed. Amoy blocks are ~2 s and honest public endpoints usually
+/// track within a couple; 12 is generous enough to never flap on honest infra, tight enough that
+/// a head-inflating liar is caught. The trusted depth always uses the MORE CONSERVATIVE head.
+pub const HEAD_CROSS_TOLERANCE_BLOCKS: u64 = 12;
+
 /// The gateway-backed USDC-leg funding verifier. Construct with the chain reads (live:
 /// [`HttpPolygonRpc`]), the deployed HTLC address, and the earliest block worth scanning
 /// (the contract's deployment block — earlier logs cannot exist).
 pub struct PolygonHtlcVerifier<R: PolygonReads> {
     reads: R,
+    /// M5: an OPTIONAL independent second chain-reads source. When set, the primary's `head` is
+    /// cross-checked against this endpoint (within [`HEAD_CROSS_TOLERANCE_BLOCKS`]) and the more
+    /// conservative head drives the depth — a single lying/MITM'd RPC can no longer inflate depth
+    /// to fake "funded + deep". When `None`, today's single-RPC trust assumption holds (ADR-0011).
+    secondary: Option<R>,
     htlc: EvmAddress,
     from_block: u64,
 }
@@ -163,9 +174,18 @@ impl<R: PolygonReads> PolygonHtlcVerifier<R> {
     pub fn new(reads: R, htlc: EvmAddress, from_block: u64) -> Self {
         PolygonHtlcVerifier {
             reads,
+            secondary: None,
             htlc,
             from_block,
         }
+    }
+
+    /// M5: add an INDEPENDENT secondary chain-reads source (a second Amoy endpoint). A reported
+    /// depth is then only trusted when the two heads agree within
+    /// [`HEAD_CROSS_TOLERANCE_BLOCKS`]; disagreement reads `Absent` (fail-closed).
+    pub fn with_secondary(mut self, secondary: R) -> Self {
+        self.secondary = Some(secondary);
+        self
     }
 
     fn observe_usdc(&self, expect: &HtlcExpectation) -> FundingObservation {
@@ -182,10 +202,19 @@ impl<R: PolygonReads> PolygonHtlcVerifier<R> {
             Ok(l) => l,
             Err(_) => return FundingObservation::Absent, // fail-closed on transport
         };
-        let head = match self.reads.head() {
+        let mut head = match self.reads.head() {
             Ok(h) => h,
             Err(_) => return FundingObservation::Absent,
         };
+        // M5 cross-read: an independent endpoint's head must agree within tolerance before we
+        // trust a depth; the more conservative (lower) head then drives it, so a primary that
+        // inflates `head` cannot fake depth. Disagreement beyond tolerance → fail-closed.
+        if let Some(sec) = &self.secondary {
+            match sec.head() {
+                Ok(sh) if head.abs_diff(sh) <= HEAD_CROSS_TOLERANCE_BLOCKS => head = head.min(sh),
+                _ => return FundingObservation::Absent,
+            }
+        }
 
         let mut other_hashlock_pays_us = false;
         let mut best: Option<(u64, u64, u64)> = None; // (block, amount, timeout)
@@ -480,6 +509,75 @@ mod tests {
                 confirmations: 61,
             }
         );
+    }
+
+    #[test]
+    fn a_secondary_head_disagreeing_beyond_tolerance_fails_closed() {
+        // M5 cross-read: a live matching escrow the primary sees deep, but the independent
+        // secondary's head disagrees far beyond HEAD_CROSS_TOLERANCE_BLOCKS → fail-closed
+        // (never trust a depth two endpoints can't agree on).
+        let h = sha256(&[21u8; 32]);
+        let primary = FakeReads {
+            logs: vec![log([0x0B; 32], 1_500_000, h, 9_000, 100)],
+            states: vec![([0x0B; 32], STATE_LIVE)],
+            head: 200,
+            broken: AtomicBool::new(false),
+        };
+        let sec_bad = FakeReads {
+            logs: vec![],
+            states: vec![],
+            head: 100, // |200 - 100| = 100 >> 12
+            broken: AtomicBool::new(false),
+        };
+        let v = PolygonHtlcVerifier::new(primary, HTLC, 0).with_secondary(sec_bad);
+        assert_eq!(v.observe(&expectation(h)), FundingObservation::Absent);
+    }
+
+    #[test]
+    fn an_agreeing_secondary_within_tolerance_uses_the_conservative_head() {
+        // Primary head 110, honest secondary head 105 (diff 5 ≤ 12) → the depth uses the lower
+        // (conservative) head, so a primary that inflates within tolerance still can't over-count.
+        let h = sha256(&[22u8; 32]);
+        let primary = FakeReads {
+            logs: vec![log([0x0C; 32], 2_000_000, h, 9_000, 100)],
+            states: vec![([0x0C; 32], STATE_LIVE)],
+            head: 110,
+            broken: AtomicBool::new(false),
+        };
+        let sec = FakeReads {
+            logs: vec![],
+            states: vec![],
+            head: 105,
+            broken: AtomicBool::new(false),
+        };
+        let v = PolygonHtlcVerifier::new(primary, HTLC, 0).with_secondary(sec);
+        assert_eq!(
+            v.observe(&expectation(h)),
+            FundingObservation::Found {
+                amount: 2_000_000,
+                timeout: 9_000,
+                confirmations: 6, // min(110,105) - 100 + 1
+            }
+        );
+    }
+
+    #[test]
+    fn a_secondary_whose_head_read_errors_fails_closed() {
+        let h = sha256(&[23u8; 32]);
+        let primary = FakeReads {
+            logs: vec![log([0x0D; 32], 1_000_000, h, 9_000, 100)],
+            states: vec![([0x0D; 32], STATE_LIVE)],
+            head: 105,
+            broken: AtomicBool::new(false),
+        };
+        let sec_broken = FakeReads {
+            logs: vec![],
+            states: vec![],
+            head: 105,
+            broken: AtomicBool::new(true), // every read errors
+        };
+        let v = PolygonHtlcVerifier::new(primary, HTLC, 0).with_secondary(sec_broken);
+        assert_eq!(v.observe(&expectation(h)), FundingObservation::Absent);
     }
 
     #[test]

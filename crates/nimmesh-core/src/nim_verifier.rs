@@ -163,6 +163,20 @@ impl NimFundingStore {
     }
 }
 
+/// The inclusion block of the content-bound tx as `rpc` reports it, or `Err(())` on any
+/// fail-closed condition: a transport error, an unknown tx, or a returned tx whose reported
+/// hash is NOT the expected `Blake2b(content)` digest (M5 content-hash bind). `Ok(None)` means
+/// the tx is known but still in the mempool. Shared by the primary read and the cross-read so
+/// both endpoints are held to the identical content binding.
+fn content_bound_block(rpc: &Arc<dyn GatewayRpc>, expected_hash: &str) -> Result<Option<u32>, ()> {
+    match rpc.get_transaction(expected_hash) {
+        Err(_) => Err(()),
+        Ok(None) => Err(()),
+        Ok(Some(tx)) if !tx.hash.eq_ignore_ascii_case(expected_hash) => Err(()),
+        Ok(Some(tx)) => Ok(tx.block_number),
+    }
+}
+
 /// Milliseconds since the Unix epoch (the default verifier clock).
 fn system_now_ms() -> u64 {
     SystemTime::now()
@@ -177,6 +191,11 @@ fn system_now_ms() -> u64 {
 /// with the responder's live signer so the claim reuses the exact verified contract.
 pub struct NimHtlcVerifier {
     rpc: Arc<dyn GatewayRpc>,
+    /// M5: an OPTIONAL independent second RPC. When set, a reported depth is only trusted if
+    /// this endpoint AGREES on the inclusion block, and its head folds into a conservative
+    /// depth — so a single compromised/MITM'd endpoint can no longer fake "NIM funded + deep".
+    /// When `None`, today's single-RPC trust assumption holds (documented in ADR-0011).
+    secondary: Option<Arc<dyn GatewayRpc>>,
     store: Arc<NimFundingStore>,
     /// Verify-side slack for the timeout mapping, in seconds.
     timeout_slack_s: u64,
@@ -192,11 +211,21 @@ impl NimHtlcVerifier {
     pub fn new(rpc: Arc<dyn GatewayRpc>, store: Arc<NimFundingStore>) -> Self {
         NimHtlcVerifier {
             rpc,
+            secondary: None,
             store,
             timeout_slack_s: DEFAULT_TIMEOUT_SLACK_S,
             network_id: crate::NetworkId::Testnet.wire_id(),
             clock_ms: Box::new(system_now_ms),
         }
+    }
+
+    /// M5: add an INDEPENDENT secondary RPC (a second public testnet endpoint). The reported
+    /// inclusion depth is then only trusted when this endpoint agrees on the inclusion block;
+    /// disagreement (or an unseen/mismatched tx) reads `Absent` (fail-closed). Pass a genuinely
+    /// different endpoint so a lie by either side is caught.
+    pub fn with_secondary(mut self, secondary: Arc<dyn GatewayRpc>) -> Self {
+        self.secondary = Some(secondary);
+        self
     }
 
     /// Override the verify-side timeout slack (seconds).
@@ -233,28 +262,34 @@ impl NimHtlcVerifier {
         // Chain truth #1 — inclusion + depth of the exact claimed creation tx.
         //
         // M5 (content-hash bind): the canonical NIM tx hash IS `Blake2b-256(serializeContent)`,
-        // so we RECOMPUTE it from the decoded creation here and require the RPC-returned tx to
-        // report EXACTLY that digest before its `block_number` is trusted. Blake2b is
-        // collision-resistant, so a node cannot bind an inclusion height to a tx whose content
-        // is not the one we decoded — a returned tx whose reported hash is not our recomputed
-        // content digest reads `Absent` (fail-closed). (A node that ECHOES the right hash with a
-        // FAKE height is a lying-RPC threat the cross-read catches; see [`Self::with_secondary`].)
+        // so we RECOMPUTE it from the decoded creation and require the RPC-returned tx to report
+        // EXACTLY that digest before its `block_number` is trusted (a returned tx whose identity
+        // is not our content digest reads `Absent`). M5 (cross-read): when a secondary endpoint
+        // is configured it must AGREE on the inclusion block, and its head folds into a
+        // conservative depth — so a single lying endpoint can neither fake inclusion nor inflate
+        // `head` to fake depth. Both re-establish chain truth from an independent source.
         let expected_hash = bytes_to_hex(&rec.creation.tx_hash());
-        let confirmations = match self.rpc.get_transaction(&expected_hash) {
-            Err(_) => return FundingObservation::Absent, // fail-closed on transport
-            Ok(None) => return FundingObservation::Absent, // the node has never seen it
-            Ok(Some(tx)) if !tx.hash.eq_ignore_ascii_case(&expected_hash) => {
-                // The node returned inclusion data for a tx whose identity is NOT our content
-                // digest — never trust its height.
-                return FundingObservation::Absent;
+        let block = match content_bound_block(&self.rpc, &expected_hash) {
+            Ok(b) => b,
+            Err(()) => return FundingObservation::Absent, // transport / unseen / hash mismatch
+        };
+        let mut head = match self.rpc.block_number() {
+            Err(_) => return FundingObservation::Absent,
+            Ok(h) => h,
+        };
+        if let Some(sec) = &self.secondary {
+            match content_bound_block(sec, &expected_hash) {
+                Ok(sec_block) if sec_block == block => {} // independent agreement on inclusion
+                _ => return FundingObservation::Absent,   // disagreement → fail-closed
             }
-            Ok(Some(tx)) => match tx.block_number {
-                None => 0, // known, still in the mempool
-                Some(block) => match self.rpc.block_number() {
-                    Err(_) => return FundingObservation::Absent,
-                    Ok(head) => head.saturating_sub(block).saturating_add(1),
-                },
-            },
+            match sec.block_number() {
+                Ok(sh) => head = head.min(sh), // the more conservative (shallower) depth wins
+                Err(_) => return FundingObservation::Absent,
+            }
+        }
+        let confirmations = match block {
+            None => 0, // known, still in the mempool
+            Some(b) => head.saturating_sub(b).saturating_add(1),
         };
 
         // Chain truth #2 — once included, the content-derived contract account must exist as an
