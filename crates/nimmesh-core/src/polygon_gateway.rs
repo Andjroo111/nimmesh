@@ -328,6 +328,10 @@ pub struct EvmLog {
     pub data: Vec<u8>,
     /// The block the event was emitted in.
     pub block_number: u64,
+    /// The tx that emitted the event, lowercase 0x-hex (`""` when a JSON entry omits it —
+    /// synthesized logs in the sim). Lets a caller recover the real on-chain tx of a
+    /// `NewSwap`/`Transfer` for receipts without an indexer (G10c).
+    pub transaction_hash: String,
 }
 
 /// Parse an `eth_getLogs` response → the decoded entries. Entries missing a topic 1, with
@@ -365,10 +369,16 @@ pub fn parse_logs(resp: &serde_json::Value) -> Result<Vec<EvmLog>, EvmRpcError> 
         else {
             continue;
         };
+        let transaction_hash = entry
+            .get("transactionHash")
+            .and_then(|h| h.as_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
         out.push(EvmLog {
             topic1,
             data,
             block_number,
+            transaction_hash,
         });
     }
     Ok(out)

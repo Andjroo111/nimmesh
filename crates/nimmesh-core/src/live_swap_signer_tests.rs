@@ -173,6 +173,7 @@ pub(crate) fn new_swap_log(
         topic1: swap_id,
         data,
         block_number: block,
+        transaction_hash: String::new(),
     }
 }
 

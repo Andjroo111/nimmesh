@@ -118,10 +118,22 @@ the protocol math is real. Everything above is at the **money-path edge**, which
   native app can advertise and see matches. Regenerate Swift + Kotlin bindings.
 - **Done when:** the app can start/stop an intent advert and read match/metric state via FFI.
 
-### G10 — WebView ↔ Rust swap bridge  *(OG-1)*
+### G10 — WebView ↔ Rust swap bridge  *(OG-1)*  ✅ **DONE 2026-07-10 (testnet)**
 - **Do:** drive the real `SwapEngine` + discovery from the in-app web UI (the `nimiq-ui` swap screens),
   retiring the `swap_demo_server` HTTP shim. Replace `loadIntents`/`loadStats` seams with the FFI bridge.
 - **Done when:** a swap can be proposed, funded, revealed, and settled entirely from the app UI (sim/testnet chain).
+- **Shipped:**
+  - **G10a** (PR #192, v0.66.0) — the app-facing live constructors `MeshNode::new_live_swap_initiator`
+    / `new_live_swap_responder` over UniFFI, carrying the Act-2 live signer + real funding verifiers
+    (testnet/Amoy pinned, C1-asserting), plus the never-strand `LiveLockBook` + `NimHtlcRefunder`.
+  - **G10b** (PR #193, v0.67.0) — `SwapMesh.swift`'s `{ real: true }` path wires the live participant
+    from the wallet key + derived Amoy accounts; the Swap sheet gains the honest "Real testnet coins"
+    toggle + labels + the `swapMeshRefund` never-strand seam; the ipa ships `polygon-gateway`.
+  - **G10c** (PR #194) — the LIVE proof: a real NIM⇄USDC swap driven end to end through those exact
+    FFI constructors (`live_ffi_mesh_swap` example + `mac-node --swap-responder-live`), receipts in
+    [`G10-RECEIPTS.md`](./G10-RECEIPTS.md). The G8-review money-path fixes (C1/H2/M3/M4, PR #191)
+    are baked into the constructors, so the run validated the safe path.
+  - **Still testnet-only:** the on-device BLE run (G12) and mainnet (Phase 4) remain human/owner gates.
 
 ### G11 — Real secret + real signer on device  *(OG-2, OG-3)*
 - **Do:** replace `swap_node::sim_secret` with a CSPRNG draw; wire the real `SwapSigner`/`EnclaveKey`

@@ -508,6 +508,22 @@ impl MeshHarness {
         self.attach(peer_id, node, radio)
     }
 
+    /// G10c: adopt an EXTERNALLY-built node + its radio into the harness — the seam the live
+    /// proof needs to drive nodes that were constructed through the real app-facing FFI
+    /// constructors (`MeshNode::new_live_swap_initiator` / `new_live_swap_responder`) rather
+    /// than the rig `add_session_participant` door. The caller builds the node with a
+    /// `MockRadio::new(peer_id, harness.ether())`; this binds the radio back to the node and
+    /// registers it with the ether so `connect`/delivery work exactly as for a harness-built
+    /// node. `radio` MUST be the same one the node was constructed with.
+    pub fn adopt(
+        &mut self,
+        peer_id: &str,
+        node: Arc<MeshNode>,
+        radio: Arc<MockRadio>,
+    ) -> Arc<MeshNode> {
+        self.attach(peer_id, node, radio)
+    }
+
     /// Add a node that also acts as a gateway (records submissions + emits receipts).
     pub fn add_gateway(
         &mut self,

@@ -317,6 +317,7 @@ mod tests {
             topic1: swap_id,
             data,
             block_number: block,
+            transaction_hash: String::new(),
         }
     }
 

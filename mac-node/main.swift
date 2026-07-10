@@ -121,6 +121,15 @@ let radio = BleMeshRadio()
 // funds can move; the real money-path signer is a later, gated drop-in. Mutually
 // exclusive with --mainnet by design (the participant ctor is testnet-pinned).
 let swapResponder = CommandLine.arguments.contains("--swap-responder")
+// `--swap-responder-live`: the G10c LIVE counterparty rig. The node becomes the USDC-giver
+// through the SAME `MeshNode.newLiveSwapResponder` FFI ctor the app path is built on — it
+// funds NOTHING until its real NimHtlcVerifier sees the phone's NIM HTLC on-chain at depth,
+// then escrows REAL Amoy USDC and claims the NIM leg with the revealed S. REAL TEST COINS
+// move (Albatross testnet + Polygon Amoy); mainnet is never touched (the ctor is testnet/
+// Amoy-guarded). Requires the Amoy env: AMOY_TEST_KEY (the funded escrow wallet),
+// AMOY_HTLC2_ADDRESS, optional AMOY_USDC_ADDRESS / AMOY_RPC_URL, plus NIMMESH_NIM_SEED (its
+// NIM claim wallet). Small amounts only — this is a proof rig, not a market maker.
+let swapResponderLive = CommandLine.arguments.contains("--swap-responder-live")
 
 /// The current TESTNET head (for the intent's expiry anchor). Synchronous one-shot;
 /// 0 when offline — the core treats an unknown head as "fresh" and the huge fallback
@@ -148,10 +157,58 @@ func fetchTestnetHead() -> UInt64 {
     return head
 }
 
+/// Read a required env var; fail loud (a live responder can't run half-configured).
+func requireEnv(_ key: String) -> String {
+    guard let v = ProcessInfo.processInfo.environment[key], !v.isEmpty else {
+        line("!! \(key) is required for --swap-responder-live but is not set")
+        exit(2)
+    }
+    return v
+}
+
+/// Decode 0x-hex → Data (nil on malformed).
+func hexData(_ s: String) -> Data? {
+    var h = s.lowercased(); if h.hasPrefix("0x") { h.removeFirst(2) }
+    guard h.count % 2 == 0 else { return nil }
+    var out = Data(capacity: h.count / 2); var i = h.startIndex
+    while i < h.endIndex { let j = h.index(i, offsetBy: 2)
+        guard let b = UInt8(h[i..<j], radix: 16) else { return nil }; out.append(b); i = j }
+    return out
+}
+
 let useMainnet = CommandLine.arguments.contains("--mainnet")
 let node: MeshNode
 do {
-    if swapResponder {
+    if swapResponderLive {
+        // G10c: the LIVE USDC-giver, through the real app-facing FFI ctor. Small amounts:
+        // gives 1 USDC, wants 5 tNIM (a real-price phone offer crosses on rate).
+        let head = fetchTestnetHead()
+        let amoySecret = requireEnv("AMOY_TEST_KEY")
+        let nimSeedHex = requireEnv("NIMMESH_NIM_SEED")
+        let htlcAddr = requireEnv("AMOY_HTLC2_ADDRESS")
+        let usdcAddr = ProcessInfo.processInfo.environment["AMOY_USDC_ADDRESS"]
+            ?? "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582"
+        let amoyRpc = ProcessInfo.processInfo.environment["AMOY_RPC_URL"]
+            ?? "https://rpc-amoy.polygon.technology"
+        guard let amoySecretData = hexData(amoySecret), amoySecretData.count == 32,
+              let nimSeedData = hexData(nimSeedHex), nimSeedData.count == 32 else {
+            line("!! AMOY_TEST_KEY / NIMMESH_NIM_SEED must be 32-byte hex"); exit(2)
+        }
+        let cfg = FfiLiveResponderConfig(
+            usdcMicro: 1_000_000, nimLuna: 500_000,
+            expiryHeight: head > 0 ? head + 20_000 : UInt64.max / 2,
+            nimClaimSeed: nimSeedData,           // its NIM claim wallet (sweeps home)
+            evmFundingSecret: amoySecretData,    // the funded escrow wallet + its gas
+            nimRpcUrl: "https://rpc.testnet.nimiqwatch.com",
+            amoyRpcUrl: amoyRpc,
+            htlcAddress: htlcAddr, usdcAddress: usdcAddr,
+            deltaSafeBlocks: 0, minClaimWindowBlocks: 0)
+        node = try MeshNode.newLiveSwapResponder(
+            senderId: sid, radio: radio, config: cfg,
+            gatewayRpcUrl: "https://rpc.testnet.nimiqwatch.com")
+        line("★ SWAP RESPONDER (LIVE, TESTNET/Amoy — REAL test coins move)")
+        line("advertising: gives 1 USDC, wants 5 tNIM · escrows only AFTER the NIM HTLC is on-chain at depth")
+    } else if swapResponder {
         let head = fetchTestnetHead()
         var seed = Data(count: 32)
         _ = seed.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!) }

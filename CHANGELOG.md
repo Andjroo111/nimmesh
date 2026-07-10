@@ -2,6 +2,29 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.68.0] — 2026-07-10
+
+### Added — G10c: the LIVE proof through the app-facing FFI constructors
+
+`live_ffi_mesh_swap` — a real NIM⇄USDC atomic swap driven end to end through the EXACT
+`#[uniffi::export]` constructors the app + Mac node call (not the rig door): the initiator via
+`MeshNode::new_live_swap_initiator` (the phone's ctor — wallet enclave key funds the real NIM
+HTLC, derived gas key lands `withdraw(S)`, derived receive address takes the USDC) and the
+responder via `MeshNode::new_live_swap_responder` (the Mac's ctor — verifier-gated USDC escrow
++ NIM claim with the revealed S), both `adopt`ed onto the deterministic ether and `poll_sync`/
+`poll_beacon`-driven exactly as the shims tick them.
+
+Ran green on both live testnets (every tx in `docs/swap/G10-RECEIPTS.md`): NIM HTLC funded →
+verifier-gated `newSwap` (1 USDC) → verifier-gated `withdraw(S)` (held off the mesh until buried
+past the M3 reveal depth) → NIM claim with the mesh-carried S → +1 USDC on the initiator's claim
+address, +500 000 luna swept home. The C1/H2/M3/M4 review fixes are baked into the constructors,
+so the run also validated the safe path.
+
+Also: `mac-node --swap-responder-live` (the live counterparty rig through the same responder
+ctor); `MeshHarness::adopt` (the seam to drive externally-FFI-built nodes over the harness ether);
+`EvmLog.transaction_hash` (so receipts recover a `NewSwap` tx without an indexer); the iOS + macOS
+node builds compile `-F polygon-gateway`.
+
 ## [0.67.0] — 2026-07-10
 
 ### Added — G10b: the app wiring for the LIVE testnet swap

@@ -64,6 +64,14 @@ required-features = ["polygon-gateway"]
 name = "live_mesh_swap_nim_usdc"
 required-features = ["polygon-gateway", "gateway-rpc"]
 
+# G10c: the LIVE proof through the APP-FACING FFI constructors — a headless initiator +
+# responder built by the exact `MeshNode::new_live_swap_initiator` / `new_live_swap_responder`
+# the phone + Mac rig call, driving a REAL NIM⇄USDC swap on both testnets. Same HTTP stacks as
+# A2c; never compiled by `cargo test`.
+[[example]]
+name = "live_ffi_mesh_swap"
+required-features = ["polygon-gateway", "gateway-rpc"]
+
 # Swap demo: a std-only HTTP server that runs the REAL engine (swap_sim) against an in-memory sim
 # chain and serves webui/, so the browser UI is powered by the actual SwapEngine. Sim-only, no funds.
 [[example]]
