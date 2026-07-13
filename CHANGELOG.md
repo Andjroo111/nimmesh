@@ -2,6 +2,14 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.74.1] — 2026-07-13
+
+### Changed — OTA ships 0.73.0/0.74.0 on-device
+
+No code change. Rebuilt ipa so both phones carry the phone-as-responder swap mode (#208 —
+the "Respond to swaps" panel with the tap-to-copy funding address) and the BTC-leg verifier
+(#209). The responder stays testnet-pinned until the guard-lift (#210) is Andjroo-merged.
+
 ## [0.74.0] — 2026-07-13
 
 ### Added — the BTC-leg funding verifier (#72 tail, the third chain)
