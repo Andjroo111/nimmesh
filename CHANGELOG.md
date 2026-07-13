@@ -2,6 +2,17 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.72.1] — 2026-07-12
+
+### Changed — OTA ships the M5-hardened core + installs on the second test iPhone
+
+No code change. The Ad Hoc provisioning profile "nimmesh Ad Hoc" was regenerated (via the ASC
+API) to include a second registered device — an iPhone 12 Pro (iOS 16.0) — alongside the
+iPhone 17 Pro Max, unblocking the true 2-phone BLE mesh test (issue #83). The ipa is rebuilt
+at the current core so the OTA finally carries 0.68.0–0.72.0's G10 live-swap wiring and G8 M5
+RPC-trust hardening on-device (OTA previously served 0.67.0). New profile uuid
+`acbbb5b4-2853-4e63-b558-1f3b1733d069` (same name; expires 2027-06-29).
+
 ## [0.72.0] — 2026-07-10
 
 ### Wired — G8 M5: the funds-moving Amoy verifier example now cross-reads
