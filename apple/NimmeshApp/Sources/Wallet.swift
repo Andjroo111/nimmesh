@@ -194,6 +194,31 @@ enum Wallet {
         return (derive("nimmesh-swap-evm-gas-v1"), derive("nimmesh-swap-evm-claim-v1"))
     }
 
+    /// The DERIVED secrets a phone RESPONDER needs (it gives USDC, receives NIM) — the same
+    /// recovery-phrase-derived HKDF pattern as `swapEvmSecrets`, so a reinstall strands
+    /// nothing:
+    /// - `fund` — a 32-byte secp256k1 secret for the Amoy account that ESCROWS the USDC and
+    ///   pays its gas (the responder's one real-value account). Its ADDRESS is surfaced so
+    ///   the owner funds it with test USDC + a little POL; the secret enters the Rust core
+    ///   once (it must sign the escrow + claim gas) and never crosses back.
+    /// - `nimClaim` — a 32-byte Ed25519 seed that OWNS the responder's NIM claim address (its
+    ///   swap identity + the key that redeems the NIM HTLC). Deliberately NOT the wallet's
+    ///   main NIM key (the swap identity must stay off the wallet address — the G45 privacy
+    ///   rule) but still recoverable from the phrase, so received NIM is never stranded.
+    static func swapResponderSecrets() -> (fund: Data, nimClaim: Data)? {
+        guard let phrase = readMnemonic(), let bip39 = bip39(),
+              let entropy = bip39.entropy(fromMnemonic: phrase), entropy.count == 32
+        else { return nil }
+        func derive(_ label: String) -> Data {
+            HKDF<SHA256>.deriveKey(
+                inputKeyMaterial: SymmetricKey(data: entropy),
+                info: Data(label.utf8),
+                outputByteCount: 32
+            ).withUnsafeBytes { Data($0) }
+        }
+        return (derive("nimmesh-swap-evm-fund-v1"), derive("nimmesh-swap-nim-claim-v1"))
+    }
+
     /// Prove the native signer interoperates with the Rust verifier (CryptoKit ↔ ed25519-dalek):
     /// sign a fixed transfer and confirm the core accepts it. `false` if there's no wallet yet.
     static func selfTest() -> Bool {

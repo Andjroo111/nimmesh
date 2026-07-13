@@ -565,6 +565,9 @@
     margin: 14px 0 0; font-size: 14px; color: rgba(31,35,72,.7); cursor: pointer; }
   .swap-real-row input { width: 16px; height: 16px; accent-color: #0582CA; }
   .swap-sim-note.live { color: #c4510b; font-weight: 600; }
+  .swap-respond-fund { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 10px 24px 0; }
+  .swap-respond-fund[hidden] { display: none !important; }
+  #swap-fund-addr { font-family: 'Fira Mono', 'Roboto Mono', monospace; font-size: 12px; letter-spacing: -.01em; word-break: break-all; text-align: center; }
   /* the SwapBalanceBar inside the sheet (component sizes via container; 8px-root rem page) */
   #swap-bar { margin: 20px 24px 0; }
   #swap-bar .balance-bar-header .identicon img { width: 100%; height: 100%; }
@@ -1647,14 +1650,27 @@ Don't share them and keep them safe.</p>
       <input type="checkbox" id="swap-real-toggle">
       <span data-i18n="swap.real.label">Real testnet coins (NIM ⇄ USDC)</span>
     </label>
+    <!-- Phone-as-RESPONDER: instead of proposing a swap, advertise "gives USDC, wants NIM"
+         and answer a counterparty's proposal (the LIVE responder path — real test coins).
+         Mutually exclusive with the initiator's "real" toggle. App-only (bridge exists). -->
+    <label class="swap-real-row" id="swap-respond-row" hidden>
+      <input type="checkbox" id="swap-respond-toggle">
+      <span data-i18n="swap.respond.label">Respond to swaps (give USDC, receive NIM)</span>
+    </label>
     <button class="send-btn" id="swap-start" data-i18n="swap.cta">Confirm</button>
     <p class="swap-sim-note" data-i18n="swap.simnote">Simulation: no real funds move yet</p>
   </div>
   <div id="swap-progress" hidden>
     <div class="swap-discovery" id="swap-discovery">
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="5" cy="18" r="2.4" fill="currentColor"/><circle cx="19" cy="18" r="2.4" fill="currentColor"/><circle cx="12" cy="5" r="2.4" fill="currentColor"/><path d="M6.4 16.3 10.7 6.9M13.3 6.9l4.3 9.4M7.2 18h9.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-      <h3 data-i18n="swap.searching">Finding a swap partner on the mesh</h3>
-      <p data-i18n="swap.searching.sub">Your swap intent is relayed phone to phone until a matching partner answers. This can take a moment.</p>
+      <h3 id="swap-searching-title" data-i18n="swap.searching">Finding a swap partner on the mesh</h3>
+      <p id="swap-searching-sub" data-i18n="swap.searching.sub">Your swap intent is relayed phone to phone until a matching partner answers. This can take a moment.</p>
+    </div>
+    <!-- Responder mode only: the derived Amoy account that escrows USDC — surfaced so the
+         owner funds it with test USDC + POL before it can answer a swap (never-strand). -->
+    <div class="swap-respond-fund" id="swap-respond-fund" hidden>
+      <p class="swap-sim-note live" data-i18n="swap.respond.fund">Fund this address with test USDC + POL to answer swaps</p>
+      <div class="copyable" id="swap-fund-copyable" tabindex="0"><div class="background"></div><div class="address" id="swap-fund-addr"></div><div class="tooltip" data-i18n="a.copied">Copied</div></div>
     </div>
     <div class="swap-phases" id="swap-phases" hidden></div>
     <div class="swap-status-line" id="swap-status"></div>
@@ -1807,6 +1823,10 @@ Don't share them and keep them safe.</p>
       'swap.searching': 'Buscando un socio en la malla', 'swap.searching.sub': 'Tu intención de intercambio se retransmite de teléfono en teléfono hasta que un socio compatible responde. Puede tardar un momento.',
       'swap.matched': 'Socio encontrado, negociando…', 'swap.settled': 'Intercambio liquidado',
       'swap.live': 'En vivo por Bluetooth — testnet, fondos simulados', 'swap.ended': 'Intercambio terminado',
+      'swap.respond.label': 'Responder a intercambios (das USDC, recibes NIM)', 'swap.respond.cta': 'Responder a intercambios',
+      'swap.respond.listening': 'Escuchando una oferta de intercambio en la malla',
+      'swap.respond.sub': 'Tu teléfono responde a un intercambio: deposita USDC en garantía solo después de que el HTLC de NIM del socio esté en cadena a la profundidad requerida.',
+      'swap.respond.fund': 'Financia esta dirección con USDC de prueba + POL para responder a intercambios',
       'chat.menu': 'Mensajes', 'chat.title': 'Mensajes de la malla', 'chat.ph': 'Mensaje a la malla…',
       'chat.public': 'Público — toda la malla puede leerlo',
       'chat.empty': 'Aún no hay mensajes. Cualquiera en la malla cerca de ti verá lo que envíes.',
@@ -1866,6 +1886,10 @@ Don't share them and keep them safe.</p>
       'swap.searching': 'Suche einen Tauschpartner im Mesh', 'swap.searching.sub': 'Deine Tauschabsicht wird von Handy zu Handy weitergereicht, bis ein passender Partner antwortet. Das kann einen Moment dauern.',
       'swap.matched': 'Partner gefunden, verhandle…', 'swap.settled': 'Tausch abgewickelt',
       'swap.live': 'Live über Bluetooth — Testnet, Sim-Guthaben', 'swap.ended': 'Tausch beendet',
+      'swap.respond.label': 'Auf Swaps antworten (du gibst USDC, erhältst NIM)', 'swap.respond.cta': 'Auf Swaps antworten',
+      'swap.respond.listening': 'Warte auf ein Swap-Angebot im Mesh',
+      'swap.respond.sub': 'Dein Handy beantwortet einen Swap: es hinterlegt USDC erst, nachdem der NIM-HTLC des Partners on-chain in ausreichender Tiefe bestätigt ist.',
+      'swap.respond.fund': 'Finanziere diese Adresse mit Test-USDC + POL, um auf Swaps zu antworten',
       'chat.menu': 'Nachrichten', 'chat.title': 'Mesh-Nachrichten', 'chat.ph': 'Nachricht ans Mesh…',
       'chat.public': 'Öffentlich — das ganze Mesh kann mitlesen',
       'chat.empty': 'Noch keine Nachrichten. Jeder im Mesh in deiner Nähe sieht, was du sendest.',
@@ -1925,6 +1949,10 @@ Don't share them and keep them safe.</p>
       'swap.searching': 'Recherche d’un partenaire sur le mesh', 'swap.searching.sub': 'Ton intention d’échange est relayée de téléphone en téléphone jusqu’à ce qu’un partenaire compatible réponde. Cela peut prendre un moment.',
       'swap.matched': 'Partenaire trouvé, négociation…', 'swap.settled': 'Échange réglé',
       'swap.live': 'En direct via Bluetooth — testnet, fonds simulés', 'swap.ended': 'Échange terminé',
+      'swap.respond.label': 'Répondre aux échanges (tu donnes des USDC, tu reçois des NIM)', 'swap.respond.cta': 'Répondre aux échanges',
+      'swap.respond.listening': 'En attente d’une offre d’échange sur le mesh',
+      'swap.respond.sub': 'Ton téléphone répond à un échange : il dépose des USDC en garantie seulement après que le HTLC NIM du partenaire est confirmé on-chain à la profondeur requise.',
+      'swap.respond.fund': 'Approvisionne cette adresse avec des USDC de test + du POL pour répondre aux échanges',
       'chat.menu': 'Messages', 'chat.title': 'Messages du mesh', 'chat.ph': 'Message au mesh…',
       'chat.public': 'Public — tout le mesh peut le lire',
       'chat.empty': 'Pas encore de messages. Tout le monde sur le mesh autour de vous verra ce que vous envoyez.',
@@ -1984,6 +2012,10 @@ Don't share them and keep them safe.</p>
       'swap.searching': 'Procurando um parceiro na mesh', 'swap.searching.sub': 'Sua intenção de troca é retransmitida de telefone em telefone até um parceiro compatível responder. Pode levar um momento.',
       'swap.matched': 'Parceiro encontrado, negociando…', 'swap.settled': 'Troca liquidada',
       'swap.live': 'Ao vivo via Bluetooth — testnet, fundos simulados', 'swap.ended': 'Troca encerrada',
+      'swap.respond.label': 'Responder a trocas (você dá USDC, recebe NIM)', 'swap.respond.cta': 'Responder a trocas',
+      'swap.respond.listening': 'Aguardando uma oferta de troca na mesh',
+      'swap.respond.sub': 'Seu telefone responde a uma troca: ele deposita USDC em garantia somente depois que o HTLC de NIM do parceiro estiver on-chain na profundidade exigida.',
+      'swap.respond.fund': 'Financie este endereço com USDC de teste + POL para responder a trocas',
       'chat.menu': 'Mensagens', 'chat.title': 'Mensagens da mesh', 'chat.ph': 'Mensagem para a mesh…',
       'chat.public': 'Público — toda a mesh pode ler',
       'chat.empty': 'Ainda sem mensagens. Qualquer pessoa na mesh perto de você verá o que enviar.',
@@ -2041,6 +2073,12 @@ Don't share them and keep them safe.</p>
     'swap.real.live': 'Live over Bluetooth — TESTNET, real test coins',
     'swap.real.noprices': 'Live prices unavailable — try again in a moment',
     'swap.locks': 'NIM lock pending refund',
+    'swap.cta': 'Confirm',
+    'swap.respond.label': 'Respond to swaps (give USDC, receive NIM)',
+    'swap.respond.cta': 'Respond to swaps',
+    'swap.respond.listening': 'Listening for a swap offer on the mesh',
+    'swap.respond.sub': 'Your phone answers a swap: it escrows USDC only after the partner’s NIM HTLC is on-chain at depth.',
+    'swap.respond.fund': 'Fund this address with test USDC + POL to answer swaps',
     'chat.menu': 'Messages', 'chat.title': 'Mesh Messages', 'chat.ph': 'Message the mesh…',
     'chat.public': 'Public — everyone on the mesh can read it',
     'chat.empty': 'No messages yet. Anyone on the mesh around you will see what you send.',
@@ -2644,6 +2682,15 @@ Don't share them and keep them safe.</p>
     }
     const realToggle = document.getElementById('swap-real-toggle');
     if (realToggle) { realToggle.checked = false; }
+    const respondToggle = document.getElementById('swap-respond-toggle');
+    if (respondToggle) { respondToggle.checked = false; }
+    showRespondFund('');
+    const startBtn = document.getElementById('swap-start');
+    if (startBtn) { startBtn.textContent = T('swap.cta'); }
+    const st = document.getElementById('swap-searching-title');
+    if (st) { st.textContent = T('swap.searching'); }
+    const ss = document.getElementById('swap-searching-sub');
+    if (ss) { ss.textContent = T('swap.searching.sub'); }
     updateSwapHonestyNotes();
     swapPct = 95;
     if (typeof swapBarPaint === 'function') { try { swapBarPaint(); } catch (e) {} }
@@ -2753,21 +2800,71 @@ Don't share them and keep them safe.</p>
   // every screen of the sheet. Only visible inside the app (the bridge exists).
   function updateSwapHonestyNotes() {
     const realToggle = document.getElementById('swap-real-toggle');
-    const real = !!(realToggle && realToggle.checked);
+    const respondToggle = document.getElementById('swap-respond-toggle');
+    // Both the "real" initiator path and the responder path move real test coins → live note.
+    const live = !!((realToggle && realToggle.checked) || (respondToggle && respondToggle.checked));
     document.querySelectorAll('.swap-sim-note').forEach((el) => {
-      el.textContent = real ? T('swap.livenote') : T('swap.simnote');
-      el.classList.toggle('live', real);
+      el.textContent = live ? T('swap.livenote') : T('swap.simnote');
+      el.classList.toggle('live', live);
     });
   }
   (function wireSwapRealToggle() {
     const row = document.getElementById('swap-real-row');
     const toggle = document.getElementById('swap-real-toggle');
+    const respondRow = document.getElementById('swap-respond-row');
+    const respondToggle = document.getElementById('swap-respond-toggle');
     if (!row || !toggle) return;
-    if (window.nimmesh && window.nimmesh.swapMeshStart) row.hidden = false;
+    const hasBridge = !!(window.nimmesh && window.nimmesh.swapMeshStart);
+    if (hasBridge) { row.hidden = false; if (respondRow) respondRow.hidden = false; }
     toggle.addEventListener('change', () => {
+      // Proposing real coins and responding are mutually exclusive modes.
+      if (toggle.checked && respondToggle) respondToggle.checked = false;
       if (toggle.checked && swapAsset !== 'usdc') setSwapAsset('usdc'); // the live pair
-      updateSwapHonestyNotes();
+      updateSwapMode();
     });
+    if (respondToggle) {
+      respondToggle.addEventListener('change', () => {
+        if (respondToggle.checked) { toggle.checked = false; if (swapAsset !== 'usdc') setSwapAsset('usdc'); }
+        updateSwapMode();
+      });
+    }
+  })();
+  // The Confirm CTA + honesty notes reflect the selected mode: propose-sim, propose-real,
+  // or respond. Responding is inherently the LIVE testnet path (real test coins).
+  function swapRespondSelected() {
+    const t = document.getElementById('swap-respond-toggle');
+    return !!(t && t.checked);
+  }
+  function updateSwapMode() {
+    updateSwapHonestyNotes();
+    const cta = document.getElementById('swap-start');
+    if (cta) cta.textContent = swapRespondSelected() ? T('swap.respond.cta') : T('swap.cta');
+  }
+  // Responder mode: reveal the derived Amoy escrow address so it can be funded (test USDC +
+  // POL). Tap-to-copy, the wallet's Copyable treatment (blue "Copied" tooltip, ~800ms).
+  let swapFundAddr = '';
+  function showRespondFund(addr) {
+    swapFundAddr = addr || '';
+    const panel = document.getElementById('swap-respond-fund');
+    const line = document.getElementById('swap-fund-addr');
+    if (!panel || !line) return;
+    if (!swapFundAddr) { panel.hidden = true; return; }
+    line.textContent = swapFundAddr;
+    panel.hidden = false;
+  }
+  (function wireSwapFundCopyable() {
+    const el = document.getElementById('swap-fund-copyable');
+    if (!el) return;
+    let t = null;
+    const doCopy = () => {
+      if (!swapFundAddr) return;
+      try { navigator.clipboard.writeText(swapFundAddr).catch(() => {}); } catch (e) {}
+      el.classList.add('copied');
+      clearTimeout(t);
+      t = setTimeout(() => el.classList.remove('copied'), 800);
+    };
+    el.addEventListener('click', doCopy);
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); doCopy(); } });
   })();
 
   // ---- the OVER-THE-MESH driver (device): the bridge swaps the node onto TESTNET as a
@@ -2783,13 +2880,16 @@ Don't share them and keep them safe.</p>
     let st;
     try { st = await window.nimmesh.swapMeshStatus(); } catch (e) { return; }
     const statusEl = document.getElementById('swap-status');
-    const liveMode = st.mode === 'live';
+    const respondMode = st.mode === 'respond';
+    const liveMode = st.mode === 'live' || respondMode;
+    if (respondMode && st.fundAddress && st.fundAddress !== swapFundAddr) showRespondFund(st.fundAddress);
     const lockNote = (st.locks && st.locks.length)
       ? ` · ${st.locks.length} ${T('swap.locks')}` : '';
     const sw = (st.swaps || [])[0];
     if (!sw) {
-      statusEl.textContent =
-        `${T(liveMode ? 'swap.real.live' : 'swap.live')} · ${st.peers} peers · ${st.seen} intents${lockNote}`;
+      // No swap matched yet: a responder is LISTENING; an initiator is broadcasting its intent.
+      const head = respondMode ? T('swap.respond.listening') : T(liveMode ? 'swap.real.live' : 'swap.live');
+      statusEl.textContent = `${head} · ${st.peers} peers · ${st.seen} intents${lockNote}`;
       return;
     }
     const step = PHASE_STEP[sw.phase] != null ? PHASE_STEP[sw.phase] : 0;
@@ -2813,12 +2913,43 @@ Don't share them and keep them safe.</p>
   document.getElementById('swap-start').addEventListener('click', async () => {
     const nim = parseFloat(document.getElementById('swap-amount').value);
     if (!(nim > 0)) { alert(T('send.needamount')); return; }
+    const respondMode = swapRespondSelected();
     // Never offer more than the wallet holds (Andjroo's field report — the input took
-    // any number). The balance is the same live/cached luna the home screen paints.
-    if (nim * 1e5 > (window.__lastLuna || 0)) { alert(T('err.overbalance')); return; }
+    // any number). The balance is the same live/cached luna the home screen paints. In
+    // RESPONDER mode the amount is NIM you'll RECEIVE (you give USDC) — no NIM is spent,
+    // so the wallet-balance ceiling doesn't apply.
+    if (!respondMode && nim * 1e5 > (window.__lastLuna || 0)) { alert(T('err.overbalance')); return; }
     document.getElementById('swap-setup').hidden = true;
     document.getElementById('swap-progress').hidden = false;
     if (window.nimmesh && window.nimmesh.swapMeshStart) {
+      if (respondMode) {
+        // Phone-as-RESPONDER (LIVE testnet): advertise "gives USDC, wants NIM" and answer a
+        // proposal. The USDC given comes from the live indicative prices; without prices we
+        // refuse rather than invent a rate for real coins.
+        if (swapAsset !== 'usdc') setSwapAsset('usdc');
+        if (!(usdcPrice && nimPrice)) {
+          alert(T('swap.real.noprices'));
+          document.getElementById('swap-setup').hidden = false;
+          document.getElementById('swap-progress').hidden = true;
+          return;
+        }
+        const usdcMicro = Math.max(1, Math.round((nim * nimPrice / usdcPrice) * 1e6));
+        document.getElementById('swap-searching-title').textContent = T('swap.respond.listening');
+        document.getElementById('swap-searching-sub').textContent = T('swap.respond.sub');
+        document.getElementById('swap-status').textContent = T('swap.real.live');
+        updateSwapHonestyNotes();
+        try {
+          const res = await window.nimmesh.swapMeshStart({
+            respond: true, nimLuna: Math.round(nim * 1e5), usdcMicro: usdcMicro,
+          });
+          if (res && res.fundAddress) showRespondFund(res.fundAddress);
+          swapMeshLive = true;
+          swapPoll = setInterval(pollMeshSwap, 2000);
+        } catch (e) {
+          document.getElementById('swap-status').textContent = String((e && e.message) || e);
+        }
+        return;
+      }
       const realToggle = document.getElementById('swap-real-toggle');
       if (realToggle && realToggle.checked) {
         // G10b: the LIVE TESTNET path — real test coins move (NIM \u21c4 USDC). The

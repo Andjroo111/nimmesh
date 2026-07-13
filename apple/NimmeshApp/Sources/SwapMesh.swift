@@ -7,6 +7,9 @@ import NimmeshCore
 private let liveNimRpcUrl = "https://rpc.testnet.nimiqwatch.com"
 private let liveAmoyRpcUrl = "https://rpc-amoy.polygon.technology"
 private let liveHtlcAddress = "0xb3B3703E07AC897B7E3e864C113a2Fa547D76736"
+/// The Amoy testnet USDC token the responder's HTLC escrows (mac-node's default, docs/swap/AMOY.md).
+/// TESTNET/Amoy only — mainnet is a separate, Andjroo-gated guard-lift, never a parameter here.
+private let liveUsdcAddress = "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582"
 /// UserDefaults key for the persisted NIM-lock book (never-strand across relaunches).
 private let liveLocksKey = "nimmesh.swap.liveLocks"
 
@@ -60,6 +63,9 @@ extension Bridge {
     /// ephemeral key from fresh randomness (never the wallet key — it stays in the Keychain).
     func swapMeshStart(args: Any?) async -> (Bool, Any) {
         let a = args as? [String: Any] ?? [:]
+        if (a["respond"] as? Bool) == true {
+            return await swapRespondStart(a) // phone-as-responder: gives USDC, receives NIM
+        }
         if (a["real"] as? Bool) == true {
             return await swapLiveStart(a) // G10b: the real-testnet path
         }
@@ -165,6 +171,62 @@ extension Bridge {
         }
     }
 
+    /// Phone-as-RESPONDER (gives USDC, receives NIM): swap the live node onto
+    /// `MeshNode.newLiveSwapResponder` — the SAME app-facing FFI ctor the Mac rig's
+    /// `--swap-responder-live` uses (docs/swap/G10-RECEIPTS.md). It advertises "gives USDC,
+    /// wants NIM" and funds NOTHING until its real `NimHtlcVerifier` sees the counterparty's
+    /// NIM HTLC on-chain at depth, then escrows REAL Amoy USDC and claims the NIM leg with the
+    /// revealed secret. REAL TEST coins move (Albatross testnet ⇄ Polygon Amoy); mainnet is
+    /// never touched — the ctor is testnet/Amoy-guarded, C1-asserted, no mainnet parameter.
+    /// The escrow + gas ride a wallet-DERIVED Amoy account (surfaced so it can be funded);
+    /// the claimed NIM lands on a wallet-derived claim address (recoverable from the phrase).
+    private func swapRespondStart(_ a: [String: Any]) async -> (Bool, Any) {
+        let nimLuna = (a["nimLuna"] as? NSNumber)?.uint64Value ?? 0
+        let usdcMicro = (a["usdcMicro"] as? NSNumber)?.uint64Value ?? 0
+        guard nimLuna > 0, usdcMicro > 0 else { return (false, "amounts required") }
+        guard let rs = Wallet.swapResponderSecrets() else {
+            return (false, "no wallet yet — create or import one first")
+        }
+        let fundAddr: String
+        do {
+            fundAddr = try evmAddressForSecret(secret: rs.fund)
+        } catch {
+            return (false, "this build lacks the live swap stack: \(error)")
+        }
+
+        let head = await testnetHead() ?? 0
+        let cfg = FfiLiveResponderConfig(
+            usdcMicro: usdcMicro, nimLuna: nimLuna,
+            expiryHeight: head > 0 ? head + 20_000 : UInt64.max / 2,
+            nimClaimSeed: rs.nimClaim,        // owns the NIM claim address (derived, recoverable)
+            evmFundingSecret: rs.fund,        // escrows the USDC + pays its gas
+            nimRpcUrl: liveNimRpcUrl, amoyRpcUrl: liveAmoyRpcUrl,
+            htlcAddress: liveHtlcAddress, usdcAddress: liveUsdcAddress,
+            deltaSafeBlocks: 0, minClaimWindowBlocks: 0) // 0 = the core's safe defaults
+
+        node.shutdown()
+        do {
+            var sid = Data(count: 8)
+            _ = sid.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 8, $0.baseAddress!) }
+            let n = try MeshNode.newLiveSwapResponder(
+                senderId: sid, radio: bleRadio, config: cfg, gatewayRpcUrl: nil)
+            node = n
+            bleRadio.node = n
+            liveFundAddress = fundAddr
+            swapDemoOn = true
+            swapLiveOn = true
+            swapRespondOn = true
+            return (true, [
+                "ok": true, "mode": "respond", "head": Int(head),
+                "fundAddress": fundAddr,
+            ])
+        } catch {
+            let n = makeNormalNode() // never leave the wallet without a node
+            node = n
+            return (false, "\(error)")
+        }
+    }
+
     /// Live demo status: this node's swaps (id + phase), discovery counters, peers — plus,
     /// in live mode, the honest mode label, any REAL NIM locks (mirrored to UserDefaults so
     /// the refund path survives a relaunch), and the gas account to top up.
@@ -175,11 +237,14 @@ extension Bridge {
         let m = node.discoveryMetrics()
         var payload: [String: Any] = [
             "demo": swapDemoOn,
-            "mode": swapLiveOn ? "live" : "sim",
+            "mode": swapRespondOn ? "respond" : (swapLiveOn ? "live" : "sim"),
             "swaps": swaps,
             "seen": Int(m.seen), "matched": Int(m.matched), "readvertised": Int(m.readvertised),
             "peers": Int(node.peerCount()),
         ]
+        if swapRespondOn, let fund = liveFundAddress {
+            payload["fundAddress"] = fund
+        }
         if let book = liveLockBook {
             persistLiveLocks(book.locks())
             payload["gasAddress"] = liveGasAddress ?? ""
@@ -205,6 +270,8 @@ extension Bridge {
         node = makeNormalNode()
         swapDemoOn = false
         swapLiveOn = false
+        swapRespondOn = false
+        liveFundAddress = nil
         liveLockBook = nil
         return (true, ["ok": true])
     }

@@ -112,6 +112,12 @@ final class Bridge: NSObject, WKScriptMessageHandler {
     var liveLockBook: LiveLockBook?
     /// G10b: the derived Amoy gas account (0x…) shown so it can be topped up with POL.
     var liveGasAddress: String?
+    /// Whether the node is currently a LIVE swap RESPONDER (gives USDC, receives NIM) rather
+    /// than an initiator/proposer — drives the responder panel + honest labels.
+    var swapRespondOn = false
+    /// The derived Amoy account (0x…) the responder escrows USDC from + pays gas — shown so
+    /// the owner can fund it with test USDC + POL before it can answer a swap.
+    var liveFundAddress: String?
 
     /// Injected at document start. Exposes a tiny promise-based RPC the web UI calls:
     /// `await window.nimmesh.version()` etc. If the handler is ever absent (e.g. the
@@ -207,9 +213,10 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         meshCachedHistory: function () { return call('meshCachedHistory'); },
         // Over-the-mesh swap: the real swap protocol over real Bluetooth. Default = the
         // Act-1 DEMO (TESTNET, SIM tx bytes — no funds move). Pass { real: true } for the
-        // G10 LIVE path: real TEST coins move (NIM on Albatross testnet ⇄ USDC on Amoy),
-        // honestly labeled; mainnet is never touched. swapMeshRefund sweeps any expired
-        // real NIM lock back to the wallet (never-strand).
+        // G10 LIVE initiator path (gives NIM, receives USDC), or { respond: true } for the
+        // LIVE RESPONDER path (gives USDC, receives NIM). Either LIVE path moves real TEST
+        // coins (NIM on Albatross testnet ⇄ USDC on Amoy), honestly labeled; mainnet is never
+        // touched. swapMeshRefund sweeps any expired real NIM lock back to the wallet.
         swapMeshStart: function (a) { return call('swapMeshStart', a || {}); },
         swapMeshStatus: function () { return call('swapMeshStatus'); },
         swapMeshStop: function () { return call('swapMeshStop'); },
