@@ -337,6 +337,26 @@ pub(crate) fn build_testnet_gateway(
     })
 }
 
+/// **OWNER-GATED (real money): the MAINNET twin of [`build_testnet_gateway`].** The optional
+/// mainnet gateway hop for a mainnet live-swap participant (the Mac rig), built via
+/// [`crate::rpc::HttpGatewayRpc::new_mainnet`] + [`crate::gateway::RpcGateway::new_mainnet`]
+/// (network id `24`). Reachable ONLY from the off-by-default mainnet swap assembly
+/// (`swap_live_ffi::live_impl`, which requires `gateway-rpc`); the autonomous/testnet path never
+/// calls it. Only the `gateway-rpc` build defines it — the not-feature door refuses before it here.
+#[cfg(feature = "gateway-rpc")]
+pub(crate) fn build_mainnet_gateway(
+    url: String,
+) -> Result<Arc<dyn crate::gateway::MeshGateway>, ParticipantInitError> {
+    let rpc = crate::rpc::HttpGatewayRpc::new_mainnet(url).map_err(|e| {
+        ParticipantInitError::Gateway {
+            reason: e.to_string(),
+        }
+    })?;
+    Ok(Arc::new(crate::gateway::RpcGateway::new_mainnet(Arc::new(
+        rpc,
+    ))))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

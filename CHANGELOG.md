@@ -2,6 +2,42 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.76.0] — 2026-07-13 — §8.3 mainnet first-run wiring (INERT until Andjroo arms)
+
+### The mainnet swap constructors + app wiring — off by default, dormant until the arming PR
+
+Wires the callers the guard-lift (#210) needs so the first ≤ $5 mainnet self-swap can run — **without
+flipping any const.** `mainnet_swap::MAINNET_SWAP_ENABLED` stays `false` and `MAINNET_HTLC_ADDRESS`
+stays empty, so every new path **refuses and is inert** until Andjroo's later arming PR flips both.
+
+- **Core: mainnet live-participant constructors over UniFFI** — `MeshNode::new_live_swap_initiator_mainnet`
+  / `…_responder_mainnet`, mirrors of the testnet ctors. They **refuse** unless
+  `mainnet_swap::mainnet_swap_armed()` (flag on AND HTLC recorded) — always false today. When armed
+  they assemble the mainnet money path in CODE (never caller config): NIM via `HttpGatewayRpc::new_mainnet`
+  + `NimHtlcVerifier::new_mainnet`; USDC via `HttpPolygonRpc::new_mainnet` (the two-host cross-read) +
+  `LegacyTx::polygon_mainnet` (chain id 137) + native USDC `NATIVE_USDC_POLYGON_MAINNET` +
+  `MAINNET_HTLC_ADDRESS` as the escrow; `ConfirmationPolicy::mainnet_defaults()`;
+  `SwapCaps::mainnet_first_swap()` enforced; all C1 floors asserted (`live_safety`). The armed
+  assembly is factored (`mainnet_money_path` + `assemble_*_mainnet`) so it is unit-tested with an
+  injected HTLC address **without** flipping the shipped const.
+- **Signer chain id** — `LiveInitiatorSigner`/`LiveResponderSigner` gained `with_evm_chain_id`
+  (default Amoy `80002`); the mainnet assembly binds every Polygon tx to `137` (EIP-155 replay
+  protection). Testnet path unchanged (byte-identical default).
+- **FFI probe** — `mainnet_swap_armed() -> Bool` + `mainnet_swap_reason() -> String` so the app can
+  honestly label the state. `false` on any shipped build.
+- **App** — SwapMesh.swift + webui: when `mainnetSwapArmed()` is true the Swap sheet's real path and
+  the Respond-to-swaps panel use the mainnet ctors with LOUD orange "REAL MAINNET FUNDS" labels and
+  the ≤ 50 NIM / ≤ 5 USDC caps; the responder panel shows the wallet-derived MAINNET EVM funding
+  address (identical to testnet — EVM addresses are chain-agnostic) tap-to-copy. While unarmed the
+  testnet path + labels are exactly as before. Playwright mock-bridge: armed + unarmed renders verified.
+- **`scripts/arm-mainnet-swap.sh <htlc>`** — the operator tool that PREPARES (never merges) the
+  arming PR: records `MAINNET_HTLC_ADDRESS`, flips `MAINNET_SWAP_ENABLED`, bumps the version, writes
+  the CHANGELOG entry, and opens a `needs:owner` + `money-path` PR. Merging stays Andjroo's click.
+
+Inert on a merged branch (the master switch is `false`, no ctor selects the mainnet path, the HTLC
+address is empty). Full green gate (fmt + clippy `--all-features -D warnings` + `cargo test --all`
+468 / `--all-features` 613 + size-guard). Auto-merge allowed under the standing nimmesh grant (inert).
+
 ## [0.75.0] — 2026-07-13 — GUARD-LIFT (needs:owner, money-path, DO NOT auto-merge)
 
 ### The mainnet-swap guard-lift — off by default, byte-identical until Andjroo flips one flag

@@ -115,6 +115,10 @@ final class Bridge: NSObject, WKScriptMessageHandler {
     /// Whether the node is currently a LIVE swap RESPONDER (gives USDC, receives NIM) rather
     /// than an initiator/proposer — drives the responder panel + honest labels.
     var swapRespondOn = false
+    /// §8.3: whether the CURRENT live swap is on **mainnet** (real funds) rather than
+    /// testnet/Amoy — set only when `mainnetSwapArmed()` was true at start. Drives the loud
+    /// "REAL MAINNET FUNDS" labels + the mainnet endpoints/ctors. `false` on any shipped build.
+    var swapMainnetOn = false
     /// The derived Amoy account (0x…) the responder escrows USDC from + pays gas — shown so
     /// the owner can fund it with test USDC + POL before it can answer a swap.
     var liveFundAddress: String?
@@ -221,6 +225,11 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         swapMeshStatus: function () { return call('swapMeshStatus'); },
         swapMeshStop: function () { return call('swapMeshStop'); },
         swapMeshRefund: function () { return call('swapMeshRefund'); },
+        // §8.3 probe: is the mainnet swap path ARMED (flag + recorded HTLC)? Resolves
+        // { armed, reason }. `false` on any shipped build → the UI keeps its testnet path +
+        // labels; when Andjroo's arming release flips it, the swap sheet shows the loud
+        // "REAL MAINNET FUNDS" labels and drives the mainnet ctors.
+        mainnetSwapArmed: function () { return call('mainnetSwapArmed'); },
         // Public mesh chat (0x50): broadcast text over BLE; the rolling heard/sent log.
         sendChat: function (nick, text) { return call('sendChat', { nickname: nick, text: text }); },
         chatMessages: function () { return call('chatMessages'); },
@@ -508,6 +517,10 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             return swapMeshStatus()
         case "swapMeshStop":
             return swapMeshStop()
+        case "mainnetSwapArmed":
+            // §8.3 probe: is the mainnet swap path armed (flag + recorded HTLC)? `false` on any
+            // shipped build → the UI keeps its testnet path/labels. `reason` labels the state.
+            return (true, ["armed": NimmeshCore.mainnetSwapArmed(), "reason": NimmeshCore.mainnetSwapReason()])
         case "cashlinkList":
             return cashlinkList()
         case "sendChat":

@@ -10,6 +10,16 @@ private let liveHtlcAddress = "0xb3B3703E07AC897B7E3e864C113a2Fa547D76736"
 /// The Amoy testnet USDC token the responder's HTLC escrows (mac-node's default, docs/swap/AMOY.md).
 /// TESTNET/Amoy only — mainnet is a separate, Andjroo-gated guard-lift, never a parameter here.
 private let liveUsdcAddress = "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582"
+
+// §8.3 MAINNET endpoints (real funds) — used ONLY when `mainnetSwapArmed()` is true (off on any
+// shipped build). The escrow HTLC + USDC token are pinned in the CORE (`MAINNET_HTLC_ADDRESS` +
+// `NATIVE_USDC_POLYGON_MAINNET`), so no mainnet contract address is passed from here — the mainnet
+// ctors ignore `config.htlcAddress`/`config.usdcAddress`. Only the RPC urls come from the app:
+/// A Nimiq **mainnet** JSON-RPC (no "testnet" fragment → `HttpGatewayRpc::new_mainnet` admits it).
+private let mainnetNimRpcUrl = "https://rpc.nimiqwatch.com"
+/// An allow-listed Polygon **mainnet** RPC (`HttpPolygonRpc::new_mainnet` admits only the two
+/// cross-read hosts). The mainnet EVM chain id (137) + native USDC are pinned in the core.
+private let mainnetPolygonRpcUrl = "https://polygon.drpc.org"
 /// UserDefaults key for the persisted NIM-lock book (never-strand across relaunches).
 private let liveLocksKey = "nimmesh.swap.liveLocks"
 
@@ -133,7 +143,11 @@ extension Bridge {
         }
         let gasAddr = (try? evmAddressForSecret(secret: evm.gas)) ?? ""
 
-        let head = await testnetHead() ?? 0
+        // §8.3: when the mainnet swap path is ARMED (off on any shipped build), real MAINNET funds
+        // move — the mainnet ctor + endpoints are used and the escrow HTLC/USDC are pinned in the
+        // core. Unarmed → today's TESTNET path, byte-identical.
+        let mainnet = NimmeshCore.mainnetSwapArmed()
+        let head = mainnet ? (await mainnetHead() ?? 0) : (await testnetHead() ?? 0)
         var seed = Data(count: 32)
         _ = seed.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!) }
         let cfg = FfiLiveInitiatorConfig(
@@ -142,8 +156,9 @@ extension Bridge {
             intentSeed: seed,
             evmClaimAddress: claimBytes,
             evmGasSecret: evm.gas,
-            nimRpcUrl: liveNimRpcUrl, amoyRpcUrl: liveAmoyRpcUrl,
-            htlcAddress: liveHtlcAddress,
+            nimRpcUrl: mainnet ? mainnetNimRpcUrl : liveNimRpcUrl,
+            amoyRpcUrl: mainnet ? mainnetPolygonRpcUrl : liveAmoyRpcUrl,
+            htlcAddress: mainnet ? "" : liveHtlcAddress, // mainnet: the core pins MAINNET_HTLC_ADDRESS
             deltaSafeBlocks: 0, minClaimWindowBlocks: 0) // 0 = the core's safe defaults
         let book = LiveLockBook()
 
@@ -151,18 +166,26 @@ extension Bridge {
         do {
             var sid = Data(count: 8)
             _ = sid.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 8, $0.baseAddress!) }
-            let n = try MeshNode.newLiveSwapInitiator(
-                senderId: sid, radio: bleRadio, nimFundingKey: nimKey, lockBook: book,
-                config: cfg, gatewayRpcUrl: nil)
+            let n: MeshNode
+            if mainnet {
+                n = try MeshNode.newLiveSwapInitiatorMainnet(
+                    senderId: sid, radio: bleRadio, nimFundingKey: nimKey, lockBook: book,
+                    config: cfg, gatewayRpcUrl: nil)
+            } else {
+                n = try MeshNode.newLiveSwapInitiator(
+                    senderId: sid, radio: bleRadio, nimFundingKey: nimKey, lockBook: book,
+                    config: cfg, gatewayRpcUrl: nil)
+            }
             node = n
             bleRadio.node = n
             liveLockBook = book
             liveGasAddress = gasAddr
             swapDemoOn = true
             swapLiveOn = true
+            swapMainnetOn = mainnet
             return (true, [
-                "ok": true, "mode": "live", "head": Int(head),
-                "claimAddress": claimAddr, "gasAddress": gasAddr,
+                "ok": true, "mode": mainnet ? "live-mainnet" : "live", "head": Int(head),
+                "mainnet": mainnet, "claimAddress": claimAddr, "gasAddress": gasAddr,
             ])
         } catch {
             let n = makeNormalNode() // never leave the wallet without a node
@@ -194,31 +217,45 @@ extension Bridge {
             return (false, "this build lacks the live swap stack: \(error)")
         }
 
-        let head = await testnetHead() ?? 0
+        // §8.3: ARMED (off on any shipped build) → real MAINNET funds via the mainnet ctor +
+        // endpoints; the escrow HTLC + NATIVE USDC token are pinned in the core. The fund address
+        // is DERIVED from the same secret and is chain-agnostic (an EVM address is the keccak of the
+        // pubkey — no chain id), so the MAINNET funding address is IDENTICAL to the testnet one.
+        let mainnet = NimmeshCore.mainnetSwapArmed()
+        let head = mainnet ? (await mainnetHead() ?? 0) : (await testnetHead() ?? 0)
         let cfg = FfiLiveResponderConfig(
             usdcMicro: usdcMicro, nimLuna: nimLuna,
             expiryHeight: head > 0 ? head + 20_000 : UInt64.max / 2,
             nimClaimSeed: rs.nimClaim,        // owns the NIM claim address (derived, recoverable)
             evmFundingSecret: rs.fund,        // escrows the USDC + pays its gas
-            nimRpcUrl: liveNimRpcUrl, amoyRpcUrl: liveAmoyRpcUrl,
-            htlcAddress: liveHtlcAddress, usdcAddress: liveUsdcAddress,
+            nimRpcUrl: mainnet ? mainnetNimRpcUrl : liveNimRpcUrl,
+            amoyRpcUrl: mainnet ? mainnetPolygonRpcUrl : liveAmoyRpcUrl,
+            htlcAddress: mainnet ? "" : liveHtlcAddress,   // mainnet: the core pins MAINNET_HTLC_ADDRESS
+            usdcAddress: mainnet ? "" : liveUsdcAddress,   // mainnet: the core pins the NATIVE USDC
             deltaSafeBlocks: 0, minClaimWindowBlocks: 0) // 0 = the core's safe defaults
 
         node.shutdown()
         do {
             var sid = Data(count: 8)
             _ = sid.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 8, $0.baseAddress!) }
-            let n = try MeshNode.newLiveSwapResponder(
-                senderId: sid, radio: bleRadio, config: cfg, gatewayRpcUrl: nil)
+            let n: MeshNode
+            if mainnet {
+                n = try MeshNode.newLiveSwapResponderMainnet(
+                    senderId: sid, radio: bleRadio, config: cfg, gatewayRpcUrl: nil)
+            } else {
+                n = try MeshNode.newLiveSwapResponder(
+                    senderId: sid, radio: bleRadio, config: cfg, gatewayRpcUrl: nil)
+            }
             node = n
             bleRadio.node = n
             liveFundAddress = fundAddr
             swapDemoOn = true
             swapLiveOn = true
             swapRespondOn = true
+            swapMainnetOn = mainnet
             return (true, [
-                "ok": true, "mode": "respond", "head": Int(head),
-                "fundAddress": fundAddr,
+                "ok": true, "mode": mainnet ? "respond-mainnet" : "respond", "head": Int(head),
+                "mainnet": mainnet, "fundAddress": fundAddr,
             ])
         } catch {
             let n = makeNormalNode() // never leave the wallet without a node
@@ -235,9 +272,13 @@ extension Bridge {
             ["id": $0.swapId, "phase": String(describing: $0.phase)]
         }
         let m = node.discoveryMetrics()
+        let baseMode = swapRespondOn ? "respond" : (swapLiveOn ? "live" : "sim")
         var payload: [String: Any] = [
             "demo": swapDemoOn,
-            "mode": swapRespondOn ? "respond" : (swapLiveOn ? "live" : "sim"),
+            // §8.3: a "-mainnet" suffix on the live modes tells the UI to show the loud
+            // "REAL MAINNET FUNDS" labels (off on any shipped build — `swapMainnetOn` is false).
+            "mode": (swapMainnetOn && swapLiveOn) ? "\(baseMode)-mainnet" : baseMode,
+            "mainnet": swapMainnetOn,
             "swaps": swaps,
             "seen": Int(m.seen), "matched": Int(m.matched), "readvertised": Int(m.readvertised),
             "peers": Int(node.peerCount()),
@@ -271,6 +312,7 @@ extension Bridge {
         swapDemoOn = false
         swapLiveOn = false
         swapRespondOn = false
+        swapMainnetOn = false
         liveFundAddress = nil
         liveLockBook = nil
         return (true, ["ok": true])
@@ -359,7 +401,19 @@ extension Bridge {
     /// One-shot TESTNET head (the demo intent's expiry anchor); nil when offline. The main
     /// `NimiqRpc` is mainnet-only by design — this single read is the demo's only testnet IO.
     private func testnetHead() async -> UInt64? {
-        var req = URLRequest(url: URL(string: "https://rpc.testnet.nimiqwatch.com")!)
+        await headOf(url: "https://rpc.testnet.nimiqwatch.com")
+    }
+
+    /// One-shot MAINNET head (the §8.3 mainnet swap intent's expiry anchor); nil when offline.
+    /// Used only when `mainnetSwapArmed()` is true.
+    private func mainnetHead() async -> UInt64? {
+        await headOf(url: mainnetNimRpcUrl)
+    }
+
+    /// Read `getBlockNumber` from an Albatross JSON-RPC url (nil on any failure/offline).
+    private func headOf(url: String) async -> UInt64? {
+        guard let u = URL(string: url) else { return nil }
+        var req = URLRequest(url: u)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try? JSONSerialization.data(withJSONObject: [

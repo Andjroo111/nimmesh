@@ -55,6 +55,16 @@ pub fn live_swap_allowed_wire(network_id: u8) -> bool {
     }
 }
 
+/// Whether the mainnet swap path is **fully armed**: the master switch is on AND a deployed
+/// `NimmeshHtlc` address is recorded. **`false` on any merged branch** ([`MAINNET_SWAP_ENABLED`]
+/// is `false` and [`MAINNET_HTLC_ADDRESS`] is empty), so every mainnet swap constructor refuses and
+/// the UI can honestly label the state. Both halves must be true — the flag alone does nothing until
+/// Andjroo records the escrow contract, and an address without the flag stays disabled. Consulted by
+/// the mainnet live-swap constructors ([`crate::swap_live_ffi`]) and surfaced to the app over FFI.
+pub const fn mainnet_swap_armed() -> bool {
+    MAINNET_SWAP_ENABLED && !MAINNET_HTLC_ADDRESS.is_empty()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -78,6 +88,21 @@ mod tests {
         assert!(
             !live_swap_allowed_wire(99),
             "an unknown network id is refused"
+        );
+    }
+
+    #[test]
+    #[allow(clippy::assertions_on_constants)] // asserting the shipped const value IS the point
+    fn mainnet_swap_is_not_armed_on_a_merged_branch() {
+        // Both halves are off on any merged branch → the aggregate arm status is false, so every
+        // mainnet swap constructor refuses and the UI labels the state as disabled.
+        assert!(
+            !mainnet_swap_armed(),
+            "a merged branch must ship with the mainnet swap UNARMED"
+        );
+        assert!(
+            MAINNET_HTLC_ADDRESS.is_empty(),
+            "the HTLC address is empty until Andjroo deploys"
         );
     }
 }

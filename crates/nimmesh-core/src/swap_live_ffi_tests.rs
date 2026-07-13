@@ -31,6 +31,48 @@ fn the_lock_book_dedupes_and_bounds() {
     assert!(book.locks().len() <= 32, "the book is bounded");
 }
 
+#[test]
+fn the_mainnet_arm_gate_refuses_unless_flag_and_address() {
+    // Disabled master switch → refused regardless of the address.
+    assert!(matches!(
+        mainnet_htlc_if_armed(false, ""),
+        Err(LiveSwapFfiError::Refused { .. })
+    ));
+    assert!(matches!(
+        mainnet_htlc_if_armed(false, "0xb3B3703E07AC897B7E3e864C113a2Fa547D76736"),
+        Err(LiveSwapFfiError::Refused { .. })
+    ));
+    // Enabled but no recorded HTLC → refused (a flag without an address does nothing).
+    assert!(matches!(
+        mainnet_htlc_if_armed(true, ""),
+        Err(LiveSwapFfiError::Refused { .. })
+    ));
+    assert!(matches!(
+        mainnet_htlc_if_armed(true, "   "),
+        Err(LiveSwapFfiError::Refused { .. })
+    ));
+    // Fully armed (both true) → Ok(trimmed address).
+    assert_eq!(
+        mainnet_htlc_if_armed(true, " 0xF00Bar ").unwrap(),
+        "0xF00Bar"
+    );
+}
+
+#[test]
+fn the_shipped_mainnet_probes_report_unarmed() {
+    // On any merged/shipped build the aggregate probe is false and the reason is honest — so the
+    // app keeps its testnet path + labels until Andjroo's arming release flips the flag.
+    assert!(
+        !mainnet_swap_armed(),
+        "shipped build must never report armed"
+    );
+    let reason = mainnet_swap_reason();
+    assert!(
+        reason.to_lowercase().contains("disabled"),
+        "the reason should name the disabled master switch, got: {reason}"
+    );
+}
+
 // --- without the live features: every door refuses honestly (bindings parity) --------------------
 
 #[cfg(not(all(feature = "polygon-gateway", feature = "gateway-rpc")))]
@@ -68,6 +110,22 @@ mod unsupported {
             None,
         );
         assert!(matches!(got, Err(LiveSwapFfiError::Unsupported)));
+
+        // The MAINNET doors keep bindings parity: without the live features they refuse with
+        // `Unsupported` (the arm gate is never even consulted) — and the probe reports unarmed.
+        let radio = MockRadio::new("um", MockEther::new());
+        let got = crate::node::MeshNode::new_live_swap_initiator_mainnet(
+            b"um".to_vec(),
+            radio,
+            std::sync::Arc::new(crate::nimiq::signer::InMemoryEnclaveKey::from_secret(
+                &[1; 32],
+            )),
+            LiveLockBook::new(),
+            initiator_config(),
+            None,
+        );
+        assert!(matches!(got, Err(LiveSwapFfiError::Unsupported)));
+        assert!(!mainnet_swap_armed(), "the shipped build is never armed");
     }
 
     #[cfg(not(feature = "polygon-leg"))]
@@ -98,7 +156,10 @@ mod unsupported {
 mod live {
     use std::sync::Arc;
 
-    use super::live_impl::{build_live_intent, LockRecordingSigner, OneShotSigner};
+    use super::live_impl::{
+        assemble_initiator_mainnet, assemble_responder_mainnet, build_live_intent,
+        mainnet_money_path, LockRecordingSigner, OneShotSigner,
+    };
     use super::*;
     use crate::mock_radio::{MockEther, MockRadio};
     use crate::nimiq::address::Address;
@@ -111,6 +172,7 @@ mod live {
     use crate::radio::BleRadio;
     use crate::rpc::{MockRpc, RpcAccount};
     use crate::swap_coordinator::SwapContext;
+    use crate::swap_funding_verify::{ConfirmationPolicy, SwapCaps};
     use crate::swap_intent::Asset;
     use crate::swap_signer::SwapSigner;
     use crate::swap_wire::{SwapLegId, NIM_ADDRESS_LEN, SWAP_ID_LEN};
@@ -495,6 +557,139 @@ mod live {
         assert_eq!(addr, format!("0x{}", bytes_to_hex(&key.address())));
         assert!(evm_address_for_secret(vec![1; 16]).is_err());
         assert!(evm_address_for_secret(vec![0; 32]).is_err());
+    }
+
+    // --- MAINNET assembly (armed with an injected HTLC address; the shipped const stays off) ------
+
+    /// A stand-in deployed HTLC for the ARMED-assembly tests: any valid 20-byte 0x-hex. This is
+    /// injected straight into `assemble_*_mainnet`, so it NEVER touches the shipped
+    /// `MAINNET_HTLC_ADDRESS` const (still empty) or `MAINNET_SWAP_ENABLED` (still false).
+    const MAINNET_HTLC_HEX: &str = "0xA7bB819Ba03743643249dFCCa7508280eCE059b1";
+    /// A Nimiq mainnet RPC (no "testnet" fragment → `HttpGatewayRpc::new_mainnet` admits it).
+    const MAINNET_NIM_RPC: &str = "https://rpc.nimiqwatch.com";
+    /// An allow-listed Polygon mainnet RPC (`HttpPolygonRpc::new_mainnet` admits only these).
+    const MAINNET_POLY_RPC: &str = "https://polygon.drpc.org";
+
+    fn mainnet_init_cfg() -> FfiLiveInitiatorConfig {
+        let mut c = init_cfg();
+        c.nim_rpc_url = MAINNET_NIM_RPC.into();
+        c.amoy_rpc_url = MAINNET_POLY_RPC.into();
+        c.htlc_address = String::new(); // ignored on the mainnet path (the const wins)
+        c
+    }
+
+    fn mainnet_resp_cfg() -> FfiLiveResponderConfig {
+        let mut c = resp_cfg();
+        c.nim_rpc_url = MAINNET_NIM_RPC.into();
+        c.amoy_rpc_url = MAINNET_POLY_RPC.into();
+        c.htlc_address = String::new();
+        c.usdc_address = String::new(); // ignored — the native mainnet USDC const wins
+        c
+    }
+
+    #[test]
+    fn mainnet_money_path_selects_every_mainnet_component() {
+        let m = mainnet_money_path(MAINNET_HTLC_HEX).expect("valid htlc resolves");
+        assert_eq!(m.evm_chain_id, crate::evm_rlp::POLYGON_MAINNET_CHAIN_ID);
+        assert_eq!(m.evm_chain_id, 137, "Polygon mainnet chain id");
+        assert_eq!(m.network, crate::NetworkId::Mainnet);
+        assert_eq!(m.confirm_policy, ConfirmationPolicy::mainnet_defaults());
+        assert_eq!(m.caps, SwapCaps::mainnet_first_swap());
+        // The escrow contract is the injected address; the token is the NATIVE Circle USDC.
+        assert!(format!("0x{}", bytes_to_hex(&m.htlc)).eq_ignore_ascii_case(MAINNET_HTLC_HEX));
+        assert!(format!("0x{}", bytes_to_hex(&m.usdc))
+            .eq_ignore_ascii_case(crate::polygon_gateway::NATIVE_USDC_POLYGON_MAINNET));
+    }
+
+    #[test]
+    fn armed_initiator_assembly_is_mainnet_and_caps_refuse_over_cap() {
+        let (session, _signer, gateway, money) = assemble_initiator_mainnet(
+            wallet_key(),
+            LiveLockBook::new(),
+            mainnet_init_cfg(),
+            None,
+            MAINNET_HTLC_HEX,
+        )
+        .expect("armed initiator assembles");
+        // The intent is stamped MAINNET and gives NIM (the initiator role).
+        let intent = session
+            .identity
+            .standing_intent
+            .as_ref()
+            .expect("standing intent");
+        assert_eq!(intent.network_id, crate::NetworkId::Mainnet.wire_id());
+        assert_eq!(intent.gives, Asset::Nim);
+        assert!(gateway.is_none(), "no gateway requested");
+        // C1 live-safety holds: chain-backed verifier + non-sim secret + non-zero mainnet depths.
+        assert!(session.live_safety().is_ok());
+        // The hard mainnet caps are wired into the session and REFUSE over-cap.
+        assert_eq!(money.caps, SwapCaps::mainnet_first_swap());
+        assert!(
+            session.within_caps(50 * 100_000, 5 * 1_000_000),
+            "exactly at cap is admitted"
+        );
+        assert!(
+            !session.within_caps(51 * 100_000, 5 * 1_000_000),
+            "over the NIM cap is refused"
+        );
+        assert!(
+            !session.within_caps(50 * 100_000, 6 * 1_000_000),
+            "over the USDC cap is refused"
+        );
+    }
+
+    #[test]
+    fn armed_responder_assembly_uses_native_usdc_and_mainnet() {
+        let (session, _signer, gateway, money) =
+            assemble_responder_mainnet(mainnet_resp_cfg(), None, MAINNET_HTLC_HEX)
+                .expect("armed responder assembles");
+        let intent = session
+            .identity
+            .standing_intent
+            .as_ref()
+            .expect("standing intent");
+        assert_eq!(intent.network_id, crate::NetworkId::Mainnet.wire_id());
+        assert_eq!(intent.gives, Asset::Usdc);
+        assert!(gateway.is_none());
+        assert!(session.live_safety().is_ok());
+        // The responder escrows the NATIVE Polygon-mainnet USDC (never `config.usdc_address`).
+        assert!(format!("0x{}", bytes_to_hex(&money.usdc))
+            .eq_ignore_ascii_case(crate::polygon_gateway::NATIVE_USDC_POLYGON_MAINNET));
+        assert!(
+            !session.within_caps(50 * 100_000, 6 * 1_000_000),
+            "over the USDC cap is refused"
+        );
+    }
+
+    #[test]
+    fn the_mainnet_ctors_refuse_while_unarmed() {
+        // With the shipped consts (flag off, empty HTLC address) the FFI ctors REFUSE — inert.
+        let got = MeshNode::new_live_swap_initiator_mainnet(
+            b"m".to_vec(),
+            radio("m"),
+            wallet_key(),
+            LiveLockBook::new(),
+            mainnet_init_cfg(),
+            None,
+        );
+        assert!(
+            matches!(got, Err(LiveSwapFfiError::Refused { .. })),
+            "the unarmed mainnet initiator refuses"
+        );
+        let got = MeshNode::new_live_swap_responder_mainnet(
+            b"m2".to_vec(),
+            radio("m2"),
+            mainnet_resp_cfg(),
+            None,
+        );
+        assert!(
+            matches!(got, Err(LiveSwapFfiError::Refused { .. })),
+            "the unarmed mainnet responder refuses"
+        );
+        assert!(
+            !mainnet_swap_armed(),
+            "the probe agrees the path is unarmed"
+        );
     }
 }
 

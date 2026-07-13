@@ -108,6 +108,56 @@ fn bad(reason: impl Into<String>) -> LiveSwapFfiError {
     }
 }
 
+// --- the mainnet arming gate (pure; testable without the live features) ------------------------
+
+/// The mainnet-arming predicate, factored so the mainnet swap assembly is unit-testable with an
+/// injected `(allowed, htlc_address)` — WITHOUT ever flipping the shipped
+/// [`crate::mainnet_swap::MAINNET_SWAP_ENABLED`] const. Returns the trimmed HTLC address iff the
+/// master switch allows mainnet AND a deployed escrow contract is recorded; otherwise a clear
+/// [`LiveSwapFfiError::Refused`]. The mainnet constructors call it with the shipped consts
+/// (`live_swap_allowed(Mainnet)` = `false`, `MAINNET_HTLC_ADDRESS` = `""` on any merged branch), so
+/// they **always refuse and the whole mainnet path is inert** until Andjroo's arming PR flips both.
+pub(crate) fn mainnet_htlc_if_armed(
+    allowed: bool,
+    htlc_address: &str,
+) -> Result<String, LiveSwapFfiError> {
+    if !allowed {
+        return Err(LiveSwapFfiError::Refused {
+            reason: "mainnet swap is disabled (mainnet_swap::MAINNET_SWAP_ENABLED = false)".into(),
+        });
+    }
+    let addr = htlc_address.trim();
+    if addr.is_empty() {
+        return Err(LiveSwapFfiError::Refused {
+            reason: "mainnet HTLC address is not set (mainnet_swap::MAINNET_HTLC_ADDRESS is empty)"
+                .into(),
+        });
+    }
+    Ok(addr.to_string())
+}
+
+/// **App probe:** whether the mainnet swap path is fully armed (the master switch is on AND a
+/// deployed HTLC address is recorded — see [`crate::mainnet_swap::mainnet_swap_armed`]). `false` on
+/// any shipped/merged build, so the UI keeps its testnet path + labels; the arming release flips it.
+#[uniffi::export]
+pub fn mainnet_swap_armed() -> bool {
+    crate::mainnet_swap::mainnet_swap_armed()
+}
+
+/// **App probe:** a human-readable reason for the current mainnet-swap arm state, so the UI can
+/// label it honestly (e.g. "REAL MAINNET FUNDS" when armed, or why it is disabled when not).
+#[uniffi::export]
+pub fn mainnet_swap_reason() -> String {
+    match mainnet_htlc_if_armed(
+        crate::mainnet_swap::live_swap_allowed(crate::NetworkId::Mainnet),
+        crate::mainnet_swap::MAINNET_HTLC_ADDRESS,
+    ) {
+        Ok(htlc) => format!("armed — real mainnet funds; escrow {htlc}"),
+        Err(LiveSwapFfiError::Refused { reason }) => reason,
+        Err(e) => e.to_string(),
+    }
+}
+
 /// Everything the PHONE (NIM-giver / initiator) needs to run one real testnet⇄Amoy swap.
 /// Secrets in this record enter the core once and never cross back (the G45/G11 rule); the
 /// wallet's NIM key is NOT here — it stays behind the [`EnclaveKey`] foreign trait argument.
@@ -440,6 +490,77 @@ impl MeshNode {
         #[cfg(all(feature = "polygon-gateway", feature = "gateway-rpc"))]
         {
             live_impl::build_responder(sender_id, radio, config, gateway_rpc_url)
+        }
+        #[cfg(not(all(feature = "polygon-gateway", feature = "gateway-rpc")))]
+        {
+            let _ = (sender_id, radio, config, gateway_rpc_url);
+            Err(LiveSwapFfiError::Unsupported)
+        }
+    }
+
+    /// **OWNER-GATED (real money): the MAINNET initiator.** The mirror of
+    /// [`Self::new_live_swap_initiator`] on Albatross **mainnet** ⇄ Polygon **mainnet**. It
+    /// **REFUSES** with a clear [`LiveSwapFfiError::Refused`] unless the mainnet swap path is fully
+    /// armed (`mainnet_swap::MAINNET_SWAP_ENABLED` AND a recorded `MAINNET_HTLC_ADDRESS`) — both
+    /// off on any shipped build, so this **always refuses and is inert** until Andjroo's arming PR.
+    /// When armed it assembles the mainnet money-path config in CODE (native USDC, chain id `137`,
+    /// mainnet confirmation depths, and the hard [`crate::swap_funding_verify::SwapCaps::mainnet_first_swap`]
+    /// caps); `config.htlc_address`/`config.usdc_address` are IGNORED — the escrow contract + token
+    /// are the code-pinned mainnet constants, never caller-supplied. Pass mainnet RPC urls
+    /// (`config.nim_rpc_url` = a Nimiq mainnet RPC; `config.amoy_rpc_url` = an allow-listed Polygon
+    /// mainnet RPC). Requires `polygon-gateway` + `gateway-rpc`; refuses otherwise.
+    #[uniffi::constructor]
+    pub fn new_live_swap_initiator_mainnet(
+        sender_id: Vec<u8>,
+        radio: Arc<dyn BleRadio>,
+        nim_funding_key: Arc<dyn EnclaveKey>,
+        lock_book: Arc<LiveLockBook>,
+        config: FfiLiveInitiatorConfig,
+        gateway_rpc_url: Option<String>,
+    ) -> Result<Arc<Self>, LiveSwapFfiError> {
+        #[cfg(all(feature = "polygon-gateway", feature = "gateway-rpc"))]
+        {
+            live_impl::build_initiator_mainnet(
+                sender_id,
+                radio,
+                nim_funding_key,
+                lock_book,
+                config,
+                gateway_rpc_url,
+            )
+        }
+        #[cfg(not(all(feature = "polygon-gateway", feature = "gateway-rpc")))]
+        {
+            let _ = (
+                sender_id,
+                radio,
+                nim_funding_key,
+                lock_book,
+                config,
+                gateway_rpc_url,
+            );
+            Err(LiveSwapFfiError::Unsupported)
+        }
+    }
+
+    /// **OWNER-GATED (real money): the MAINNET responder.** The mirror of
+    /// [`Self::new_live_swap_responder`] on mainnet ⇄ mainnet. It **REFUSES** unless the mainnet
+    /// swap path is fully armed (see [`Self::new_live_swap_initiator_mainnet`]) — inert on any
+    /// shipped build. When armed it escrows **native Polygon-mainnet USDC**
+    /// ([`crate::polygon_gateway::NATIVE_USDC_POLYGON_MAINNET`], code-pinned — `config.usdc_address`
+    /// is ignored) in the code-pinned `MAINNET_HTLC_ADDRESS`, funds NOTHING until its mainnet
+    /// `NimHtlcVerifier` sees the NIM HTLC on-chain at the mainnet depth, and refuses any swap above
+    /// the hard `SwapCaps::mainnet_first_swap` caps. Requires `polygon-gateway` + `gateway-rpc`.
+    #[uniffi::constructor]
+    pub fn new_live_swap_responder_mainnet(
+        sender_id: Vec<u8>,
+        radio: Arc<dyn BleRadio>,
+        config: FfiLiveResponderConfig,
+        gateway_rpc_url: Option<String>,
+    ) -> Result<Arc<Self>, LiveSwapFfiError> {
+        #[cfg(all(feature = "polygon-gateway", feature = "gateway-rpc"))]
+        {
+            live_impl::build_responder_mainnet(sender_id, radio, config, gateway_rpc_url)
         }
         #[cfg(not(all(feature = "polygon-gateway", feature = "gateway-rpc")))]
         {

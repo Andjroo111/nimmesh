@@ -565,6 +565,11 @@
     margin: 14px 0 0; font-size: 14px; color: rgba(31,35,72,.7); cursor: pointer; }
   .swap-real-row input { width: 16px; height: 16px; accent-color: #0582CA; }
   .swap-sim-note.live { color: #c4510b; font-weight: 600; }
+  /* §8.3: REAL MAINNET FUNDS — louder than the testnet-live note (dormant until armed). */
+  .swap-sim-note.mainnet { color: #fff; background: #d24317; font-weight: 800; letter-spacing: .2px;
+    border-radius: 8px; padding: 6px 10px; text-transform: uppercase; }
+  .swap-real-row.mainnet span { color: #d24317; font-weight: 800; }
+  .swap-real-row.mainnet input { accent-color: #d24317; }
   .swap-respond-fund { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 10px 24px 0; }
   .swap-respond-fund[hidden] { display: none !important; }
   #swap-fund-addr { font-family: 'Fira Mono', 'Roboto Mono', monospace; font-size: 12px; letter-spacing: -.01em; word-break: break-all; text-align: center; }
@@ -1669,7 +1674,7 @@ Don't share them and keep them safe.</p>
     <!-- Responder mode only: the derived Amoy account that escrows USDC — surfaced so the
          owner funds it with test USDC + POL before it can answer a swap (never-strand). -->
     <div class="swap-respond-fund" id="swap-respond-fund" hidden>
-      <p class="swap-sim-note live" data-i18n="swap.respond.fund">Fund this address with test USDC + POL to answer swaps</p>
+      <p class="swap-sim-note live fund-note" data-i18n="swap.respond.fund">Fund this address with test USDC + POL to answer swaps</p>
       <div class="copyable" id="swap-fund-copyable" tabindex="0"><div class="background"></div><div class="address" id="swap-fund-addr"></div><div class="tooltip" data-i18n="a.copied">Copied</div></div>
     </div>
     <div class="swap-phases" id="swap-phases" hidden></div>
@@ -2072,6 +2077,14 @@ Don't share them and keep them safe.</p>
     'swap.livenote': 'TESTNET — real test coins are moving (NIM \u21c4 USDC)',
     'swap.real.live': 'Live over Bluetooth — TESTNET, real test coins',
     'swap.real.noprices': 'Live prices unavailable — try again in a moment',
+    // §8.3 MAINNET honest labels — shown only when mainnetSwapArmed() is true (never on a
+    // shipped build). Loud + explicit that REAL mainnet funds move, capped to the first-swap size.
+    'swap.real.mainnet.label': 'REAL MAINNET funds (NIM ⇄ USDC)',
+    'swap.respond.mainnet.label': 'Respond on MAINNET (give REAL USDC, receive NIM)',
+    'swap.mainnetnote': 'REAL MAINNET FUNDS — NIM ⇄ USDC on mainnet',
+    'swap.mainnet.live': 'LIVE on MAINNET — REAL funds are moving (NIM ⇄ USDC)',
+    'swap.mainnet.cap': 'Capped for the first mainnet swap: ≤ 50 NIM / ≤ 5 USDC',
+    'swap.respond.mainnet.fund': 'Fund this MAINNET address with REAL USDC + POL (same address as testnet — EVM addresses are chain-agnostic)',
     'swap.locks': 'NIM lock pending refund',
     'swap.cta': 'Confirm',
     'swap.respond.label': 'Respond to swaps (give USDC, receive NIM)',
@@ -2801,12 +2814,25 @@ Don't share them and keep them safe.</p>
   function updateSwapHonestyNotes() {
     const realToggle = document.getElementById('swap-real-toggle');
     const respondToggle = document.getElementById('swap-respond-toggle');
-    // Both the "real" initiator path and the responder path move real test coins → live note.
+    // Both the "real" initiator path and the responder path move real coins → live note.
     const live = !!((realToggle && realToggle.checked) || (respondToggle && respondToggle.checked));
-    document.querySelectorAll('.swap-sim-note').forEach((el) => {
-      el.textContent = live ? T('swap.livenote') : T('swap.simnote');
-      el.classList.toggle('live', live);
+    // §8.3: on an ARMED build the live note is the loud MAINNET one (off on any shipped build).
+    const mainnet = live && !!window.__mainnetArmed;
+    // The responder-fund note carries its own copy (`showRespondFund`) — never clobber it here.
+    document.querySelectorAll('.swap-sim-note:not(.fund-note)').forEach((el) => {
+      el.textContent = mainnet ? T('swap.mainnetnote') : (live ? T('swap.livenote') : T('swap.simnote'));
+      el.classList.toggle('live', live && !mainnet);
+      el.classList.toggle('mainnet', mainnet);
     });
+  }
+  // §8.3: when the mainnet swap path is ARMED (off on any shipped build), relabel the toggles +
+  // honesty notes to shout REAL MAINNET FUNDS. Dormant until Andjroo's arming release flips the flag.
+  function applyMainnetSwapLabels() {
+    const realRow = document.getElementById('swap-real-row');
+    if (realRow) { realRow.classList.add('mainnet'); const s = realRow.querySelector('span'); if (s) s.textContent = T('swap.real.mainnet.label'); }
+    const respondRow = document.getElementById('swap-respond-row');
+    if (respondRow) { respondRow.classList.add('mainnet'); const s = respondRow.querySelector('span'); if (s) s.textContent = T('swap.respond.mainnet.label'); }
+    updateSwapHonestyNotes();
   }
   (function wireSwapRealToggle() {
     const row = document.getElementById('swap-real-row');
@@ -2816,6 +2842,13 @@ Don't share them and keep them safe.</p>
     if (!row || !toggle) return;
     const hasBridge = !!(window.nimmesh && window.nimmesh.swapMeshStart);
     if (hasBridge) { row.hidden = false; if (respondRow) respondRow.hidden = false; }
+    // Probe the armed state once (async); when armed, apply the loud mainnet labels + caps.
+    if (hasBridge && window.nimmesh.mainnetSwapArmed) {
+      window.nimmesh.mainnetSwapArmed().then((s) => {
+        window.__mainnetArmed = !!(s && s.armed);
+        if (window.__mainnetArmed) applyMainnetSwapLabels();
+      }).catch(() => {});
+    }
     toggle.addEventListener('change', () => {
       // Proposing real coins and responding are mutually exclusive modes.
       if (toggle.checked && respondToggle) respondToggle.checked = false;
@@ -2850,6 +2883,15 @@ Don't share them and keep them safe.</p>
     if (!panel || !line) return;
     if (!swapFundAddr) { panel.hidden = true; return; }
     line.textContent = swapFundAddr;
+    // §8.3: on an ARMED build this is the wallet-derived MAINNET EVM funding address — the SAME
+    // address as testnet (EVM addresses are chain-agnostic), funded with REAL USDC + POL.
+    const note = panel.querySelector('.fund-note');
+    if (note) {
+      const mainnet = !!window.__mainnetArmed;
+      note.textContent = mainnet ? T('swap.respond.mainnet.fund') : T('swap.respond.fund');
+      note.classList.toggle('mainnet', mainnet);
+      note.classList.toggle('live', !mainnet);
+    }
     panel.hidden = false;
   }
   (function wireSwapFundCopyable() {
@@ -2880,15 +2922,19 @@ Don't share them and keep them safe.</p>
     let st;
     try { st = await window.nimmesh.swapMeshStatus(); } catch (e) { return; }
     const statusEl = document.getElementById('swap-status');
-    const respondMode = st.mode === 'respond';
-    const liveMode = st.mode === 'live' || respondMode;
+    // §8.3: the live modes carry a "-mainnet" suffix + a `mainnet` flag when armed (off on any
+    // shipped build) — surface the loud MAINNET live label.
+    const mainnetMode = !!st.mainnet;
+    const respondMode = st.mode === 'respond' || st.mode === 'respond-mainnet';
+    const liveMode = st.mode === 'live' || st.mode === 'live-mainnet' || respondMode;
+    const liveLabel = mainnetMode ? T('swap.mainnet.live') : T('swap.real.live');
     if (respondMode && st.fundAddress && st.fundAddress !== swapFundAddr) showRespondFund(st.fundAddress);
     const lockNote = (st.locks && st.locks.length)
       ? ` · ${st.locks.length} ${T('swap.locks')}` : '';
     const sw = (st.swaps || [])[0];
     if (!sw) {
       // No swap matched yet: a responder is LISTENING; an initiator is broadcasting its intent.
-      const head = respondMode ? T('swap.respond.listening') : T(liveMode ? 'swap.real.live' : 'swap.live');
+      const head = respondMode ? T('swap.respond.listening') : (liveMode ? liveLabel : T('swap.live'));
       statusEl.textContent = `${head} · ${st.peers} peers · ${st.seen} intents${lockNote}`;
       return;
     }
@@ -2904,7 +2950,7 @@ Don't share them and keep them safe.</p>
     }
     renderSwapPhases(step);
     statusEl.textContent = (step >= 6 ? T('swap.settled') : T('swap.matched'))
-      + (liveMode ? ` · ${T('swap.real.live')}` : '') + lockNote;
+      + (liveMode ? ` · ${liveLabel}` : '') + lockNote;
     if (step >= 6) {
       document.getElementById('swap-done').hidden = false;
       clearInterval(swapPoll); swapPoll = null;
@@ -2919,6 +2965,9 @@ Don't share them and keep them safe.</p>
     // RESPONDER mode the amount is NIM you'll RECEIVE (you give USDC) — no NIM is spent,
     // so the wallet-balance ceiling doesn't apply.
     if (!respondMode && nim * 1e5 > (window.__lastLuna || 0)) { alert(T('err.overbalance')); return; }
+    // §8.3: on an ARMED build enforce the ≤ 50 NIM first-swap cap in the UI (the core enforces
+    // it definitively too — the coordinator refuses to propose/accept above the SwapCaps).
+    if (window.__mainnetArmed && nim > 50) { alert(T('swap.mainnet.cap')); return; }
     document.getElementById('swap-setup').hidden = true;
     document.getElementById('swap-progress').hidden = false;
     if (window.nimmesh && window.nimmesh.swapMeshStart) {
@@ -2934,6 +2983,12 @@ Don't share them and keep them safe.</p>
           return;
         }
         const usdcMicro = Math.max(1, Math.round((nim * nimPrice / usdcPrice) * 1e6));
+        if (window.__mainnetArmed && usdcMicro > 5 * 1e6) {
+          alert(T('swap.mainnet.cap'));
+          document.getElementById('swap-setup').hidden = false;
+          document.getElementById('swap-progress').hidden = true;
+          return;
+        }
         document.getElementById('swap-searching-title').textContent = T('swap.respond.listening');
         document.getElementById('swap-searching-sub').textContent = T('swap.respond.sub');
         document.getElementById('swap-status').textContent = T('swap.real.live');
@@ -2963,7 +3018,13 @@ Don't share them and keep them safe.</p>
           return;
         }
         const usdcMicro = Math.max(1, Math.round((nim * nimPrice / usdcPrice) * 1e6));
-        document.getElementById('swap-status').textContent = T('swap.real.live');
+        if (window.__mainnetArmed && usdcMicro > 5 * 1e6) {
+          alert(T('swap.mainnet.cap'));
+          document.getElementById('swap-setup').hidden = false;
+          document.getElementById('swap-progress').hidden = true;
+          return;
+        }
+        document.getElementById('swap-status').textContent = T(window.__mainnetArmed ? 'swap.mainnet.live' : 'swap.real.live');
         updateSwapHonestyNotes();
         try {
           await window.nimmesh.swapMeshStart({

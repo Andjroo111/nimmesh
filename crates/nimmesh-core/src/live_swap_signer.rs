@@ -36,7 +36,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::amoy_swap_verifier::{escrow_state, STATE_CLAIMED, STATE_LIVE};
 use crate::evm::keccak256;
 use crate::evm_abi::{erc20_approve, htlc_new_swap, htlc_withdraw};
-use crate::evm_rlp::LegacyTx;
+use crate::evm_rlp::{LegacyTx, POLYGON_AMOY_CHAIN_ID, POLYGON_MAINNET_CHAIN_ID};
 use crate::evm_signer::LocalEvmKey;
 use crate::nim_verifier::{nim_htlc_timeout_ms, NimFundingStore};
 use crate::nimiq::address::Address;
@@ -197,11 +197,16 @@ impl LivePollConfig {
 
 // --- shared EVM helpers ---------------------------------------------------------------------------
 
-/// Sign + broadcast one Amoy legacy tx; returns `(raw, keccak-tx-hash)`.
+/// Sign + broadcast one Polygon legacy tx on `chain_id`; returns `(raw, keccak-tx-hash)`. The
+/// chain id selects the EIP-155 network the tx is REPLAY-BOUND to: [`POLYGON_AMOY_CHAIN_ID`]
+/// (testnet default) or [`POLYGON_MAINNET_CHAIN_ID`] (`137`, only when the caller is the
+/// off-by-default mainnet swap path). A wrong id would make a mainnet node reject the tx, so the
+/// signer's `evm_chain_id` is the single source and must match the RPC's network.
 #[allow(clippy::too_many_arguments)]
 fn send_evm_tx(
     chain: &Arc<dyn AmoyChain>,
     key: &LocalEvmKey,
+    chain_id: u64,
     nonce: u64,
     gas_price: u64,
     gas_limit: u64,
@@ -209,7 +214,13 @@ fn send_evm_tx(
     data: &[u8],
     label: &str,
 ) -> Option<(Vec<u8>, [u8; 32])> {
-    let tx = LegacyTx::polygon_amoy(nonce, gas_price, gas_limit, *to, 0, data);
+    // Select the named constructor so the chain-id source is auditable; mainnet is reachable ONLY
+    // when the caller explicitly set `evm_chain_id = POLYGON_MAINNET_CHAIN_ID` (the gated path).
+    let tx = if chain_id == POLYGON_MAINNET_CHAIN_ID {
+        LegacyTx::polygon_mainnet(nonce, gas_price, gas_limit, *to, 0, data)
+    } else {
+        LegacyTx::polygon_amoy(nonce, gas_price, gas_limit, *to, 0, data)
+    };
     let raw = tx.sign_with(key);
     let hash = keccak256(&raw);
     match chain.send_raw(&raw) {
@@ -278,16 +289,22 @@ pub struct LiveInitiatorConfig {
 pub struct LiveInitiatorSigner {
     cfg: LiveInitiatorConfig,
     clock_ms: Box<dyn Fn() -> u64 + Send + Sync>,
+    /// The EIP-155 chain id every Polygon tx this signer builds is bound to. Defaults to
+    /// [`POLYGON_AMOY_CHAIN_ID`] (testnet); the off-by-default mainnet swap path overrides it to
+    /// [`POLYGON_MAINNET_CHAIN_ID`] via [`Self::with_evm_chain_id`] so the `withdraw(S)` reveal is
+    /// replay-bound to mainnet — must match the network of `cfg.amoy`.
+    evm_chain_id: u64,
     /// The last successfully-landed claim, replayed if the driver retries after a poll timeout.
     last_claim: Mutex<Option<(Vec<u8>, [u8; 32])>>,
 }
 
 impl LiveInitiatorSigner {
-    /// A live initiator signer over `cfg`.
+    /// A live initiator signer over `cfg` (Amoy testnet chain id by default).
     pub fn new(cfg: LiveInitiatorConfig) -> Self {
         LiveInitiatorSigner {
             cfg,
             clock_ms: Box::new(system_now_ms),
+            evm_chain_id: POLYGON_AMOY_CHAIN_ID,
             last_claim: Mutex::new(None),
         }
     }
@@ -295,6 +312,14 @@ impl LiveInitiatorSigner {
     /// Inject a deterministic clock (tests).
     pub fn with_clock(mut self, clock_ms: Box<dyn Fn() -> u64 + Send + Sync>) -> Self {
         self.clock_ms = clock_ms;
+        self
+    }
+
+    /// Bind this signer's Polygon txs to `chain_id` (EIP-155). Set by the off-by-default mainnet
+    /// swap path to [`POLYGON_MAINNET_CHAIN_ID`]; unset stays [`POLYGON_AMOY_CHAIN_ID`] so the
+    /// testnet path is byte-identical.
+    pub fn with_evm_chain_id(mut self, chain_id: u64) -> Self {
+        self.evm_chain_id = chain_id;
         self
     }
 
@@ -394,6 +419,7 @@ impl LiveInitiatorSigner {
         let (raw, hash) = send_evm_tx(
             &self.cfg.amoy,
             &self.cfg.evm_gas_key,
+            self.evm_chain_id,
             nonce,
             gas_price,
             self.cfg.gas.gas_withdraw,
@@ -537,17 +563,22 @@ pub struct LiveResponderConfig {
 pub struct LiveResponderSigner {
     cfg: LiveResponderConfig,
     clock_s: Box<dyn Fn() -> u64 + Send + Sync>,
+    /// The EIP-155 chain id every Polygon tx this signer builds (`approve` + `newSwap`) is bound
+    /// to. Defaults to [`POLYGON_AMOY_CHAIN_ID`]; the off-by-default mainnet swap path overrides it
+    /// to [`POLYGON_MAINNET_CHAIN_ID`] via [`Self::with_evm_chain_id`] — must match `cfg.amoy`.
+    evm_chain_id: u64,
     /// The last successfully-landed funding (wire + tx id + swapId), replayed if the driver
     /// retries after a partial failure and the escrow turns out live after all.
     last_funding: Mutex<Option<LandedFunding>>,
 }
 
 impl LiveResponderSigner {
-    /// A live responder signer over `cfg`.
+    /// A live responder signer over `cfg` (Amoy testnet chain id by default).
     pub fn new(cfg: LiveResponderConfig) -> Self {
         LiveResponderSigner {
             cfg,
             clock_s: Box::new(system_now_s),
+            evm_chain_id: POLYGON_AMOY_CHAIN_ID,
             last_funding: Mutex::new(None),
         }
     }
@@ -555,6 +586,13 @@ impl LiveResponderSigner {
     /// Inject a deterministic clock (tests).
     pub fn with_clock(mut self, clock_s: Box<dyn Fn() -> u64 + Send + Sync>) -> Self {
         self.clock_s = clock_s;
+        self
+    }
+
+    /// Bind this signer's Polygon txs to `chain_id` (EIP-155). Set by the off-by-default mainnet
+    /// swap path to [`POLYGON_MAINNET_CHAIN_ID`]; unset stays [`POLYGON_AMOY_CHAIN_ID`].
+    pub fn with_evm_chain_id(mut self, chain_id: u64) -> Self {
+        self.evm_chain_id = chain_id;
         self
     }
 
@@ -621,6 +659,7 @@ impl LiveResponderSigner {
         let (_, approve_hash) = send_evm_tx(
             &self.cfg.amoy,
             &self.cfg.evm_key,
+            self.evm_chain_id,
             nonce,
             gas_price,
             self.cfg.gas.gas_approve,
@@ -637,6 +676,7 @@ impl LiveResponderSigner {
         let (raw, new_swap_hash) = send_evm_tx(
             &self.cfg.amoy,
             &self.cfg.evm_key,
+            self.evm_chain_id,
             nonce,
             gas_price,
             self.cfg.gas.gas_new_swap,
