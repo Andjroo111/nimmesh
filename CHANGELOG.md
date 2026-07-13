@@ -2,6 +2,23 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.72.2] — 2026-07-12
+
+### Fixed — a foreign-network gateway can no longer poison the wallet balance
+
+Field bug (Andjroo's 2-phone mainnet test): the home balance read **0 NIM in airplane mode**
+even though the offline cache (0.53.3) was intact. Root cause: `WorkerCtx` built its G15
+`BalanceCache` with the **unpinned** constructor, which adopts the FIRST answer's network —
+the Mac, running as a *testnet* swap responder for days, answered the mainnet phone's
+balance query with the address's testnet balance (0); the cache pinned itself to testnet,
+painted 0 over a funded wallet, and then rejected every genuine mainnet answer as a
+network mismatch. Two-layer fix: the cache is now **pinned to the node's own network at
+build** (`BalanceCache::for_network`, exactly like the head cache one line above — e2e
+regression: a mainnet node never caches a testnet answer, first-heard included, and still
+accepts a real mainnet answer after it), and the webui's mesh-balance paint gained a
+**monotonic head-height guard** so a stale replay can never repaint or re-cache the page
+(history had this tier guard since 0.57.0; balance never did — Playwright-verified).
+
 ## [0.72.1] — 2026-07-12
 
 ### Changed — OTA ships the M5-hardened core + installs on the second test iPhone

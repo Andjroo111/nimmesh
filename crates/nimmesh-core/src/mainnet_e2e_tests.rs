@@ -12,8 +12,9 @@
 
 use std::sync::Arc;
 
-use crate::gateway::{MeshGateway, RpcGateway};
+use crate::gateway::{MeshGateway, MockGateway, RpcGateway};
 use crate::mock_radio::MeshHarness;
+use crate::nimiq::address::Address;
 use crate::nimiq::signer::InMemoryEnclaveKey;
 use crate::nimiq::{AppSigner, TransferIntent};
 use crate::rpc::MockRpc;
@@ -154,6 +155,75 @@ fn history_over_mesh_round_trips_through_fragments_on_mainnet() {
     assert!(rows.iter().all(|r| r.head_height == 9_100_000));
 
     h.shutdown();
+}
+
+#[test]
+fn a_mainnet_node_never_caches_a_testnet_balance_answer() {
+    // The 2026-07-12 field bug: the Mac ran as a TESTNET swap responder next to the
+    // mainnet phone; it answered the phone's balance query with the address's TESTNET
+    // balance (0). The ctx's unpinned BalanceCache adopted the FIRST answer's network,
+    // painted "0 NIM" over a funded mainnet wallet, and then rejected every genuine
+    // mainnet answer as a network mismatch. The cache is now pinned to the node's own
+    // network at build: the foreign answer must never land — even heard first — and a
+    // real mainnet answer must still land after it.
+    let mut h = MeshHarness::new();
+    let tgw = Arc::new(MockGateway::new(NetworkId::Testnet));
+    tgw.set_balance(0, 5_300_000); // the address is unfunded on TESTNET
+    let gateway = h.add_gateway_on("tgw", &[3], tgw, NetworkId::Testnet);
+    let phone = h.add_node_on("phone", &[1], NetworkId::Mainnet);
+    h.connect("tgw", "phone");
+
+    let addr = Address::from_bytes([0x11; 20]).to_user_friendly();
+    phone.query_balance(addr.clone());
+    assert!(
+        wait_until(|| gateway.balance_answered() >= 1, SETTLE),
+        "the testnet gateway never answered the query"
+    );
+    // Drain the mesh to quiescence (ADR-0005 fences — no wall-clock) so the answer has
+    // provably REACHED the phone before the negative assertion below.
+    settle(&h.ether(), &[gateway.clone(), phone.clone()]);
+    assert_eq!(
+        phone.test_cached_balance(&addr),
+        None,
+        "a wrong-network balance answer must never be cached"
+    );
+
+    // A mainnet gateway joins and answers: the pinned cache accepts the true balance.
+    let mgw = Arc::new(MockGateway::new(NetworkId::Mainnet));
+    mgw.set_balance(59_500_000, 55_555_555);
+    let _mgateway = h.add_gateway_on("mgw", &[4], mgw, NetworkId::Mainnet);
+    h.connect("mgw", "phone");
+    phone.query_balance(addr.clone());
+    assert!(
+        wait_until(|| phone.test_cached_balance(&addr).is_some(), SETTLE),
+        "the mainnet answer never landed"
+    );
+    let cached = phone
+        .test_cached_balance(&addr)
+        .expect("mainnet balance cached");
+    assert_eq!(cached.balance, 59_500_000);
+    assert_eq!(cached.head_height, 55_555_555);
+    assert_eq!(cached.network_id, NetworkId::Mainnet.wire_id());
+    h.shutdown();
+}
+
+/// ADR-0005 fence drain (the [`crate::swap_discovery_stress_tests`] `settle` shape): fence
+/// every node, deliver the ether, fence again — until a full pass moves zero new transmits.
+fn settle(ether: &crate::mock_radio::MockEther, nodes: &[Arc<crate::node::MeshNode>]) {
+    for _ in 0..64 {
+        for n in nodes {
+            n.fence();
+        }
+        let before = ether.enqueued();
+        ether.fence();
+        for n in nodes {
+            n.fence();
+        }
+        if ether.enqueued() == before {
+            return;
+        }
+    }
+    panic!("settle: mesh failed to reach quiescence");
 }
 
 #[test]

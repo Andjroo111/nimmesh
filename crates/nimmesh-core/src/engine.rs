@@ -159,7 +159,12 @@ impl WorkerCtx {
             // The head cache validates beacons against THIS node's network, so a
             // mainnet node anchors only to mainnet heads (and vice versa).
             head: Mutex::new(HeadCache::new(network.wire_id())),
-            balances: Mutex::new(BalanceCache::new()),
+            // Pinned to THIS node's network like the head cache. The unpinned ctor adopts
+            // the FIRST answer's network — one foreign-network gateway nearby (e.g. a
+            // testnet swap responder) pins a mainnet wallet's cache to testnet, poisons it
+            // with "balance 0", and then every genuine mainnet answer is rejected as a
+            // network mismatch (field bug, 2026-07-12).
+            balances: Mutex::new(BalanceCache::for_network(network.wire_id())),
             history: Mutex::new(crate::tx_history::HistoryCache::default()),
             chat: Mutex::new(crate::chat::ChatLog::default()),
             history_answered: AtomicUsize::new(0),

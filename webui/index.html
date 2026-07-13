@@ -3710,6 +3710,14 @@ Don't share them and keep them safe.</p>
         if (nimmesh.meshQueryHistory) nimmesh.meshQueryHistory().catch(() => {});
         const paintMesh = (mb) => {
           if (mb && mb.has && typeof mb.luna === 'number') {
+            // Monotonic guard: a mesh answer may only repaint (and re-cache) the wallet
+            // if it is at least as fresh — by the chain head it was read at — as the last
+            // answer applied this session. The core now also pins its answer cache to the
+            // node's own network (a foreign-network gateway can no longer poison the
+            // balance); this keeps any stale replay from regressing the page.
+            const h = typeof mb.headHeight === 'number' ? mb.headHeight : 0;
+            if (h < (window.__meshBalHead || 0)) return;
+            window.__meshBalHead = h;
             window.__lastLuna = mb.luna;
             paintAmounts(mb.luna);
             try { localStorage.setItem(cacheKey('balance'), JSON.stringify({ luna: mb.luna, at: Date.now() })); } catch (e) {}
