@@ -2,6 +2,72 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.74.0] — 2026-07-13
+
+### Added — the BTC-leg funding verifier (#72 tail, the third chain)
+
+The swap had gateway-backed `FundingVerifier`s for the NIM leg (`nim_verifier`) and the USDC leg
+(`polygon_verifier`) but not the **Bitcoin** leg. `btc_verifier::BtcHtlcVerifier` closes that gap —
+the BTC sibling, against the same `require_funded` gate:
+
+- **Locates + binds the funding by its script-derived address.** A BTC HTLC lives at a P2WSH
+  address both sides derive from the public terms (hashlock + both pubkeys + CLTV). The verifier
+  recomputes the exact scriptPubKey and treats an output as funding only if it matches those bytes
+  EXACTLY — a P2WSH output at our address that is NOT our script reads `Mismatch`; ordinary change
+  outputs are ignored. Amount + timeout are reported and judged by the gate (an underfunded HTLC is
+  `Underfunded`, not silently invisible — the `polygon_verifier` discipline).
+- **Resolved ≠ funding.** A later tx spending the funding outpoint (a claim or refund) reads
+  `Absent`, mirroring the NIM/Polygon verifiers.
+- **Depth = tip − funding-block + 1** through `ConfirmationPolicy`; a reorg re-burying it shallower
+  is refused again (the gate is stateless).
+- **M5 cross-read (ADR-0011):** an optional independent second source (mempool.space +
+  blockstream.info) must agree on the funding tx's block height, and its tip folds into a
+  conservative (min) depth — a single lying/MITM'd indexer can't fake "funded + deep". Disagreement
+  or error → `Absent`.
+- **Fail-closed everywhere:** every transport/parse error, an unseen tx, an unconfirmed funding, or
+  a cross-read disagreement reads shallow/`Absent`. A transport blip can delay a swap, never
+  authorize one.
+
+The reads seam (`BitcoinReads`: address txs / tx status / tip) maps to esplora's endpoints; the
+pure verification logic + its offline reads-fake tests are default-feature (so plain `cargo test`
+runs all 14 — found-at-depth, too-shallow, unconfirmed, underfunded, wrong-script, spent-output,
+transport-error, cross-read disagree/agree/error, foreign-leg, wrong-swap). The `BtcHtlcParams`
+P2WSH derivation is behind `bitcoin-leg` (proven against the reference vector) and the live HTTP
+reads (mempool.space + blockstream.info, mainnet + testnet bases, host-allowlist guard) behind
+`bitcoin-gateway`. Like `polygon_verifier`, `chain_backed` stays `false` (raw CLTV seconds, no
+ADR-0010 term mapping) — **testnet-inert: nothing constructs it on a live path until the guard-lift.**
+Live proof is GATED (the BTC wallet is empty).
+
+## [0.73.0] — 2026-07-13
+
+### Added — phone-as-responder swap mode (the missing half of a phone→phone swap)
+
+The app could only ever be the swap *initiator* (gives NIM, receives USDC) — the responder
+(gives USDC, receives NIM) lived only in the Mac rig (`--swap-responder-live`). This adds the
+responder to the phone, so two phones can swap with no Mac in the loop: one initiates, the
+other responds. It rides the SAME app-facing FFI ctor the Mac uses,
+`MeshNode.newLiveSwapResponder`, which is **testnet/Amoy-pinned and C1-asserted by
+construction** — it stays inert for real funds until the Andjroo-gated guard-lift merges.
+
+- **Swap sheet: a "Respond to swaps" toggle** (sibling to the "Real testnet coins" toggle,
+  shown only when the native bridge is present). Turning it on advertises "gives USDC, wants
+  NIM"; the phone funds NOTHING until its real `NimHtlcVerifier` sees the counterparty's NIM
+  HTLC on-chain at depth, then escrows real Amoy USDC and claims the NIM leg with the revealed
+  secret. Mutually exclusive with the initiator's "real" toggle; the honest LIVE-testnet note
+  and the mainnet-never guarantee are shown out loud, exactly like the initiator path.
+- **The responder's Amoy escrow + gas account and its NIM claim address are wallet-DERIVED**
+  (HKDF off the recovery-phrase entropy, labels `nimmesh-swap-evm-fund-v1` /
+  `nimmesh-swap-nim-claim-v1`) — the same recoverable pattern as the initiator's claim/gas
+  accounts, so a reinstall strands nothing and received NIM is always recoverable. The escrow
+  address is surfaced in-app (tap-to-copy) so it can be funded with test USDC + POL; the NIM
+  claim identity is deliberately NOT the wallet's main key (the G45 privacy rule).
+- **i18n** for the new strings in all five languages; the node is restored to the normal
+  mainnet node on toggle-off / sheet close (never leave the wallet without a node).
+
+App wiring only — no core change, no mainnet path. Playwright-verified against the mocked
+bridge (16 checks: toggle reveal + relabel, mutual exclusivity, `swapMeshStart({respond})`
+args, the derived funding address, the listening status, and node restore on close).
+
 ## [0.72.3] — 2026-07-13
 
 ### Fixed — field reports from the FIRST true phone→phone mainnet mesh payment

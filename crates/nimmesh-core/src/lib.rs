@@ -204,6 +204,16 @@ pub mod polygon_verifier;
 // live). Fail-closed: no hint / RPC error / anything unexpected reads Absent.
 pub mod nim_verifier;
 
+// Mesh swap (#72 tail, the BTC leg): the mempool.space/esplora-backed BTC-leg FundingVerifier.
+// `btc_verifier` locates the counterparty's P2WSH HTLC funding output by its script-derived address,
+// binds it by recomputing the exact scriptPubKey, and reports depth (tip − block + 1) with an M5
+// cross-read (mempool.space + blockstream.info). Fail-closed: any transport/parse error, an unseen
+// tx, a spent output, or a cross-read disagreement reads Absent. The pure verification logic + its
+// offline reads-fake tests are default-feature (so `cargo test` runs them); the `BtcHtlcParams`
+// P2WSH derivation is behind `bitcoin-leg` and the live HTTP reads seam behind `bitcoin-gateway`.
+// Testnet-inert: nothing constructs it on a live path until the Andjroo-gated guard-lift.
+pub mod btc_verifier;
+
 // Mesh swap (A2b): the LIVE NIM⇄USDC money-path signer — `LiveInitiatorSigner` (funds the real
 // NIM HTLC, claims the real Amoy USDC escrow with S) + `LiveResponderSigner` (funds the escrow,
 // claims the NIM leg), plus the initiator-side Amoy funding verifier that anchors its capped log
