@@ -2,6 +2,30 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.72.3] — 2026-07-13
+
+### Fixed — field reports from the FIRST true phone→phone mainnet mesh payment
+
+Three payments (1 + 15 + 2 NIM, blocks 56054933/56055090/56055105) crossed from an
+airplane-mode iPhone 17 over raw Bluetooth to an iPhone 12 Pro that broadcast them to
+mainnet — no Mac in the loop. Andjroo's field feedback, all webui:
+
+- **#203 Send sheet reset:** reopening Send carried the previous amount (and a stale
+  disabled Send button) until an app restart. The open handler now clears the amount
+  (with an input re-sync event) and re-enables the button.
+- **#204 history flicker:** rows vanished and reappeared on the receiving phone — two
+  live-tier sources (load-balanced RPC backends returning different subsets, mesh compact
+  answers) alternated whole-list replaces. `applyHistory` now MERGES by hash: rows never
+  vanish within a session, a row never un-confirms, newest first, capped at 50.
+- **#205 frozen reach line:** the Send sheet's "will it send?" line was set once at boot,
+  so a phone launched offline said "queued until one is in range" forever. It now rides
+  the 3-second mesh beat (same fix class as the v0.51.6 Network header).
+
+All three Playwright-verified against the mocked bridge. Still open from the field run:
+#206 (reach label should count the Rust gateway's own RPC success — the 12 Pro broadcast
+all night while labeled "meshed"; its iOS 16.0 Swift stack fails TLS to
+rpc.nimiqwatch.com, whose chain anchors on a 2026 ISRG root old iOS lacks).
+
 ## [0.72.2] — 2026-07-12
 
 ### Fixed — a foreign-network gateway can no longer poison the wallet balance

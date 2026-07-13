@@ -2108,11 +2108,17 @@ Don't share them and keep them safe.</p>
   const close = () => { backdrop.classList.remove('open'); Object.values(sheets).forEach(s => s.classList.remove('open')); };
   document.getElementById('open-receive').addEventListener('click', () => open('receive'));
   document.getElementById('open-send').addEventListener('click', () => {
-    // Fresh Send always starts at recipient entry (step 1), grid cleared.
+    // Fresh Send always starts at recipient entry (step 1), grid cleared. The amount
+    // resets too (#203): it used to carry the previous send's value, and the walker
+    // could leave the Send button disabled — a stale sheet needed an app restart.
     if (typeof showSendStep === 'function') {
       cells.forEach((c) => { c.value = ''; });
       refreshSendContinue();
       setSendStatus('');
+      const amt = document.getElementById('send-amount');
+      if (amt) { amt.value = ''; amt.dispatchEvent(new Event('input')); }
+      const sb = document.getElementById('send-btn');
+      if (sb) sb.disabled = false;
       showSendStep('recipient');
     }
     open('send');
@@ -3630,6 +3636,13 @@ Don't share them and keep them safe.</p>
             if (net && info.network) net.textContent = info.network.toUpperCase();
           }
         } catch (e) { /* leave the row as-is if the probe fails */ }
+        // The Send sheet's "will it send?" line rides the same live beat (#205): it was
+        // set ONCE at boot, so a phone that launched offline said "queued until one is
+        // in range" forever — through and after a successful mesh send.
+        try {
+          const r = await nimmesh.reachability();
+          applyReachability(r.reachability);
+        } catch (e) { /* keep the last shown reach line if the probe fails */ }
       } catch (e) { /* keep the last shown mesh status if a probe fails */ }
     };
     await refreshMeshStatus();
@@ -3684,13 +3697,28 @@ Don't share them and keep them safe.</p>
     let shownHistoryFresh = -1;
     async function applyHistory(txs, fresh) {
       const arr = Array.isArray(txs) ? txs : [];
-      const key = JSON.stringify(arr.map((t) => [t.hash, t.confirmed]));
-      if (key === shownHistoryKey) return;   // identical content: never touch the DOM
       if (fresh < shownHistoryFresh) return; // a staler source can't overwrite a fresher one
+      // Merge, don't replace (#204): equal-tier sources with different content used to
+      // alternate the whole list every poll — load-balanced RPC backends (and the mesh's
+      // compact answers) each return their own subset, so rows visibly vanished and
+      // reappeared on the receiving phone. A settled transaction can never disappear
+      // within a session: union by hash, a row never un-confirms, newest first.
+      const byHash = new Map();
+      for (const t of (window.__lastTxs || [])) if (t && t.hash) byHash.set(t.hash, t);
+      for (const t of arr) {
+        if (!(t && t.hash)) continue;
+        const have = byHash.get(t.hash);
+        byHash.set(t.hash, have ? { ...have, ...t, confirmed: !!(have.confirmed || t.confirmed) } : t);
+      }
+      const merged = [...byHash.values()]
+        .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+        .slice(0, 50);
+      const key = JSON.stringify(merged.map((t) => [t.hash, t.confirmed]));
+      if (key === shownHistoryKey) return;   // identical content: never touch the DOM
       shownHistoryKey = key;
       shownHistoryFresh = fresh;
-      window.__lastTxs = arr;
-      await renderHistory(arr);
+      window.__lastTxs = merged;
+      await renderHistory(merged);
     }
     // Offline continuity: the last-known balance + history persist across launches
     // (localStorage, keyed by THIS wallet's address — public chain data only, cleared on
