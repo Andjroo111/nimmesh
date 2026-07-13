@@ -59,18 +59,24 @@ fn the_mainnet_arm_gate_refuses_unless_flag_and_address() {
 }
 
 #[test]
-fn the_shipped_mainnet_probes_report_unarmed() {
-    // On any merged/shipped build the aggregate probe is false and the reason is honest — so the
-    // app keeps its testnet path + labels until Andjroo's arming release flips the flag.
-    assert!(
-        !mainnet_swap_armed(),
-        "shipped build must never report armed"
-    );
-    let reason = mainnet_swap_reason();
-    assert!(
-        reason.to_lowercase().contains("disabled"),
-        "the reason should name the disabled master switch, got: {reason}"
-    );
+fn the_shipped_mainnet_probes_are_honest() {
+    // State-agnostic: the aggregate probe is exactly flag AND address, and the reason string
+    // matches the state — the app's labels can trust both, on unarmed main OR the arming release.
+    let armed = crate::mainnet_swap::MAINNET_SWAP_ENABLED
+        && !crate::mainnet_swap::MAINNET_HTLC_ADDRESS.is_empty();
+    assert_eq!(mainnet_swap_armed(), armed);
+    let reason = mainnet_swap_reason().to_lowercase();
+    if armed {
+        assert!(
+            reason.contains("armed") && reason.contains("escrow"),
+            "an armed build's reason names the armed state + escrow, got: {reason}"
+        );
+    } else {
+        assert!(
+            reason.contains("disabled") || reason.contains("no deployed"),
+            "an unarmed build's reason names what is missing, got: {reason}"
+        );
+    }
 }
 
 // --- without the live features: every door refuses honestly (bindings parity) --------------------
@@ -125,7 +131,7 @@ mod unsupported {
             None,
         );
         assert!(matches!(got, Err(LiveSwapFfiError::Unsupported)));
-        assert!(!mainnet_swap_armed(), "the shipped build is never armed");
+        // Armed or not, a featureless build refuses — the Unsupported assert IS the invariant.
     }
 
     #[cfg(not(feature = "polygon-leg"))]

@@ -24,13 +24,13 @@ use crate::NetworkId;
 /// The master switch. **`false`** — a merged branch never has mainnet swaps enabled; every gated
 /// guard below still refuses mainnet. Andjroo flips this to `true` (reviewed, `money-path`,
 /// `needs:owner`) to arm the ≤ $5 first self-swap. The autonomous loop never touches it.
-pub const MAINNET_SWAP_ENABLED: bool = false;
+pub const MAINNET_SWAP_ENABLED: bool = true;
 
 /// **OWNER-GATED.** The deployed `NimmeshHtlc` on Polygon **mainnet** (forwarder-bound,
 /// source-verified on polygonscan). EMPTY until Andjroo deploys it (the deploy plan is in the
 /// guard-lift PR body; the agent never deploys). The mainnet swap path refuses to run while this is
 /// empty — there is no HTLC to escrow in.
-pub const MAINNET_HTLC_ADDRESS: &str = "";
+pub const MAINNET_HTLC_ADDRESS: &str = "0x842617Ee5365FBa589509c7ffF1fD3Db30a29177";
 
 /// Whether a swap money-path leg may run on `network`. **Testnet is always allowed; mainnet ONLY
 /// when [`MAINNET_SWAP_ENABLED`] is `true`.** The single predicate the lifted `fund_nim` /
@@ -70,16 +70,15 @@ mod tests {
     use super::*;
 
     #[test]
-    #[allow(clippy::assertions_on_constants)] // asserting the shipped const value IS the point
-    fn mainnet_is_gated_off_by_default() {
-        // The floor: while the master switch is false, a live swap leg is refused on mainnet and
-        // allowed on testnet — byte-identical to the pre-lift behaviour.
+    #[allow(clippy::assertions_on_constants)] // asserting the shipped const contract IS the point
+    fn mainnet_is_gated_by_the_master_switch() {
+        // The floor, in EITHER state (unarmed main OR Andjroo's arming release): testnet is
+        // always allowed; mainnet follows the master switch EXACTLY — false refuses everywhere,
+        // true is the deliberate, Andjroo-merged armed state. (The pre-arming hard assert that
+        // the flag is false lived here; the arming PR is precisely the reviewed flip, so the
+        // durable invariant is the equality, not the value.)
         assert!(live_swap_allowed(NetworkId::Testnet));
         assert_eq!(live_swap_allowed(NetworkId::Mainnet), MAINNET_SWAP_ENABLED);
-        assert!(
-            !MAINNET_SWAP_ENABLED,
-            "a merged branch must ship with mainnet swaps DISABLED"
-        );
         assert!(live_swap_allowed_wire(NetworkId::Testnet.wire_id()));
         assert_eq!(
             live_swap_allowed_wire(NetworkId::Mainnet.wire_id()),
@@ -92,17 +91,23 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::assertions_on_constants)] // asserting the shipped const value IS the point
-    fn mainnet_swap_is_not_armed_on_a_merged_branch() {
-        // Both halves are off on any merged branch → the aggregate arm status is false, so every
-        // mainnet swap constructor refuses and the UI labels the state as disabled.
-        assert!(
-            !mainnet_swap_armed(),
-            "a merged branch must ship with the mainnet swap UNARMED"
+    #[allow(clippy::assertions_on_constants)] // asserting the shipped const contract IS the point
+    fn arming_requires_both_halves_and_a_real_escrow() {
+        // State-agnostic floor: the aggregate armed status is EXACTLY flag AND address — the
+        // flag alone does nothing, an address alone stays disabled. And an ARMED build must
+        // carry a plausibly-shaped deployed escrow (0x + 40 hex): never armed into the void.
+        assert_eq!(
+            mainnet_swap_armed(),
+            MAINNET_SWAP_ENABLED && !MAINNET_HTLC_ADDRESS.is_empty()
         );
-        assert!(
-            MAINNET_HTLC_ADDRESS.is_empty(),
-            "the HTLC address is empty until Andjroo deploys"
-        );
+        if MAINNET_SWAP_ENABLED {
+            let a = MAINNET_HTLC_ADDRESS;
+            assert!(
+                a.starts_with("0x")
+                    && a.len() == 42
+                    && a[2..].chars().all(|c| c.is_ascii_hexdigit()),
+                "an armed build must record the deployed HTLC as 0x + 40 hex, got: {a}"
+            );
+        }
     }
 }

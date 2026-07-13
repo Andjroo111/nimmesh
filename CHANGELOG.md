@@ -2,6 +2,27 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+
+## [0.77.0] — 2026-07-13 — ARM MAINNET SWAP (needs:owner, money-path)
+
+### The deliberate arming act — real mainnet funds
+
+This flips the single master switch from OFF to ON. Until this entry, the mainnet swap path was
+inert: `mainnet_swap::MAINNET_SWAP_ENABLED = false` and `MAINNET_HTLC_ADDRESS` was empty, so every
+mainnet swap constructor refused. This change:
+
+- records the deployed, source-verified `NimmeshHtlc` escrow on Polygon mainnet:
+  `0x842617Ee5365FBa589509c7ffF1fD3Db30a29177`;
+- sets `mainnet_swap::MAINNET_SWAP_ENABLED = true`.
+
+With both set, `mainnet_swap_armed()` is now `true` and the mainnet live-swap constructors
+(`MeshNode::new_live_swap_initiator_mainnet` / `…responder_mainnet`) assemble the mainnet money path
+(native USDC, chain id 137, mainnet confirmation depths, the hard `SwapCaps::mainnet_first_swap`
+caps). The first swap is a ≤ $5 self-swap between Andjroo's own wallets, watched, timelock-refunded.
+
+**This is a `money-path` change — Andjroo-merge only. The C1 live-safety gate + SwapCaps are
+unchanged; only the master switch + the escrow address moved.**
+
 ## [0.76.0] — 2026-07-13 — §8.3 mainnet first-run wiring (INERT until Andjroo arms)
 
 ### The mainnet swap constructors + app wiring — off by default, dormant until the arming PR
