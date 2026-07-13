@@ -23,6 +23,22 @@ pub const DEFAULT_AMOY_RPC_URL: &str = "https://rpc-amoy.polygon.technology";
 /// endpoints the autonomous loop must never reach.
 pub const MAINNET_RPC_HOSTS: &[&str] = &["polygon-rpc.com", "polygon-mainnet", "polygon.llamarpc"];
 
+/// **OWNER-GATED (real money).** The canonical **NATIVE** Circle-issued USDC on Polygon PoS
+/// mainnet (6 decimals) — NOT the bridged `USDC.e` (`0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174`).
+/// Source: Circle's official contract-address docs,
+/// <https://developers.circle.com/stablecoins/usdc-contract-addresses> (fetched 2026-07-13; the
+/// same address PolygonScan labels "Circle: USDC Token"). Fetched from the source, never memory.
+/// Consulted ONLY by the off-by-default mainnet swap path (`crate::mainnet_swap`).
+pub const NATIVE_USDC_POLYGON_MAINNET: &str = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359";
+
+/// **OWNER-GATED.** The two INDEPENDENT public Polygon **mainnet** RPC hosts wired for the M5
+/// cross-read (ADR-0011) — different operators (dRPC + Allnodes/PublicNode), both documented as
+/// Polygon mainnet (chain id 137 / `0x89`). [`guard_polygon_mainnet`] admits ONLY these; every
+/// other host (and the whole autonomous/testnet path) still routes through [`guard_amoy`].
+/// A live client should additionally assert `eth_chainId == 0x89` at startup before trusting reads.
+pub const POLYGON_MAINNET_RPC_ALLOWLIST: &[&str] =
+    &["polygon.drpc.org", "polygon-bor-rpc.publicnode.com"];
+
 /// A failure talking to the EVM RPC node. The transient/terminal split mirrors [`crate::rpc::RpcError`]:
 /// a [`EvmRpcError::Transport`] / 5xx / 429 is worth retrying; a node `error` object is terminal.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -92,6 +108,26 @@ pub fn guard_amoy(url: &str) -> Result<(), EvmRpcError> {
         }
     }
     Ok(())
+}
+
+/// **OWNER-GATED (real money): the MAINNET counterpart of [`guard_amoy`].** The mirror choke point
+/// for the off-by-default mainnet swap path: a Polygon **mainnet** RPC target must be one of the two
+/// allow-listed independent hosts ([`POLYGON_MAINNET_RPC_ALLOWLIST`]) — an arbitrary or unknown host
+/// is refused, so even the mainnet path can only ever talk to the reviewed cross-read endpoints. The
+/// autonomous loop never calls this; every default/testnet constructor still routes through
+/// [`guard_amoy`], which refuses mainnet outright.
+pub fn guard_polygon_mainnet(url: &str) -> Result<(), EvmRpcError> {
+    let lower = url.to_ascii_lowercase();
+    if POLYGON_MAINNET_RPC_ALLOWLIST
+        .iter()
+        .any(|host| lower.contains(host))
+    {
+        Ok(())
+    } else {
+        Err(EvmRpcError::NotAmoy {
+            reason: format!("URL '{url}' is not an allow-listed Polygon mainnet RPC host"),
+        })
+    }
 }
 
 // --- the pure JSON-RPC codec (offline-tested) ----------------------------------------------------
@@ -414,6 +450,25 @@ impl HttpPolygonRpc {
     /// A client against the default public Amoy endpoint ([`DEFAULT_AMOY_RPC_URL`]).
     pub fn amoy_default() -> Self {
         Self::new(DEFAULT_AMOY_RPC_URL).expect("default Amoy endpoint passes the guard")
+    }
+
+    /// **OWNER-GATED (real money): a Polygon MAINNET client.** Deliberately routes through
+    /// [`guard_polygon_mainnet`] (the allow-list) instead of [`guard_amoy`] — it exists SOLELY for
+    /// the off-by-default mainnet swap path (`crate::mainnet_swap`); the autonomous loop and every
+    /// default constructor still use [`Self::new`] (guard_amoy), which refuses mainnet. The signed
+    /// txs additionally carry chain id `137` ([`crate::evm_rlp::POLYGON_MAINNET_CHAIN_ID`]).
+    pub fn new_mainnet(url: impl Into<String>) -> Result<Self, EvmRpcError> {
+        let url = url.into();
+        guard_polygon_mainnet(&url)?;
+        let agent = ureq::AgentBuilder::new()
+            .timeout_connect(std::time::Duration::from_secs(10))
+            .timeout(std::time::Duration::from_secs(30))
+            .build();
+        Ok(HttpPolygonRpc {
+            url,
+            agent,
+            next_id: std::sync::atomic::AtomicU64::new(1),
+        })
     }
 
     /// The endpoint this client talks to.

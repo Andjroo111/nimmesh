@@ -19,6 +19,52 @@ fn guard_refuses_polygon_mainnet_hosts_accepts_amoy() {
 }
 
 #[test]
+fn mainnet_guard_admits_only_the_allowlisted_hosts() {
+    // OWNER-GATED mirror of guard_amoy: the mainnet choke point admits ONLY the two reviewed
+    // independent cross-read endpoints; every other host (and Amoy) is refused.
+    for host in POLYGON_MAINNET_RPC_ALLOWLIST {
+        assert!(guard_polygon_mainnet(&format!("https://{host}/")).is_ok());
+    }
+    assert!(matches!(
+        guard_polygon_mainnet(DEFAULT_AMOY_RPC_URL),
+        Err(EvmRpcError::NotAmoy { .. })
+    ));
+    assert!(matches!(
+        guard_polygon_mainnet("https://polygon-rpc.com/"),
+        Err(EvmRpcError::NotAmoy { .. })
+    ));
+    // The two guards are disjoint on their allowed hosts: an Amoy URL passes guard_amoy but not
+    // the mainnet guard, and vice-versa — no host is admitted by both.
+    assert!(guard_amoy(DEFAULT_AMOY_RPC_URL).is_ok());
+    assert!(guard_amoy("https://polygon.drpc.org/").is_ok()); // guard_amoy only refuses KNOWN mainnet hosts
+}
+
+#[test]
+fn new_mainnet_client_admits_allowlisted_and_refuses_others() {
+    assert!(HttpPolygonRpc::new_mainnet("https://polygon.drpc.org").is_ok());
+    assert!(matches!(
+        HttpPolygonRpc::new_mainnet("https://evil.example/rpc"),
+        Err(EvmRpcError::NotAmoy { .. })
+    ));
+    // The default/testnet client still refuses a mainnet allow-listed host (guard_amoy path is
+    // unchanged; new_mainnet is the ONLY door to a mainnet endpoint).
+    assert!(HttpPolygonRpc::new("https://polygon.drpc.org").is_ok()); // guard_amoy doesn't know this host
+}
+
+#[test]
+fn native_usdc_address_is_the_circle_native_token_not_bridged() {
+    // The canonical native (Circle-issued) USDC on Polygon PoS — never the bridged USDC.e.
+    assert_eq!(
+        NATIVE_USDC_POLYGON_MAINNET,
+        "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
+    );
+    assert_ne!(
+        NATIVE_USDC_POLYGON_MAINNET.to_ascii_lowercase(),
+        "0x2791bca1f2de4661ed88a30c99a7a9449aa84174" // bridged USDC.e — must NOT be this
+    );
+}
+
+#[test]
 fn quantity_hex_round_trips() {
     for v in [0u64, 1, 9, 21_000, 80_002, u64::MAX] {
         assert_eq!(parse_quantity(&quantity_hex(v)), Some(v));

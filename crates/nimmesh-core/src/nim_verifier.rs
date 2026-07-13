@@ -219,6 +219,23 @@ impl NimHtlcVerifier {
         }
     }
 
+    /// **OWNER-GATED (real money): the MAINNET NIM verifier.** Identical to [`Self::new`] but pins
+    /// the funding-tx network to `NetworkId::Mainnet` — a funding tx stamped testnet can then never
+    /// verify. Exists SOLELY for the off-by-default mainnet swap path (`crate::mainnet_swap`); the
+    /// autonomous loop and every default constructor use [`Self::new`] (testnet-pinned). ADR-0011 §4.3
+    /// still applies: on mainnet the secondary cross-read should be a node the operator controls (the
+    /// NIM leg otherwise runs single-RPC — only `rpc.nimiqwatch.com` is public; see the guard-lift PR).
+    pub fn new_mainnet(rpc: Arc<dyn GatewayRpc>, store: Arc<NimFundingStore>) -> Self {
+        NimHtlcVerifier {
+            rpc,
+            secondary: None,
+            store,
+            timeout_slack_s: DEFAULT_TIMEOUT_SLACK_S,
+            network_id: crate::NetworkId::Mainnet.wire_id(),
+            clock_ms: Box::new(system_now_ms),
+        }
+    }
+
     /// M5: add an INDEPENDENT secondary RPC (a second public testnet endpoint). The reported
     /// inclusion depth is then only trusted when this endpoint agrees on the inclusion block;
     /// disagreement (or an unseen/mismatched tx) reads `Absent` (fail-closed). Pass a genuinely

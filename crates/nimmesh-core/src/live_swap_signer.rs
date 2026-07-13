@@ -303,10 +303,14 @@ impl LiveInitiatorSigner {
     /// `give_amount` luna, funder/refunder = our NIM key. Returns `(wire, tx_hash)` once the
     /// node accepted the broadcast (inclusion is the RESPONDER's verifier's job).
     fn fund_nim(&self, ctx: &SwapContext) -> Option<(Vec<u8>, [u8; 32])> {
-        if ctx.network_id != crate::NetworkId::Testnet.wire_id() {
-            eprintln!("[live-swap] fund_nim: refused non-testnet network {}", {
-                ctx.network_id
-            });
+        // Testnet is always allowed; mainnet ONLY when the off-by-default master switch is armed
+        // (`crate::mainnet_swap::MAINNET_SWAP_ENABLED`, false on any merged branch — so this stays
+        // a testnet-only refusal exactly as before the guard-lift).
+        if !crate::mainnet_swap::live_swap_allowed_wire(ctx.network_id) {
+            eprintln!(
+                "[live-swap] fund_nim: refused network {} (mainnet is Andjroo-gated)",
+                { ctx.network_id }
+            );
             return None;
         }
         let peer = self.cfg.peer_book.get(&ctx.swap_id)?;

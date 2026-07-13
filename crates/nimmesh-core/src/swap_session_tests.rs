@@ -5,7 +5,7 @@ use crate::packet::MessageType;
 use crate::swap::{LadderParams, SwapPhase, SwapTerms};
 use crate::swap_coordinator::{SwapContext, SwapCoordinator};
 use crate::swap_funding_verify::{
-    ConfirmationPolicy, FundingObservation, LedgerVerifier, OnChainHtlc, SimVerifier,
+    ConfirmationPolicy, FundingObservation, LedgerVerifier, OnChainHtlc, SimVerifier, SwapCaps,
 };
 use crate::swap_leg::sha256;
 use crate::swap_messages::SwapProposal;
@@ -73,6 +73,58 @@ fn ctx(swap_id: [u8; SWAP_ID_LEN], seed: u8) -> SwapContext {
 fn only(out: Vec<(MessageType, Vec<u8>)>) -> (MessageType, Vec<u8>) {
     assert_eq!(out.len(), 1);
     out.into_iter().next().unwrap()
+}
+
+#[test]
+fn a_responder_refuses_a_propose_above_the_hard_per_swap_cap() {
+    // §8.2: a responder funds a leg automatically, so a session carrying the mainnet caps must
+    // never Accept a swap above the ≤ $5 ceiling (≤ 50 NIM / ≤ 20 000 sat here — counterparty
+    // chain defaults to BTC), even though its rate policy accepts everything.
+    let head = 0;
+    let p = LadderParams::default();
+    let caps = SwapCaps::mainnet_first_swap();
+    let make_capped = || SwapSession::new(identity(0x22), p).with_caps(caps);
+    let propose_for = |id: u8, nim: u64, counter: u64| {
+        let mut c = ctx([id; SWAP_ID_LEN], 0x11);
+        c.give_amount = nim;
+        c.take_amount = counter;
+        let (_coord, propose) = SwapCoordinator::new_initiator(c, [42u8; 32], p);
+        encode_swap(&signed(&propose, 0x11)).unwrap()
+    };
+
+    // Within the cap → an Accept, a coordinator spun up.
+    let mut ok = make_capped();
+    let out = ok
+        .on_message(SwapKind::Propose, &propose_for(0x01, 100_000, 10_000), head)
+        .unwrap();
+    assert_eq!(out.len(), 1);
+    assert_eq!(out[0].0, MessageType::SwapAccept);
+    assert_eq!(ok.len(), 1);
+
+    // NIM leg over the cap (60 NIM > 50) → no Accept, no coordinator.
+    let big_nim = propose_for(0x02, 6_000_000, 10_000);
+    let mut over_nim = make_capped();
+    assert!(over_nim
+        .on_message(SwapKind::Propose, &big_nim, head)
+        .unwrap()
+        .is_empty());
+    assert_eq!(over_nim.len(), 0);
+
+    // Counter (BTC) leg over the cap (25 000 sat > 20 000) → no Accept.
+    let mut over_btc = make_capped();
+    assert!(over_btc
+        .on_message(SwapKind::Propose, &propose_for(0x03, 100_000, 25_000), head)
+        .unwrap()
+        .is_empty());
+
+    // The SAME over-cap NIM propose IS accepted by an UNCAPPED session — proving the cap, not the
+    // ladder or the rate gate, is what refused it above.
+    let mut uncapped = SwapSession::new(identity(0x22), p);
+    let out = uncapped
+        .on_message(SwapKind::Propose, &big_nim, head)
+        .unwrap();
+    assert_eq!(out.len(), 1);
+    assert_eq!(out[0].0, MessageType::SwapAccept);
 }
 
 #[test]

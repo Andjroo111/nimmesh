@@ -20,6 +20,11 @@ use crate::swap_usdc_leg::EvmAddress;
 /// never emits it; `LegacyTx::polygon_amoy` hard-codes this so the money-path can't reach mainnet.
 pub const POLYGON_AMOY_CHAIN_ID: u64 = 80002;
 
+/// Polygon PoS **mainnet** chain id (EIP-155), `137` — confirmed against chainlist.org/chain/137
+/// (`0x89`). Bound into a signed tx ONLY via [`LegacyTx::polygon_mainnet`], which the mainnet swap
+/// path (`crate::mainnet_swap`) selects — off by default; nothing emits it until the guard-lift.
+pub const POLYGON_MAINNET_CHAIN_ID: u64 = 137;
+
 /// The minimal big-endian byte representation of `v` — no leading zeros, and `0` → empty (`vec![]`),
 /// which RLP renders as the empty string `0x80`. This is how EVM integers (nonce, gas, value,
 /// chainId) are encoded.
@@ -133,6 +138,28 @@ impl<'a> LegacyTx<'a> {
             value,
             data,
             chain_id: POLYGON_AMOY_CHAIN_ID,
+        }
+    }
+
+    /// **OWNER-GATED (real money):** a Polygon **mainnet** legacy tx (chain id `137`). The mainnet
+    /// mirror of [`Self::polygon_amoy`] — selected only by the off-by-default mainnet swap path
+    /// (`crate::mainnet_swap`); no default constructor or the autonomous loop ever builds one.
+    pub fn polygon_mainnet(
+        nonce: u64,
+        gas_price: u64,
+        gas_limit: u64,
+        to: EvmAddress,
+        value: u64,
+        data: &'a [u8],
+    ) -> Self {
+        LegacyTx {
+            nonce,
+            gas_price,
+            gas_limit,
+            to,
+            value,
+            data,
+            chain_id: POLYGON_MAINNET_CHAIN_ID,
         }
     }
 
@@ -279,8 +306,24 @@ mod tests {
         assert!(rlp.windows(data.len()).any(|w| w == &data[..]));
         // value 0 encodes as the empty string 0x80 (present in the payload).
         assert!(rlp.contains(&0x80));
-        // the hash is a deterministic 32 bytes.
+        // the hash is deterministic.
         assert_eq!(tx.signing_hash(), tx.signing_hash());
+    }
+
+    #[test]
+    fn polygon_mainnet_tx_uses_chain_id_137() {
+        use crate::evm_abi::htlc_refund;
+        // OWNER-GATED: the mainnet mirror binds chain id 137 (0x89), distinct from Amoy's 80002.
+        let data = htlc_refund(&[0x2Fu8; 32]);
+        let tx = LegacyTx::polygon_mainnet(0, 30_000_000_000, 120_000, [0x5Au8; 20], 0, &data);
+        assert_eq!(tx.chain_id, POLYGON_MAINNET_CHAIN_ID);
+        assert_eq!(POLYGON_MAINNET_CHAIN_ID, 137);
+        assert_ne!(POLYGON_MAINNET_CHAIN_ID, POLYGON_AMOY_CHAIN_ID);
+        let rlp = tx.signing_rlp();
+        // 137 = 0x89 → RLP single byte 0x81 0x89 appears in the signing payload.
+        assert!(rlp.windows(2).any(|w| w == [0x81, 0x89]));
+        // the calldata is carried verbatim inside the tx.
+        assert!(rlp.windows(data.len()).any(|w| w == &data[..]));
     }
 
     #[test]

@@ -16,7 +16,9 @@ use crate::nimiq::signer::EnclaveKey;
 use crate::packet::MessageType;
 use crate::swap::LadderParams;
 use crate::swap_coordinator::{CoordError, SwapContext, SwapCoordinator};
-use crate::swap_funding_verify::{AcceptAllVerifier, ConfirmationPolicy, FundingVerifier};
+use crate::swap_funding_verify::{
+    AcceptAllVerifier, ConfirmationPolicy, FundingVerifier, SwapCaps,
+};
 use crate::swap_intent::Asset;
 use crate::swap_messages::{SwapProposal, PROPOSE_PUBKEY_LEN, PROPOSE_SIG_LEN};
 use crate::swap_wire::{
@@ -134,6 +136,11 @@ pub struct SwapSession {
     /// [`with_secret_source`](Self::with_secret_source); [`live_safety`](Self::live_safety)
     /// refuses a live pairing while it is true (a public-derivable `S` loses both legs).
     secret_is_sim: bool,
+    /// §8.2 hard per-swap cap. `None` = unbounded (the testnet/sim loop); the mainnet swap path
+    /// sets [`SwapCaps::mainnet_first_swap`], and the coordinator gate then REFUSES to originate
+    /// (initiator) or accept (responder) a swap above it — so real value can never exceed the
+    /// agreed ≤ $5 test size even if a counterparty asks for more.
+    caps: Option<SwapCaps>,
 }
 
 impl SwapSession {
@@ -151,6 +158,25 @@ impl SwapSession {
             counterparty_chain: Asset::Btc,
             secret_source: Box::new(crate::swap_node::sim_secret),
             secret_is_sim: true,
+            caps: None,
+        }
+    }
+
+    /// §8.2: set a HARD per-swap cap the coordinator gate refuses above (propose + accept). The
+    /// mainnet swap path wires [`SwapCaps::mainnet_first_swap`]; the testnet/sim loop leaves it
+    /// unset (unbounded). Enforced in code, not config — a hostile/buggy peer asking for more than
+    /// the cap gets no Accept (and this node never originates above it).
+    pub fn with_caps(mut self, caps: SwapCaps) -> Self {
+        self.caps = Some(caps);
+        self
+    }
+
+    /// Whether a swap of `nim_luna` NIM ⇄ `counter_amount` of this session's counterparty asset is
+    /// within the hard per-swap cap. `true` when no cap is configured (unbounded testnet/sim).
+    pub(crate) fn within_caps(&self, nim_luna: u64, counter_amount: u64) -> bool {
+        match &self.caps {
+            None => true,
+            Some(caps) => caps.admits(nim_luna, counter_amount, self.counterparty_chain),
         }
     }
 
@@ -320,6 +346,12 @@ impl SwapSession {
                     .rate_policy
                     .accepts(p.give_amount, p.take_amount)
                 {
+                    return Ok(Vec::new());
+                }
+                // §8.2 hard per-swap cap: the responder funds a leg AUTOMATICALLY, so it must
+                // never accept a swap above the agreed test size even if the proposer asks for
+                // more. Refuse silently (no coordinator, no Accept), exactly like the rate gate.
+                if !self.within_caps(p.give_amount, p.take_amount) {
                     return Ok(Vec::new());
                 }
                 let ctx = SwapContext {

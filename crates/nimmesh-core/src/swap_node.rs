@@ -572,6 +572,10 @@ fn initiate_from_intent(
         {
             return Vec::new();
         }
+        // §8.2 hard per-swap cap: never PROPOSE above the agreed test size (mirrors the accept cap).
+        if !session.within_caps(standing.nim_amount, standing.btc_amount) {
+            return Vec::new();
+        }
         (standing, session.ladder)
     };
 

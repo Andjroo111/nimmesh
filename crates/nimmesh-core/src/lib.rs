@@ -214,6 +214,12 @@ pub mod nim_verifier;
 // Testnet-inert: nothing constructs it on a live path until the Andjroo-gated guard-lift.
 pub mod btc_verifier;
 
+// The single OFF-BY-DEFAULT master switch for a real-funds cross-chain swap (docs/MAINNET-GATING.md
+// §8). Every mainnet money-path guard the guard-lift touches is threaded through `MAINNET_SWAP_ENABLED`
+// (false on any merged branch), so the merged behaviour is byte-identical to testnet-only. Andjroo
+// flips it (reviewed, money-path, needs:owner) to arm the ≤ $5 first self-swap — never the loop.
+pub mod mainnet_swap;
+
 // Mesh swap (A2b): the LIVE NIM⇄USDC money-path signer — `LiveInitiatorSigner` (funds the real
 // NIM HTLC, claims the real Amoy USDC escrow with S) + `LiveResponderSigner` (funds the escrow,
 // claims the NIM leg), plus the initiator-side Amoy funding verifier that anchors its capped log

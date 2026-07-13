@@ -2,6 +2,43 @@
 
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
+## [0.75.0] — 2026-07-13 — GUARD-LIFT (needs:owner, money-path, DO NOT auto-merge)
+
+### The mainnet-swap guard-lift — off by default, byte-identical until Andjroo flips one flag
+
+The deliberate, reviewable diff that lifts exactly the `docs/MAINNET-GATING.md` §8.4 points so the
+first ≤ $5 self-swap can run on mainnet — **threaded through a single master switch,
+`mainnet_swap::MAINNET_SWAP_ENABLED`, which is `false`.** While it is false every gated guard still
+refuses mainnet, so a merged branch behaves exactly like testnet-only (the 465-test default suite is
+unchanged). Andjroo flips it (reviewed) to arm the swap; the agent never does, and this PR is
+Andjroo-merge-only.
+
+- **`mainnet_swap` (new module):** the off-by-default switch + `live_swap_allowed(network)` — the
+  single predicate the lifted guards consult. Testnet always; mainnet only when the flag is armed.
+- **Guards lifted (behind the flag):** `fund_nim`'s testnet-network refusal and `MeshNode::build`'s
+  testnet-only live-signer assertion now allow mainnet **iff** `MAINNET_SWAP_ENABLED` — with it off,
+  identical refusals to before. `HttpGatewayRpc::new_mainnet` (NIM leg) already existed; the Polygon
+  mirror is new: `guard_polygon_mainnet` + `HttpPolygonRpc::new_mainnet` admit ONLY the two
+  allow-listed independent cross-read hosts (`polygon.drpc.org` + `polygon-bor-rpc.publicnode.com`),
+  and `NimHtlcVerifier::new_mainnet` pins the NIM verifier to mainnet.
+- **Mainnet money-path config:** `ConfirmationPolicy::mainnet_defaults()` = **NIM 10 / USDC 64 /
+  BTC 2** (ADR-0003, justified for ≤ $5 self-swaps); `POLYGON_MAINNET_CHAIN_ID = 137` +
+  `LegacyTx::polygon_mainnet`; and the canonical **NATIVE** Polygon-mainnet USDC
+  `0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359` (Circle's official docs — NOT bridged USDC.e).
+- **Hard per-swap caps wired in code (not config):** `SwapCaps::mainnet_first_swap()` (≤ 50 NIM /
+  ≤ 5 USDC / ≤ 20 000 sat) is enforced at the coordinator gate — the responder refuses to ACCEPT and
+  the initiator refuses to PROPOSE any swap above it (tested: an over-cap Propose yields no Accept;
+  the same swap uncapped is accepted, proving the cap is what refused it).
+- **NIM mainnet cross-read = single-RPC (residual risk):** no second public Nimiq mainnet RPC exists
+  (only `rpc.nimiqwatch.com`); the NIM leg runs single-source on mainnet unless Andjroo stands up his
+  own node as the M5 secondary. Merging this PR accepts that residual risk (see the PR body).
+
+The whole guard-lift is **inert on a merged branch**: `MAINNET_SWAP_ENABLED = false`, no constructor
+selects the mainnet path, and `MAINNET_HTLC_ADDRESS` is empty until Andjroo deploys + records the
+verified `NimmeshHtlc`/`NimmeshForwarder` on Polygon mainnet (deploy plan in the PR body — the agent
+never deploys). Full green gate (fmt + clippy --all-features + `cargo test --all`/`--all-features` +
+size-guard). **DO NOT AUTO-MERGE — Andjroo-review only.**
+
 ## [0.74.1] — 2026-07-13
 
 ### Changed — OTA ships 0.73.0/0.74.0 on-device

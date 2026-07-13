@@ -42,3 +42,23 @@ Depths increase with reorg risk. **These are testnet values and must not ship to
 - `require_funded` is unchanged and remains the single go/no-go; `ConfirmationPolicy` only *chooses its input*. The reorg guarantee is emergent from the gate being stateless — no new state to get wrong.
 - New tests: policy per-chain defaults + leg resolution + builder; ledger `reorg_to` (deep→shallow refused again) and `orphan_all` (reads Absent); a session-level test proving the mesh gate applies the policy's NIM depth (2-deep refused, 3-deep advances under a `with_nim(3)` policy).
 - The gateway-backed verifier (real NIM RPC / BTC / Polygon), when built (gated), mirrors this same policy and adds the schedule that turns the "re-verify on reorg" property into active post-advance monitoring.
+
+## Addendum (2026-07-13) — M6 mainnet depths (the guard-lift)
+
+The Phase-4 mainnet retune this ADR foresaw is now realized as
+`ConfirmationPolicy::mainnet_defaults()`, selected only by the off-by-default mainnet swap path
+(`mainnet_swap::MAINNET_SWAP_ENABLED`, false on any merged branch). It is calibrated to the **first
+≤ $5 self-swaps** (both sides Andjroo's own wallets, timelock-refundable either way) — NOT to
+custodial/high-value finality:
+
+| Chain | Testnet | **Mainnet (≤ $5)** | Why this value |
+|-------|---------|--------------------|----------------|
+| NIM | 2 | **10** | Albatross PoS reaches macro-block finality within a batch; 10 blocks is several batches past the funding — ample for a small, refundable leg. |
+| USDC (Polygon) | 5 | **64** | Polygon PoS (Bor) reorgs deeper than NIM at equal wall-clock; 64 blocks (~2 min at ~2 s) is the small-amount floor bridges/exchanges use for low-value Polygon deposits. |
+| BTC | 3 | **2** | For a ≤ $5 self-swap whose timelock refund is the worst-case floor, 2 confirmations is a pragmatic small-amount burial. **This intentionally supersedes the earlier "BTC → 6" placeholder** in this ADR: 6 is right for a high-value BTC settlement, not a $5 self-swap. A larger BTC swap MUST raise it. |
+
+**A larger mainnet swap MUST raise every one of these** (a separate, reviewed `needs:owner` change) —
+`mainnet_defaults()` is the ≤ $5 envelope, nothing more. The mainnet secondary cross-read (ADR-0011)
+remains required for USDC (two independent Polygon RPCs are wired); the NIM leg has no second public
+mainnet RPC (only `rpc.nimiqwatch.com`), so it runs single-source unless the operator stands up their
+own node — a residual risk the guard-lift PR names explicitly.

@@ -526,9 +526,12 @@ impl MeshNode {
         // FFI doors surface the same condition as an `Err` before this can ever trip, so
         // hitting this panic is a programming error worth a loud stop, never a user path.
         if signer.as_ref().is_some_and(|s| s.is_live()) {
-            assert_eq!(
-                network,
-                crate::NetworkId::Testnet,
+            // Testnet always; mainnet ONLY when the off-by-default master switch is armed
+            // (`mainnet_swap::MAINNET_SWAP_ENABLED`, false on any merged branch — so this remains a
+            // testnet-only assertion exactly as before the guard-lift). C1's other floors
+            // (chain-backed verifier, non-sim secret, non-zero depths) hold regardless below.
+            assert!(
+                crate::mainnet_swap::live_swap_allowed(network),
                 "refusing to build a live-signer node off testnet (mainnet is Andjroo-gated)"
             );
             match swap.as_ref() {
