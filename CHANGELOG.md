@@ -3,6 +3,16 @@
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
 
+## [0.80.1] — 2026-07-14
+
+### Fixed — the Send USDC address box now matches the wallet's
+
+Andjroo's third-round catch on the Send screen: the address entry was a full-width blank
+rectangle; the real wallet's is a narrow centered box (~54% of the sheet) whose three text
+rows sit on TWO inset ruled lines, and its blue note breaks "Send to Polygon USDC /
+addresses only!". Both matched to his capture by direct render comparison (measured
+geometry, two explicit rule gradients — not a repeating one, which painted a third rule).
+
 ## [0.80.0] — 2026-07-14
 
 ### The REAL USDC send + the wallet-faithful send flow (fixes #219's send modal)
