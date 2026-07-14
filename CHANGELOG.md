@@ -3,6 +3,41 @@
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
 
+## [0.79.0] — 2026-07-14
+
+### USD Coin view rebuilt to the REAL wallet (supersedes #217's hand-built card)
+
+Per Andjroo's fidelity rule, #217's `#view-usdc` was hand-built and did not match wallet.nimiq.com.
+This rebuilds the view to the real wallet's USD Coin account anatomy, matched against three captures
+of the live wallet's USD Coin flow (`~/.nimmesh-refs/usdc-view/`) using the actual `nimiq-ui`
+components/idioms.
+
+- **Account view** now mirrors the real wallet: header = back + a "Search transactions" pill
+  (wired to filter rows live, by address or amount) + kebab; an account line with the **official
+  USDC circle icon** (the vendored SVG, not redrawn) + "USD Coin" and a right-aligned big
+  `X.XX USDC` / grey `Y.YY $`; and month-grouped transaction rows exactly per the capture — date
+  column (big day / small month), the wallet's **grey avatar circle** (generic contact silhouette,
+  not a Nimiq identicon and not a blank), full monospace `0x` counterparty faded by the list mask,
+  time below, and a right-aligned signed amount (`−` plain / `+` on the light-green pill) with grey
+  fiat. The hand-built total card, "on Polygon" chip, and hand-built account rows are gone.
+- **The three derived accounts** (escrow "fund" / receive "claim" / fee "gas") moved behind the
+  kebab into a faithful `USDC accounts` sheet, tap-to-copy, with the honest gas/POL note — no longer
+  hand-built rows on the main view. The real wallet shows one balance; ours is one asset across three
+  wallet-derived accounts.
+- **Receive USDC** modal mirrors the capture: "Receive USDC", the exact subtitle, a navy
+  vendored-`qr-creator` QR (same render params as the NIM receive QR) encoding the **claim** address,
+  the start···end truncated `0x` under it (tap to copy), and the blue "You can receive from Polygon
+  USDC addresses only!" note.
+- **Send USDC** ships **honest-disabled** this pass: the modal matches the capture (Contacts column +
+  divider, `ENTER ADDRESS` 0x box, the blue "Send to Polygon USDC addresses only!" note, scan icon),
+  but there is no standalone USDC-send FFI yet (the core only exposes the HTLC swap-leg constructors,
+  not an arbitrary erc20 transfer), so a real money-path would be a new Rust FFI + regen bindings +
+  device build + real-funds risk. Rather than fake it, the Send button is a deliberately-styled
+  disabled state with an honest "Sending USDC arrives in the next build. You can already receive."
+  note — never a dead-looking button.
+- The bottom Receive/Send bar is now context-aware (USDC sheets in the USD Coin view). New strings
+  translated across all 5 languages (en/es/de/fr/pt). No Rust touched.
+
 ## [0.78.0] — 2026-07-14
 
 ### The USD Coin card comes alive — tap it for real balances + transfers (like the NIM card)
