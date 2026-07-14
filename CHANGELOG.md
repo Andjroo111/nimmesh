@@ -3,6 +3,18 @@
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
 
+## [0.77.1] — 2026-07-14
+
+### Fixed — the initiator's claim-gas account is fundable BEFORE the swap starts
+
+Pre-flight gap caught before the first mainnet run: the initiator phone pays its Polygon
+`withdraw(S)` claim from a wallet-derived gas account (`nimmesh-swap-evm-gas-v1`) that no
+screen displayed — an empty one stalls the swap at reveal (only the timelock refund
+recovers it). New read-only bridge probe `swapEvmAddresses` (gas/claim/fund addresses, no
+secrets cross, node untouched) + the Swap sheet shows the gas account tap-to-copy the
+moment the real toggle turns on, before Confirm. i18n ×5, Playwright-verified (armed
+labels, respond-mode hides it).
+
 ## [0.77.0] — 2026-07-13 — ARM MAINNET SWAP (needs:owner, money-path)
 
 ### The deliberate arming act — real mainnet funds

@@ -1662,6 +1662,13 @@ Don't share them and keep them safe.</p>
       <input type="checkbox" id="swap-respond-toggle">
       <span data-i18n="swap.respond.label">Respond to swaps (give USDC, receive NIM)</span>
     </label>
+    <!-- Initiator real mode only: the wallet-derived account that pays the Polygon claim gas —
+         an empty one stalls the swap at reveal (only the timelock refund recovers it), so it is
+         surfaced BEFORE Confirm, fundable up front (a little POL is enough). -->
+    <div class="swap-respond-fund" id="swap-gas-fund" hidden>
+      <p class="swap-sim-note live fund-note" data-i18n="swap.gas.fund">This account pays the claim fee — send it a little POL first</p>
+      <div class="copyable" id="swap-gas-copyable" tabindex="0"><div class="background"></div><div class="address" id="swap-gas-addr"></div><div class="tooltip" data-i18n="a.copied">Copied</div></div>
+    </div>
     <button class="send-btn" id="swap-start" data-i18n="swap.cta">Confirm</button>
     <p class="swap-sim-note" data-i18n="swap.simnote">Simulation: no real funds move yet</p>
   </div>
@@ -1832,6 +1839,7 @@ Don't share them and keep them safe.</p>
       'swap.respond.listening': 'Escuchando una oferta de intercambio en la malla',
       'swap.respond.sub': 'Tu teléfono responde a un intercambio: deposita USDC en garantía solo después de que el HTLC de NIM del socio esté en cadena a la profundidad requerida.',
       'swap.respond.fund': 'Financia esta dirección con USDC de prueba + POL para responder a intercambios',
+      'swap.gas.fund': 'Esta cuenta paga la comisión del cobro. Envíale un poco de POL primero',
       'chat.menu': 'Mensajes', 'chat.title': 'Mensajes de la malla', 'chat.ph': 'Mensaje a la malla…',
       'chat.public': 'Público — toda la malla puede leerlo',
       'chat.empty': 'Aún no hay mensajes. Cualquiera en la malla cerca de ti verá lo que envíes.',
@@ -1895,6 +1903,7 @@ Don't share them and keep them safe.</p>
       'swap.respond.listening': 'Warte auf ein Swap-Angebot im Mesh',
       'swap.respond.sub': 'Dein Handy beantwortet einen Swap: es hinterlegt USDC erst, nachdem der NIM-HTLC des Partners on-chain in ausreichender Tiefe bestätigt ist.',
       'swap.respond.fund': 'Finanziere diese Adresse mit Test-USDC + POL, um auf Swaps zu antworten',
+      'swap.gas.fund': 'Dieses Konto zahlt die Claim-Gebühr. Sende ihm zuerst etwas POL',
       'chat.menu': 'Nachrichten', 'chat.title': 'Mesh-Nachrichten', 'chat.ph': 'Nachricht ans Mesh…',
       'chat.public': 'Öffentlich — das ganze Mesh kann mitlesen',
       'chat.empty': 'Noch keine Nachrichten. Jeder im Mesh in deiner Nähe sieht, was du sendest.',
@@ -1958,6 +1967,7 @@ Don't share them and keep them safe.</p>
       'swap.respond.listening': 'En attente d’une offre d’échange sur le mesh',
       'swap.respond.sub': 'Ton téléphone répond à un échange : il dépose des USDC en garantie seulement après que le HTLC NIM du partenaire est confirmé on-chain à la profondeur requise.',
       'swap.respond.fund': 'Approvisionne cette adresse avec des USDC de test + du POL pour répondre aux échanges',
+      'swap.gas.fund': 'Ce compte paie les frais de réclamation. Envoie-lui d\'abord un peu de POL',
       'chat.menu': 'Messages', 'chat.title': 'Messages du mesh', 'chat.ph': 'Message au mesh…',
       'chat.public': 'Public — tout le mesh peut le lire',
       'chat.empty': 'Pas encore de messages. Tout le monde sur le mesh autour de vous verra ce que vous envoyez.',
@@ -2021,6 +2031,7 @@ Don't share them and keep them safe.</p>
       'swap.respond.listening': 'Aguardando uma oferta de troca na mesh',
       'swap.respond.sub': 'Seu telefone responde a uma troca: ele deposita USDC em garantia somente depois que o HTLC de NIM do parceiro estiver on-chain na profundidade exigida.',
       'swap.respond.fund': 'Financie este endereço com USDC de teste + POL para responder a trocas',
+      'swap.gas.fund': 'Esta conta paga a taxa do resgate. Envie um pouco de POL primeiro',
       'chat.menu': 'Mensagens', 'chat.title': 'Mensagens da mesh', 'chat.ph': 'Mensagem para a mesh…',
       'chat.public': 'Público — toda a mesh pode ler',
       'chat.empty': 'Ainda sem mensagens. Qualquer pessoa na mesh perto de você verá o que enviar.',
@@ -2092,6 +2103,7 @@ Don't share them and keep them safe.</p>
     'swap.respond.listening': 'Listening for a swap offer on the mesh',
     'swap.respond.sub': 'Your phone answers a swap: it escrows USDC only after the partner’s NIM HTLC is on-chain at depth.',
     'swap.respond.fund': 'Fund this address with test USDC + POL to answer swaps',
+      'swap.gas.fund': 'This account pays the claim fee — send it a little POL first',
     'chat.menu': 'Messages', 'chat.title': 'Mesh Messages', 'chat.ph': 'Message the mesh…',
     'chat.public': 'Public — everyone on the mesh can read it',
     'chat.empty': 'No messages yet. Anyone on the mesh around you will see what you send.',
@@ -2853,11 +2865,13 @@ Don't share them and keep them safe.</p>
       // Proposing real coins and responding are mutually exclusive modes.
       if (toggle.checked && respondToggle) respondToggle.checked = false;
       if (toggle.checked && swapAsset !== 'usdc') setSwapAsset('usdc'); // the live pair
+      showInitiatorGas(toggle.checked); // fund the claim-gas account BEFORE Confirm
       updateSwapMode();
     });
     if (respondToggle) {
       respondToggle.addEventListener('change', () => {
         if (respondToggle.checked) { toggle.checked = false; if (swapAsset !== 'usdc') setSwapAsset('usdc'); }
+        showInitiatorGas(toggle.checked); // hidden when responding (fund panel takes over)
         updateSwapMode();
       });
     }
@@ -2901,6 +2915,45 @@ Don't share them and keep them safe.</p>
     const doCopy = () => {
       if (!swapFundAddr) return;
       try { navigator.clipboard.writeText(swapFundAddr).catch(() => {}); } catch (e) {}
+      el.classList.add('copied');
+      clearTimeout(t);
+      t = setTimeout(() => el.classList.remove('copied'), 800);
+    };
+    el.addEventListener('click', doCopy);
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); doCopy(); } });
+  })();
+
+  // Initiator real mode: surface the wallet-derived GAS account (pays the Polygon claim)
+  // the moment the real toggle turns on — fundable BEFORE Confirm, so the swap can never
+  // stall at reveal on an empty gas account. Same Copyable treatment as the fund panel.
+  let swapGasAddr = '';
+  async function showInitiatorGas(on) {
+    const panel = document.getElementById('swap-gas-fund');
+    const line = document.getElementById('swap-gas-addr');
+    if (!panel || !line) return;
+    if (!on || !(window.nimmesh && window.nimmesh.swapEvmAddresses)) { panel.hidden = true; return; }
+    try {
+      const a = await window.nimmesh.swapEvmAddresses();
+      swapGasAddr = (a && a.gas) || '';
+    } catch (e) { swapGasAddr = ''; }
+    if (!swapGasAddr) { panel.hidden = true; return; }
+    line.textContent = swapGasAddr;
+    const note = panel.querySelector('.fund-note');
+    if (note) {
+      const mainnet = !!window.__mainnetArmed;
+      note.textContent = T('swap.gas.fund');
+      note.classList.toggle('mainnet', mainnet);
+      note.classList.toggle('live', !mainnet);
+    }
+    panel.hidden = false;
+  }
+  (function wireSwapGasCopyable() {
+    const el = document.getElementById('swap-gas-copyable');
+    if (!el) return;
+    let t = null;
+    const doCopy = () => {
+      if (!swapGasAddr) return;
+      try { navigator.clipboard.writeText(swapGasAddr).catch(() => {}); } catch (e) {}
       el.classList.add('copied');
       clearTimeout(t);
       t = setTimeout(() => el.classList.remove('copied'), 800);

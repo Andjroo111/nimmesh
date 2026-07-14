@@ -230,6 +230,8 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         // labels; when Andjroo's arming release flips it, the swap sheet shows the loud
         // "REAL MAINNET FUNDS" labels and drives the mainnet ctors.
         mainnetSwapArmed: function () { return call('mainnetSwapArmed'); },
+        // The wallet-derived EVM swap accounts (gas/claim/fund addresses) — fundable up front.
+        swapEvmAddresses: function () { return call('swapEvmAddresses'); },
         // Public mesh chat (0x50): broadcast text over BLE; the rolling heard/sent log.
         sendChat: function (nick, text) { return call('sendChat', { nickname: nick, text: text }); },
         chatMessages: function () { return call('chatMessages'); },
@@ -521,6 +523,18 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             // §8.3 probe: is the mainnet swap path armed (flag + recorded HTLC)? `false` on any
             // shipped build → the UI keeps its testnet path/labels. `reason` labels the state.
             return (true, ["armed": NimmeshCore.mainnetSwapArmed(), "reason": NimmeshCore.mainnetSwapReason()])
+        case "swapEvmAddresses":
+            // The wallet-DERIVED EVM accounts for BOTH swap roles, readable BEFORE any swap
+            // starts, so they can be funded up front (the initiator's GAS account pays its
+            // Polygon `withdraw(S)` claim — an empty one stalls the swap at reveal and only
+            // the timelock refund recovers it). Public addresses only; no secret crosses the
+            // bridge, nothing touches the node.
+            guard let evm = Wallet.swapEvmSecrets(), let rs = Wallet.swapResponderSecrets()
+            else { return (false, "no wallet") }
+            let gas = (try? NimmeshCore.evmAddressForSecret(secret: evm.gas)) ?? ""
+            let claim = (try? NimmeshCore.evmAddressForSecret(secret: evm.claim)) ?? ""
+            let fund = (try? NimmeshCore.evmAddressForSecret(secret: rs.fund)) ?? ""
+            return (true, ["gas": gas, "claim": claim, "fund": fund])
         case "cashlinkList":
             return cashlinkList()
         case "sendChat":
