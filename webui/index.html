@@ -269,8 +269,11 @@
   .usdc-recv-addr { text-align: center; font-family: 'Fira Mono', 'Roboto Mono', monospace; font-size: 16px;
     color: rgba(31,35,72,.55); margin: 4px 24px 4px; letter-spacing: .01em; cursor: pointer; transition: color .2s cubic-bezier(.25,0,0,1); }
   .usdc-recv-addr.copied { color: #0582ca; }
-  /* the empty Contacts column keeps its full height + divider like the real Send modal */
-  #usdc-send-sheet .contacts-row { min-height: 88px; }
+  /* the empty Contacts column keeps its full height + divider like the real Send modal
+     (measured off Andjroo's 12 Pro capture: the contacts block is ~18% of the modal and
+     ENTER ADDRESS sits ~40% down — the taller row + label margin below push it there) */
+  #usdc-send-sheet .contacts-row { min-height: 132px; }
+  #usdc-send-sheet .enter-address-label { margin-top: 34px; }
   /* STEP 1 fills the sheet so the note + QR sit at the BOTTOM (real-wallet composition) with the
      0x box floating in the upper area — a valid full address auto-advances, so there is no CTA. */
   #usdc-send-recipient { display: flex; flex-direction: column; min-height: 60vh; }
@@ -519,9 +522,11 @@
 
   /* Send sheet */
   .contacts-row { display: flex; align-items: flex-start; padding: 16px 24px 6px; }
-  .contacts-btn { display: flex; flex-direction: column; align-items: center; gap: 8px;
-    color: rgba(31,35,72,.5); font-size: 13px; font-weight: 600; flex: 0 0 auto; }
-  .contacts-btn svg { width: 40px; height: 46px; }
+  .contacts-btn { display: flex; flex-direction: column; align-items: center; gap: 12px;
+    color: rgba(31,35,72,.7); font-size: 14px; font-weight: 600; flex: 0 0 auto; }
+  /* The verbatim @nimiq/style contacts.svg at the wallet's .nq-icon treatment: 48px tall
+     (viewBox 40x49), navy at opacity .4 — the label below stays darker, like the wallet. */
+  .contacts-btn svg { width: 39px; height: 48px; color: #1f2348; opacity: .4; }
   .contacts-divider { width: 1.5px; align-self: stretch; background: rgba(31,35,72,.12); margin: 4px 18px; border-radius: 2px; }
   .recent { display: flex; gap: 18px; }
   .recent-item { display: flex; flex-direction: column; align-items: center; gap: 9px; }
@@ -1610,7 +1615,7 @@ Don't share them and keep them safe.</p>
   <div id="send-recipient">
     <div class="contacts-row">
       <div class="contacts-btn">
-        <svg viewBox="0 0 24 28" fill="none"><rect x="2" y="2" width="20" height="24" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="11" r="3.2" fill="currentColor"/><path d="M6.5 20.5c0-3 2.5-5 5.5-5s5.5 2 5.5 5" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>
+        <svg viewBox="0 0 40 49" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M35.73 7.25c0 .48.34.9.82 1a4.08 4.08 0 0 1 3.26 4v32.67A4.08 4.08 0 0 1 35.73 49H6.13A6.13 6.13 0 0 1 0 42.87V6.13A6.13 6.13 0 0 1 6.13 0h25.52a4.08 4.08 0 0 1 4.08 4.08v3.17zm-5.1 31.88A10.23 10.23 0 0 0 20.4 29.6c-5.21 0-9.6 3.9-10.19 9.08a1.02 1.02 0 0 0 1.02 1.13h18.75a.64.64 0 0 0 .64-.68zm-16.38-17.7a6.15 6.15 0 1 1 12.3-.04 6.15 6.15 0 0 1-12.3.05zM6.12 4.09a2.04 2.04 0 0 0 0 4.09h25.01c.29 0 .51-.23.51-.51V4.59a.51.51 0 0 0-.5-.5H6.11z" fill="currentColor"/></svg>
         <span data-i18n="send.contacts">Contacts</span>
       </div>
       <div class="contacts-divider"></div>
@@ -1691,6 +1696,7 @@ Don't share them and keep them safe.</p>
      the mainnet path is unarmed — never the light-blue gradient, which would look enabled). -->
 <section class="sheet" id="usdc-send-sheet" aria-label="Send USDC">
   <div class="sheet-header">
+    <button class="s-back" id="usdc-send-back" aria-label="Back"><svg viewBox="0 0 23 18" xmlns="http://www.w3.org/2000/svg"><path d="M22 9L3 9" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 16L2 9L9 2" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     <div class="title" data-i18n="usend.title">Send USDC</div>
     <button class="s-close sheet-close" aria-label="Close"><svg viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
   </div>
@@ -1698,7 +1704,7 @@ Don't share them and keep them safe.</p>
   <!-- STEP 1 — recipient. No CTA: a valid full 0x auto-advances. -->
   <div id="usdc-send-recipient">
     <div class="contacts-row">
-      <div class="contacts-btn"><svg viewBox="0 0 24 28" fill="none"><rect x="2" y="2" width="20" height="24" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="11" r="3.2" fill="currentColor"/><path d="M6.5 20.5c0-3 2.5-5 5.5-5s5.5 2 5.5 5" stroke="currentColor" stroke-width="1.6" fill="none"/></svg><span data-i18n="send.contacts">Contacts</span></div>
+      <div class="contacts-btn"><svg viewBox="0 0 40 49" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M35.73 7.25c0 .48.34.9.82 1a4.08 4.08 0 0 1 3.26 4v32.67A4.08 4.08 0 0 1 35.73 49H6.13A6.13 6.13 0 0 1 0 42.87V6.13A6.13 6.13 0 0 1 6.13 0h25.52a4.08 4.08 0 0 1 4.08 4.08v3.17zm-5.1 31.88A10.23 10.23 0 0 0 20.4 29.6c-5.21 0-9.6 3.9-10.19 9.08a1.02 1.02 0 0 0 1.02 1.13h18.75a.64.64 0 0 0 .64-.68zm-16.38-17.7a6.15 6.15 0 1 1 12.3-.04 6.15 6.15 0 0 1-12.3.05zM6.12 4.09a2.04 2.04 0 0 0 0 4.09h25.01c.29 0 .51-.23.51-.51V4.59a.51.51 0 0 0-.5-.5H6.11z" fill="currentColor"/></svg><span data-i18n="send.contacts">Contacts</span></div>
       <div class="contacts-divider"></div>
       <div class="recent"></div>
     </div>
@@ -4200,6 +4206,13 @@ Don't share them and keep them safe.</p>
       } finally {
         refreshBtn();
       }
+    });
+
+    // The header back arrow (the wallet's): amount step -> address step; address step -> close.
+    const usdcBackBtn = document.getElementById('usdc-send-back');
+    if (usdcBackBtn) usdcBackBtn.addEventListener('click', () => {
+      if (amountStep && !amountStep.hidden) { showStep('recipient'); setTimeout(() => box.focus(), 60); }
+      else { const c = document.querySelector('#usdc-send-sheet .sheet-close'); if (c) c.click(); }
     });
 
     // Open always starts fresh at the address step (a stale amount/recipient must never carry over).

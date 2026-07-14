@@ -3,6 +3,19 @@
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
 
+## [0.80.2] — 2026-07-14
+
+### Fixed — the Send sheets use the wallet's REAL components (Andjroo's round-4 catch)
+
+He asked directly whether the references were consulted — they weren't, fully: BOTH send
+sheets (NIM and USDC) carried a hand-drawn Contacts icon, the USDC sheet lacked the
+wallet's header back arrow, and the ENTER ADDRESS section sat too high. Now: the verbatim
+`@nimiq/style` `contacts.svg` (filled card, knocked-out person; 48px at opacity .4 — the
+wallet's `.nq-icon` treatment) in both sheets, the verbatim `arrow-left.svg` back button
+(amount → address → close), a taller contacts block, and ENTER ADDRESS ~40% down the
+sheet — all measured off his 12 Pro capture of the real wallet, render-vs-capture
+compared by eye before shipping.
+
 ## [0.80.1] — 2026-07-14
 
 ### Fixed — the Send USDC address box now matches the wallet's
