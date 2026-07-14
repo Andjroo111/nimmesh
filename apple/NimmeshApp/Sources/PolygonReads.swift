@@ -77,6 +77,13 @@ enum PolygonReads {
         return Int(clampedHex(hex))
     }
 
+    /// The live USDC balance (micro) of one account, or `nil` if unreachable — the source-account
+    /// picker in `PolygonSend` uses this to choose which funded account to send from. Read-only.
+    static func usdcBalance(of addr: String) async -> Int? {
+        guard isAddr(addr) else { return nil }
+        return try? await usdcBalanceOf(addr.lowercased())
+    }
+
     private static func nativeBalance(_ addr: String) async throws -> String {
         guard let hex = try await call("eth_getBalance", [addr, "latest"]) as? String
         else { throw RpcError(message: "eth_getBalance: bad shape") }

@@ -244,6 +244,38 @@ fn malformed_responses_are_structured_errors_not_panics() {
 }
 
 #[test]
+fn estimate_gas_request_and_parse_round_trip() {
+    let req = estimate_gas_request(
+        "0x1111111111111111111111111111111111111111",
+        "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359",
+        "0xa9059cbb",
+        9,
+    );
+    assert_eq!(req["method"], "eth_estimateGas");
+    assert_eq!(req["id"], 9);
+    assert_eq!(
+        req["params"][0]["from"],
+        "0x1111111111111111111111111111111111111111"
+    );
+    assert_eq!(req["params"][0]["data"], "0xa9059cbb");
+    // A live-shape estimate ("0xee49" = 61 001, the real value measured for a native-USDC transfer)
+    // parses to its integer.
+    assert_eq!(
+        parse_estimate_gas(&json!({ "jsonrpc": "2.0", "id": 9, "result": "0xee49" })).unwrap(),
+        61_001
+    );
+    // A node error → terminal EvmRpcError::Rpc; a missing result → BadResponse.
+    assert!(matches!(
+        parse_estimate_gas(&json!({ "error": { "message": "execution reverted" } })),
+        Err(EvmRpcError::Rpc { .. })
+    ));
+    assert!(matches!(
+        parse_estimate_gas(&json!({ "jsonrpc": "2.0", "id": 9 })),
+        Err(EvmRpcError::BadResponse { .. })
+    ));
+}
+
+#[test]
 fn http_errors_transient_classification() {
     assert!(EvmRpcError::Http {
         status: 503,

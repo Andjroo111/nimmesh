@@ -271,8 +271,14 @@
   .usdc-recv-addr.copied { color: #0582ca; }
   /* the empty Contacts column keeps its full height + divider like the real Send modal */
   #usdc-send-sheet .contacts-row { min-height: 88px; }
-  .usdc-send-note-row { position: relative; display: flex; align-items: center; justify-content: center; margin-top: 26px; }
-  .usdc-send-note-row .usdc-only-note { margin: 0 56px; }
+  /* STEP 1 fills the sheet so the note + QR sit at the BOTTOM (real-wallet composition) with the
+     0x box floating in the upper area — a valid full address auto-advances, so there is no CTA. */
+  #usdc-send-recipient { display: flex; flex-direction: column; min-height: 60vh; }
+  /* an explicit display: wins over the [hidden] UA rule, so restore hide-on-step-switch. */
+  #usdc-send-recipient[hidden] { display: none; }
+  .usdc-send-note-row { position: relative; display: flex; align-items: center; justify-content: center;
+    margin-top: auto; padding: 30px 22px 6px; }
+  .usdc-send-note-row .usdc-only-note { margin: 0 40px; }
   .usdc-send-note-row .qr-scan { position: absolute; right: 22px; top: 50%; transform: translateY(-50%);
     width: 42px; height: 42px; border: 0; background: transparent; color: rgba(31,35,72,.4);
     display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
@@ -281,11 +287,18 @@
   .usdc-addr-box textarea { width: 100%; border: 0; outline: none; resize: none; background: none; display: block;
     font-family: 'Fira Mono', 'Roboto Mono', monospace; font-size: 17px; line-height: 1.85; color: #1f2348; min-height: 3.7em; }
   .usdc-addr-box textarea::placeholder { color: rgba(31,35,72,.3); }
-  /* Honest not-yet-live footer: a styled note + a deliberately-disabled Send (never dead-looking). */
-  .usdc-send-foot { display: flex; align-items: center; gap: 9px; justify-content: center; margin: 20px 24px 0;
-    padding: 11px 14px; border-radius: 8px; background: rgba(31,35,72,.05); color: rgba(31,35,72,.62);
-    font-size: 13px; font-weight: 600; line-height: 1.4; }
-  .usdc-send-foot svg { width: 15px; height: 15px; flex: 0 0 auto; color: rgba(31,35,72,.45); }
+  /* STEP 2 (amount): the recipient shown big (grey avatar + truncated 0x), the available + honest
+     POL-fee meta line, and — while the mainnet path is UNARMED — a NEUTRAL grey Send that can never
+     be mistaken for the light-blue CTA gradient. */
+  .usdc-send-to { display: flex; flex-direction: column; align-items: center; gap: 12px; margin: 18px 24px 0; }
+  .usdc-send-to .usdc-avatar { width: 72px; height: 72px; color: rgba(31,35,72,.32); }
+  .usdc-send-to .usdc-avatar svg { width: 100%; height: 100%; }
+  .usdc-send-to-addr { font-size: 15px; font-weight: 600; letter-spacing: -.01em; color: #1f2348; text-align: center; word-break: break-all; }
+  .usdc-send-meta { display: flex; flex-direction: column; align-items: center; gap: 4px; margin: 14px 24px 0;
+    font-size: 13px; font-weight: 600; color: rgba(31,35,72,.5); text-align: center; }
+  #usdc-send-avail { color: rgba(31,35,72,.72); }
+  .send-btn.neutral { background-image: none; background: rgba(31,35,72,.08); color: rgba(31,35,72,.42); box-shadow: none; cursor: default; }
+  .send-btn.neutral:hover { transform: none; box-shadow: none; }
   /* The real wallet shows the backup banner as a light CARD with a clearly visible
      grey border + breathing room (Andjroo's reference). The bare component inset reads
      too faint/tight on our page, so make the container explicit. */
@@ -1659,29 +1672,53 @@ Don't share them and keep them safe.</p>
   <p class="usdc-only-note"><span data-i18n="urecv.polyonly">You can receive from Polygon USDC addresses only!</span> <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="currentColor"/><rect x="11" y="10.4" width="2" height="7" rx="1" fill="#fff"/><circle cx="12" cy="7.3" r="1.3" fill="#fff"/></svg></p>
 </section>
 
-<!-- ============ Send USDC — mirrors real-wallet-send-usdc-modal.png ============
-     Contacts col + divider (empty recents v1), ENTER ADDRESS 0x box, blue "Polygon USDC only"
-     note + scan icon. HONEST-DISABLED this pass: no standalone USDC-send FFI exists yet (only the
-     HTLC swap constructors), so the real money-path is not wired — the Send button is a
-     deliberately-styled disabled state with an honest "coming next" note, never dead-looking. -->
+<!-- ============ Send USDC — mirrors real-wallet-send-usdc-modal.png (2-step) ============
+     STEP 1 (address): Contacts col + divider, ENTER ADDRESS 0x box, and the blue "Polygon USDC
+     only" note CENTRED at the sheet bottom with the QR scan at the bottom-right corner — and NO
+     Send button: a valid full 0x (typed / pasted / scanned) AUTO-ADVANCES to the amount step, like
+     the real wallet. STEP 2 (amount): the recipient shown + a USDC amount input, an available line
+     + the honest POL network-fee line, and a Send CTA (a neutral grey honest-disabled state while
+     the mainnet path is unarmed — never the light-blue gradient, which would look enabled). -->
 <section class="sheet" id="usdc-send-sheet" aria-label="Send USDC">
   <div class="sheet-header">
     <div class="title" data-i18n="usend.title">Send USDC</div>
     <button class="s-close sheet-close" aria-label="Close"><svg viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
   </div>
-  <div class="contacts-row">
-    <div class="contacts-btn"><svg viewBox="0 0 24 28" fill="none"><rect x="2" y="2" width="20" height="24" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="11" r="3.2" fill="currentColor"/><path d="M6.5 20.5c0-3 2.5-5 5.5-5s5.5 2 5.5 5" stroke="currentColor" stroke-width="1.6" fill="none"/></svg><span data-i18n="send.contacts">Contacts</span></div>
-    <div class="contacts-divider"></div>
-    <div class="recent"></div>
+
+  <!-- STEP 1 — recipient. No CTA: a valid full 0x auto-advances. -->
+  <div id="usdc-send-recipient">
+    <div class="contacts-row">
+      <div class="contacts-btn"><svg viewBox="0 0 24 28" fill="none"><rect x="2" y="2" width="20" height="24" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="11" r="3.2" fill="currentColor"/><path d="M6.5 20.5c0-3 2.5-5 5.5-5s5.5 2 5.5 5" stroke="currentColor" stroke-width="1.6" fill="none"/></svg><span data-i18n="send.contacts">Contacts</span></div>
+      <div class="contacts-divider"></div>
+      <div class="recent"></div>
+    </div>
+    <div class="enter-address-label" data-i18n="send.enteraddr">ENTER ADDRESS</div>
+    <div class="usdc-addr-box"><textarea id="usdc-send-addr" placeholder="0x" rows="3" spellcheck="false" autocapitalize="none" autocorrect="off" inputmode="text" aria-label="Recipient 0x address"></textarea></div>
+    <div class="usdc-send-note-row">
+      <p class="usdc-only-note"><span data-i18n="usend.polyonly">Send to Polygon USDC addresses only!</span> <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="currentColor"/><rect x="11" y="10.4" width="2" height="7" rx="1" fill="#fff"/><circle cx="12" cy="7.3" r="1.3" fill="#fff"/></svg></p>
+      <button class="qr-scan" id="usdc-send-scan" aria-label="Scan QR code"><svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><g fill="currentColor"><path d="M1.21 7.06c.67 0 1.21-.54 1.21-1.21l-.04-3.12a.3.3 0 0 1 .3-.3H5.7a1.21 1.21 0 1 0 0-2.43H2.37A2.4 2.4 0 0 0 0 2.42v3.43c0 .67.54 1.21 1.21 1.21zM5.69 37.58H2.73a.3.3 0 0 1-.3-.3v-3.13a1.21 1.21 0 1 0-2.43 0v3.43A2.4 2.4 0 0 0 2.37 40H5.7a1.21 1.21 0 0 0 0-2.42zM38.79 32.94c-.67 0-1.21.54-1.21 1.21l.04 3.12a.3.3 0 0 1-.3.3H34.3a1.21 1.21 0 1 0 0 2.43h3.32A2.4 2.4 0 0 0 40 37.58v-3.43c0-.67-.54-1.21-1.21-1.21zM37.63 0H34.3a1.21 1.21 0 1 0 0 2.42h2.96c.17 0 .3.14.3.3v3.13a1.21 1.21 0 0 0 2.43 0V2.42A2.4 2.4 0 0 0 37.63 0z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M13.94 15.15H6.67c-.67 0-1.22-.54-1.22-1.21V6.67c0-.67.55-1.21 1.22-1.21h7.27c.67 0 1.21.54 1.21 1.2v7.28c0 .67-.54 1.21-1.21 1.21zM8.18 7.88a.3.3 0 0 0-.3.3v4.24c0 .17.13.3.3.3h4.24a.3.3 0 0 0 .3-.3V8.18a.3.3 0 0 0-.3-.3H8.18zM6.67 24.85h7.27c.67 0 1.21.54 1.21 1.21v7.27c0 .67-.54 1.22-1.21 1.22H6.67c-.67 0-1.22-.55-1.22-1.22v-7.27c0-.67.55-1.21 1.22-1.21zm5.75 7.27a.3.3 0 0 0 .3-.3v-4.24a.3.3 0 0 0-.3-.3H8.18a.3.3 0 0 0-.3.3v4.24c0 .17.13.3.3.3h4.24zM26.06 5.45h7.27c.67 0 1.21.55 1.21 1.22v7.27c0 .67-.54 1.21-1.2 1.21h-7.28c-.67 0-1.21-.54-1.21-1.21V6.67c0-.67.54-1.22 1.21-1.22zm5.76 7.28a.3.3 0 0 0 .3-.3V8.17a.3.3 0 0 0-.3-.3h-4.24a.3.3 0 0 0-.3.3v4.24c0 .17.13.3.3.3h4.24z"/><path d="M17.58 10.6h1.2a.9.9 0 1 0 0-1.81.3.3 0 0 1-.3-.3V6.66a.9.9 0 1 0-1.81 0V9.7c0 .5.4.9.9.9zM21.21 7.58c.17 0 .3.13.3.3v6.66a.9.9 0 1 0 1.82 0V6.67c0-.5-.4-.91-.9-.91H21.2a.9.9 0 1 0 0 1.82zM12.42 18.18c0 .5.41.91.91.91h4.25c.5 0 .9-.4.9-.9v-4.86a.9.9 0 1 0-1.81 0v3.64a.3.3 0 0 1-.3.3h-3.04c-.5 0-.9.4-.9.91z"/><path d="M9.09 17.27c-.5 0-.9.4-.9.91v3.03a.3.3 0 0 1-.31.3H6.67a.9.9 0 1 0 0 1.82h15.75c.5 0 .91-.4.91-.9v-3.64a.9.9 0 0 0-1.82 0v2.42a.3.3 0 0 1-.3.3h-10.9a.3.3 0 0 1-.31-.3v-3.03c0-.5-.4-.9-.91-.9zM22.12 26.06c0-.5-.4-.9-.9-.9h-3.64c-.5 0-.91.4-.91.9v4.85a.9.9 0 1 0 1.81 0v-3.64c0-.16.14-.3.3-.3h2.43c.5 0 .91-.4.91-.9zM33.33 32.42h-10.3a.3.3 0 0 1-.3-.3V29.7a.9.9 0 1 0-1.82 0v3.63c0 .5.4.91.9.91h11.52a.9.9 0 0 0 0-1.82z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M29.1 30h-3.65a.9.9 0 0 1-.9-.91v-3.64c0-.5.4-.9.9-.9h3.64c.5 0 .91.4.91.9v3.64c0 .5-.4.91-.9.91zm-2.43-3.64a.3.3 0 0 0-.3.3v1.22c0 .17.13.3.3.3h1.2a.3.3 0 0 0 .31-.3v-1.21a.3.3 0 0 0-.3-.3h-1.21z"/><path d="M32.73 20.9c-.5 0-.91.42-.91.92v7.88a.9.9 0 0 0 1.82 0v-7.88c0-.5-.41-.91-.91-.91zM33.64 17.58c0-.5-.41-.91-.91-.91h-6.67c-.5 0-.9.4-.9.9v3.64a.9.9 0 0 0 1.8 0V18.8c0-.17.15-.3.31-.3h5.46c.5 0 .9-.41.9-.91z"/></g></svg></button>
+    </div>
   </div>
-  <div class="enter-address-label" data-i18n="send.enteraddr">ENTER ADDRESS</div>
-  <div class="usdc-addr-box"><textarea id="usdc-send-addr" placeholder="0x" rows="3" spellcheck="false" autocapitalize="none" autocorrect="off" inputmode="text" aria-label="Recipient 0x address"></textarea></div>
-  <div class="usdc-send-note-row">
-    <p class="usdc-only-note"><span data-i18n="usend.polyonly">Send to Polygon USDC addresses only!</span> <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="currentColor"/><rect x="11" y="10.4" width="2" height="7" rx="1" fill="#fff"/><circle cx="12" cy="7.3" r="1.3" fill="#fff"/></svg></p>
-    <button class="qr-scan" aria-label="Scan QR code"><svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><g fill="currentColor"><path d="M1.21 7.06c.67 0 1.21-.54 1.21-1.21l-.04-3.12a.3.3 0 0 1 .3-.3H5.7a1.21 1.21 0 1 0 0-2.43H2.37A2.4 2.4 0 0 0 0 2.42v3.43c0 .67.54 1.21 1.21 1.21zM5.69 37.58H2.73a.3.3 0 0 1-.3-.3v-3.13a1.21 1.21 0 1 0-2.43 0v3.43A2.4 2.4 0 0 0 2.37 40H5.7a1.21 1.21 0 0 0 0-2.42zM38.79 32.94c-.67 0-1.21.54-1.21 1.21l.04 3.12a.3.3 0 0 1-.3.3H34.3a1.21 1.21 0 1 0 0 2.43h3.32A2.4 2.4 0 0 0 40 37.58v-3.43c0-.67-.54-1.21-1.21-1.21zM37.63 0H34.3a1.21 1.21 0 1 0 0 2.42h2.96c.17 0 .3.14.3.3v3.13a1.21 1.21 0 0 0 2.43 0V2.42A2.4 2.4 0 0 0 37.63 0z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M13.94 15.15H6.67c-.67 0-1.22-.54-1.22-1.21V6.67c0-.67.55-1.21 1.22-1.21h7.27c.67 0 1.21.54 1.21 1.2v7.28c0 .67-.54 1.21-1.21 1.21zM8.18 7.88a.3.3 0 0 0-.3.3v4.24c0 .17.13.3.3.3h4.24a.3.3 0 0 0 .3-.3V8.18a.3.3 0 0 0-.3-.3H8.18zM6.67 24.85h7.27c.67 0 1.21.54 1.21 1.21v7.27c0 .67-.54 1.22-1.21 1.22H6.67c-.67 0-1.22-.55-1.22-1.22v-7.27c0-.67.55-1.21 1.22-1.21zm5.75 7.27a.3.3 0 0 0 .3-.3v-4.24a.3.3 0 0 0-.3-.3H8.18a.3.3 0 0 0-.3.3v4.24c0 .17.13.3.3.3h4.24zM26.06 5.45h7.27c.67 0 1.21.55 1.21 1.22v7.27c0 .67-.54 1.21-1.2 1.21h-7.28c-.67 0-1.21-.54-1.21-1.21V6.67c0-.67.54-1.22 1.21-1.22zm5.76 7.28a.3.3 0 0 0 .3-.3V8.17a.3.3 0 0 0-.3-.3h-4.24a.3.3 0 0 0-.3.3v4.24c0 .17.13.3.3.3h4.24z"/><path d="M17.58 10.6h1.2a.9.9 0 1 0 0-1.81.3.3 0 0 1-.3-.3V6.66a.9.9 0 1 0-1.81 0V9.7c0 .5.4.9.9.9zM21.21 7.58c.17 0 .3.13.3.3v6.66a.9.9 0 1 0 1.82 0V6.67c0-.5-.4-.91-.9-.91H21.2a.9.9 0 1 0 0 1.82zM12.42 18.18c0 .5.41.91.91.91h4.25c.5 0 .9-.4.9-.9v-4.86a.9.9 0 1 0-1.81 0v3.64a.3.3 0 0 1-.3.3h-3.04c-.5 0-.9.4-.9.91z"/><path d="M9.09 17.27c-.5 0-.9.4-.9.91v3.03a.3.3 0 0 1-.31.3H6.67a.9.9 0 1 0 0 1.82h15.75c.5 0 .91-.4.91-.9v-3.64a.9.9 0 0 0-1.82 0v2.42a.3.3 0 0 1-.3.3h-10.9a.3.3 0 0 1-.31-.3v-3.03c0-.5-.4-.9-.91-.9zM22.12 26.06c0-.5-.4-.9-.9-.9h-3.64c-.5 0-.91.4-.91.9v4.85a.9.9 0 1 0 1.81 0v-3.64c0-.16.14-.3.3-.3h2.43c.5 0 .91-.4.91-.9zM33.33 32.42h-10.3a.3.3 0 0 1-.3-.3V29.7a.9.9 0 1 0-1.82 0v3.63c0 .5.4.91.9.91h11.52a.9.9 0 0 0 0-1.82z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M29.1 30h-3.65a.9.9 0 0 1-.9-.91v-3.64c0-.5.4-.9.9-.9h3.64c.5 0 .91.4.91.9v3.64c0 .5-.4.91-.9.91zm-2.43-3.64a.3.3 0 0 0-.3.3v1.22c0 .17.13.3.3.3h1.2a.3.3 0 0 0 .31-.3v-1.21a.3.3 0 0 0-.3-.3h-1.21z"/><path d="M32.73 20.9c-.5 0-.91.42-.91.92v7.88a.9.9 0 0 0 1.82 0v-7.88c0-.5-.41-.91-.91-.91zM33.64 17.58c0-.5-.41-.91-.91-.91h-6.67c-.5 0-.9.4-.9.9v3.64a.9.9 0 0 0 1.8 0V18.8c0-.17.15-.3.31-.3h5.46c.5 0 .9-.41.9-.91z"/></g></svg></button>
+
+  <!-- STEP 2 — amount + confirm. Recipient shown (grey avatar + truncated 0x), USDC amount input,
+       available + honest POL fee line, then the Send CTA (neutral grey while unarmed). -->
+  <div id="usdc-send-amount" hidden>
+    <button class="sc-back" id="usdc-send-back" aria-label="Back"><svg viewBox="0 0 16 12" fill="none"><path d="M6 1L1 6l5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="2" y1="6" x2="15" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span data-i18n="send.editrecipient">Recipient</span></button>
+    <div class="usdc-send-to">
+      <div class="identicon usdc-avatar" id="usdc-send-avatar"></div>
+      <div class="usdc-send-to-addr address mono" id="usdc-send-to"></div>
+    </div>
+    <div class="amount-input" id="usdc-amount-wrap">
+      <input id="usdc-amount" inputmode="decimal" placeholder="0" aria-label="Amount in USDC">
+      <span class="nim">USDC</span>
+    </div>
+    <div class="usdc-send-meta">
+      <span id="usdc-send-avail"></span>
+      <span data-i18n="usend.feepol">Network fee paid in POL</span>
+    </div>
+    <button class="send-btn" id="usdc-send-btn" data-i18n="send.cta">Send</button>
+    <div class="send-status" id="usdc-send-status" hidden></div>
   </div>
-  <div class="usdc-send-foot"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.8"/><path d="M12 11v6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="7.6" r="1.15" fill="currentColor"/></svg><span data-i18n="usend.soon">Sending USDC arrives in the next build. You can already receive.</span></div>
-  <button class="send-btn" id="usdc-send-btn" disabled data-i18n="send.cta">Send</button>
 </section>
 
 <!-- ============ USDC accounts (behind the kebab) ============
@@ -2000,6 +2037,7 @@ Don't share them and keep them safe.</p>
       'urecv.polyonly': 'Solo puedes recibir de direcciones USDC de Polygon.',
       'usend.title': 'Enviar USDC', 'usend.polyonly': 'Envía solo a direcciones USDC de Polygon.',
       'usend.soon': 'El envío de USDC llega en la próxima versión. Ya puedes recibir.',
+      'usend.available': 'disponible', 'usend.feepol': 'La comisión de red se paga en POL', 'usend.needamount': 'Introduce un importe', 'usend.overbalance': 'Más que tu saldo de USDC', 'usend.signing': 'Confirma en tu dispositivo…', 'usend.sent': 'Enviado · tx ', 'usend.failed': 'Error: ', 'usend.openapp': 'Ábrelo en la app para enviar',
       'uacct.title': 'Cuentas de USDC', 'uacct.sub': 'Tu USDC se reparte entre estas cuentas de Polygon derivadas de tu cartera. Toca una dirección para copiarla.',
       'usdc.nomatch.title': 'Sin resultados', 'usdc.nomatch': 'Ninguna transferencia coincide con tu búsqueda',
       'chat.menu': 'Mensajes', 'chat.title': 'Mensajes de la malla', 'chat.ph': 'Mensaje a la malla…',
@@ -2076,6 +2114,7 @@ Don't share them and keep them safe.</p>
       'urecv.polyonly': 'Du kannst nur von Polygon-USDC-Adressen empfangen.',
       'usend.title': 'USDC senden', 'usend.polyonly': 'Sende nur an Polygon-USDC-Adressen.',
       'usend.soon': 'Das Senden von USDC kommt im nächsten Build. Empfangen geht schon.',
+      'usend.available': 'verfügbar', 'usend.feepol': 'Netzwerkgebühr wird in POL bezahlt', 'usend.needamount': 'Betrag eingeben', 'usend.overbalance': 'Mehr als dein USDC-Guthaben', 'usend.signing': 'Auf deinem Gerät bestätigen…', 'usend.sent': 'Gesendet · tx ', 'usend.failed': 'Fehler: ', 'usend.openapp': 'In der App öffnen zum Senden',
       'uacct.title': 'USDC-Konten', 'uacct.sub': 'Dein USDC liegt auf diesen von der Wallet abgeleiteten Polygon-Konten. Tippe auf eine Adresse, um sie zu kopieren.',
       'usdc.nomatch.title': 'Keine Treffer', 'usdc.nomatch': 'Keine Transaktion passt zu deiner Suche',
       'chat.menu': 'Nachrichten', 'chat.title': 'Mesh-Nachrichten', 'chat.ph': 'Nachricht ans Mesh…',
@@ -2152,6 +2191,7 @@ Don't share them and keep them safe.</p>
       'urecv.polyonly': 'Tu peux recevoir uniquement depuis des adresses USDC Polygon.',
       'usend.title': 'Envoyer des USDC', 'usend.polyonly': 'Envoie uniquement vers des adresses USDC Polygon.',
       'usend.soon': 'L’envoi d’USDC arrive dans la prochaine version. Tu peux déjà recevoir.',
+      'usend.available': 'disponible', 'usend.feepol': 'Frais de réseau payés en POL', 'usend.needamount': 'Saisis un montant', 'usend.overbalance': 'Plus que ton solde USDC', 'usend.signing': 'Confirme sur ton appareil…', 'usend.sent': 'Envoyé · tx ', 'usend.failed': 'Échec : ', 'usend.openapp': 'Ouvre dans l’app pour envoyer',
       'uacct.title': 'Comptes USDC', 'uacct.sub': 'Tes USDC sont répartis sur ces comptes Polygon dérivés de ton portefeuille. Touche une adresse pour la copier.',
       'usdc.nomatch.title': 'Aucun résultat', 'usdc.nomatch': 'Aucune transaction ne correspond à ta recherche',
       'chat.menu': 'Messages', 'chat.title': 'Messages du mesh', 'chat.ph': 'Message au mesh…',
@@ -2228,6 +2268,7 @@ Don't share them and keep them safe.</p>
       'urecv.polyonly': 'Você só pode receber de endereços USDC da Polygon.',
       'usend.title': 'Enviar USDC', 'usend.polyonly': 'Envie apenas para endereços USDC da Polygon.',
       'usend.soon': 'O envio de USDC chega na próxima versão. Você já pode receber.',
+      'usend.available': 'disponível', 'usend.feepol': 'Taxa de rede paga em POL', 'usend.needamount': 'Insira um valor', 'usend.overbalance': 'Mais que seu saldo de USDC', 'usend.signing': 'Confirme no seu dispositivo…', 'usend.sent': 'Enviado · tx ', 'usend.failed': 'Falhou: ', 'usend.openapp': 'Abra no app para enviar',
       'uacct.title': 'Contas de USDC', 'uacct.sub': 'Seu USDC fica distribuído nestas contas Polygon derivadas da sua carteira. Toque num endereço para copiar.',
       'usdc.nomatch.title': 'Sem resultados', 'usdc.nomatch': 'Nenhuma transferência corresponde à sua busca',
       'chat.menu': 'Mensagens', 'chat.title': 'Mensagens da mesh', 'chat.ph': 'Mensagem para a mesh…',
@@ -2311,6 +2352,7 @@ Don't share them and keep them safe.</p>
     'urecv.polyonly': 'You can receive from Polygon USDC addresses only!',
     'usend.title': 'Send USDC', 'usend.polyonly': 'Send to Polygon USDC addresses only!',
     'usend.soon': 'Sending USDC arrives in the next build. You can already receive.',
+    'usend.available': 'available', 'usend.feepol': 'Network fee paid in POL', 'usend.needamount': 'Enter an amount', 'usend.overbalance': 'More than your USDC balance', 'usend.signing': 'Confirm on your device…', 'usend.sent': 'Sent · tx ', 'usend.failed': 'Failed: ', 'usend.openapp': 'Open in the app to send',
     'uacct.title': 'USDC accounts', 'uacct.sub': 'Your USDC lives across these wallet-derived Polygon accounts. Tap an address to copy it.',
     'usdc.nomatch.title': 'No matches', 'usdc.nomatch': 'No transfers match your search',
     'chat.menu': 'Messages', 'chat.title': 'Mesh Messages', 'chat.ph': 'Message the mesh…',
@@ -2388,7 +2430,7 @@ Don't share them and keep them safe.</p>
     open('receive');
   });
   document.getElementById('open-send').addEventListener('click', () => {
-    if (inUsdcView()) { open('usdcSend'); return; }
+    if (inUsdcView()) { if (window.openUsdcSend) { window.openUsdcSend(); } else { open('usdcSend'); } return; }
     // Fresh Send always starts at recipient entry (step 1), grid cleared. The amount
     // resets too (#203): it used to carry the previous send's value, and the walker
     // could leave the Send button disabled — a stale sheet needed an app restart.
@@ -4035,6 +4077,131 @@ Don't share them and keep them safe.</p>
     };
     el.addEventListener('click', doCopy);
     el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); doCopy(); } });
+  })();
+
+  // Send USDC — the money-path twin of the NIM send, mirroring real-wallet-send-usdc-modal.png.
+  // STEP 1 (address): a valid full 0x (typed / pasted / scanned) AUTO-ADVANCES — there is no CTA on
+  // this step, exactly like the real wallet. STEP 2 (amount): recipient + amount + honest POL fee,
+  // then the real send through the bridge (native confirm + armed gate live in Swift/Rust). While
+  // the mainnet path is UNARMED (always, in a plain browser) the Send is a neutral grey disabled
+  // state, never the light-blue CTA gradient.
+  (function wireUsdcSend() {
+    const box = document.getElementById('usdc-send-addr');
+    const recip = document.getElementById('usdc-send-recipient');
+    const amountStep = document.getElementById('usdc-send-amount');
+    const toEl = document.getElementById('usdc-send-to');
+    const avatarEl = document.getElementById('usdc-send-avatar');
+    const availEl = document.getElementById('usdc-send-avail');
+    const amtInput = document.getElementById('usdc-amount');
+    const btn = document.getElementById('usdc-send-btn');
+    const statusEl = document.getElementById('usdc-send-status');
+    if (!box || !recip || !amountStep || !btn) return;
+    let sendTo = '';                                  // the chosen 0x recipient (lowercased)
+    const evmValid = (s) => /^0x[0-9a-fA-F]{40}$/.test((s || '').trim());
+    // Parse a scanned string to a bare 0x address (accepts an `ethereum:0x…@137/…?…` URI too).
+    function parseEvmScan(text) {
+      let t = (text || '').trim();
+      const at = t.toLowerCase().indexOf('ethereum:');
+      if (at >= 0) t = t.slice(at + 9);
+      const m = t.match(/0x[0-9a-fA-F]{40}/);
+      return m ? m[0] : null;
+    }
+    function setStatus(msg, cls) {
+      if (!statusEl) return;
+      statusEl.hidden = !msg; statusEl.textContent = msg || '';
+      statusEl.className = 'send-status' + (cls ? ' ' + cls : '');
+    }
+    function showStep(step) {
+      recip.hidden = step !== 'recipient';
+      amountStep.hidden = step !== 'amount';
+    }
+    // The most that can go out in ONE tx = the larger of the two USDC-bearing accounts (the bridge
+    // picks claim first, then fund — whichever holds >= the amount).
+    function maxSendableMicro() {
+      if (!usdcAddrs) return 0;
+      const c = Number(usdcBal.usdc[usdcAddrs.claim] || 0);
+      const f = Number(usdcBal.usdc[usdcAddrs.fund] || 0);
+      return Math.max(c, f);
+    }
+    function refreshBtn() {
+      const armed = !!window.__mainnetArmed;
+      const amt = parseFloat(amtInput.value);
+      const ok = armed && amt > 0 && Math.round(amt * 1e6) <= maxSendableMicro();
+      // Unarmed -> a neutral grey, unmistakably-not-the-CTA disabled button (never the blue gradient).
+      btn.classList.toggle('neutral', !armed);
+      btn.disabled = !ok;
+    }
+    function enterAmount() {
+      if (!evmValid(sendTo)) return;
+      if (toEl) toEl.textContent = usdcAddrShort(sendTo);
+      if (avatarEl) avatarEl.innerHTML = USDC_AVATAR;
+      if (availEl) availEl.textContent = `${fmtUsdc(maxSendableMicro())} USDC ${T('usend.available')}`;
+      if (amtInput) { amtInput.value = ''; amtInput.dispatchEvent(new Event('input')); }
+      setStatus('');
+      refreshBtn();
+      showStep('amount');
+    }
+    function acceptAddress(raw) {
+      const v = (raw || '').trim();
+      if (!evmValid(v)) return false;
+      sendTo = v.toLowerCase();
+      enterAmount();
+      return true;
+    }
+    // Typing a full valid address auto-advances; a partial stays on the address step.
+    box.addEventListener('input', () => { if (evmValid(box.value)) acceptAddress(box.value); });
+    box.addEventListener('paste', (e) => {
+      const text = (e.clipboardData || window.clipboardData).getData('text') || '';
+      const found = parseEvmScan(text);
+      if (found) { e.preventDefault(); box.value = found; acceptAddress(found); }
+    });
+    const scanBtn = document.getElementById('usdc-send-scan');
+    if (scanBtn) scanBtn.addEventListener('click', async () => {
+      if (!(window.nimmesh && nimmesh.scanQr)) return;
+      let text = '';
+      try { const r = await nimmesh.scanQr(); text = (r && r.text) || ''; } catch (e) { return; }
+      const found = parseEvmScan(text);
+      if (!found) { alert(T('scan.invalid')); return; }
+      box.value = found; acceptAddress(found);
+    });
+    const backBtn = document.getElementById('usdc-send-back');
+    if (backBtn) backBtn.addEventListener('click', () => { setStatus(''); showStep('recipient'); box.focus(); });
+    if (amtInput) amtInput.addEventListener('input', refreshBtn);
+    wireAmountInput('usdc-amount-wrap');
+
+    btn.addEventListener('click', async () => {
+      if (!window.__mainnetArmed) return;                       // unarmed = inert (neutral button)
+      if (!(window.nimmesh && nimmesh.sendUsdc)) { setStatus(T('usend.openapp'), 'err'); return; }
+      const amt = parseFloat(amtInput.value);
+      if (!(amt > 0)) { setStatus(T('usend.needamount'), 'err'); return; }
+      const micro = Math.round(amt * 1e6);
+      if (micro > maxSendableMicro()) { setStatus(T('usend.overbalance'), 'err'); return; }
+      btn.disabled = true;
+      setStatus(T('usend.signing'));
+      try {
+        const r = await nimmesh.sendUsdc({ to: sendTo, amountMicro: micro });
+        setStatus(T('usend.sent') + (r && r.txHash ? r.txHash : ''), 'ok');
+        // The tx is in flight — refresh the balances + history (the native cache merges the new
+        // transfer in) now and again shortly after inclusion (~2s Polygon blocks).
+        if (window.refreshUsdcBalances) { refreshUsdcBalances(); setTimeout(() => { if (window.openUsdcView) openUsdcView(); }, 5000); }
+      } catch (e) {
+        const msg = (e && e.message ? e.message : String(e)) || '';
+        setStatus(/cancel/i.test(msg) ? '' : (T('usend.failed') + msg), /cancel/i.test(msg) ? '' : 'err');
+      } finally {
+        refreshBtn();
+      }
+    });
+
+    // Open always starts fresh at the address step (a stale amount/recipient must never carry over).
+    window.openUsdcSend = function openUsdcSend() {
+      sendTo = '';
+      box.value = '';
+      if (amtInput) { amtInput.value = ''; amtInput.dispatchEvent(new Event('input')); }
+      setStatus('');
+      showStep('recipient');
+      open('usdcSend');
+      setTimeout(() => box.focus(), 60);
+    };
   })();
 
   // C1e: wallet onboarding (create / import) + the "view recovery words" backup screen, matched

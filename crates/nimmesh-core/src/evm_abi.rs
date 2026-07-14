@@ -53,6 +53,18 @@ pub fn erc20_approve(spender: &EvmAddress, amount: u64) -> Vec<u8> {
     cd
 }
 
+/// ERC-20 `transfer(address to, uint256 amount)` calldata (selector `0xa9059cbb`). A plain,
+/// self-sent token transfer: the tx SENDER moves its OWN `amount` micro-USDC to `to` — the
+/// standalone USDC send (no allowance, no HTLC), the direct analog of a NIM `sendTransaction`.
+/// The signer of the enclosing [`crate::evm_rlp::LegacyTx`] IS the `from`, so there is no `from`
+/// argument (that is what distinguishes `transfer` from [`erc20_transfer_from`]).
+pub fn erc20_transfer(to: &EvmAddress, amount: u64) -> Vec<u8> {
+    let mut cd = calldata("transfer(address,uint256)");
+    cd.extend_from_slice(&word_address(to));
+    cd.extend_from_slice(&word_u256(amount));
+    cd
+}
+
 /// ERC-20 `transferFrom(address from, address to, uint256 amount)` calldata (selector `0x23b872dd`).
 /// The HTLC's `newSwap` pulls the funder's USDC into escrow with this.
 pub fn erc20_transfer_from(from: &EvmAddress, to: &EvmAddress, amount: u64) -> Vec<u8> {
@@ -141,6 +153,14 @@ pub fn erc20_nonces(owner: &EvmAddress) -> Vec<u8> {
     cd
 }
 
+/// ERC-20 `balanceOf(address owner)` calldata (selector `0x70a08231`) — read the owner's live token
+/// balance via `eth_call`. The standalone USDC send preflights `amount ≤ balanceOf(sender)` with this.
+pub fn erc20_balance_of(owner: &EvmAddress) -> Vec<u8> {
+    let mut cd = calldata("balanceOf(address)");
+    cd.extend_from_slice(&word_address(owner));
+    cd
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -193,6 +213,35 @@ mod tests {
         assert_eq!(erc20_approve(&UNIV2_ROUTER, 1).len(), 4 + 2 * WORD); // 68 bytes
                                                                          // Selector is the public ERC-20 constant.
         assert_eq!(&erc20_approve(&UNIV2_ROUTER, 1)[..4], &hex("095ea7b3")[..]);
+    }
+
+    #[test]
+    fn transfer_calldata_matches_the_known_byte_layout() {
+        // transfer(0x742d…f44e, 1_000_000) — selector a9059cbb ++ left-padded to ++ uint256(1e6).
+        // The recipient + amount words are the exact bytes `cast calldata "transfer(address,uint256)"
+        // 0x742d35Cc6634C0532925a3b844Bc454e4438f44e 1000000` produces (checksum casing is display-only;
+        // the ABI bytes are lowercase). 1_000_000 = 0xf4240.
+        let to = [
+            0x74, 0x2d, 0x35, 0xcc, 0x66, 0x34, 0xc0, 0x53, 0x29, 0x25, 0xa3, 0xb8, 0x44, 0xbc,
+            0x45, 0x4e, 0x44, 0x38, 0xf4, 0x4e,
+        ];
+        let expected = hex(concat!(
+            "a9059cbb",
+            "000000000000000000000000742d35cc6634c0532925a3b844bc454e4438f44e",
+            "00000000000000000000000000000000000000000000000000000000000f4240",
+        ));
+        assert_eq!(erc20_transfer(&to, 1_000_000), expected);
+        assert_eq!(erc20_transfer(&to, 1_000_000).len(), 4 + 2 * WORD); // 68 bytes
+        assert_eq!(&erc20_transfer(&to, 0)[..4], &hex("a9059cbb")[..]); // public ERC-20 selector
+    }
+
+    #[test]
+    fn balance_of_calldata_matches_the_known_byte_layout() {
+        let owner = [0x33u8; 20];
+        let cd = erc20_balance_of(&owner);
+        assert_eq!(&cd[..4], &hex("70a08231")[..]); // public ERC-20 balanceOf selector
+        assert_eq!(cd.len(), 4 + WORD); // 36 bytes
+        assert_eq!(&cd[4..36], &word_address(&owner)[..]);
     }
 
     #[test]

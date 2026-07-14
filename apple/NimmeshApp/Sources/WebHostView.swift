@@ -237,6 +237,8 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         // file:// blocks fetch(). No keys, no broadcast (see PolygonReads.swift).
         usdcBalances: function (a) { return call('usdcBalances', a || {}); },
         usdcHistory: function (a) { return call('usdcHistory', a || {}); },
+        // The standalone USDC send (OWNER-GATED, real mainnet funds — see PolygonSend.swift).
+        sendUsdc: function (a) { return call('sendUsdc', a || {}); },
         // Public mesh chat (0x50): broadcast text over BLE; the rolling heard/sent log.
         sendChat: function (nick, text) { return call('sendChat', { nickname: nick, text: text }); },
         chatMessages: function () { return call('chatMessages'); },
@@ -259,7 +261,7 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         switch method {
         case "headHeight", "walletBalance", "walletHistory", "sendTransaction", "meshSendTransaction",
              "prices", "market", "swapMeshStart", "swapMeshRefund", "cashlinkCreate", "cashlinkStatus",
-             "usdcBalances", "usdcHistory":
+             "usdcBalances", "usdcHistory", "sendUsdc":
             Task { let (ok, payload) = await self.handleAsync(method: method, args: args)
                 self.resolve(id: id, ok: ok, payload: payload) }
         case "authenticate":
@@ -499,6 +501,8 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         case "usdcBalances", "usdcHistory":
             // Read-only Polygon (mainnet, 137) reads for the wallet-derived USDC swap accounts.
             return await PolygonReads.handle(method: method, args: args)
+        case "sendUsdc":
+            return await PolygonSend.handle(method: method, args: args)
         default:
             return (false, "unknown async method: \(method)")
         }

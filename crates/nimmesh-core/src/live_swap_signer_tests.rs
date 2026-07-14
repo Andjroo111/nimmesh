@@ -452,11 +452,14 @@ fn initiator_refuses_non_testnet_and_missing_peer() {
     );
     // No Accept seen yet → no recipient → refuse.
     assert!(signer.build_funding(&ctx(), SwapLegId::Nim).is_none());
-    // A context stamped for any other network is never signed.
+    // A context stamped for a network this build does not allow is never signed. Use an UNKNOWN
+    // wire id (fail-closed in EVERY arm state) rather than mainnet's `24` — the arming release
+    // (`MAINNET_SWAP_ENABLED = true`) now ALLOWS mainnet, so `24` is no longer a durable "disallowed"
+    // stand-in; an unrecognized id always refuses.
     signer.note_peer(ctx().swap_id, [0xB2; NIM_ADDRESS_LEN], b"x");
-    let mut mainnet = ctx();
-    mainnet.network_id = 24;
-    assert!(signer.build_funding(&mainnet, SwapLegId::Nim).is_none());
+    let mut disallowed = ctx();
+    disallowed.network_id = 99;
+    assert!(signer.build_funding(&disallowed, SwapLegId::Nim).is_none());
     assert!(nim_rpc.broadcasts().is_empty());
     // And the initiator never funds the counterparty leg.
     assert!(signer

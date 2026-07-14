@@ -222,6 +222,27 @@ pub fn parse_gas_price(resp: &serde_json::Value) -> Result<u64, EvmRpcError> {
         })
 }
 
+/// `eth_estimateGas({from, to, data})` — the gas a call would consume. Request builder + parser.
+/// The standalone USDC send sizes its gas limit from this (with a buffer + a fallback cap), so a
+/// proxied-USDC `transfer` (heavier than a bare ERC-20) is never under-provisioned.
+pub fn estimate_gas_request(from: &str, to: &str, data: &str, id: u64) -> serde_json::Value {
+    json_rpc_request(
+        "eth_estimateGas",
+        serde_json::json!([{ "from": from, "to": to, "data": data }]),
+        id,
+    )
+}
+
+/// Parse an `eth_estimateGas` response → the estimated gas units.
+pub fn parse_estimate_gas(resp: &serde_json::Value) -> Result<u64, EvmRpcError> {
+    let r = parse_result("eth_estimateGas", resp)?;
+    r.as_str()
+        .and_then(parse_quantity)
+        .ok_or(EvmRpcError::BadResponse {
+            method: "eth_estimateGas".to_string(),
+        })
+}
+
 /// `eth_getBalance(address, "latest")` — the native (POL) balance in wei. Request builder +
 /// parser. The G6 live round-trip preflights its whole gas budget with this before spending.
 pub fn get_balance_request(address: &str, id: u64) -> serde_json::Value {
@@ -516,6 +537,12 @@ impl HttpPolygonRpc {
     pub fn get_balance(&self, address: &str) -> Result<u128, EvmRpcError> {
         let req = get_balance_request(address, self.next_id());
         parse_balance(&self.post(req, "eth_getBalance")?)
+    }
+
+    /// Estimate the gas a `{from, to, data}` call would consume (LIVE — read-only, no funds).
+    pub fn estimate_gas(&self, from: &str, to: &str, data: &str) -> Result<u64, EvmRpcError> {
+        let req = estimate_gas_request(from, to, data, self.next_id());
+        parse_estimate_gas(&self.post(req, "eth_estimateGas")?)
     }
 
     /// Broadcast a `0x`-prefixed signed raw tx, returning its hash (LIVE BROADCAST — owner-gated;

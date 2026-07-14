@@ -301,6 +301,11 @@ pub mod swap_participant_ffi;
 // plus the never-strand seams (`LiveLockBook`, `NimHtlcRefunder`). Always compiled so the
 // generated bindings never diverge between builds.
 pub mod swap_live_ffi;
+// The standalone USDC send over UniFFI (OWNER-GATED, real mainnet funds) — the money-path twin
+// of the NIM `sendTransaction` bridge: a user-initiated ERC-20 `transfer` of their own native
+// Polygon-mainnet USDC, armed-gated + balance/gas-preflighted, the featured core behind
+// polygon-gateway + gateway-rpc. Always compiled (honest `Unsupported` refusal without them).
+pub mod usdc_send_ffi;
 // Transaction history over the mesh (`0x35`/`0x36`) — the G15 balance pattern extended
 // to the recent tx rows, so a Bluetooth-only phone sees payments arrive, not just its
 // balance move. The gateway's answer rides the G6 fragmenter (first real user).

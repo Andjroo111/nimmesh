@@ -86,6 +86,19 @@ pub trait AmoyChain: Send + Sync {
     fn receipt(&self, tx_hash: &[u8; 32]) -> Result<Option<EvmReceipt>, EvmRpcError>;
     /// A read-only `eth_call`, decoded result bytes.
     fn call(&self, to: &EvmAddress, data: &[u8]) -> Result<Vec<u8>, EvmRpcError>;
+    /// `eth_estimateGas({from, to, data})` — the gas a call would consume. The default returns a
+    /// `BadResponse` so callers that lack a live estimate (offline fakes) transparently fall back to
+    /// a fixed cap; [`HttpPolygonRpc`] overrides it with the real `eth_estimateGas`.
+    fn estimate_gas(
+        &self,
+        _from: &EvmAddress,
+        _to: &EvmAddress,
+        _data: &[u8],
+    ) -> Result<u64, EvmRpcError> {
+        Err(EvmRpcError::BadResponse {
+            method: "eth_estimateGas".to_string(),
+        })
+    }
     /// `NewSwap` logs on `htlc` whose indexed receiver (topic 3) is `recipient`.
     fn new_swap_logs_to(
         &self,
@@ -122,6 +135,19 @@ impl AmoyChain for HttpPolygonRpc {
         crate::nimiq::hex::hex_to_bytes(&out).map_err(|_| EvmRpcError::BadResponse {
             method: "eth_call".to_string(),
         })
+    }
+    fn estimate_gas(
+        &self,
+        from: &EvmAddress,
+        to: &EvmAddress,
+        data: &[u8],
+    ) -> Result<u64, EvmRpcError> {
+        HttpPolygonRpc::estimate_gas(
+            self,
+            &addr_hex(from),
+            &addr_hex(to),
+            &format!("0x{}", bytes_to_hex(data)),
+        )
     }
     fn new_swap_logs_to(
         &self,

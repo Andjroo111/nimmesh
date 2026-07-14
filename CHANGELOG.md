@@ -3,6 +3,61 @@
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
 
+## [0.80.0] — 2026-07-14
+
+### The REAL USDC send + the wallet-faithful send flow (fixes #219's send modal)
+
+Andjroo: "The send screen is not correct." #219 shipped a Send modal that (1) had a Send button on
+the address step where the real wallet has none (a valid `0x` auto-advances), (2) rendered a grey
+info banner the real wallet doesn't have, and (3) drew the disabled Send in the wallet's light-blue
+CTA gradient, so it looked enabled. This ships the real send AND rebuilds the flow to the capture
+(`~/.nimmesh-refs/usdc-view/real-wallet-send-usdc-modal.png`).
+
+**The real send (money-path, user-initiated on device — the same trust model as the NIM
+`sendTransaction` bridge; nothing sends autonomously).**
+- New Rust FFI **`send_usdc_mainnet`** (`usdc_send_ffi.rs`): builds an ERC-20 `transfer` calldata
+  (new `evm_abi::erc20_transfer`, selector `0xa9059cbb`, cast-anchored), a `LegacyTx::polygon_mainnet`
+  (chain id 137), signs with the caller's derived secp256k1 secret (the evm signer the swap legs use),
+  and broadcasts via `HttpPolygonRpc::new_mainnet` (the allow-listed cross-read client). Gates baked
+  in: refuses unless `mainnet_swap_armed()` (the #213 predicate), refuses a zero/malformed recipient
+  or amount, refuses when `amount > balanceOf(sender)`, and refuses when the sender's POL can't cover
+  gas. The token is the code-pinned native Circle USDC, never caller-supplied. The secret enters the
+  core once and never crosses back; only the tx hash + public sender return. No cap beyond balance
+  (the user sends their own funds, like a NIM send).
+- **Gas (measured).** A live read-only `eth_estimateGas` for a native-USDC `transfer` returned
+  `0xee49` = **61 001** gas (a fresh-recipient SSTORE pushes toward ~85 k). The send estimates via
+  the new `eth_estimateGas` codec + a 25 % buffer (capped at 200 k), falls back to a fixed **120 000**
+  limit when the estimate is unavailable, and clamps the node's gas-price suggestion into **[30, 100]
+  gwei** (a live read saw ~280 gwei — Polygon spikes are real).
+- **Swift bridge `sendUsdc`** (`PolygonSend.swift`): picks the funded source account automatically
+  (`claim` first, then `fund` — whichever holds ≥ the amount; errors honestly if neither), shows a
+  native confirm ("Send X USDC to 0x…? … REAL Polygon USDC on mainnet") BEFORE anything is signed,
+  passes the derived secret into the FFI once, and returns the tx hash. After a send the page refreshes
+  the USDC balances + history (the native cache merges the new transfer in) and shows the success
+  treatment. `WebHostView.swift` stays at the 800-line ceiling (the logic lives in the new file).
+
+**The flow/anatomy fix (matches the capture).**
+- **Address step:** Contacts col + divider + `ENTER ADDRESS` box, and **no CTA** — a valid full `0x`
+  (typed / pasted / scanned via the native scanner) AUTO-ADVANCES to the amount step. The blue
+  "Send to Polygon USDC addresses only! ⓘ" note is centred at the sheet bottom with the QR scan at
+  the bottom-right corner. The grey info banner is gone.
+- **Amount step:** the recipient shown (the wallet's grey EVM-counterparty avatar + truncated mono
+  `0x`), the wallet amount-input, an available line, and an honest **"Network fee paid in POL"** line,
+  then the Send CTA. While the mainnet path is **unarmed** (always, in a plain browser) the Send is a
+  **neutral grey** disabled state that can never be mistaken for the light-blue CTA. Note: no
+  USDC-specific amount-screen reference exists in the library, so the amount step **mirrors the app's
+  own NIM send confirm+amount anatomy** (`#send-confirm`), adapted for USDC.
+- New strings translated across all 5 languages (en/es/de/fr/pt).
+
+**Tests / verification.** New offline Rust tests (armed-gate refusal, zero/over-balance/insufficient-POL
+refusals, the exact `transfer` calldata + EIP-155-137 signing that gets broadcast, the gas clamp, the
+fallback limit) + an `eth_estimateGas` codec round-trip. A Playwright mock-bridge harness screenshot-diffs
+the address step vs the capture and asserts auto-advance (not on a partial), the amount step's balance +
+POL fee, the mocked happy-path success, and armed-vs-unarmed states (`docs/screenshots/usdc-send-*.png`).
+Also un-staled two `--all-features`-only gated tests that Andjroo's arming release (#214) had left
+asserting the pre-arming (unarmed) behaviour — now state-agnostic, matching the `mainnet_swap.rs` pattern.
+
+
 ## [0.79.0] — 2026-07-14
 
 ### USD Coin view rebuilt to the REAL wallet (supersedes #217's hand-built card)

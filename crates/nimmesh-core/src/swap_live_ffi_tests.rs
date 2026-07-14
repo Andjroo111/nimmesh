@@ -668,9 +668,10 @@ mod live {
     }
 
     #[test]
-    fn the_mainnet_ctors_refuse_while_unarmed() {
-        // With the shipped consts (flag off, empty HTLC address) the FFI ctors REFUSE — inert.
-        let got = MeshNode::new_live_swap_initiator_mainnet(
+    fn the_mainnet_ctors_gate_on_the_arm_flag() {
+        // State-agnostic (the mainnet_swap.rs pattern): the mainnet FFI ctors REFUSE while the path
+        // is unarmed and PROCEED once Andjroo's arming release opens the flag + records the escrow.
+        let init = MeshNode::new_live_swap_initiator_mainnet(
             b"m".to_vec(),
             radio("m"),
             wallet_key(),
@@ -678,24 +679,30 @@ mod live {
             mainnet_init_cfg(),
             None,
         );
-        assert!(
-            matches!(got, Err(LiveSwapFfiError::Refused { .. })),
-            "the unarmed mainnet initiator refuses"
-        );
-        let got = MeshNode::new_live_swap_responder_mainnet(
+        let resp = MeshNode::new_live_swap_responder_mainnet(
             b"m2".to_vec(),
             radio("m2"),
             mainnet_resp_cfg(),
             None,
         );
-        assert!(
-            matches!(got, Err(LiveSwapFfiError::Refused { .. })),
-            "the unarmed mainnet responder refuses"
-        );
-        assert!(
-            !mainnet_swap_armed(),
-            "the probe agrees the path is unarmed"
-        );
+        if mainnet_swap_armed() {
+            // ARMED: the arm gate is open, so the ctors build a real mainnet-network node from the
+            // (valid) mainnet RPC fixtures — no longer a refusal. The armed-assembly invariants are
+            // proven by the dedicated `assemble_*_mainnet` tests above; here just confirm they no
+            // longer refuse on the arm gate.
+            assert!(init.is_ok(), "armed mainnet initiator constructs");
+            assert!(resp.is_ok(), "armed mainnet responder constructs");
+        } else {
+            // UNARMED (pre-arming build): both ctors REFUSE outright (flag off / empty HTLC) — inert.
+            assert!(
+                matches!(init, Err(LiveSwapFfiError::Refused { .. })),
+                "the unarmed mainnet initiator refuses"
+            );
+            assert!(
+                matches!(resp, Err(LiveSwapFfiError::Refused { .. })),
+                "the unarmed mainnet responder refuses"
+            );
+        }
     }
 }
 
