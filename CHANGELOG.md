@@ -3,7 +3,44 @@
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
 
-## [0.77.1] — 2026-07-14
+## [0.78.0] — 2026-07-14
+
+### The USD Coin card comes alive — tap it for real balances + transfers (like the NIM card)
+
+On the wallet home the NIM card drilled into an address view with balances and history, but the
+BTC and USDC cards were dead tiles. The app now holds REAL mainnet USDC on wallet-derived Polygon
+accounts (the responder's escrow "fund", the initiator's "claim" receive, and a "gas" fee account);
+after the first mainnet swap settles, claimed USDC lands on the derived claim address — invisible
+until now. This makes it visible.
+
+- **USDC drill-in** (`#view-usdc`, mirroring the NIM `#view-address` pattern): tap the home USD Coin
+  card → a Polygon detail view showing (a) the live total USDC balance + a row per derived account —
+  **Swap escrow account** / **Swap receive account** (USDC), and the **Fee account** (POL, with a
+  "pays transaction fees" note); each address is tap-to-copy in an identicon-free monospace
+  treatment (EVM `0x…` addresses never get a Nimiq identicon); and (b) a month-grouped list of USDC
+  `Transfer` events in/out of those accounts, with direction + 6-decimal amounts — reusing the
+  wallet's `.transaction` / `.month-label` styling verbatim.
+- **Native Polygon reads (no core change).** In-page `fetch()` is dead on device (the page is a
+  `file://` origin — WKWebView blocks it), so every chain read is a native `URLSession` bridge case,
+  extracted to **`apple/NimmeshApp/Sources/PolygonReads.swift`**: `usdcBalances` (`eth_call balanceOf`
+  per derived address + `eth_getBalance` for the gas account) and `usdcHistory` (`eth_getLogs` on the
+  USDC `Transfer` topic, filtered by each address in both directions). Reads-only — no key, no
+  broadcast, no money-path. History is scanned in **10 000-block chunks** (the drpc free-tier
+  `eth_getLogs` cap, fails closed to a smaller step on a range error) from a per-address persisted
+  anchor, and merged into a never-lose-history `UserDefaults` cache (union by `txHash`+`logIndex`,
+  monotonic last-scanned block) — the same offline-continuity contract as the NIM tx cache. Block
+  timestamps come inline from the RPC when present; otherwise the row shows its block number (never a
+  faked time).
+- **Home USDC card goes live** — balance = the sum across the receive-bearing derived accounts, fiat
+  via the existing CoinGecko `usd-coin` price path; honest `0.00` when unfunded, and a previously
+  shown balance is never blanked offline (the 0.72.2 lesson — hydrate from cache).
+- **BTC card** — no longer a dead tile: tapping it shows an honest note, "No Bitcoin account on this
+  device yet — coming with the BTC swap leg." No fake data.
+- i18n ×5 for every new string. Playwright mock-bridge verified: card tap opens the view, balances +
+  account rows render, history rows + month groups render, the BTC note shows, and the offline cache
+  path (failed refresh + cold start) renders without blanking. Non-money-path → auto-merge on green.
+
+
 
 ### Fixed — the initiator's claim-gas account is fundable BEFORE the swap starts
 

@@ -167,6 +167,10 @@
   .asset-duo .asset-card { flex: 1 1 0; min-width: 0; }
   .asset-card .asset-bal { padding: 2px 6px 0; font-weight: 700; font-size: 17px; color: #1f2348; }
   .asset-card .asset-fiat { padding: 2px 6px 4px; font-size: 13.5px; font-weight: 600; color: rgba(31,35,72,.45); }
+  .asset-card.tappable { cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background .12s ease; }
+  .asset-card.tappable:active { background: rgba(31,35,72,.09); }
+  .asset-card .asset-head .asset-chev { margin-left: auto; color: rgba(31,35,72,.28); }
+  .asset-card .asset-head .asset-chev svg { width: 8px; height: 14px; }
   /* the wallet's swap circles: two vertical between NIM and the duo, one horizontal between them */
   .swap-circle { position: absolute; width: 34px; height: 34px; border-radius: 50%; border: 0; cursor: pointer;
     background: #f8f8f8; box-shadow: 0 2px 8px rgba(31,35,72,.12); color: rgba(31,35,72,.5);
@@ -225,6 +229,30 @@
   .transaction.pending .amount, .transaction.pending .address { color: rgba(31,35,72,.55); }
   .tx-pending { display: inline-flex; align-items: center; gap: 5px; color: #fc8702; font-weight: 700; }
   .tx-pending svg { width: 12px; height: 12px; flex: 0 0 auto; }
+  /* ---- USD Coin (Polygon) drill-in view ---- */
+  .usdc-topbar-title { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 17px; color: #1f2348; }
+  .usdc-topbar-title svg { width: 22px; height: 22px; flex: 0 0 auto; }
+  .usdc-total-card { padding: 18px 20px 16px; }
+  .usdc-total-card .eyebrow { font-size: 13px; font-weight: 600; color: rgba(31,35,72,.5); }
+  .usdc-total { font-size: 30px; font-weight: 700; color: #1f2348; margin-top: 4px; letter-spacing: -.01em; }
+  .usdc-total .currency { font-size: 17px; font-weight: 700; color: rgba(31,35,72,.55); }
+  .usdc-total-card .fiat-amount { font-size: 14.5px; font-weight: 600; color: rgba(31,35,72,.45); margin-top: 2px; }
+  .usdc-chain { display: inline-block; margin-top: 8px; font-size: 12px; font-weight: 600; color: #2775CA; background: rgba(39,117,202,.1); padding: 2px 9px; border-radius: 20px; }
+  .usdc-accounts { padding: 6px 12px 2px; display: flex; flex-direction: column; gap: 10px; }
+  .usdc-acct { background: rgba(31,35,72,.055); border-radius: 14px; padding: 12px 14px; }
+  .usdc-acct-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .usdc-acct-label { font-size: 14px; font-weight: 700; color: #1f2348; }
+  .usdc-acct-bal { font-size: 15px; font-weight: 700; color: #1f2348; white-space: nowrap; }
+  .usdc-acct .copyable { padding: 6px 8px; margin: 4px -8px 0; }
+  .usdc-acct .copyable .address { font-family: 'Fira Mono', 'Roboto Mono', monospace; font-size: 12px; letter-spacing: -.02em; color: rgba(31,35,72,.6); word-break: break-all; position: relative; }
+  .usdc-acct-note { margin-top: 6px; font-size: 12px; font-weight: 600; color: rgba(31,35,72,.42); }
+  .usdc-tx-head { padding: 8px 8px 2px; font-size: 13px; font-weight: 700; color: rgba(31,35,72,.5); }
+  #usdc-tx-list .transaction { cursor: default; }
+  #usdc-tx-list .usdc-chip { display: flex; align-items: center; justify-content: center; width: 6rem; height: 6rem; border-radius: 50%; background: rgba(39,117,202,.12); color: #2775CA; flex-shrink: 0; }
+  #usdc-tx-list .usdc-chip svg { width: 3.4rem; height: 3.4rem; }
+  #usdc-tx-list .usdc-chip.out { background: rgba(31,35,72,.08); color: rgba(31,35,72,.55); }
+  #usdc-tx-list .transaction .data .address.mono { font-family: 'Fira Mono', 'Roboto Mono', monospace; font-size: 13px; }
+  #usdc-tx-list .amounts .amount .currency { color: rgba(31,35,72,.5); font-weight: 700; margin-left: 1px; }
   /* The real wallet shows the backup banner as a light CARD with a clearly visible
      grey border + breathing room (Andjroo's reference). The bare component inset reads
      too faint/tight on our page, so make the container explicit. */
@@ -898,15 +926,15 @@
         <button class="swap-circle v1" data-swap="btc" aria-label="Swap NIM and BTC"><svg viewBox="0 0 12 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="transform:rotate(90deg)"><g stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m4.25 15-3-3 3-3M2.43 11.863h7.071M7.25 1l3 3-3 3M9.07 4.133H1.999"/></g></svg></button>
         <button class="swap-circle v2" data-swap="usdc" aria-label="Swap NIM and USDC"><svg viewBox="0 0 12 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="transform:rotate(90deg)"><g stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m4.25 15-3-3 3-3M2.43 11.863h7.071M7.25 1l3 3-3 3M9.07 4.133H1.999"/></g></svg></button>
         <button class="swap-circle hz" data-swap="btc" aria-label="Swap"><svg viewBox="0 0 12 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><g stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m4.25 15-3-3 3-3M2.43 11.863h7.071M7.25 1l3 3-3 3M9.07 4.133H1.999"/></g></svg></button>
-        <div class="asset-card">
+        <div class="asset-card tappable" id="btc-card" role="button" tabindex="0" aria-label="Bitcoin">
           <div class="asset-head"><svg viewBox="0 0 42 42" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="color:#F7931A"><circle fill="#fff" cx="21" cy="21" r="18"/><path fill-rule="evenodd" clip-rule="evenodd" d="M15.918 41.371c11.253 2.805 22.649-4.04 25.454-15.291C44.176 14.83 37.33 3.433 26.077.628 14.828-2.176 3.433 4.67.629 15.922c-2.806 11.25 4.041 22.645 15.289 25.45zm10.31-29.01c3.041.997 5.265 2.49 4.828 5.27-.316 2.033-1.501 3.018-3.075 3.364 2.161 1.07 3.26 2.712 2.213 5.557-1.3 3.533-4.388 3.831-8.495 3.092l-.998 3.8-2.407-.571.983-3.75a96.07 96.07 0 01-1.919-.474l-.986 3.768-2.406-.571.997-3.807-.652-.161c-.351-.087-.706-.175-1.065-.26l-3.135-.744 1.196-2.623s1.775.448 1.75.415c.682.16.985-.262 1.104-.544l1.575-6.007.255.06a2.197 2.197 0 00-.25-.076l1.123-4.288c.03-.487-.147-1.101-1.122-1.333.038-.024-1.75-.413-1.75-.413l.641-2.448 3.322.79-.003.011c.5.118 1.014.23 1.538.344L20.477 7l2.407.571-.967 3.69c.644.137 1.288.281 1.93.431l.96-3.664 2.408.57-.986 3.764zm-7.622 13.646c1.964.494 6.264 1.575 6.947-1.037.7-2.667-3.463-3.556-5.496-3.991-.229-.049-.43-.092-.594-.13l-1.323 5.043c.134.031.291.07.466.115zm1.857-7.369c1.638.416 5.212 1.324 5.835-1.048.636-2.428-2.838-3.159-4.535-3.516-.19-.04-.359-.076-.496-.108l-1.2 4.574c.114.027.247.06.396.098z"/></svg> Bitcoin</div>
           <div class="asset-bal">0.00000 BTC</div>
           <div class="asset-fiat">0.00 $</div>
         </div>
-        <div class="asset-card">
-          <div class="asset-head"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 2000" aria-hidden="true" style="color:#2775CA"><path d="M1000 2000c554 0 1000-446 1000-1000S1554 0 1000 0 0 446 0 1000s446 1000 1000 1000z" fill="currentColor"/><path d="M1275 1158c0-146-87-196-262-216-125-17-150-50-150-109s41-96 125-96c75 0 116 25 137 88 4 12 17 21 29 21h67c17 0 29-13 29-29v-5c-17-91-92-162-187-170V542c0-17-13-30-34-34h-62c-17 0-29 13-34 34v95c-125 17-204 101-204 205 0 137 84 191 259 212 116 21 154 46 154 113s-59 112-138 112c-108 0-146-46-158-108-4-17-17-25-29-25h-71c-17 0-29 12-29 29v4c16 104 83 179 221 200v100c0 17 12 29 33 34h62c17 0 30-13 34-34v-100c125-21 208-108 208-221z" fill="#fff"/><path d="M788 1596a620 620 0 0 1-371-800 616 616 0 0 1 371-371c16-8 25-21 25-42v-58c0-17-9-29-25-33-5 0-13 0-17 4a749 749 0 0 0 0 1429c17 8 33 0 37-17 5-4 5-8 5-16v-59c0-12-13-29-25-37zm441-1300c-16-9-33 0-37 16-4 5-4 9-4 17v58c0 17 12 34 25 42a620 620 0 0 1 370 800 616 616 0 0 1-371 371c-16 8-24 21-24 42v58c0 17 8 29 25 33 4 0 12 0 16-4a749 749 0 0 0 488-942 756 756 0 0 0-488-491z" fill="#fff"/></svg> USD Coin</div>
-          <div class="asset-bal">0.00 USDC</div>
-          <div class="asset-fiat">0.00 $</div>
+        <div class="asset-card tappable" id="usdc-card" role="button" tabindex="0" aria-label="USD Coin">
+          <div class="asset-head"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 2000" aria-hidden="true" style="color:#2775CA"><path d="M1000 2000c554 0 1000-446 1000-1000S1554 0 1000 0 0 446 0 1000s446 1000 1000 1000z" fill="currentColor"/><path d="M1275 1158c0-146-87-196-262-216-125-17-150-50-150-109s41-96 125-96c75 0 116 25 137 88 4 12 17 21 29 21h67c17 0 29-13 29-29v-5c-17-91-92-162-187-170V542c0-17-13-30-34-34h-62c-17 0-29 13-34 34v95c-125 17-204 101-204 205 0 137 84 191 259 212 116 21 154 46 154 113s-59 112-138 112c-108 0-146-46-158-108-4-17-17-25-29-25h-71c-17 0-29 12-29 29v4c16 104 83 179 221 200v100c0 17 12 29 33 34h62c17 0 30-13 34-34v-100c125-21 208-108 208-221z" fill="#fff"/><path d="M788 1596a620 620 0 0 1-371-800 616 616 0 0 1 371-371c16-8 25-21 25-42v-58c0-17-9-29-25-33-5 0-13 0-17 4a749 749 0 0 0 0 1429c17 8 33 0 37-17 5-4 5-8 5-16v-59c0-12-13-29-25-37zm441-1300c-16-9-33 0-37 16-4 5-4 9-4 17v58c0 17 12 34 25 42a620 620 0 0 1 370 800 616 616 0 0 1-371 371c-16 8-24 21-24 42v58c0 17 8 29 25 33 4 0 12 0 16-4a749 749 0 0 0 488-942 756 756 0 0 0-488-491z" fill="#fff"/></svg> USD Coin<span class="chev asset-chev"><svg viewBox="0 0 8 14" fill="none"><path d="M1 1l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+          <div class="asset-bal" id="card-usdc">0.00 USDC</div>
+          <div class="asset-fiat" id="card-usdc-fiat">0.00 $</div>
         </div>
       </div>
     </div>
@@ -995,6 +1023,37 @@
     </div>
   </div>
 
+</div>
+
+<!-- ============ USD Coin (Polygon) drill-in — real balances + Transfer history ============
+     Mirrors the NIM #view-address drill-in, but for the wallet-derived EVM swap accounts:
+     live USDC/POL balances (native URLSession bridge, file:// blocks fetch()) and month-grouped
+     USDC Transfer history. EVM addresses get a monospace, identicon-free treatment (Nimiq
+     identicons are for NQ addresses only). -->
+<div class="view" id="view-usdc" hidden>
+  <div class="addr-topbar">
+    <button class="back" id="usdc-back" aria-label="Back"><svg viewBox="0 0 22 16" fill="none"><path d="M8 1L1 8l7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="2" y1="8" x2="21" y2="8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+    <div class="usdc-topbar-title"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 2000" aria-hidden="true" style="color:#2775CA"><path d="M1000 2000c554 0 1000-446 1000-1000S1554 0 1000 0 0 446 0 1000s446 1000 1000 1000z" fill="currentColor"/><path d="M1275 1158c0-146-87-196-262-216-125-17-150-50-150-109s41-96 125-96c75 0 116 25 137 88 4 12 17 21 29 21h67c17 0 29-13 29-29v-5c-17-91-92-162-187-170V542c0-17-13-30-34-34h-62c-17 0-29 13-34 34v95c-125 17-204 101-204 205 0 137 84 191 259 212 116 21 154 46 154 113s-59 112-138 112c-108 0-146-46-158-108-4-17-17-25-29-25h-71c-17 0-29 12-29 29v4c16 104 83 179 221 200v100c0 17 12 29 33 34h62c17 0 30-13 34-34v-100c125-21 208-108 208-221z" fill="#fff"/><path d="M788 1596a620 620 0 0 1-371-800 616 616 0 0 1 371-371c16-8 25-21 25-42v-58c0-17-9-29-25-33-5 0-13 0-17 4a749 749 0 0 0 0 1429c17 8 33 0 37-17 5-4 5-8 5-16v-59c0-12-13-29-25-37zm441-1300c-16-9-33 0-37 16-4 5-4 9-4 17v58c0 17 12 34 25 42a620 620 0 0 1 370 800 616 616 0 0 1-371 371c-16 8-24 21-24 42v58c0 17 8 29 25 33 4 0 12 0 16-4a749 749 0 0 0 488-942 756 756 0 0 0-488-491z" fill="#fff"/></svg><span data-i18n="usdc.title">USD Coin</span></div>
+    <span class="spacer"></span>
+  </div>
+
+  <div class="header-wrap">
+    <div class="usdc-total-card">
+      <div class="eyebrow" data-i18n="usdc.total">USDC balance</div>
+      <div class="usdc-total"><span id="usdc-total-bal">0.00</span> <span class="currency">USDC</span></div>
+      <div class="fiat-amount" id="usdc-total-fiat"></div>
+      <div class="usdc-chain" data-i18n="usdc.chain">on Polygon</div>
+    </div>
+  </div>
+
+  <!-- the wallet-derived swap accounts (escrow / receive / fee) — rendered from the bridge -->
+  <div class="usdc-accounts" id="usdc-accounts"></div>
+
+  <!-- USDC Transfer history on Polygon, month-grouped like the NIM list -->
+  <div class="tx-wrap">
+    <div class="usdc-tx-head" data-i18n="usdc.txhead">Transfers</div>
+    <div class="transaction-list" id="usdc-tx-list"></div>
+  </div>
 </div>
 
   </div>
@@ -1840,6 +1899,12 @@ Don't share them and keep them safe.</p>
       'swap.respond.sub': 'Tu teléfono responde a un intercambio: deposita USDC en garantía solo después de que el HTLC de NIM del socio esté en cadena a la profundidad requerida.',
       'swap.respond.fund': 'Financia esta dirección con USDC de prueba + POL para responder a intercambios',
       'swap.gas.fund': 'Esta cuenta paga la comisión del cobro. Envíale un poco de POL primero',
+      'btc.soon': 'Aún no hay una cuenta de Bitcoin en este dispositivo — llegará con el intercambio de BTC',
+      'usdc.total': 'Saldo de USDC', 'usdc.chain': 'en Polygon', 'usdc.txhead': 'Transferencias',
+      'usdc.acct.escrow': 'Cuenta de depósito del intercambio', 'usdc.acct.receive': 'Cuenta de recepción del intercambio',
+      'usdc.acct.fee': 'Cuenta de comisiones', 'usdc.acct.fee.note': 'Paga las comisiones de red',
+      'usdc.empty.sub': 'Las transferencias de USDC a estas cuentas aparecerán aquí',
+      'usdc.earlier': 'Anteriores', 'usdc.block': 'Bloque',
       'chat.menu': 'Mensajes', 'chat.title': 'Mensajes de la malla', 'chat.ph': 'Mensaje a la malla…',
       'chat.public': 'Público — toda la malla puede leerlo',
       'chat.empty': 'Aún no hay mensajes. Cualquiera en la malla cerca de ti verá lo que envíes.',
@@ -1904,6 +1969,12 @@ Don't share them and keep them safe.</p>
       'swap.respond.sub': 'Dein Handy beantwortet einen Swap: es hinterlegt USDC erst, nachdem der NIM-HTLC des Partners on-chain in ausreichender Tiefe bestätigt ist.',
       'swap.respond.fund': 'Finanziere diese Adresse mit Test-USDC + POL, um auf Swaps zu antworten',
       'swap.gas.fund': 'Dieses Konto zahlt die Claim-Gebühr. Sende ihm zuerst etwas POL',
+      'btc.soon': 'Auf diesem Gerät gibt es noch kein Bitcoin-Konto — es kommt mit dem BTC-Swap',
+      'usdc.total': 'USDC-Guthaben', 'usdc.chain': 'auf Polygon', 'usdc.txhead': 'Transaktionen',
+      'usdc.acct.escrow': 'Swap-Treuhandkonto', 'usdc.acct.receive': 'Swap-Empfangskonto',
+      'usdc.acct.fee': 'Gebührenkonto', 'usdc.acct.fee.note': 'Zahlt die Transaktionsgebühren',
+      'usdc.empty.sub': 'USDC-Transfers an diese Konten erscheinen hier',
+      'usdc.earlier': 'Früher', 'usdc.block': 'Block',
       'chat.menu': 'Nachrichten', 'chat.title': 'Mesh-Nachrichten', 'chat.ph': 'Nachricht ans Mesh…',
       'chat.public': 'Öffentlich — das ganze Mesh kann mitlesen',
       'chat.empty': 'Noch keine Nachrichten. Jeder im Mesh in deiner Nähe sieht, was du sendest.',
@@ -1968,6 +2039,12 @@ Don't share them and keep them safe.</p>
       'swap.respond.sub': 'Ton téléphone répond à un échange : il dépose des USDC en garantie seulement après que le HTLC NIM du partenaire est confirmé on-chain à la profondeur requise.',
       'swap.respond.fund': 'Approvisionne cette adresse avec des USDC de test + du POL pour répondre aux échanges',
       'swap.gas.fund': 'Ce compte paie les frais de réclamation. Envoie-lui d\'abord un peu de POL',
+      'btc.soon': 'Pas encore de compte Bitcoin sur cet appareil — il arrivera avec le swap BTC',
+      'usdc.total': 'Solde USDC', 'usdc.chain': 'sur Polygon', 'usdc.txhead': 'Transferts',
+      'usdc.acct.escrow': 'Compte séquestre du swap', 'usdc.acct.receive': 'Compte de réception du swap',
+      'usdc.acct.fee': 'Compte de frais', 'usdc.acct.fee.note': 'Paie les frais de transaction',
+      'usdc.empty.sub': 'Les transferts d\'USDC vers ces comptes apparaîtront ici',
+      'usdc.earlier': 'Plus tôt', 'usdc.block': 'Bloc',
       'chat.menu': 'Messages', 'chat.title': 'Messages du mesh', 'chat.ph': 'Message au mesh…',
       'chat.public': 'Public — tout le mesh peut le lire',
       'chat.empty': 'Pas encore de messages. Tout le monde sur le mesh autour de vous verra ce que vous envoyez.',
@@ -2032,6 +2109,12 @@ Don't share them and keep them safe.</p>
       'swap.respond.sub': 'Seu telefone responde a uma troca: ele deposita USDC em garantia somente depois que o HTLC de NIM do parceiro estiver on-chain na profundidade exigida.',
       'swap.respond.fund': 'Financie este endereço com USDC de teste + POL para responder a trocas',
       'swap.gas.fund': 'Esta conta paga a taxa do resgate. Envie um pouco de POL primeiro',
+      'btc.soon': 'Ainda não há conta de Bitcoin neste dispositivo — chega com a troca de BTC',
+      'usdc.total': 'Saldo de USDC', 'usdc.chain': 'na Polygon', 'usdc.txhead': 'Transferências',
+      'usdc.acct.escrow': 'Conta de custódia da troca', 'usdc.acct.receive': 'Conta de recebimento da troca',
+      'usdc.acct.fee': 'Conta de taxas', 'usdc.acct.fee.note': 'Paga as taxas de transação',
+      'usdc.empty.sub': 'As transferências de USDC para estas contas aparecerão aqui',
+      'usdc.earlier': 'Anteriores', 'usdc.block': 'Bloco',
       'chat.menu': 'Mensagens', 'chat.title': 'Mensagens da mesh', 'chat.ph': 'Mensagem para a mesh…',
       'chat.public': 'Público — toda a mesh pode ler',
       'chat.empty': 'Ainda sem mensagens. Qualquer pessoa na mesh perto de você verá o que enviar.',
@@ -2104,6 +2187,11 @@ Don't share them and keep them safe.</p>
     'swap.respond.sub': 'Your phone answers a swap: it escrows USDC only after the partner’s NIM HTLC is on-chain at depth.',
     'swap.respond.fund': 'Fund this address with test USDC + POL to answer swaps',
       'swap.gas.fund': 'This account pays the claim fee — send it a little POL first',
+    'btc.soon': 'No Bitcoin account on this device yet — coming with the BTC swap leg',
+    'usdc.acct.escrow': 'Swap escrow account', 'usdc.acct.receive': 'Swap receive account',
+    'usdc.acct.fee': 'Fee account', 'usdc.acct.fee.note': 'Pays transaction fees',
+    'usdc.empty.sub': 'USDC transfers to these accounts show up here',
+    'usdc.earlier': 'Earlier', 'usdc.block': 'Block',
     'chat.menu': 'Messages', 'chat.title': 'Mesh Messages', 'chat.ph': 'Message the mesh…',
     'chat.public': 'Public — everyone on the mesh can read it',
     'chat.empty': 'No messages yet. Anyone on the mesh around you will see what you send.',
@@ -3152,11 +3240,12 @@ Don't share them and keep them safe.</p>
     privacyOn = !privacyOn;
     try { localStorage.setItem('nimmesh.privacy', privacyOn ? '1' : '0'); } catch (e) {}
     paintAmounts(window.__lastLuna || 0);
+    if (window.paintUsdcCard) window.paintUsdcCard();
   });
 
   // ---- P1: view switching (home portfolio <-> address detail, the wallet's IA) ----
   function showView(id) {
-    ['view-home', 'view-address', 'view-network'].forEach((v) => {
+    ['view-home', 'view-address', 'view-usdc', 'view-network'].forEach((v) => {
       const el = document.getElementById(v); if (el) el.hidden = (v !== id);
     });
     document.body.classList.toggle('nw-open', id === 'view-network');
@@ -3164,6 +3253,22 @@ Don't share them and keep them safe.</p>
   }
   document.getElementById('open-address').addEventListener('click', () => showView('view-address'));
   document.getElementById('addr-back').addEventListener('click', () => showView('view-home'));
+  // USD Coin card → the Polygon balances + transfers drill-in (loads live on open).
+  const usdcCard = document.getElementById('usdc-card');
+  const openUsdc = () => { showView('view-usdc'); if (window.openUsdcView) window.openUsdcView(); };
+  if (usdcCard) {
+    usdcCard.addEventListener('click', openUsdc);
+    usdcCard.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openUsdc(); } });
+  }
+  const usdcBackBtn = document.getElementById('usdc-back');
+  if (usdcBackBtn) usdcBackBtn.addEventListener('click', () => showView('view-home'));
+  // BTC card → an honest note: no Bitcoin account on this device yet (arrives with the BTC leg).
+  const btcCard = document.getElementById('btc-card');
+  const btcNote = () => alert(T('btc.soon'));
+  if (btcCard) {
+    btcCard.addEventListener('click', btcNote);
+    btcCard.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); btcNote(); } });
+  }
   document.getElementById('addr-dots').addEventListener('click', () => open('account'));
   document.getElementById('open-menu').addEventListener('click', () => openMenu());
   document.getElementById('help-pill').addEventListener('click', () => alert(T('help.text')));
@@ -3560,6 +3665,185 @@ Don't share them and keep them safe.</p>
       }
     });
   }
+
+  // ============ USD Coin (Polygon) — live balances + Transfer history ============
+  // Real mainnet USDC lives on the wallet-DERIVED EVM swap accounts (the responder's escrow
+  // "fund", the initiator's "claim" receive account, and the "gas" fee account). Every chain
+  // read is a NATIVE URLSession bridge call — the page runs on a file:// origin where WKWebView
+  // blocks fetch() outright (the same reason CoinGecko prices are proxied natively). Offline
+  // continuity is the 0.72.2 lesson: a previously-shown balance is never blanked — the card
+  // hydrates from localStorage and the native cache keeps history.
+  const USDC_ACCT_META = [
+    { role: 'fund', labelKey: 'usdc.acct.escrow', kind: 'usdc' },
+    { role: 'claim', labelKey: 'usdc.acct.receive', kind: 'usdc' },
+    { role: 'gas', labelKey: 'usdc.acct.fee', kind: 'pol', noteKey: 'usdc.acct.fee.note' },
+  ];
+  let usdcAddrs = null;                 // { gas, claim, fund } (lowercased) from the bridge
+  let usdcBal = { usdc: {}, polWei: {} };
+  window.__usdcAddrSet = new Set();     // our own addresses (lowercased) → tx direction
+  const USDC_BAL_KEY = 'nimmesh.cache.usdc.balances';
+  const USDC_TX_KEY = 'nimmesh.cache.usdc.txs';
+
+  function fmtUsdc(micro) {
+    const n = (Number(micro) || 0) / 1e6;
+    const [int, dec] = n.toFixed(2).split('.');
+    return `${int.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}.${dec}`;
+  }
+  function fmtPol(weiStr) {
+    // weiStr is a decimal string (18 decimals); a couple of POL fits a JS number for display.
+    const pol = Number(weiStr || '0') / 1e18;
+    if (!pol) return '0';
+    return pol.toFixed(pol < 1 ? 4 : 3).replace(/\.?0+$/, '');
+  }
+  function usdcFiatText(micro) {
+    if (usdcPrice == null) return '';
+    const cfg = FIAT[LANG] || FIAT.en;
+    const value = (Number(micro) || 0) / 1e6 * usdcPrice;
+    try {
+      const parts = new Intl.NumberFormat(cfg.locale, { style: 'currency', currency: cfg.currency.toUpperCase() }).formatToParts(value);
+      const num = parts.filter((p) => p.type !== 'currency' && !(p.type === 'literal' && p.value.trim() === '')).map((p) => p.value).join('').trim();
+      const sym = (parts.find((p) => p.type === 'currency') || {}).value || '';
+      return `${num} ${sym}`;
+    } catch (e) { return ''; }
+  }
+  const shortEvm = (a) => { const c = (a || '').toLowerCase(); return c.length >= 12 ? `${c.slice(0, 6)}…${c.slice(-4)}` : c; };
+
+  // Total USDC = sum across the receive-bearing accounts (fund + claim; gas holds POL only).
+  function usdcTotalMicro() {
+    let sum = 0;
+    for (const m of USDC_ACCT_META) if (m.kind === 'usdc' && usdcAddrs && usdcAddrs[m.role]) {
+      sum += Number(usdcBal.usdc[usdcAddrs[m.role]] || 0);
+    }
+    return sum;
+  }
+  window.paintUsdcCard = function paintUsdcCard() {
+    const total = usdcTotalMicro();
+    const bal = document.getElementById('card-usdc');
+    if (bal) bal.textContent = privacyOn ? '•••••' : `${fmtUsdc(total)} USDC`;
+    const fiat = document.getElementById('card-usdc-fiat');
+    if (fiat) fiat.textContent = privacyOn ? '' : (usdcFiatText(total) || '');
+  };
+
+  async function ensureUsdcAddrs() {
+    if (usdcAddrs) return usdcAddrs;
+    if (!(window.nimmesh && nimmesh.swapEvmAddresses)) return null;
+    try {
+      const a = await nimmesh.swapEvmAddresses();
+      const low = (s) => (s || '').toLowerCase();
+      usdcAddrs = { gas: low(a.gas), claim: low(a.claim), fund: low(a.fund) };
+      window.__usdcAddrSet = new Set([usdcAddrs.gas, usdcAddrs.claim, usdcAddrs.fund].filter(Boolean));
+    } catch (e) { usdcAddrs = null; }
+    return usdcAddrs;
+  }
+  // Hydrate the card instantly from the last-known balances (offline continuity).
+  try { const cb = JSON.parse(localStorage.getItem(USDC_BAL_KEY) || 'null'); if (cb && cb.usdc) usdcBal = cb; } catch (e) {}
+
+  window.refreshUsdcBalances = async function refreshUsdcBalances() {
+    const addrs = await ensureUsdcAddrs();
+    if (!addrs || !(window.nimmesh && nimmesh.usdcBalances)) { paintUsdcCard(); return; }
+    try {
+      const r = await nimmesh.usdcBalances({ usdc: [addrs.fund, addrs.claim].filter(Boolean), gas: addrs.gas });
+      if (r && r.usdc) {
+        usdcBal = { usdc: r.usdc || {}, polWei: r.polWei || {} };
+        try { localStorage.setItem(USDC_BAL_KEY, JSON.stringify(usdcBal)); } catch (e) {}
+      }
+    } catch (e) { /* offline: keep the last-known balances (never blank the card) */ }
+    paintUsdcCard();
+    const view = document.getElementById('view-usdc');
+    if (view && !view.hidden) renderUsdcAccounts();
+  };
+
+  function renderUsdcAccounts() {
+    const wrap = document.getElementById('usdc-accounts');
+    if (!wrap || !usdcAddrs) return;
+    const total = usdcTotalMicro();
+    const tb = document.getElementById('usdc-total-bal'); if (tb) tb.textContent = fmtUsdc(total);
+    const tf = document.getElementById('usdc-total-fiat'); if (tf) tf.textContent = usdcFiatText(total);
+    wrap.innerHTML = USDC_ACCT_META.map((m) => {
+      const addr = usdcAddrs[m.role]; if (!addr) return '';
+      const balText = m.kind === 'pol'
+        ? `${fmtPol(usdcBal.polWei[addr] || '0')} POL`
+        : `${fmtUsdc(usdcBal.usdc[addr] || 0)} USDC`;
+      const note = m.noteKey ? `<div class="usdc-acct-note">${T(m.noteKey)}</div>` : '';
+      return `<div class="usdc-acct">
+        <div class="usdc-acct-top"><span class="usdc-acct-label">${T(m.labelKey)}</span><span class="usdc-acct-bal">${balText}</span></div>
+        <div class="copyable usdc-acct-addr" tabindex="0" data-addr="${addr}"><div class="background"></div><div class="address">${addr}</div><div class="tooltip">${T('a.copied')}</div></div>
+        ${note}
+      </div>`;
+    }).join('');
+    wrap.querySelectorAll('.usdc-acct-addr').forEach((el) => {
+      let t = null;
+      const doCopy = () => {
+        try { navigator.clipboard.writeText(el.dataset.addr || '').catch(() => {}); } catch (e) {}
+        el.classList.add('copied'); clearTimeout(t); t = setTimeout(() => el.classList.remove('copied'), 800);
+      };
+      el.addEventListener('click', doCopy);
+      el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); doCopy(); } });
+    });
+  }
+
+  function renderUsdcHistory(txs) {
+    const list = document.getElementById('usdc-tx-list');
+    if (!list) return;
+    if (!txs.length) {
+      list.innerHTML = '<div class="tx-empty" style="text-align:center;padding:40px 24px;color:#1f2348;opacity:.45">'
+        + `<div style="font-weight:700;font-size:15px">${T('tx.empty.title')}</div>`
+        + `<div style="font-size:13px;opacity:.8;margin-top:4px">${T('usdc.empty.sub')}</div></div>`;
+      return;
+    }
+    const mine = window.__usdcAddrSet;
+    const now = new Date();
+    let lastGroup = null;
+    list.innerHTML = txs.map((t) => {
+      const fromMine = mine.has((t.from || '').toLowerCase());
+      const toMine = mine.has((t.to || '').toLowerCase());
+      const incoming = !(fromMine && !toMine); // ours-as-receiver (incl. internal) shows as +
+      const counter = incoming ? t.from : t.to;
+      const hasTs = typeof t.timestamp === 'number' && t.timestamp > 0;
+      const d = new Date(t.timestamp || 0);
+      const day = hasTs ? d.getDate() : '';
+      const mon = hasTs ? (MONTHS[d.getMonth()] || '') : '';
+      const group = hasTs
+        ? ((d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()) ? T('tx.thismonth') : `${mon} ${d.getFullYear()}`)
+        : T('usdc.earlier');
+      const label = group !== lastGroup ? `<div class="month-label"><label>${group}</label></div>` : '';
+      lastGroup = group;
+      const when = hasTs
+        ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} · Polygon`
+        : `${T('usdc.block')} ${t.blockNumber} · Polygon`;
+      const arrow = incoming
+        ? '<svg viewBox="0 0 16 16" fill="none"><path d="M8 3v9M4 8.5l4 4 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+        : '<svg viewBox="0 0 16 16" fill="none"><path d="M8 13V4M4 7.5l4-4 4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      const amtCls = incoming ? 'amounts isIncoming' : 'amounts';
+      // The +/- sign is added by the transaction-list CSS (.amount::before) from the isIncoming
+      // class — so the amount text carries no sign of its own (same as the NIM list).
+      const fiat = usdcFiatText(t.valueMicro);
+      return `${label}<div class="transaction confirmed usdc-tx">
+        <div class="date"><span class="day">${day}</span><br><span class="month">${mon}</span></div>
+        <div class="identicon usdc-chip ${incoming ? 'in' : 'out'}">${arrow}</div>
+        <div class="data"><div class="address mono">${shortEvm(counter)}</div><div class="time-and-message"><span>${when}</span></div></div>
+        <div class="${amtCls}"><span class="amount">${fmtUsdc(t.valueMicro)} <span class="currency">USDC</span></span><div class="fiat-amount">${fiat || '&nbsp;'}</div></div>
+      </div>`;
+    }).join('');
+  }
+
+  window.openUsdcView = async function openUsdcView() {
+    // Hydrate the tx list from cache first (instant + offline), then refresh live.
+    try {
+      const ct = JSON.parse(localStorage.getItem(USDC_TX_KEY) || 'null');
+      if (ct && Array.isArray(ct.txs)) { window.__usdcTxs = ct.txs; renderUsdcHistory(ct.txs); }
+    } catch (e) {}
+    await refreshUsdcBalances();
+    renderUsdcAccounts();
+    if (!(window.nimmesh && nimmesh.usdcHistory && usdcAddrs)) { if (!window.__usdcTxs) renderUsdcHistory([]); return; }
+    try {
+      const r = await nimmesh.usdcHistory({ addresses: [usdcAddrs.fund, usdcAddrs.claim].filter(Boolean) });
+      const txs = (r && r.txs) || [];
+      window.__usdcTxs = txs;
+      try { localStorage.setItem(USDC_TX_KEY, JSON.stringify({ txs, at: Date.now() })); } catch (e) {}
+      renderUsdcHistory(txs);
+    } catch (e) { if (!window.__usdcTxs) renderUsdcHistory([]); }
+  };
 
   // C1e: wallet onboarding (create / import) + the "view recovery words" backup screen, matched
   // to the real Nimiq Keyguard (navy 3-col numbered grid). The 24-word phrase is shown only
@@ -4049,6 +4333,13 @@ Don't share them and keep them safe.</p>
     const balanceLuna = await refreshWalletData();
     setInterval(() => { if (!document.hidden) refreshWalletData(); }, 10000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshWalletData(); });
+    // The USD Coin home card goes live on the same beat: native Polygon reads of the
+    // wallet-derived swap accounts (balance = sum of the receive-bearing accounts). The
+    // heavier getLogs history is loaded only when the USDC drill-in is opened.
+    if (window.refreshUsdcBalances) {
+      refreshUsdcBalances();
+      setInterval(() => { if (!document.hidden) refreshUsdcBalances(); }, 15000);
+    }
     // G19: drive the backup nudge from the REAL balance (not the old mock 752). No key/seed
     // crosses the bridge — only the public balance + the backed-up flag.
     try {

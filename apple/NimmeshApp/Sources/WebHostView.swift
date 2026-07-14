@@ -232,6 +232,11 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         mainnetSwapArmed: function () { return call('mainnetSwapArmed'); },
         // The wallet-derived EVM swap accounts (gas/claim/fund addresses) — fundable up front.
         swapEvmAddresses: function () { return call('swapEvmAddresses'); },
+        // Read-only Polygon (mainnet) reads for the USDC card/drill-in: live balances (USDC per
+        // account + POL for the gas account) and USDC Transfer history. Native URLSession —
+        // file:// blocks fetch(). No keys, no broadcast (see PolygonReads.swift).
+        usdcBalances: function (a) { return call('usdcBalances', a || {}); },
+        usdcHistory: function (a) { return call('usdcHistory', a || {}); },
         // Public mesh chat (0x50): broadcast text over BLE; the rolling heard/sent log.
         sendChat: function (nick, text) { return call('sendChat', { nickname: nick, text: text }); },
         chatMessages: function () { return call('chatMessages'); },
@@ -253,7 +258,8 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         // when they complete. Everything else is synchronous (pure-core reads).
         switch method {
         case "headHeight", "walletBalance", "walletHistory", "sendTransaction", "meshSendTransaction",
-             "prices", "market", "swapMeshStart", "swapMeshRefund", "cashlinkCreate", "cashlinkStatus":
+             "prices", "market", "swapMeshStart", "swapMeshRefund", "cashlinkCreate", "cashlinkStatus",
+             "usdcBalances", "usdcHistory":
             Task { let (ok, payload) = await self.handleAsync(method: method, args: args)
                 self.resolve(id: id, ok: ok, payload: payload) }
         case "authenticate":
@@ -490,6 +496,9 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             return await cashlinkCreate(args: args)
         case "cashlinkStatus":
             return await cashlinkStatus(args: args)
+        case "usdcBalances", "usdcHistory":
+            // Read-only Polygon (mainnet, 137) reads for the wallet-derived USDC swap accounts.
+            return await PolygonReads.handle(method: method, args: args)
         default:
             return (false, "unknown async method: \(method)")
         }
