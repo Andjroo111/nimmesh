@@ -41,7 +41,7 @@ use crate::transport::{mock_tx_id, TxId};
 use crate::NetworkId;
 
 /// A unit of work handed from a BLE callback to the worker thread.
-enum Job {
+pub(crate) enum Job {
     /// Bytes that arrived on the radio, plus the peer they came from (`None` if the shim
     /// couldn't attribute the source — see `on_packet_received` vs the `_from` variant).
     Inbound {
@@ -131,6 +131,7 @@ fn run_worker(
 ) {
     let mut st = WorkerState::new(policy, verify_before_relay, swap, signer);
     while let Ok(job) = rx.recv() {
+        ctx.citizen.ticks.job_started(&job);
         match job {
             Job::Shutdown => break,
             Job::Inbound { src, bytes } => {
@@ -220,6 +221,7 @@ fn run_worker(
                 let _ = reply.send(());
             }
         }
+        ctx.citizen.ticks.job_finished();
     }
 }
 

@@ -99,6 +99,9 @@ pub struct CitizenState {
     battery_level: AtomicU8,
     /// Whether the device is currently charging.
     battery_charging: AtomicBool,
+    /// Wedge-proof worker-loop heartbeats (`tick ▸` diagnostics) — parked here because this
+    /// is the ctx's node-health slot and `engine.rs` sits at the 800-line cap.
+    pub(crate) ticks: crate::tick_stats::TickStats,
 }
 
 impl Default for CitizenState {
@@ -115,6 +118,7 @@ impl CitizenState {
             payments_relayed: AtomicU64::new(0),
             battery_level: AtomicU8::new(100),
             battery_charging: AtomicBool::new(true),
+            ticks: crate::tick_stats::TickStats::default(),
         }
     }
 

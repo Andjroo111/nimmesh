@@ -308,6 +308,14 @@ extension Bridge {
             ]
         }
         let m = node.discoveryMetrics()
+        // tick ▸ diagnostics: the worker's job-loop heartbeat, read from lock-free ctx
+        // atomics — this call never enqueues, so it stays live even if the worker wedges.
+        let tk = node.tickStats()
+        let ticks: [String: Any] = [
+            "started": Int(tk.jobsStarted), "finished": Int(tk.jobsFinished),
+            "lastKind": Int(tk.lastKind), "lastStartedMs": Int(tk.lastStartedMs),
+            "lastFinishedMs": Int(tk.lastFinishedMs), "nowMs": Int(tk.nowMs),
+        ]
         let baseMode = swapRespondOn ? "respond" : (swapLiveOn ? "live" : "sim")
         var payload: [String: Any] = [
             "demo": swapDemoOn,
@@ -318,6 +326,7 @@ extension Bridge {
             "swaps": swaps,
             "seen": Int(m.seen), "matched": Int(m.matched), "readvertised": Int(m.readvertised),
             "peers": Int(node.peerCount()),
+            "ticks": ticks,
         ]
         if swapRespondOn, let fund = liveFundAddress {
             payload["fundAddress"] = fund

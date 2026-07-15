@@ -3,6 +3,27 @@
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
 
+## [0.88.1] — 2026-07-15
+
+### Added — `tick ▸` wedge-proof worker heartbeat diagnostics (the `ble ▸` playbook, for ticks)
+
+Andjroo's first 0.88.0 field swaps still stalled at the responder: `verify ▸ NIM too shallow
+1/2 · attempt 1 · 98s ago` — one verify at proof arrival, then silence, despite THREE
+sim-proven drivers (15 s keepalive gc_tick, 3 s fast tick, proof arrival). Chain forensics:
+the initiator funded both attempts (blocks 56261906 / 56262105), depth passed 2 within
+seconds, the responder never funded (its POL untouched at 1.0). Every existing surface (swap
+mirror, verify note) is written BY the worker thread, so a wedged worker freezes the
+diagnostics with the work — dead timers, a wedged worker, and a broken session gate all look
+identical on-device.
+
+New `tick_stats` module: the worker loop stamps lock-free atomics (`ctx.citizen.ticks`) as
+each job starts/finishes; `MeshNode::tick_stats()` reads them WITHOUT touching the worker;
+the swap sheet renders `tick ▸ q started/finished · kind age` and flags
+`⚠ <kind> in-flight Xs` when started > finished. The three failure modes now render
+distinctly. Diagnostics only — no money-path reads. (`Job` enum is now `pub(crate)` for the
+kind mapping; `engine.rs`/`node.rs` gained 3 lines total, both under the cap.)
+
+
 ## [0.88.0] — 2026-07-15
 
 ### Changed — sub-30s swap settlement: deterministic finality instead of depth-waiting (needs:owner, money-path)

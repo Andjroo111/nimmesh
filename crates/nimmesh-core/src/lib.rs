@@ -83,6 +83,7 @@ pub mod swap_mirror;
 // money-path step at a fast cadence while a swap is live — retransmit/GC/beacon stay on the slow
 // `BeaconTick` (RETRANSMIT_TTL is counted there). Rate-limited + idle-free core-side.
 pub mod swap_fast_tick;
+pub mod tick_stats;
 
 // Mesh swap: the signer seam. `swap_signer::SwapSigner` is the trait the node driver calls to turn a
 // swap action into signed funding/claim tx bytes (the gated money-path); `MockSigner` is the sim

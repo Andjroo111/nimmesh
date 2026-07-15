@@ -1933,6 +1933,8 @@ Don't share them and keep them safe.</p>
     </div>
     <div class="swap-phases" id="swap-phases" hidden></div>
     <div class="swap-verify-line" id="swap-verify" hidden></div>
+    <!-- wedge-proof worker heartbeat (tick_stats) — read even when the worker is stuck -->
+    <div class="swap-verify-line" id="swap-tick" hidden></div>
     <div class="swap-status-line" id="swap-status"></div>
     <button class="send-btn" id="swap-done" data-i18n="a.done" hidden>Done</button>
     <p class="swap-sim-note" data-i18n="swap.simnote">Simulation: no real funds move yet</p>
@@ -3173,6 +3175,23 @@ Don't share them and keep them safe.</p>
   }
   // The verifier's live verdict under the phase timeline — a plain mono diagnostic so a stalled swap
   // shows WHY (the `ble ▸` precedent). Hidden until the core has a verdict (a FundingProof was verified).
+  // tick ▸ the worker's job-loop heartbeat (node-level, from lock-free ctx atomics — still
+  // readable when the worker thread is wedged). q started/finished; a started>finished gap
+  // names the in-flight job and how long it has been stuck. Ages use the SNAPSHOT's own
+  // clock (tk.nowMs), immune to JS-vs-process clock skew.
+  const TICK_KINDS = { 0: 'other', 1: 'inbound', 2: 'tx', 3: 'reqsync', 4: 'sync', 5: 'beacon', 6: 'fast', 7: 'bal', 8: 'hist', 9: 'chat', 10: 'stopadv' };
+  function renderSwapTicks(tk) {
+    const el = document.getElementById('swap-tick');
+    if (!el) return;
+    if (!tk || !tk.started) { el.hidden = true; el.textContent = ''; return; }
+    el.hidden = false;
+    const age = (ms) => (ms ? Math.max(0, Math.round((tk.nowMs - ms) / 1000)) + 's' : 'never');
+    const kind = TICK_KINDS[tk.lastKind] || String(tk.lastKind);
+    el.textContent = (tk.started > tk.finished)
+      ? `tick ▸ q ${tk.started}/${tk.finished} · ⚠ ${kind} in-flight ${age(tk.lastStartedMs)}`
+      : `tick ▸ q ${tk.started}/${tk.finished} · ${kind} ${age(tk.lastStartedMs)} ago`;
+  }
+
   function renderSwapVerify(sw) {
     const el = document.getElementById('swap-verify');
     if (!el) return;
@@ -3511,6 +3530,7 @@ Don't share them and keep them safe.</p>
     if (respondMode && st.fundAddress && st.fundAddress !== swapFundAddr) showRespondFund(st.fundAddress);
     const lockNote = (st.locks && st.locks.length)
       ? ` · ${st.locks.length} ${T('swap.locks')}` : '';
+    renderSwapTicks(st.ticks);
     const sw = (st.swaps || [])[0];
     if (!sw) {
       // No swap matched yet: a responder is LISTENING; an initiator is broadcasting its intent.
