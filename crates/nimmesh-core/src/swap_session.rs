@@ -325,6 +325,16 @@ impl SwapSession {
         self
     }
 
+    /// G9 (#80): withdraw this node's standing discovery advert at runtime while the session — and
+    /// any in-flight swap coordinators — keep running. Afterwards the maintenance tick finds no
+    /// standing intent to re-flood ([`crate::swap_node::readvertise_intent`]) and a crossing
+    /// complementary intent no longer originates a fresh swap ([`crate::swap_node::handle_intent`]),
+    /// but existing swaps run to completion. The clean alternative to tearing the node down and
+    /// rebuilding it. Returns whether an advert was actually being carried.
+    pub fn stop_advertising(&mut self) -> bool {
+        self.identity.standing_intent.take().is_some()
+    }
+
     /// S2 / #73: authenticate an outgoing initiator `Propose` by signing its terms with this node's
     /// NIM enclave key, returning the wire-signed envelope. If this node carries no propose signer (a
     /// responder-only node never originates) — or the enclave returns malformed key material — the

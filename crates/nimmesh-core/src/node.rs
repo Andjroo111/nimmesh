@@ -64,6 +64,9 @@ enum Job {
     HistoryQuery(Address),
     /// Public mesh chat: flood a locally-authored, already-encoded `0x50` payload.
     Chat(Vec<u8>),
+    /// G9 (#80): withdraw this node's standing discovery advert at runtime, without teardown — the
+    /// worker clears the intent so the next maintenance tick stops re-flooding it.
+    StopAdvertising,
     /// G14 (test): register an initiator coordinator + flood its `Propose` (swap origination).
     #[cfg(test)]
     StartSwap {
@@ -174,6 +177,13 @@ fn run_worker(
             Job::Chat(payload) => {
                 let _ = catch_unwind(AssertUnwindSafe(|| {
                     crate::chat::flood_local_chat(&ctx, payload, &mut st);
+                }));
+            }
+            Job::StopAdvertising => {
+                let _ = catch_unwind(AssertUnwindSafe(|| {
+                    if let Some(session) = st.swap.as_mut() {
+                        session.stop_advertising();
+                    }
                 }));
             }
             #[cfg(test)]
@@ -466,6 +476,17 @@ impl MeshNode {
     /// G9 (#80): this node's in-flight swaps over FFI ([`crate::swap_intent::FfiSwapMatch`]), sorted by id; a relay with no `SwapSession` returns empty.
     pub fn active_swaps(&self) -> Vec<crate::swap_intent::FfiSwapMatch> {
         crate::swap_mirror::active_swaps(&self.ctx)
+    }
+
+    /// G9 (#80): stop advertising this node's standing discovery intent while the node keeps
+    /// running — it ceases re-flooding the intent and won't originate new swaps, but any in-flight
+    /// swap runs to completion and the node keeps relaying. The clean alternative to `shutdown()`
+    /// and rebuild for a UI "stop looking for a counterparty" action. Non-blocking; a no-op on a
+    /// relay node that carries no advert.
+    pub fn stop_advertising(&self) {
+        if let Some(tx) = self.job_tx.lock().unwrap().as_ref() {
+            let _ = tx.send(Job::StopAdvertising);
+        }
     }
 
     /// Tear the node down: stop the worker and release the radio. Idempotent; also runs

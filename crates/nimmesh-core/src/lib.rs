@@ -458,6 +458,8 @@ mod swap_adversarial_tests;
 #[cfg(test)]
 mod swap_coordinator_tests;
 #[cfg(test)]
+mod swap_discovery_lifecycle_tests;
+#[cfg(test)]
 mod swap_discovery_ratelimit_tests;
 #[cfg(test)]
 mod swap_discovery_stress_tests;

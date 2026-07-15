@@ -3,6 +3,33 @@
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
 
+## [0.85.0] — 2026-07-15
+
+### Added — stop advertising a swap intent without tearing the node down (G9 / #80)
+
+The discovery FFI could START a standing swap advert (via the `new_swap_participant`
+constructor) and READ match/metric state (`active_swaps` / `discovery_metrics`), but the only
+way to STOP advertising was `shutdown()` — which destroys the whole node and drops any in-flight
+swap. The app worked around it by shutting the node down and rebuilding a fresh one, a coarse
+teardown for what should be a "stop looking for a counterparty" toggle.
+
+This adds `MeshNode::stop_advertising()`: a runtime withdraw of the standing discovery intent
+while the node — and any swaps already in flight — keep running. After it, the maintenance tick
+finds no standing intent to re-flood (`readvertise_intent`) and a crossing complementary intent
+no longer originates a fresh swap (`handle_intent`); existing coordinators run to completion and
+the node keeps relaying.
+
+- New `Job::StopAdvertising` worker command + `SwapSession::stop_advertising()` (takes the
+  `standing_intent` out of the node identity). Non-blocking; a no-op on a relay node with no advert.
+- Regression test `stop_advertising_withdraws_the_standing_intent`: proves a withdrawn intent is
+  never re-advertised again, asserted while the re-advertise budget is still unspent — so the halt
+  is provably the withdrawal, not the natural G37 re-advertise cap.
+
+Bindings regenerated (Swift). Follow-up (deferred): a symmetric runtime `advertise_intent(...)` that
+re-signs a fresh standing intent through the session's enclave identity key (no seed re-crossing
+FFI) — it intersects the G11 enclave seam and lands in its own slice.
+
+
 ## [0.81.0] — 2026-07-14
 
 ### Fixed — a stalled swap now re-checks funding on the clock, and shows the verifier's verdict
