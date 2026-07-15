@@ -78,6 +78,12 @@ pub mod swap_node;
 // worker session.
 pub mod swap_mirror;
 
+// Mesh swap: the ~3 s in-flight settlement heartbeat (`MeshNode::poll_swap_fast` →
+// `Job::SwapFastTick`). Re-runs ONLY the counterparty-funding re-verification + the resulting
+// money-path step at a fast cadence while a swap is live — retransmit/GC/beacon stay on the slow
+// `BeaconTick` (RETRANSMIT_TTL is counted there). Rate-limited + idle-free core-side.
+pub mod swap_fast_tick;
+
 // Mesh swap: the signer seam. `swap_signer::SwapSigner` is the trait the node driver calls to turn a
 // swap action into signed funding/claim tx bytes (the gated money-path); `MockSigner` is the sim
 // stand-in every participant holds today, with the real NIM/BTC signer dropping in via the same trait.

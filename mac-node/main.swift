@@ -345,6 +345,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // phone doesn't idle-timeout and flap.
             beatCount += 1
             if beatCount % 7 == 0 { node.pollBeacon() }
+            // Fast in-flight swap poll (sub-30s settlement): re-runs ONLY the funding
+            // re-verification while a swap awaits its counterparty leg (the --respond /
+            // participant modes). The core no-ops when idle and rate-limits to one chain
+            // consult per ~3s, so this every-beat call is free on a plain relay/gateway.
+            node.pollSwapFast()
             let reachNow: String
             switch node.reachability() {
             case .online: reachNow = "online"

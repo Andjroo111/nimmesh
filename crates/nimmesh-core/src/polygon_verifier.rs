@@ -12,7 +12,12 @@
 //! 3. depth = `eth_blockNumber` − the log's block + 1 — feeding [`require_funded`]'s
 //!    per-chain [`ConfirmationPolicy`](crate::swap_funding_verify::ConfirmationPolicy) floor
 //!    (#74/G3): a reorg that re-buries the escrow shallower is refused again on the next
-//!    observation, because the gate re-runs statelessly every time.
+//!    observation, because the gate re-runs statelessly every time. **Finalized fast-path
+//!    (ADR-0003 addendum, 2026-07-15):** when the escrow's inclusion block is at or below the
+//!    chain's `finalized` tag (Heimdall v2 milestone finality, ~5 s), the depth is reported as
+//!    [`FINALIZED_CONFIRMATIONS`] — deterministic finality is strictly stronger than any count.
+//!    A finalized-read failure (or a disagreeing/absent secondary) just falls back to the
+//!    depth count above — slower, never less safe.
 //!
 //! **Fail-closed:** any RPC failure reads as [`FundingObservation::Absent`] — the gate then
 //! refuses to advance (`NotFundedYet`) and simply retries later. A transport blip can delay a
@@ -30,7 +35,7 @@
 use crate::evm::{function_selector, keccak256};
 use crate::polygon_gateway::{EvmLog, EvmRpcError, HttpPolygonRpc};
 use crate::swap_funding_verify::{
-    FundingObservation, FundingVerifier, HtlcExpectation, MismatchReason,
+    FundingObservation, FundingVerifier, HtlcExpectation, MismatchReason, FINALIZED_CONFIRMATIONS,
 };
 use crate::swap_usdc_leg::EvmAddress;
 use crate::swap_wire::SwapLegId;
@@ -55,6 +60,15 @@ pub trait PolygonReads {
     ) -> Result<Vec<EvmLog>, EvmRpcError>;
     /// The current head height.
     fn head(&self) -> Result<u64, EvmRpcError>;
+    /// The highest DETERMINISTICALLY-final block height (the `finalized` tag — Polygon PoS:
+    /// Heimdall v2 milestone finality, ~5 s). The default errors, meaning "tag not served" —
+    /// the verifier then keeps plain depth counting (strictly slower, never less safe), so a
+    /// fake/endpoint that predates the tag changes nothing. [`HttpPolygonRpc`] overrides it.
+    fn finalized_head(&self) -> Result<u64, EvmRpcError> {
+        Err(EvmRpcError::BadResponse {
+            method: "eth_getBlockByNumber(finalized)".to_string(),
+        })
+    }
 }
 
 fn addr_hex(a: &EvmAddress) -> String {
@@ -71,6 +85,25 @@ fn recipient_topic(recipient: &EvmAddress) -> [u8; 32] {
     let mut w = [0u8; 32];
     w[12..].copy_from_slice(recipient);
     w
+}
+
+/// The finalized height BOTH endpoints vouch for (ADR-0003 addendum, 2026-07-15): the primary's
+/// `finalized`-tag read, capped by the secondary's when one is wired (the **min** of the two — a
+/// lying primary cannot inflate finality past an honest secondary, the M5 lying-RPC posture
+/// extended to the finalized path), and never beyond the already-cross-checked `head`. `None`
+/// whenever any required read fails — an absent tag or an erroring secondary must NOT let
+/// finality authorize; the caller then keeps plain depth counting (slower, never less safe).
+pub(crate) fn conservative_finalized<R: PolygonReads>(
+    primary: &R,
+    secondary: Option<&R>,
+    head: u64,
+) -> Option<u64> {
+    let fp = primary.finalized_head().ok()?;
+    let fin = match secondary {
+        None => fp,
+        Some(sec) => fp.min(sec.finalized_head().ok()?),
+    };
+    Some(fin.min(head))
 }
 
 impl PolygonReads for HttpPolygonRpc {
@@ -100,6 +133,10 @@ impl PolygonReads for HttpPolygonRpc {
 
     fn head(&self) -> Result<u64, EvmRpcError> {
         self.block_number()
+    }
+
+    fn finalized_head(&self) -> Result<u64, EvmRpcError> {
+        self.finalized_block_number()
     }
 }
 
@@ -242,8 +279,18 @@ impl<R: PolygonReads> PolygonHtlcVerifier<R> {
 
         match best {
             Some((block, amount, timeout)) => {
-                let depth64 = head.saturating_sub(block).saturating_add(1);
-                let confirmations = u32::try_from(depth64).unwrap_or(u32::MAX);
+                // Finalized fast-path: an escrow at or below the conservative `finalized`
+                // height is deterministically buried — report it maximally deep so the
+                // per-chain depth gate clears at once. Anything else (tag unserved, a
+                // disagreeing/erroring secondary, an escrow above the finalized height)
+                // keeps today's probabilistic depth count.
+                let finalized = conservative_finalized(&self.reads, self.secondary.as_ref(), head);
+                let confirmations = if finalized.is_some_and(|f| block <= f) {
+                    FINALIZED_CONFIRMATIONS
+                } else {
+                    let depth64 = head.saturating_sub(block).saturating_add(1);
+                    u32::try_from(depth64).unwrap_or(u32::MAX)
+                };
                 FundingObservation::Found {
                     amount,
                     timeout,
@@ -274,337 +321,5 @@ impl<R: PolygonReads + Send + Sync> FundingVerifier for PolygonHtlcVerifier<R> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::nimiq::hex::bytes_to_hex;
-    use crate::swap_funding_verify::{require_funded, ConfirmationPolicy, FundingRejected};
-    use crate::swap_intent::Asset;
-    use crate::swap_leg::sha256;
-    use std::sync::atomic::{AtomicBool, Ordering};
-
-    const HTLC: EvmAddress = [0xDD; 20];
-    const US: EvmAddress = [0xAA; 20];
-
-    /// A programmable chain fake: logs + per-swap states + head, with a kill switch that makes
-    /// every read fail (the transport-error path).
-    struct FakeReads {
-        logs: Vec<EvmLog>,
-        // (swap_id, state) — getSwap answers from this table.
-        states: Vec<([u8; 32], u64)>,
-        head: u64,
-        broken: AtomicBool,
-    }
-
-    impl FakeReads {
-        fn err() -> EvmRpcError {
-            EvmRpcError::Transport("fake: broken".to_string())
-        }
-    }
-
-    impl PolygonReads for FakeReads {
-        fn call(&self, _to: &EvmAddress, data: &[u8]) -> Result<Vec<u8>, EvmRpcError> {
-            if self.broken.load(Ordering::Relaxed) {
-                return Err(Self::err());
-            }
-            // getSwap(bytes32): answer the 6-word tuple with only the state word meaningful.
-            let mut id = [0u8; 32];
-            id.copy_from_slice(&data[4..36]);
-            let state = self
-                .states
-                .iter()
-                .find(|(sid, _)| *sid == id)
-                .map(|(_, st)| *st)
-                .unwrap_or(0);
-            let mut out = vec![0u8; 6 * 32];
-            out[5 * 32 + 24..].copy_from_slice(&state.to_be_bytes());
-            Ok(out)
-        }
-
-        fn new_swap_logs_to(
-            &self,
-            _htlc: &EvmAddress,
-            _recipient: &EvmAddress,
-            _from_block: u64,
-        ) -> Result<Vec<EvmLog>, EvmRpcError> {
-            if self.broken.load(Ordering::Relaxed) {
-                return Err(Self::err());
-            }
-            Ok(self.logs.clone())
-        }
-
-        fn head(&self) -> Result<u64, EvmRpcError> {
-            if self.broken.load(Ordering::Relaxed) {
-                return Err(Self::err());
-            }
-            Ok(self.head)
-        }
-    }
-
-    fn log(
-        swap_id: [u8; 32],
-        amount: u64,
-        hashlock: [u8; 32],
-        timelock: u64,
-        block: u64,
-    ) -> EvmLog {
-        let mut data = vec![0u8; 96];
-        data[24..32].copy_from_slice(&amount.to_be_bytes());
-        data[32..64].copy_from_slice(&hashlock);
-        data[88..96].copy_from_slice(&timelock.to_be_bytes());
-        EvmLog {
-            topic1: swap_id,
-            data,
-            block_number: block,
-            transaction_hash: String::new(),
-        }
-    }
-
-    fn expectation(hashlock: [u8; 32]) -> HtlcExpectation {
-        HtlcExpectation {
-            leg: SwapLegId::Counterparty,
-            hashlock,
-            min_amount: 1_000_000,
-            min_timeout: 5_000,
-            recipient: US.to_vec(),
-            term_anchor: 0,
-        }
-    }
-
-    fn verifier(fake: FakeReads) -> PolygonHtlcVerifier<FakeReads> {
-        PolygonHtlcVerifier::new(fake, HTLC, 0)
-    }
-
-    #[test]
-    fn word_u64_refuses_over_64_bit_words_instead_of_truncating() {
-        // A word that fits u64 decodes; a word with ANY byte set above the low 8 reads None
-        // (LOW / G8 M5 — never a silent truncation of a > 2^64 value).
-        let mut w = [0u8; 32];
-        w[24..].copy_from_slice(&12_345u64.to_be_bytes());
-        assert_eq!(word_u64(&w), Some(12_345));
-        w[23] = 0x01; // the byte just above the low 8 → would overflow u64
-        assert_eq!(word_u64(&w), None);
-        // A short word is malformed, not zero.
-        assert_eq!(word_u64(&[0u8; 31]), None);
-    }
-
-    #[test]
-    fn a_newswap_log_with_an_over_u64_amount_is_skipped_not_truncated() {
-        // A hostile/garbled log whose amount word overflows u64 must not be read as a small
-        // amount — decode returns None, the log is skipped, and (its being the only match)
-        // the observation is Absent (fail-closed).
-        let h = sha256(&[20u8; 32]);
-        let mut bad = log([0x0A; 32], 1_000_000, h, 9_000, 50);
-        bad.data[0] = 0x01; // high byte of the amount word set
-        let v = verifier(FakeReads {
-            logs: vec![bad],
-            states: vec![([0x0A; 32], STATE_LIVE)],
-            head: 60,
-            broken: AtomicBool::new(false),
-        });
-        assert_eq!(v.observe(&expectation(h)), FundingObservation::Absent);
-    }
-
-    #[test]
-    fn topic0_matches_the_cast_vector() {
-        assert_eq!(
-            bytes_to_hex(&new_swap_topic0()),
-            "9a28a6867cb98cb878d32dff82f780ffdab8c2c739daeb18f416835dcf7276c6"
-        );
-    }
-
-    #[test]
-    fn a_live_matching_escrow_reads_found_with_depth_and_passes_the_gate() {
-        let h = sha256(&[7u8; 32]);
-        let v = verifier(FakeReads {
-            logs: vec![log([0x01; 32], 1_500_000, h, 9_000, 100)],
-            states: vec![([0x01; 32], STATE_LIVE)],
-            head: 110,
-            broken: AtomicBool::new(false),
-        });
-        let obs = v.observe(&expectation(h));
-        assert_eq!(
-            obs,
-            FundingObservation::Found {
-                amount: 1_500_000,
-                timeout: 9_000,
-                confirmations: 11, // 110 - 100 + 1
-            }
-        );
-        let need = ConfirmationPolicy::testnet_defaults().required(Asset::Usdc);
-        assert!(require_funded(&obs, &expectation(h), need).is_ok());
-    }
-
-    #[test]
-    fn a_reorg_that_reburies_the_escrow_shallower_is_refused_again() {
-        let h = sha256(&[8u8; 32]);
-        let policy = ConfirmationPolicy::testnet_defaults().required(Asset::Usdc);
-        // Buried deep: passes.
-        let deep = verifier(FakeReads {
-            logs: vec![log([0x02; 32], 2_000_000, h, 9_000, 100)],
-            states: vec![([0x02; 32], STATE_LIVE)],
-            head: 100 + u64::from(policy),
-            broken: AtomicBool::new(false),
-        });
-        assert!(require_funded(&deep.observe(&expectation(h)), &expectation(h), policy).is_ok());
-        // The SAME escrow after a reorg to a shallower head: the stateless gate refuses again.
-        let shallow = verifier(FakeReads {
-            logs: vec![log([0x02; 32], 2_000_000, h, 9_000, 100)],
-            states: vec![([0x02; 32], STATE_LIVE)],
-            head: 100,
-            broken: AtomicBool::new(false),
-        });
-        assert!(matches!(
-            require_funded(&shallow.observe(&expectation(h)), &expectation(h), policy),
-            Err(FundingRejected::TooShallow { have: 1, .. })
-        ));
-    }
-
-    #[test]
-    fn escrows_paying_us_under_a_different_hashlock_read_mismatch() {
-        let ours = sha256(&[9u8; 32]);
-        let theirs = sha256(&[10u8; 32]);
-        let v = verifier(FakeReads {
-            logs: vec![log([0x03; 32], 1_000_000, theirs, 9_000, 50)],
-            states: vec![([0x03; 32], STATE_LIVE)],
-            head: 60,
-            broken: AtomicBool::new(false),
-        });
-        assert_eq!(
-            v.observe(&expectation(ours)),
-            FundingObservation::Mismatch(MismatchReason::Hashlock)
-        );
-    }
-
-    #[test]
-    fn a_claimed_or_refunded_slot_is_not_funding() {
-        let h = sha256(&[11u8; 32]);
-        for resolved in [2u64, 3u64] {
-            let v = verifier(FakeReads {
-                logs: vec![log([0x04; 32], 1_000_000, h, 9_000, 50)],
-                states: vec![([0x04; 32], resolved)],
-                head: 60,
-                broken: AtomicBool::new(false),
-            });
-            assert_eq!(v.observe(&expectation(h)), FundingObservation::Absent);
-        }
-    }
-
-    #[test]
-    fn the_deepest_live_match_wins() {
-        let h = sha256(&[12u8; 32]);
-        let v = verifier(FakeReads {
-            logs: vec![
-                log([0x05; 32], 3_000_000, h, 9_500, 80), // shallower
-                log([0x06; 32], 2_000_000, h, 9_000, 40), // deepest live — wins
-            ],
-            states: vec![([0x05; 32], STATE_LIVE), ([0x06; 32], STATE_LIVE)],
-            head: 100,
-            broken: AtomicBool::new(false),
-        });
-        assert_eq!(
-            v.observe(&expectation(h)),
-            FundingObservation::Found {
-                amount: 2_000_000,
-                timeout: 9_000,
-                confirmations: 61,
-            }
-        );
-    }
-
-    #[test]
-    fn a_secondary_head_disagreeing_beyond_tolerance_fails_closed() {
-        // M5 cross-read: a live matching escrow the primary sees deep, but the independent
-        // secondary's head disagrees far beyond HEAD_CROSS_TOLERANCE_BLOCKS → fail-closed
-        // (never trust a depth two endpoints can't agree on).
-        let h = sha256(&[21u8; 32]);
-        let primary = FakeReads {
-            logs: vec![log([0x0B; 32], 1_500_000, h, 9_000, 100)],
-            states: vec![([0x0B; 32], STATE_LIVE)],
-            head: 200,
-            broken: AtomicBool::new(false),
-        };
-        let sec_bad = FakeReads {
-            logs: vec![],
-            states: vec![],
-            head: 100, // |200 - 100| = 100 >> 12
-            broken: AtomicBool::new(false),
-        };
-        let v = PolygonHtlcVerifier::new(primary, HTLC, 0).with_secondary(sec_bad);
-        assert_eq!(v.observe(&expectation(h)), FundingObservation::Absent);
-    }
-
-    #[test]
-    fn an_agreeing_secondary_within_tolerance_uses_the_conservative_head() {
-        // Primary head 110, honest secondary head 105 (diff 5 ≤ 12) → the depth uses the lower
-        // (conservative) head, so a primary that inflates within tolerance still can't over-count.
-        let h = sha256(&[22u8; 32]);
-        let primary = FakeReads {
-            logs: vec![log([0x0C; 32], 2_000_000, h, 9_000, 100)],
-            states: vec![([0x0C; 32], STATE_LIVE)],
-            head: 110,
-            broken: AtomicBool::new(false),
-        };
-        let sec = FakeReads {
-            logs: vec![],
-            states: vec![],
-            head: 105,
-            broken: AtomicBool::new(false),
-        };
-        let v = PolygonHtlcVerifier::new(primary, HTLC, 0).with_secondary(sec);
-        assert_eq!(
-            v.observe(&expectation(h)),
-            FundingObservation::Found {
-                amount: 2_000_000,
-                timeout: 9_000,
-                confirmations: 6, // min(110,105) - 100 + 1
-            }
-        );
-    }
-
-    #[test]
-    fn a_secondary_whose_head_read_errors_fails_closed() {
-        let h = sha256(&[23u8; 32]);
-        let primary = FakeReads {
-            logs: vec![log([0x0D; 32], 1_000_000, h, 9_000, 100)],
-            states: vec![([0x0D; 32], STATE_LIVE)],
-            head: 105,
-            broken: AtomicBool::new(false),
-        };
-        let sec_broken = FakeReads {
-            logs: vec![],
-            states: vec![],
-            head: 105,
-            broken: AtomicBool::new(true), // every read errors
-        };
-        let v = PolygonHtlcVerifier::new(primary, HTLC, 0).with_secondary(sec_broken);
-        assert_eq!(v.observe(&expectation(h)), FundingObservation::Absent);
-    }
-
-    #[test]
-    fn transport_failures_and_foreign_legs_read_absent_fail_closed() {
-        let h = sha256(&[13u8; 32]);
-        let v = verifier(FakeReads {
-            logs: vec![log([0x07; 32], 1_000_000, h, 9_000, 50)],
-            states: vec![([0x07; 32], STATE_LIVE)],
-            head: 60,
-            broken: AtomicBool::new(true), // every read errors
-        });
-        assert_eq!(v.observe(&expectation(h)), FundingObservation::Absent);
-
-        // The NIM leg is not this verifier's chain.
-        let healthy = verifier(FakeReads {
-            logs: vec![log([0x08; 32], 1_000_000, h, 9_000, 50)],
-            states: vec![([0x08; 32], STATE_LIVE)],
-            head: 60,
-            broken: AtomicBool::new(false),
-        });
-        let mut nim = expectation(h);
-        nim.leg = SwapLegId::Nim;
-        assert_eq!(healthy.observe(&nim), FundingObservation::Absent);
-
-        // A malformed own-recipient can never be paid: Absent, never an advance.
-        let mut bad = expectation(h);
-        bad.recipient = vec![0xAA; 19];
-        assert_eq!(healthy.observe(&bad), FundingObservation::Absent);
-    }
-}
+#[path = "polygon_verifier_tests.rs"]
+mod tests;

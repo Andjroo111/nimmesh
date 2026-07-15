@@ -428,10 +428,10 @@ fn drive_swap(
 
 /// Take this node's next phase-driven chain action for `swap_id` — fund / claim / settle, per
 /// (role, phase) — and return the envelope(s) to flood. Shared by the message-driven [`drive_swap`]
-/// and the tick-driven re-verification path ([`gc_tick`]): both act on a coordinator that just
-/// advanced to a fund/reveal-ready phase, and the phase is the idempotency guard (a re-drive of an
-/// unchanged phase does nothing twice).
-fn drive_phase_action(
+/// and the tick-driven re-verification paths ([`gc_tick`] + `crate::swap_fast_tick`): each acts on
+/// a coordinator that just advanced to a fund/reveal-ready phase, and the phase is the idempotency
+/// guard (a re-drive of an unchanged phase does nothing twice).
+pub(crate) fn drive_phase_action(
     st: &mut WorkerState,
     swap_id: [u8; SWAP_ID_LEN],
     head: u64,

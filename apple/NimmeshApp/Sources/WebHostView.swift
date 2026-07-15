@@ -122,6 +122,9 @@ final class Bridge: NSObject, WKScriptMessageHandler {
     /// The derived Amoy account (0x…) the responder escrows USDC from + pays gas — shown so
     /// the owner can fund it with test USDC + POL before it can answer a swap.
     var liveFundAddress: String?
+    /// The ~3 s in-flight settlement heartbeat (`pollSwapFast`) — runs only while the swap
+    /// demo owns the node; started/stopped in SwapMesh.swift. Idle-free + rate-limited core-side.
+    var swapFastTimer: DispatchSourceTimer?
 
     /// Injected at document start. Exposes a tiny promise-based RPC the web UI calls:
     /// `await window.nimmesh.version()` etc. If the handler is ever absent (e.g. the

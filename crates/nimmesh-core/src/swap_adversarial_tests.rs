@@ -50,6 +50,22 @@ fn active_swaps_lists_a_live_swap_over_ffi_and_a_blind_relay_lists_none() {
         bytes_to_hex(&swap_id),
         "the listed swap_id must be the hex of the real id"
     );
+    // The settlement stopwatch: started when the coordinator registered, stamped once at
+    // Settled (≥ 1 even for a sub-ms sim settle — 0 is the "not settled" sentinel), and
+    // coherent with the start (a settle can't predate its own initiation).
+    assert!(
+        matches[0].started_at_ms > 0,
+        "stopwatch start must be stamped"
+    );
+    assert!(
+        matches[0].settled_in_ms >= 1,
+        "a Settled swap must carry its settled-in duration"
+    );
+    assert!(
+        matches[0].settled_in_ms
+            <= crate::swap_session::telemetry_now_ms() - matches[0].started_at_ms + 1_000,
+        "settled_in_ms must be a plausible initiation→settle span"
+    );
 
     // A blind relay holds no `SwapSession`, so it never reaches a phase → nothing to list.
     assert!(

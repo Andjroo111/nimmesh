@@ -14,6 +14,12 @@
 //! empty, which reads `Absent` — fail-closed, exactly like no hint at all. The found escrow's
 //! `swapId` is recorded so the initiator's claim withdraws the exact verified slot.
 //! Timeout-unit mapping per ADR-0010 (the seconds twins of `nim_verifier`'s ms helpers).
+//!
+//! **Finalized fast-path (ADR-0003 addendum, 2026-07-15):** an escrow whose inclusion block is
+//! at or below the chain's `finalized` tag (Polygon Heimdall v2 milestone finality, ~5 s) is
+//! reported at [`crate::swap_funding_verify::FINALIZED_CONFIRMATIONS`] — deterministic finality
+//! outranks any probabilistic count. A finalized read that fails anywhere (primary or a wired
+//! secondary) just keeps today's depth counting: slower, never less safe.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -108,6 +114,15 @@ pub trait AmoyChain: Send + Sync {
     ) -> Result<Vec<EvmLog>, EvmRpcError>;
     /// `eth_blockNumber`.
     fn head(&self) -> Result<u64, EvmRpcError>;
+    /// The highest DETERMINISTICALLY-final block height (the `finalized` tag — Polygon PoS:
+    /// Heimdall v2 milestone finality, ~5 s). The default errors, meaning "tag not served" —
+    /// the verifier then keeps plain depth counting (strictly slower, never less safe), so
+    /// every offline fake predating the tag changes nothing. [`HttpPolygonRpc`] overrides it.
+    fn finalized_head(&self) -> Result<u64, EvmRpcError> {
+        Err(EvmRpcError::BadResponse {
+            method: "eth_getBlockByNumber(finalized)".to_string(),
+        })
+    }
 }
 
 fn addr_hex(a: &EvmAddress) -> String {
@@ -167,6 +182,27 @@ impl AmoyChain for HttpPolygonRpc {
     fn head(&self) -> Result<u64, EvmRpcError> {
         self.block_number()
     }
+    fn finalized_head(&self) -> Result<u64, EvmRpcError> {
+        self.finalized_block_number()
+    }
+}
+
+/// The finalized height BOTH endpoints vouch for — the `dyn AmoyChain` twin of
+/// [`crate::polygon_verifier::conservative_finalized`] (ADR-0003 addendum, 2026-07-15): the
+/// primary's `finalized` read, capped by the secondary's when one is wired (min — a lying
+/// primary cannot inflate finality past an honest secondary), never beyond the cross-checked
+/// `head`. `None` on any failed read → the caller keeps depth counting (never less safe).
+fn conservative_finalized(
+    primary: &Arc<dyn AmoyChain>,
+    secondary: Option<&Arc<dyn AmoyChain>>,
+    head: u64,
+) -> Option<u64> {
+    let fp = primary.finalized_head().ok()?;
+    let fin = match secondary {
+        None => fp,
+        Some(sec) => fp.min(sec.finalized_head().ok()?),
+    };
+    Some(fin.min(head))
 }
 
 /// The low 8 bytes of a 32-byte ABI word.
@@ -427,6 +463,17 @@ impl FundingVerifier for AmoyHtlcSwapVerifier {
                     }
                 }
                 self.store.record_found(expect.hashlock, escrow);
+                // Finalized fast-path (ADR-0003 addendum, 2026-07-15): an escrow at or below
+                // the conservative `finalized` height is deterministically buried — report it
+                // maximally deep so the per-chain depth gate clears at once. Tag unserved, a
+                // secondary that cannot vouch, or an escrow above the finalized height all
+                // keep today's probabilistic depth count (slower, never less safe).
+                let finalized = conservative_finalized(&self.chain, self.secondary.as_ref(), head);
+                let confirmations = if finalized.is_some_and(|f| block <= f) {
+                    crate::swap_funding_verify::FINALIZED_CONFIRMATIONS
+                } else {
+                    u32::try_from(head.saturating_sub(block).saturating_add(1)).unwrap_or(u32::MAX)
+                };
                 FundingObservation::Found {
                     amount: escrow.amount,
                     timeout: term_equivalent_of_timelock_s(
@@ -437,8 +484,7 @@ impl FundingVerifier for AmoyHtlcSwapVerifier {
                         expect.term_anchor,
                         self.slack_s,
                     ),
-                    confirmations: u32::try_from(head.saturating_sub(block).saturating_add(1))
-                        .unwrap_or(u32::MAX),
+                    confirmations,
                 }
             }
             None if other_hashlock_pays_us => {

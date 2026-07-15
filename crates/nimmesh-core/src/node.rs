@@ -58,6 +58,9 @@ enum Job {
     SyncTick,
     /// G9: a beacon poll — a gateway floods a `nimiqHeadBeacon` only if the tick is due.
     BeaconTick,
+    /// The ~3 s in-flight swap poll — ONLY the funding re-verify + next money-path step
+    /// (never beacon/retransmit/GC, which stay on `BeaconTick`). See `crate::swap_fast_tick`.
+    SwapFastTick,
     /// G15: flood a `nimiqBalanceQuery` for this address (asks any gateway for its balance).
     BalanceQuery(Address),
     /// History over the mesh: flood a `nimiqTxHistoryQuery` for this address.
@@ -162,6 +165,11 @@ fn run_worker(
                     // data-mule retry (inside maintenance_tick), and swap upkeep.
                     maintenance_tick(&ctx, &mut st);
                     crate::swap_node::gc_tick(&ctx, &mut st);
+                }));
+            }
+            Job::SwapFastTick => {
+                let _ = catch_unwind(AssertUnwindSafe(|| {
+                    crate::swap_fast_tick::fast_tick(&ctx, &mut st);
                 }));
             }
             Job::BalanceQuery(addr) => {
@@ -506,6 +514,14 @@ impl MeshNode {
         }
     }
 
+    /// The fast in-flight swap poll: enqueue a `SwapFastTick` (the FFI in `swap_fast_tick.rs`
+    /// calls this; non-blocking, the worker does the chain reads — rate-limited there).
+    pub(crate) fn enqueue_swap_fast_tick(&self) {
+        if let Some(tx) = self.job_tx.lock().unwrap().as_ref() {
+            let _ = tx.send(Job::SwapFastTick);
+        }
+    }
+
     /// Public mesh chat: enqueue a locally-authored `0x50` flood (the FFI in `chat.rs`
     /// calls this; non-blocking, worker floods + logs).
     pub(crate) fn enqueue_chat(&self, payload: Vec<u8>) {
@@ -769,22 +785,7 @@ impl MeshNode {
     pub(crate) fn rsr_sent(&self) -> usize {
         self.ctx.rsr_sent()
     }
-    /// G7: inbound `isRSR` catch-up packets this node has received.
-    #[cfg(test)]
-    pub(crate) fn rsr_received(&self) -> usize {
-        self.ctx.rsr_received()
-    }
-    /// G9: `nimiqHeadBeacon` frames this gateway has flooded.
-    #[cfg(test)]
-    pub(crate) fn beacon_emitted(&self) -> usize {
-        self.ctx.beacon_emitted()
-    }
-    /// G9: `nimiqTx` packets dropped (GC'd) for a closed validity window.
-    #[cfg(test)]
-    pub(crate) fn expired_dropped(&self) -> usize {
-        self.ctx.expired_dropped()
-    }
-    // Test-only observability accessors live in `node_tests.rs` (800-line guard).
+    // More test-only observability accessors live in `node_tests.rs` (800-line guard).
 }
 
 impl Drop for MeshNode {

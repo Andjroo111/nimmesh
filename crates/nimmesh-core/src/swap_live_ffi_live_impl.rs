@@ -475,7 +475,10 @@ pub(crate) struct MainnetMoneyPath {
     pub usdc: EvmAddress,
     /// EIP-155 chain id `137` — bound into every mainnet Polygon tx (`POLYGON_MAINNET_CHAIN_ID`).
     pub evm_chain_id: u64,
-    /// The mainnet per-chain confirmation depths (NIM 10 / USDC 64 / BTC 2).
+    /// The mainnet per-chain confirmation depths — the fast-finality profile (NIM 2 / BTC 2 /
+    /// USDC 8-as-fallback; the USDC verifier's primary signal is the Polygon `finalized` tag).
+    /// The reviewed one-line revert is `ConfirmationPolicy::mainnet_paranoid()` (NIM 10 /
+    /// USDC 64 / BTC 2). ADR-0003 addendum (2026-07-15).
     pub confirm_policy: ConfirmationPolicy,
     /// The hard ≤ $5 first-swap caps (≤ 50 NIM / ≤ 5 USDC / ≤ 20 000 sat).
     pub caps: SwapCaps,

@@ -2089,7 +2089,7 @@ Don't share them and keep them safe.</p>
       'swap.refund.broadcast': 'Reembolsando NIM bloqueado a tu cartera…', 'swap.refund.done': 'NIM bloqueado reembolsado ✓',
       'swap.refund.locked': 'Un bloqueo de NIM aún no expira, se reintentará', 'swap.refund.error': 'No se pudo verificar un bloqueo de NIM, se reintentará',
       'swap.searching': 'Buscando un socio en la malla', 'swap.searching.sub': 'Tu intención de intercambio se retransmite de teléfono en teléfono hasta que un socio compatible responde. Puede tardar un momento.',
-      'swap.matched': 'Socio encontrado, negociando…', 'swap.settled': 'Intercambio liquidado',
+      'swap.matched': 'Socio encontrado, negociando…', 'swap.settled': 'Intercambio liquidado', 'swap.settledin': 'liquidado en {s}s',
       'swap.live': 'En vivo por Bluetooth — testnet, fondos simulados', 'swap.ended': 'Intercambio terminado',
       'swap.respond.label': 'Responder a intercambios (das USDC, recibes NIM)', 'swap.respond.cta': 'Responder a intercambios',
       'swap.respond.listening': 'Escuchando una oferta de intercambio en la malla',
@@ -2168,7 +2168,7 @@ Don't share them and keep them safe.</p>
       'swap.refund.broadcast': 'Gesperrtes NIM wird an deine Wallet erstattet…', 'swap.refund.done': 'Gesperrtes NIM erstattet ✓',
       'swap.refund.locked': 'Ein NIM-Lock ist noch nicht abgelaufen, wird später erneut versucht', 'swap.refund.error': 'NIM-Lock-Prüfung fehlgeschlagen, wird wiederholt',
       'swap.searching': 'Suche einen Tauschpartner im Mesh', 'swap.searching.sub': 'Deine Tauschabsicht wird von Handy zu Handy weitergereicht, bis ein passender Partner antwortet. Das kann einen Moment dauern.',
-      'swap.matched': 'Partner gefunden, verhandle…', 'swap.settled': 'Tausch abgewickelt',
+      'swap.matched': 'Partner gefunden, verhandle…', 'swap.settled': 'Tausch abgewickelt', 'swap.settledin': 'abgewickelt in {s}s',
       'swap.live': 'Live über Bluetooth — Testnet, Sim-Guthaben', 'swap.ended': 'Tausch beendet',
       'swap.respond.label': 'Auf Swaps antworten (du gibst USDC, erhältst NIM)', 'swap.respond.cta': 'Auf Swaps antworten',
       'swap.respond.listening': 'Warte auf ein Swap-Angebot im Mesh',
@@ -2247,7 +2247,7 @@ Don't share them and keep them safe.</p>
       'swap.refund.broadcast': 'Remboursement du NIM verrouillé vers votre portefeuille…', 'swap.refund.done': 'NIM verrouillé remboursé ✓',
       'swap.refund.locked': 'Un verrou NIM n\'a pas encore expiré, nouvel essai plus tard', 'swap.refund.error': 'Impossible de vérifier un verrou NIM, nouvel essai',
       'swap.searching': 'Recherche d’un partenaire sur le mesh', 'swap.searching.sub': 'Ton intention d’échange est relayée de téléphone en téléphone jusqu’à ce qu’un partenaire compatible réponde. Cela peut prendre un moment.',
-      'swap.matched': 'Partenaire trouvé, négociation…', 'swap.settled': 'Échange réglé',
+      'swap.matched': 'Partenaire trouvé, négociation…', 'swap.settled': 'Échange réglé', 'swap.settledin': 'réglé en {s}s',
       'swap.live': 'En direct via Bluetooth — testnet, fonds simulés', 'swap.ended': 'Échange terminé',
       'swap.respond.label': 'Répondre aux échanges (tu donnes des USDC, tu reçois des NIM)', 'swap.respond.cta': 'Répondre aux échanges',
       'swap.respond.listening': 'En attente d’une offre d’échange sur le mesh',
@@ -2326,7 +2326,7 @@ Don't share them and keep them safe.</p>
       'swap.refund.broadcast': 'Reembolsando NIM bloqueado para sua carteira…', 'swap.refund.done': 'NIM bloqueado reembolsado ✓',
       'swap.refund.locked': 'Um bloqueio de NIM ainda não expirou, tentaremos novamente', 'swap.refund.error': 'Não foi possível verificar um bloqueio de NIM, tentaremos novamente',
       'swap.searching': 'Procurando um parceiro na mesh', 'swap.searching.sub': 'Sua intenção de troca é retransmitida de telefone em telefone até um parceiro compatível responder. Pode levar um momento.',
-      'swap.matched': 'Parceiro encontrado, negociando…', 'swap.settled': 'Troca liquidada',
+      'swap.matched': 'Parceiro encontrado, negociando…', 'swap.settled': 'Troca liquidada', 'swap.settledin': 'liquidado em {s}s',
       'swap.live': 'Ao vivo via Bluetooth — testnet, fundos simulados', 'swap.ended': 'Troca encerrada',
       'swap.respond.label': 'Responder a trocas (você dá USDC, recebe NIM)', 'swap.respond.cta': 'Responder a trocas',
       'swap.respond.listening': 'Aguardando uma oferta de troca na mesh',
@@ -2395,7 +2395,7 @@ Don't share them and keep them safe.</p>
     'acct.export.copied': 'History copied as CSV',
     'codes.copy': 'Copy code',
     'codes.how.tip': 'Email it to yourself, or message it to yourself in a chat app. Use a DIFFERENT platform for each code.',
-    'swap.matched': 'Partner found, negotiating…', 'swap.settled': 'Swap settled',
+    'swap.matched': 'Partner found, negotiating…', 'swap.settled': 'Swap settled', 'swap.settledin': 'settled in {s}s',
     'swap.live': 'Live over Bluetooth — testnet, sim funds', 'swap.ended': 'Swap ended',
     'swap.simnote': 'Simulation: no real funds move yet',
     'swap.real.label': 'Real testnet coins (NIM \u21c4 USDC)',
@@ -3531,7 +3531,12 @@ Don't share them and keep them safe.</p>
       return;
     }
     renderSwapPhases(step);
-    statusEl.textContent = (step >= 6 ? T('swap.settled') : T('swap.matched'))
+    // The settlement stopwatch: the core stamps initiation→Settled in the mirror
+    // (settledInMs, 0 while un-settled) — render "settled in Xs" once it lands.
+    const settledIn = (step >= 6 && sw.settledInMs > 0)
+      ? ' · ' + T('swap.settledin').replace('{s}', (sw.settledInMs / 1000).toFixed(sw.settledInMs < 10000 ? 1 : 0))
+      : '';
+    statusEl.textContent = (step >= 6 ? T('swap.settled') + settledIn : T('swap.matched'))
       + (liveMode ? ` · ${liveLabel}` : '') + lockNote;
     if (step >= 6) {
       document.getElementById('swap-done').hidden = false;

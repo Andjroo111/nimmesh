@@ -109,6 +109,18 @@ pub trait FundingVerifier: Send + Sync {
 /// [`ConfirmationPolicy`] instead, which tunes the depth per chain. See #74/G3.
 pub const DEFAULT_MIN_CONFIRMATIONS: u32 = 1;
 
+/// The synthetic confirmation depth a gateway-backed USDC verifier reports for an escrow whose
+/// inclusion block is at or below the chain's `finalized` tag (Polygon Heimdall v2 milestone
+/// finality, live 2025-07-10, ~5 s). Deterministic milestone finality is strictly stronger than
+/// ANY probabilistic depth — once a milestone signs the block there is nothing deeper to wait for —
+/// so a finalized escrow is reported at `u32::MAX`, which clears [`require_funded`]'s per-chain
+/// depth gate under *any* [`ConfirmationPolicy`]. This keeps the pure `require_funded` /
+/// [`FundingObservation`] safety core UNCHANGED: finality is expressed as "maximally buried" in the
+/// verifier, never as a new bypass in the go/no-go. The depth-count fallback still applies whenever
+/// the RPC does not serve the tag (see `polygon_verifier` / `amoy_swap_verifier`). See ADR-0003
+/// addendum (2026-07-15).
+pub const FINALIZED_CONFIRMATIONS: u32 = u32::MAX;
+
 /// Per-chain minimum confirmation depth before a leg's HTLC is treated as `funded`/`settled` (#74/G3).
 ///
 /// A single flat floor is wrong across chains: NIM's Albatross PoS reaches macro-block finality in a
@@ -141,20 +153,48 @@ impl ConfirmationPolicy {
         }
     }
 
-    /// **MAINNET** per-chain depths (M6 / ADR-0003), calibrated to the FIRST small self-swaps
-    /// (≤ $5, both sides Andjroo's own wallets) — NOT to custodial/high-value finality:
-    /// - **NIM 10** — Albatross PoS reaches macro-block finality within a batch; 10 blocks is
-    ///   several batches past the funding, ample for a ≤ $5 leg that the timelock refunds either way.
-    /// - **USDC-on-Polygon 64** — Polygon PoS (Bor) can reorg deeper than NIM at equal wall-clock;
-    ///   64 blocks (~2 min at ~2 s blocks) is the small-amount floor bridges/exchanges use for
-    ///   low-value Polygon deposits.
-    /// - **BTC 2** — for a ≤ $5 self-swap whose timelock refund is the worst-case floor, 2
-    ///   confirmations is a pragmatic small-amount burial (not the 6 a high-value BTC settlement wants).
+    /// **MAINNET — FAST-FINALITY profile (default, M7 / ADR-0003 addendum 2026-07-15).** The
+    /// per-chain floors calibrated to the FIRST ≤ $5 self-swaps (both sides Andjroo's own wallets,
+    /// timelock-refundable either way) with the <30 s settlement goal — replacing probabilistic
+    /// depth-counting with deterministic finality where a chain offers it. NOT custodial/high-value
+    /// finality:
+    /// - **NIM 2** — Albatross is a BFT PoS chain producing 1 s micro-blocks under a single elected
+    ///   producer per slot; a micro-block reorg needs a *slashable* fork proof (equivocation), so
+    ///   deep NIM reorgs are economically self-defeating. 2 blocks (~2 s) covers the realistic
+    ///   1-block micro-fork with a block of margin; the timelock refund is the worst-case backstop
+    ///   for a ≤ $5 leg. (This is a fast probabilistic floor, NOT macro-block finality — the batch's
+    ///   macro block, the true BFT-final point, is up to ~1 min away and would blow the settlement
+    ///   budget. The paranoid profile restores the old 10.)
+    /// - **USDC-on-Polygon 8** — the USDC verifier's PRIMARY burial signal is the RPC `finalized`
+    ///   tag (Polygon Heimdall v2 milestone finality, live 2025-07-10, ~5 s, reorgs capped at ~2
+    ///   blocks); this depth-8 value is the FALLBACK for an RPC that does not serve the tag — 4× the
+    ///   ~2-block reorg cap. Both signals are safe; finality is simply faster (see `polygon_verifier`
+    ///   / `amoy_swap_verifier`).
+    /// - **BTC 2** — unchanged. For a ≤ $5 self-swap whose timelock refund is the worst-case floor,
+    ///   2 confirmations is a pragmatic small-amount burial (not the 6 a high-value BTC settlement
+    ///   wants). BTC only ever gates the *unfunded* leg here anyway.
     ///
-    /// These are the ≤ $5 self-swap values named in the guard-lift; a LARGER mainnet swap MUST raise
-    /// them (a separate, reviewed change). Off-by-default: nothing selects this policy until the
-    /// mainnet swap path is explicitly enabled ([`crate::mainnet_swap`]).
+    /// These are the ≤ $5 self-swap values; a LARGER mainnet swap MUST raise them (a separate,
+    /// reviewed change) — prefer [`mainnet_paranoid`](Self::mainnet_paranoid) as the deeper base.
+    /// Off-by-default: nothing selects this policy until the mainnet swap path is explicitly enabled
+    /// ([`crate::mainnet_swap`]).
     pub const fn mainnet_defaults() -> Self {
+        ConfirmationPolicy {
+            nim: 2,
+            btc: 2,
+            usdc: 8,
+        }
+    }
+
+    /// **MAINNET — CONSERVATIVE (paranoid) profile.** The pre-fast-finality M6 depths, kept as an
+    /// explicitly-named, one-line revert from [`mainnet_defaults`](Self::mainnet_defaults): NIM 10
+    /// (deep micro-block burial), USDC 64 (~2 min pure depth-count, no reliance on the finality
+    /// tag), BTC 2 (unchanged). Selecting this makes the money path ignore the `finalized` fast-path
+    /// benefit and wait out the deeper probabilistic depths — strictly slower, never less safe. Use
+    /// it to bisect a settlement-safety concern, or as the deeper base a larger-value swap raises
+    /// from. Not wired by default; a reviewed change swaps `mainnet_defaults()` for this at the
+    /// call site ([`crate::swap_live_ffi`]).
+    pub const fn mainnet_paranoid() -> Self {
         ConfirmationPolicy {
             nim: 10,
             btc: 2,

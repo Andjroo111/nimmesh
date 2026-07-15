@@ -40,7 +40,7 @@ pub(crate) fn swap_phase(
     ctx: &WorkerCtx,
     swap_id: [u8; crate::swap_wire::SWAP_ID_LEN],
 ) -> Option<crate::swap::SwapPhase> {
-    ctx.swaps.lock().unwrap().get(&swap_id).map(|(p, _)| *p)
+    ctx.swaps.lock().unwrap().get(&swap_id).map(|m| m.phase)
 }
 
 /// G14 (test origination): register an initiator coordinator this node started and flood its

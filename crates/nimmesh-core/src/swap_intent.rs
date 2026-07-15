@@ -361,6 +361,12 @@ pub struct FfiSwapMatch {
     /// Unix-ms wall clock of the last verify attempt (telemetry only; the app renders "Xs ago").
     /// `0` when there is no verdict yet.
     pub verify_at_ms: u64,
+    /// Stopwatch start: Unix-ms wall clock when this swap's coordinator registered (telemetry
+    /// only — the app can render a live "Xs elapsed" while the swap is in flight).
+    pub started_at_ms: u64,
+    /// Initiation → Settled in ms, stamped once when the phase first reads Settled; `0` while
+    /// un-settled. The swap sheet's "settled in Xs".
+    pub settled_in_ms: u64,
 }
 
 #[cfg(test)]

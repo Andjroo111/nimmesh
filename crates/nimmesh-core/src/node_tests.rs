@@ -118,6 +118,21 @@ fn id_helpers_truncate_and_pad() {
 
 // Test-only observability accessors, moved from `node.rs` for the 800-line guard.
 impl MeshNode {
+    /// G7: inbound `isRSR` catch-up packets this node has received.
+    #[cfg(test)]
+    pub(crate) fn rsr_received(&self) -> usize {
+        self.ctx.rsr_received()
+    }
+    /// G9: `nimiqHeadBeacon` frames this gateway has flooded.
+    #[cfg(test)]
+    pub(crate) fn beacon_emitted(&self) -> usize {
+        self.ctx.beacon_emitted()
+    }
+    /// G9: `nimiqTx` packets dropped (GC'd) for a closed validity window.
+    #[cfg(test)]
+    pub(crate) fn expired_dropped(&self) -> usize {
+        self.ctx.expired_dropped()
+    }
     /// G12: `nimiqTx` packets dropped by the verify-before-relay spam filter.
     #[cfg(test)]
     pub(crate) fn verify_dropped(&self) -> usize {

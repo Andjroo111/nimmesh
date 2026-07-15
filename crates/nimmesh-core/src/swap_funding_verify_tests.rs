@@ -5,15 +5,65 @@ use super::*;
 
 #[test]
 fn mainnet_confirmation_depths_are_the_reviewed_values() {
-    // M6 / ADR-0003: the ≤ $5 self-swap mainnet depths (NIM 10 / USDC 64 / BTC 2). Deeper than
-    // the testnet defaults on the reorg-prone chains, and never accidentally zero.
+    // M7 / ADR-0003 addendum (2026-07-15): the ≤ $5 self-swap FAST-FINALITY depths
+    // (NIM 2 / USDC 8-as-fallback / BTC 2) — the USDC verifier's primary burial signal is
+    // the Polygon `finalized` tag; this depth-8 only gates an RPC that does not serve it.
+    // Never accidentally zero on any chain.
     let m = ConfirmationPolicy::mainnet_defaults();
-    assert_eq!(m.required(Asset::Nim), 10);
-    assert_eq!(m.required(Asset::Usdc), 64);
+    assert_eq!(m.required(Asset::Nim), 2);
+    assert_eq!(m.required(Asset::Usdc), 8);
     assert_eq!(m.required(Asset::Btc), 2);
     let t = ConfirmationPolicy::testnet_defaults();
-    assert!(m.required(Asset::Nim) > t.required(Asset::Nim));
     assert!(m.required(Asset::Usdc) > t.required(Asset::Usdc));
+    for chain in [Asset::Nim, Asset::Usdc, Asset::Btc] {
+        assert!(m.required(chain) > 0);
+    }
+}
+
+#[test]
+fn mainnet_paranoid_restores_the_pre_fast_finality_depths() {
+    // The named one-line revert: the old M6 depths (NIM 10 / USDC 64 / BTC 2), strictly
+    // at-or-deeper than the fast-finality profile on every chain — never less safe.
+    let p = ConfirmationPolicy::mainnet_paranoid();
+    assert_eq!(p.required(Asset::Nim), 10);
+    assert_eq!(p.required(Asset::Usdc), 64);
+    assert_eq!(p.required(Asset::Btc), 2);
+    let m = ConfirmationPolicy::mainnet_defaults();
+    for chain in [Asset::Nim, Asset::Usdc, Asset::Btc] {
+        assert!(p.required(chain) >= m.required(chain));
+    }
+}
+
+#[test]
+fn finalized_confirmations_clears_any_depth_gate() {
+    // FINALIZED_CONFIRMATIONS = u32::MAX expresses deterministic finality as "maximally
+    // buried": it clears require_funded's depth gate under ANY ConfirmationPolicy without
+    // changing the pure safety core (amount/timeout/mismatch rules still apply first).
+    let obs = FundingObservation::Found {
+        amount: 100_000,
+        timeout: 10_000,
+        confirmations: FINALIZED_CONFIRMATIONS,
+    };
+    for need in [
+        ConfirmationPolicy::mainnet_defaults().required(Asset::Usdc),
+        ConfirmationPolicy::mainnet_paranoid().required(Asset::Usdc),
+        u32::MAX,
+    ] {
+        assert_eq!(
+            require_funded(&obs, &expect(), need),
+            Ok(FINALIZED_CONFIRMATIONS)
+        );
+    }
+    // Finality never bypasses the OTHER gates: an underfunded finalized escrow still refuses.
+    let under = FundingObservation::Found {
+        amount: 1,
+        timeout: 10_000,
+        confirmations: FINALIZED_CONFIRMATIONS,
+    };
+    assert!(matches!(
+        require_funded(&under, &expect(), 1),
+        Err(FundingRejected::Underfunded { .. })
+    ));
 }
 
 #[test]

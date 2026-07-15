@@ -353,6 +353,34 @@ pub fn parse_block_number(resp: &serde_json::Value) -> Result<u64, EvmRpcError> 
         })
 }
 
+/// `eth_getBlockByNumber("finalized", false)` — the highest block the chain reports as
+/// DETERMINISTICALLY final (Polygon PoS: Heimdall v2 milestone finality, live 2025-07-10, ~5 s
+/// cadence, reorgs capped at ~2 blocks). Request builder + parser. The USDC funding verifiers
+/// treat an escrow included at or below this height as maximally buried
+/// ([`crate::swap_funding_verify::FINALIZED_CONFIRMATIONS`]); an RPC that does not serve the tag
+/// errors here and the caller falls back to plain depth counting — strictly slower, never less
+/// safe. See the ADR-0003 addendum (2026-07-15).
+pub fn finalized_block_number_request(id: u64) -> serde_json::Value {
+    json_rpc_request(
+        "eth_getBlockByNumber",
+        serde_json::json!(["finalized", false]),
+        id,
+    )
+}
+
+/// Parse an `eth_getBlockByNumber("finalized", false)` response → the finalized head height.
+/// A `null` result (tag unsupported / nothing finalized yet) or a malformed `number` reads as
+/// [`EvmRpcError::BadResponse`] — the caller's depth-count fallback. Panic-free on any JSON.
+pub fn parse_finalized_block_number(resp: &serde_json::Value) -> Result<u64, EvmRpcError> {
+    let r = parse_result("eth_getBlockByNumber(finalized)", resp)?;
+    r.get("number")
+        .and_then(|n| n.as_str())
+        .and_then(parse_quantity)
+        .ok_or(EvmRpcError::BadResponse {
+            method: "eth_getBlockByNumber(finalized)".to_string(),
+        })
+}
+
 /// `eth_getLogs` filtered to one contract + an event signature (topic 0) + an optional indexed
 /// topic 3 — how the Polygon funding verifier (#72 tail) finds `NewSwap` escrows paying OUR
 /// recipient. Request builder + parser.
@@ -571,6 +599,14 @@ impl HttpPolygonRpc {
     pub fn block_number(&self) -> Result<u64, EvmRpcError> {
         let req = block_number_request(self.next_id());
         parse_block_number(&self.post(req, "eth_blockNumber")?)
+    }
+
+    /// The highest deterministically-final block height via the `finalized` tag (LIVE —
+    /// read-only). Errors on an endpoint that does not serve the tag; callers fall back to
+    /// depth counting (fail-closed toward the slower path, never the weaker one).
+    pub fn finalized_block_number(&self) -> Result<u64, EvmRpcError> {
+        let req = finalized_block_number_request(self.next_id());
+        parse_finalized_block_number(&self.post(req, "eth_getBlockByNumber(finalized)")?)
     }
 
     /// Filtered event logs (LIVE — read-only). See [`get_logs_request`].

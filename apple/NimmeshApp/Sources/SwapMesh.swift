@@ -68,6 +68,27 @@ extension Bridge {
         return n
     }
 
+    /// The ~3 s in-flight settlement heartbeat: while the swap demo owns the node, poll the
+    /// core's fast tick (`pollSwapFast`) so an awaited counterparty leg advances within
+    /// seconds of reaching its depth/finality instead of waiting out the ~15 s keepalive
+    /// beacon beat. Cheap by construction: the core no-ops when nothing awaits funding and
+    /// rate-limits its own chain reads, and this tick NEVER beacons/retransmits/GCs (those
+    /// budgets stay on the slow cadence). Non-blocking — it only enqueues a worker job.
+    func startSwapFastTimer() {
+        stopSwapFastTimer()
+        let t = DispatchSource.makeTimerSource(queue: .main)
+        t.schedule(deadline: .now() + 3.0, repeating: 3.0)
+        t.setEventHandler { [weak self] in self?.node.pollSwapFast() }
+        t.resume()
+        swapFastTimer = t
+    }
+
+    /// Cancel the fast heartbeat (the swap demo ended — the normal node needs no fast polls).
+    func stopSwapFastTimer() {
+        swapFastTimer?.cancel()
+        swapFastTimer = nil
+    }
+
     /// Start the demo: replace the live node with a TESTNET swap participant advertising
     /// "gives `nimLuna` NIM, wants `counterSat` sats". The intent/Propose identity is an
     /// ephemeral key from fresh randomness (never the wallet key — it stays in the Keychain).
@@ -115,6 +136,7 @@ extension Bridge {
             node = n
             bleRadio.node = n
             swapDemoOn = true
+            startSwapFastTimer()
             return (true, ["ok": true, "head": Int(head)])
         } catch {
             let n = makeNormalNode() // never leave the wallet without a node
@@ -186,6 +208,7 @@ extension Bridge {
             swapDemoOn = true
             swapLiveOn = true
             swapMainnetOn = mainnet
+            startSwapFastTimer()
             return (true, [
                 "ok": true, "mode": mainnet ? "live-mainnet" : "live", "head": Int(head),
                 "mainnet": mainnet, "claimAddress": claimAddr, "gasAddress": gasAddr,
@@ -256,6 +279,7 @@ extension Bridge {
             swapLiveOn = true
             swapRespondOn = true
             swapMainnetOn = mainnet
+            startSwapFastTimer()
             return (true, [
                 "ok": true, "mode": mainnet ? "respond-mainnet" : "respond", "head": Int(head),
                 "mainnet": mainnet, "fundAddress": fundAddr,
@@ -274,10 +298,13 @@ extension Bridge {
         let swaps: [[String: Any]] = node.activeSwaps().map {
             // `verify` is the verifier's LAST counterparty-funding verdict (the diagnostics line the
             // sheet shows); `verifyAttempts`/`verifyAtMs` let the UI render "attempt N · Xs ago".
+            // `startedAtMs`/`settledInMs` are the settlement stopwatch ("settled in Xs") — stamped
+            // in the core mirror, wall-clock telemetry only.
             [
                 "id": $0.swapId, "phase": String(describing: $0.phase),
                 "verify": $0.verifyNote, "verifyAttempts": Int($0.verifyAttempts),
                 "verifyAtMs": Int($0.verifyAtMs),
+                "startedAtMs": Int($0.startedAtMs), "settledInMs": Int($0.settledInMs),
             ]
         }
         let m = node.discoveryMetrics()
@@ -315,6 +342,7 @@ extension Bridge {
     /// chain-truth `AlreadyResolved` (via `swapMeshRefund`) ever forgets one.
     func swapMeshStop() -> (Bool, Any) {
         guard swapDemoOn else { return (true, ["ok": true]) }
+        stopSwapFastTimer()
         if let book = liveLockBook { persistLiveLocks(book.locks()) }
         node.shutdown()
         node = makeNormalNode()

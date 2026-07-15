@@ -786,6 +786,9 @@ impl SwapSigner for LiveResponderSigner {
 }
 
 #[cfg(test)]
+#[path = "amoy_finality_tests.rs"]
+mod finality_tests;
+#[cfg(test)]
 #[path = "live_swap_signer_sec_tests.rs"]
 mod sec_tests;
 #[cfg(test)]

@@ -3,6 +3,47 @@
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
 
+## [0.88.0] — 2026-07-15
+
+### Changed — sub-30s swap settlement: deterministic finality instead of depth-waiting (needs:owner, money-path)
+
+The first real capped mainnet NIM⇄USDC swaps settled correctly but took ~3+ minutes: ~2-3 min
+of that was WAITING — 64 Polygon blocks of probabilistic depth-count, 10 NIM blocks, and a
+~15 s re-verify heartbeat between every step. This release replaces probabilistic waiting with
+deterministic finality where the chain offers it, and re-checks faster. The fail-closed gate
+itself (`require_funded`) is UNCHANGED — only what the verifiers report and when they run moved.
+Full rationale: ADR-0003 addendum (2026-07-15).
+
+- **Polygon `finalized`-tag verification.** Heimdall v2 (live 2025-07-10) gives Polygon PoS
+  ~5 s deterministic milestone finality (reorgs capped ~2 blocks). Both USDC verifiers
+  (`PolygonHtlcVerifier` + `AmoyHtlcSwapVerifier`) now read
+  `eth_getBlockByNumber("finalized")`: an escrow at or below the finalized height reports
+  `FINALIZED_CONFIRMATIONS` (= u32::MAX, "maximally buried"), clearing the depth floor at
+  once. Every failure path — tag unserved, RPC error, escrow above finality — falls back to
+  the exact pre-existing depth count (slower, never weaker). Under the M5 cross-read, BOTH
+  endpoints must vouch (min of the two finalized heights, capped at the cross-checked head);
+  lying-RPC tests prove a dishonest primary cannot fake finality.
+- **Mainnet depths retuned (≤ $5 envelope):** NIM 10 → **2** (Albatross BFT: micro-block
+  reorgs need a slashable equivocation proof; ~2 s), USDC 64 → **8** (fallback only — the
+  finalized tag is the primary signal), BTC 2 unchanged. The old NIM 10 / USDC 64 profile
+  survives verbatim as `ConfirmationPolicy::mainnet_paranoid()` — a named one-line revert.
+- **Fast in-flight tick (~3 s).** New `MeshNode::poll_swap_fast()` FFI: the iOS bridge runs a
+  native 3 s timer while a swap sheet is live (mac-node rides its 2 s beat); the worker job
+  re-runs ONLY the funding re-verification + next money-path step. Retransmit (TTL-32 ≈ 8 min
+  budget), GC, gossip-sync, beacons, and the match window all stay on the ~15 s cadence —
+  and the fast poll is idle-free + rate-limited core-side so it cannot hammer the shared-IP
+  RPC. Deterministic fence tests (ADR-0005).
+
+### Added — the "settled in Xs" stopwatch
+
+The swap mirror / `FfiSwapMatch` now carry `started_at_ms` + `settled_in_ms` (the
+verify-note telemetry pattern; wall-clock display only, consensus stays head-anchored), and
+the swap sheet renders "Swap settled · settled in X.Xs" (en/es/de/fr/pt) — the settlement
+budget is a number on the phone after every swap.
+
+Expected budget (typ.): USDC burial 2-3 min → ~5-10 s; NIM burial ~10 s → ~2 s; re-verify
+beats 15 s → 3 s. Total ~3+ min → **~20-30 s**.
+
 ## [0.87.0] — 2026-07-15
 
 ### Fixed — a failed CSPRNG in the app handed the swap an all-zero seed, and every door accepted it

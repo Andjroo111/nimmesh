@@ -62,3 +62,96 @@ custodial/high-value finality:
 remains required for USDC (two independent Polygon RPCs are wired); the NIM leg has no second public
 mainnet RPC (only `rpc.nimiqwatch.com`), so it runs single-source unless the operator stands up their
 own node — a residual risk the guard-lift PR names explicitly.
+
+## Addendum (2026-07-15) — M7 fast-finality settlement profile (sub-30 s)
+
+The first real capped mainnet swaps settled **correctly but slowly** (~3+ minutes): the money path
+was waiting out probabilistic depth on chains that offer something strictly stronger —
+**deterministic finality** — and re-checking on a ~15 s heartbeat. This addendum replaces
+depth-waiting with finality where a chain certifies it, retunes the ≤ $5 profile, and speeds up
+*when* the unchanged fail-closed gate runs. `require_funded` itself is untouched.
+
+### 1. Polygon `finalized`-tag verification (the USDC leg's primary signal)
+
+Polygon PoS ships **Heimdall v2 milestone finality** (live on mainnet **2025-07-10**): a
+Tendermint-style milestone signs the canonical chain roughly every ~5 s, after which the finalized
+prefix is **deterministically irreversible** — post-upgrade reorg depth is capped at ~2 blocks (the
+un-finalized tip). Every standard RPC serves it as `eth_getBlockByNumber("finalized", false)`.
+
+Both gateway-backed USDC verifiers (`PolygonHtlcVerifier`, `AmoyHtlcSwapVerifier`) now read that
+tag: an escrow whose inclusion block is **at or below the finalized height** is reported at
+`FINALIZED_CONFIRMATIONS = u32::MAX`.
+
+**Why `u32::MAX` instead of a new "finalized" arm in the safety core:** `require_funded` /
+`FundingObservation` are the audited go/no-go; adding a boolean "finality overrides depth" bypass
+there would create a second authorization path to review and to get wrong. Deterministic finality
+is, semantically, *maximal burial* — there is nothing deeper to wait for — so expressing it as the
+maximum confirmation count makes the existing `confirmations >= min_confirmations` comparison do
+exactly the right thing under ANY policy (including the paranoid one), while the amount / timeout /
+hashlock / recipient gates still apply unchanged first. Finality is a *verifier-side report*, never
+a new bypass.
+
+**Fail-closed rules (unchanged in spirit):** a finalized read that errors, an RPC that predates the
+tag (`finalized_head()`'s trait DEFAULT errors, so every fake/old endpoint keeps today's
+behaviour), or an escrow above the finalized height all fall back to the exact pre-existing depth
+count — strictly *slower*, never *weaker*. Under the M5 cross-read seam (ADR-0011), finality must
+be vouched by BOTH endpoints: the determination is the **min** of the two finalized heights (capped
+at the already-cross-checked head), so a lying/MITM'd primary cannot inflate finality past an
+honest secondary, and a secondary that cannot vouch (absent tag / read error) blocks the fast path
+entirely. The head-agreement tolerance (`HEAD_CROSS_TOLERANCE_BLOCKS`) and the live-escrow re-read
+still run first, unchanged. Lying-RPC tests cover the finalized path on both verifiers.
+
+### 2. The ≤ $5 mainnet depths, retuned (`mainnet_defaults`)
+
+| Chain | M6 (2026-07-13) | **M7 (this addendum)** | Why |
+|-------|-----------------|------------------------|-----|
+| NIM | 10 | **2** | Albatross is a BFT PoS chain: 1 s micro-blocks under a single elected slot producer, so a micro-block reorg requires a **slashable fork proof** (equivocation) and observed forks are ≤ 1 block; 2 blocks (~2 s) covers that with margin. This is an honest *probabilistic* floor, NOT macro-block finality — the batch's macro block (the true BFT-final point) can be up to ~1 min away, which would blow the settlement budget for a ≤ $5, timelock-refundable leg. |
+| USDC (Polygon) | 64 | **8** (fallback only) | The PRIMARY burial signal is now the `finalized` tag (~5 s, above). Depth 8 gates only an RPC that does not serve the tag: 4× the post-Heimdall-v2 ~2-block reorg cap, ~16 s at ~2 s blocks — versus 64 blocks ≈ 2–3 min of pure depth-count. |
+| BTC | 2 | **2** | Unchanged; BTC only gates the unfunded leg in the current NIM⇄USDC path. |
+
+**The old profile is not deleted:** `ConfirmationPolicy::mainnet_paranoid()` is the M6 NIM 10 /
+USDC 64 / BTC 2 table verbatim — an explicitly named **one-line revert** at the assembly call site
+(`swap_live_ffi_live_impl::mainnet_money_path`). Selecting it ignores the finality benefit and
+waits out the deeper depths: strictly slower, never less safe. Use it to bisect a settlement-safety
+concern, or as the deeper base a larger-value swap raises from. As before, **a larger mainnet swap
+MUST raise every floor** — this is the ≤ $5 envelope, nothing more.
+
+### 3. The ~3 s fast tick (when the gate runs, not what it checks)
+
+Re-verification (0.81.0) rides `gc_tick` on the ~15 s BeaconTick keepalive — worst-case two
+15 s quanta per leg on top of chain latency. New `swap_fast_tick`: the shims poll
+`MeshNode::poll_swap_fast()` every ~3 s while a swap sheet is live (iOS: a native
+`DispatchSourceTimer` for the demo's lifetime; mac-node: its existing 2 s beat); the job runs ONLY
+the funding re-verification + the resulting `drive_phase_action` money-path step + a mirror
+re-sync.
+
+- **`RETRANSMIT_TTL` interaction (the budget trap):** the retransmit budget (32) is counted in
+  *ticks*. Had retransmit ridden the fast cadence, 32 × 3 s ≈ 96 s would have gutted the ~8 min
+  lossy-mesh recovery budget — so the fast tick performs **no retransmit drain**, no GC/refund
+  sweep, no gossip-sync, no beacon emit, and no match-window close; all stay on the slow cadence
+  and their budgets are unchanged.
+- **RPC cost guards:** the fast poll is idle-free (no proof-seen swap awaiting counterparty
+  funding ⇒ no consult AND no rate-limit slot burned) and core-side rate-limited to one consult
+  per `FAST_VERIFY_TICK_MS` (3 s) on the worker's monotonic clock — a hammering shim or webui
+  cannot hit the shared-IP RPC harder. Deterministic fence tests (ADR-0005), no wall-clock sleeps.
+
+### 4. The settled-in-Xs stopwatch (keeping the budget honest)
+
+The observable mirror entry now carries `started_at_ms` (first appearance = coordinator
+registered) and `settled_in_ms` (stamped once at `Settled`), surfaced over FFI
+(`FfiSwapMatch`) and rendered in the swap sheet ("settled in X.Xs"). Telemetry wall-clock only —
+consensus stays head-anchored (ADR-0005) — but it makes the settlement budget a number Andjroo sees
+on the phone after every swap, so a regression back toward minutes is visible on sight.
+
+### Expected settlement budget (capped NIM⇄USDC phone↔phone)
+
+| Quantum | Before | After |
+|---------|--------|-------|
+| USDC escrow burial | 64 blocks ≈ 2–3 min depth-count | `finalized` tag ≈ 5–10 s (depth-8 fallback ≈ 16 s) |
+| NIM HTLC burial | 10 blocks ≈ 10 s | 2 blocks ≈ 2 s |
+| Re-verify cadence | ~15 s × several beats | ~3 s × several beats |
+| **Total (typ.)** | **~3+ min** | **~20–30 s** |
+
+The relaxations named here — the finalized fast-path, NIM 10→2, USDC 64→8-as-fallback, and the
+fast cadence — are the ONLY money-path changes in this PR; each is justified above, each fails
+toward the slower path, and `mainnet_paranoid()` reverts the profile in one reviewed line.

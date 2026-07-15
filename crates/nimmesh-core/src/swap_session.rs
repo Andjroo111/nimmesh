@@ -97,9 +97,24 @@ struct PendingAction {
 }
 
 /// One entry of the observable swap mirror ([`crate::engine::WorkerCtx::swaps`]): a swap's current
-/// phase plus its last counterparty-funding verify verdict (`None` until a `FundingProof` has been
-/// verified). [`crate::swap_mirror`] rebuilds the map from this and reads it back as `FfiSwapMatch`.
-pub(crate) type SwapMirror = (SwapPhase, Option<SwapVerifyNote>);
+/// phase, its last counterparty-funding verify verdict (`None` until a `FundingProof` has been
+/// verified), and the settlement stopwatch. [`crate::swap_mirror`] rebuilds the map from this and
+/// reads it back as `FfiSwapMatch`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SwapMirror {
+    /// This node's current phase for the swap.
+    pub(crate) phase: SwapPhase,
+    /// The last verify verdict (diagnostics), `None` until one exists.
+    pub(crate) note: Option<SwapVerifyNote>,
+    /// Stopwatch start: Unix-ms wall clock when this swap FIRST entered the mirror — i.e. when
+    /// its coordinator registered (initiation/confirm). Telemetry only, same contract as
+    /// [`SwapVerifyNote::at_ms`]: the app renders it; consensus stays head-anchored (ADR-0005).
+    pub(crate) started_at_ms: u64,
+    /// Initiation → Settled, in ms — stamped ONCE when the phase first reads `Settled` (clamped
+    /// to ≥ 1 so it is distinguishable from the 0 = "not settled yet" sentinel). The swap
+    /// sheet's "settled in Xs".
+    pub(crate) settled_in_ms: u64,
+}
 
 /// The LAST counterparty-funding verification outcome for one swap, kept purely so the app can SEE
 /// the verifier's live verdict instead of guessing why a swap is stalled (the diagnostics deliverable).
@@ -115,8 +130,9 @@ pub(crate) struct SwapVerifyNote {
     pub(crate) at_ms: u64,
 }
 
-/// Telemetry wall clock (Unix ms) for the verify note's "Xs ago" — display only, never consensus.
-fn verify_now_ms() -> u64 {
+/// Telemetry wall clock (Unix ms) for the verify note's "Xs ago" and the mirror's settlement
+/// stopwatch — display only, never consensus (the swap logic stays head-anchored, ADR-0005).
+pub(crate) fn telemetry_now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
@@ -236,6 +252,10 @@ pub struct SwapSession {
     /// every verify attempt — message-arrival and tick alike — and mirrored to the app so the operator
     /// SEES the verdict (`verify ▸ NIM too shallow 3/10 · attempt 4`) instead of guessing.
     verify_notes: HashMap<[u8; SWAP_ID_LEN], SwapVerifyNote>,
+    /// The ~3 s fast-poll rate limiter ([`crate::swap_fast_tick`]): one chain consult per
+    /// `FAST_VERIFY_TICK_MS` no matter how hard the shim polls, and (checked FIRST in
+    /// [`fast_reverify`](Self::fast_reverify)) never consumed by an idle poll.
+    fast_verify: crate::swap_fast_tick::FastTickScheduler,
 }
 
 impl SwapSession {
@@ -256,6 +276,7 @@ impl SwapSession {
             caps: None,
             funding_proof_seen: HashSet::new(),
             verify_notes: HashMap::new(),
+            fast_verify: crate::swap_fast_tick::FastTickScheduler::new(),
         }
     }
 
@@ -573,7 +594,7 @@ impl SwapSession {
                 .get(&swap_id)
                 .map_or(0, |n| n.attempts)
                 .saturating_add(1),
-            at_ms: verify_now_ms(),
+            at_ms: telemetry_now_ms(),
         };
         self.verify_notes.insert(swap_id, note);
         result
@@ -612,6 +633,26 @@ impl SwapSession {
                 .is_some_and(|c| c.awaits_counterparty_funding())
         });
         advanced
+    }
+
+    /// The fast-cadence twin of [`reverify_awaited_funding`](Self::reverify_awaited_funding)
+    /// (`crate::swap_fast_tick`). Two cost guards, in order: a no-op unless a proof-seen swap is
+    /// actually awaiting counterparty funding (an IDLE poll consults nothing and does not burn
+    /// the rate-limit slot), then at most one chain consult per `FAST_VERIFY_TICK_MS` (a shim
+    /// that polls harder cannot hammer the shared-IP RPC). Same gate, same depths — it only
+    /// changes WHEN the existing fail-closed check runs. Touches nothing else: no retransmit
+    /// TTL, no GC, no match window (those stay on the slow beacon cadence — `RETRANSMIT_TTL`
+    /// is counted in slow ticks).
+    pub(crate) fn fast_reverify(&mut self, now_ms: u64) -> Vec<[u8; SWAP_ID_LEN]> {
+        let awaiting = self.funding_proof_seen.iter().any(|id| {
+            self.coordinators
+                .get(id)
+                .is_some_and(|c| c.awaits_counterparty_funding())
+        });
+        if !awaiting || !self.fast_verify.due(now_ms) {
+            return Vec::new();
+        }
+        self.reverify_awaited_funding()
     }
 
     /// The last per-swap verify verdict (diagnostics mirror). `None` until a `FundingProof` has been

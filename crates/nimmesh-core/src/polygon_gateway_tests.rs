@@ -110,6 +110,36 @@ fn logs_and_block_number_codecs_round_trip() {
 }
 
 #[test]
+fn finalized_block_number_codec_round_trips_and_falls_back_closed() {
+    // The request rides the standard eth_getBlockByNumber with the "finalized" tag and NO full
+    // transactions — the verifier only needs the height.
+    let req = finalized_block_number_request(9);
+    assert_eq!(req["method"], "eth_getBlockByNumber");
+    assert_eq!(req["params"], json!(["finalized", false]));
+    assert_eq!(req["id"], 9);
+
+    // A realistic block-object response → the finalized height.
+    let ok = json!({ "jsonrpc": "2.0", "id": 9, "result": {
+        "number": "0x2753900", "hash": "0xabc", "timestamp": "0x686f0f00"
+    }});
+    assert_eq!(parse_finalized_block_number(&ok).unwrap(), 0x2753900);
+
+    // Every degenerate answer reads as an error (the caller's depth-count FALLBACK — never a
+    // finality authorization): null result (tag unsupported / nothing finalized), a block
+    // object with no/malformed number, a node error object, junk JSON. Panic-free throughout.
+    for resp in [
+        json!({ "jsonrpc": "2.0", "id": 9, "result": null }),
+        json!({ "jsonrpc": "2.0", "id": 9, "result": {} }),
+        json!({ "jsonrpc": "2.0", "id": 9, "result": { "number": "not-hex" } }),
+        json!({ "jsonrpc": "2.0", "id": 9, "result": { "number": 7 } }),
+        json!({ "jsonrpc": "2.0", "id": 9, "error": { "message": "unknown block" } }),
+        json!(42),
+    ] {
+        assert!(parse_finalized_block_number(&resp).is_err());
+    }
+}
+
+#[test]
 fn balance_codec_round_trips() {
     let req = get_balance_request("0xabc", 3);
     assert_eq!(req["method"], "eth_getBalance");
