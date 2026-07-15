@@ -72,6 +72,12 @@ pub mod swap_session;
 // the `SwapSession` and flood the reply -- packets in, coordinator dispatch, envelopes out.
 pub mod swap_node;
 
+// Mesh swap: the observable FFI mirror. `swap_mirror` syncs the worker-thread session's per-swap
+// phase + last verify verdict into the shared `WorkerCtx.swaps`, and reads it back as `FfiSwapMatch`
+// records — so the app lists in-flight swaps + the verifier's live verdict without touching the
+// worker session.
+pub mod swap_mirror;
+
 // Mesh swap: the signer seam. `swap_signer::SwapSigner` is the trait the node driver calls to turn a
 // swap action into signed funding/claim tx bytes (the gated money-path); `MockSigner` is the sim
 // stand-in every participant holds today, with the real NIM/BTC signer dropping in via the same trait.
@@ -471,6 +477,8 @@ mod swap_node_e2e_tests;
 mod swap_privacy_tests;
 #[cfg(test)]
 mod swap_resume_tests;
+#[cfg(test)]
+mod swap_reverify_tests;
 #[cfg(test)]
 mod swap_session_tests;
 // P2: the NIM⇄USDC atomicity proof — drives both state machines with a `UsdcLeg` counterparty leg.

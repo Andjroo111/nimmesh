@@ -352,6 +352,15 @@ pub struct FfiSwapMatch {
     pub swap_id: String,
     /// This node's current phase for the swap.
     pub phase: FfiSwapPhase,
+    /// The LAST counterparty-funding verify verdict, plain English (`""` until a `FundingProof` has
+    /// been verified). The app shows it as a live `verify ▸ …` diagnostic line so a stalled swap's
+    /// reason is visible — e.g. `"NIM too shallow 3/10"` or `"verified — funding USDC"`.
+    pub verify_note: String,
+    /// How many verify attempts (message-arrival + tick re-checks) this swap has seen. `0` = none yet.
+    pub verify_attempts: u32,
+    /// Unix-ms wall clock of the last verify attempt (telemetry only; the app renders "Xs ago").
+    /// `0` when there is no verdict yet.
+    pub verify_at_ms: u64,
 }
 
 #[cfg(test)]

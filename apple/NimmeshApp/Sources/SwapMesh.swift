@@ -269,7 +269,13 @@ extension Bridge {
     /// the refund path survives a relaunch), and the gas account to top up.
     func swapMeshStatus() -> (Bool, Any) {
         let swaps: [[String: Any]] = node.activeSwaps().map {
-            ["id": $0.swapId, "phase": String(describing: $0.phase)]
+            // `verify` is the verifier's LAST counterparty-funding verdict (the diagnostics line the
+            // sheet shows); `verifyAttempts`/`verifyAtMs` let the UI render "attempt N · Xs ago".
+            [
+                "id": $0.swapId, "phase": String(describing: $0.phase),
+                "verify": $0.verifyNote, "verifyAttempts": Int($0.verifyAttempts),
+                "verifyAtMs": Int($0.verifyAtMs),
+            ]
         }
         let m = node.discoveryMetrics()
         let baseMode = swapRespondOn ? "respond" : (swapLiveOn ? "live" : "sim")

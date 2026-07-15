@@ -40,7 +40,7 @@ pub(crate) fn swap_phase(
     ctx: &WorkerCtx,
     swap_id: [u8; crate::swap_wire::SWAP_ID_LEN],
 ) -> Option<crate::swap::SwapPhase> {
-    ctx.swaps.lock().unwrap().get(&swap_id).copied()
+    ctx.swaps.lock().unwrap().get(&swap_id).map(|(p, _)| *p)
 }
 
 /// G14 (test origination): register an initiator coordinator this node started and flood its
@@ -57,7 +57,7 @@ pub(crate) fn start_swap(
         return; // not a participant — nothing to originate.
     };
     session.add_initiator(swap_id, coordinator);
-    sync_swap_phases(ctx, st);
+    crate::swap_mirror::sync_swap_phases(ctx, st);
     if let Ok(payload) = crate::swap_wire::encode_swap(&propose) {
         // G20: remember the Propose so the tick retransmits it if the first flood is lost.
         if let Some(session) = st.swap.as_mut() {

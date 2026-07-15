@@ -3,6 +3,58 @@
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
 
+## [0.81.0] — 2026-07-14
+
+### Fixed — a stalled swap now re-checks funding on the clock, and shows the verifier's verdict
+
+The first real mainnet phone↔phone swap ran discovery → Propose → Accept cleanly (0.80.3's
+peer-replay fix), the initiator FUNDED its NIM HTLC on mainnet for real (10 NIM, sha256/
+hash-count-1, correct shape, 290+ confirmations) — and then the responder NEVER funded its
+USDC leg. Stuck at "NIM HTLC funded" indefinitely, two runs in a row.
+
+ROOT CAUSE: the responder verified the initiator's NIM HTLC on-chain ONLY when a
+`FundingProof` MESSAGE arrived. That proof lands seconds after funding, when the HTLC is 1-2
+confirmations deep — below the mainnet policy's 10 — so the verify correctly failed
+`TooShallow` and the responder stayed at Accepted. Recovery then depended entirely on a
+RETRANSMITTED proof arriving AFTER depth 10 was reached. But the retransmit budget is bounded:
+`RETRANSMIT_TTL = 32` re-floods, and the maintenance tick that drives them rides the 15 s
+keepalive beacon — so retransmits run out after ~8 minutes (32 × 15 s). The house shares one
+public IP and the NIM RPC rate-limits per IP, so during that window the responder's chain
+reads kept failing closed (RPC error → Absent → not-funded-yet) instead of confirming depth.
+Once the 32 retransmits were spent, the message-only path had NO way left to advance — even
+though the HTLC was, by then, 290+ blocks deep. Permanent stall. The USDC mirror is worse by
+construction: the counterparty leg needs 64 Polygon blocks (~2 min), and the initiator that
+must confirm it before revealing `S` had the same message-only fragility.
+
+FIX (adds NO new trust — a clock instead of a message): on every maintenance tick, for each
+swap sitting in a phase that awaits counterparty funding AND for which a `FundingProof` has
+already been received (so the verifier holds its locating hint), re-run the EXACT same
+fail-closed `verify_and_observe_funding` gate — same per-chain depths (NIM 10, USDC 64), same
+refusal semantics. A swap now advances the instant its counterparty HTLC reaches its required
+depth, with no dependence on a retransmit landing inside the bounded window; the tick then
+drives the next money-path step (a responder funds its USDC/BTC leg; an initiator reveals
+`S`). Gated on a received proof so a tick never polls the rate-limited chain for a swap whose
+counterparty hasn't claimed to have funded. Deterministic tests (ADR-0005 fence, no
+wall-clock): the responder advances on the next tick after depth 10 with no message; the
+initiator's mirror advances after USDC depth 64; an absent/mismatched hint refuses across 128
+ticks (no weakening).
+
+### Added — the verifier's live verdict, surfaced in the swap sheet
+
+Andjroo asked to SEE the verifier's verdict instead of guessing. The session now records the
+LAST counterparty-funding verdict per swap — the Ok/advanced case and each refusal (not-funded
+-yet, `TooShallow{have,need}`, mismatch, under-funded, timeout-too-short) with a climbing
+attempt counter and a telemetry timestamp — mirrored over FFI (`FfiSwapMatch.verify_note` +
+`verify_attempts` + `verify_at_ms`) the same way the phase mirror works. The swap sheet paints
+it as a small mono diagnostic line under the phase timeline (the `ble ▸` precedent), e.g.
+`verify ▸ NIM too shallow 3/10 · attempt 4 · 12s ago` / `verify ▸ verified — funding USDC`.
+Pure telemetry — nothing in the swap state machine reads it, and it never authorizes a
+transition.
+
+Internal: the observable mirror (`sync_swap_phases` + `active_swaps`) moved to a new
+`swap_mirror` module (both files were at the 800-line ceiling); `drive_swap`'s phase-action
+tail was extracted to a reusable `drive_phase_action` the tick path shares.
+
 ## [0.80.3] — 2026-07-14
 
 ### Fixed — a node swap now inherits the peers that are already connected

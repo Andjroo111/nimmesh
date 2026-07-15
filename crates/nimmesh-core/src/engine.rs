@@ -49,7 +49,6 @@ use crate::settlement::{
     decode_receipt, encode_receipt, PaymentStatus, SettlementDirection, SettlementLedger,
 };
 use crate::store_forward::{packet_id, RecentCache, SyncScheduler};
-use crate::swap::SwapPhase;
 use crate::swap_session::SwapSession;
 use crate::swap_wire::SWAP_ID_LEN;
 use crate::transport::{mock_tx_id, TxId};
@@ -136,10 +135,11 @@ pub struct WorkerCtx {
     /// G15: count of `nimiqBalanceResponse` frames this gateway has answered + flooded.
     pub(crate) balance_answered: AtomicUsize,
     pub(crate) intent_metrics: crate::swap_node::IntentMetrics,
-    /// G14: observable mirror of the worker-thread `SwapSession`'s per-swap phase, so the FFI side
-    /// can read a swap's progress without reaching into the worker-thread-local session. Written +
-    /// read in [`crate::swap_node`]. Empty on a pure relay (no session).
-    pub(crate) swaps: Mutex<HashMap<[u8; SWAP_ID_LEN], SwapPhase>>,
+    /// G14: observable mirror of the worker-thread `SwapSession`'s per-swap phase — plus its LAST
+    /// counterparty-funding verify verdict (the diagnostics surface) — so the FFI side can read a
+    /// swap's progress + the verifier's live verdict without reaching into the worker-thread-local
+    /// session. Written + read in [`crate::swap_mirror`]. Empty on a pure relay (no session).
+    pub(crate) swaps: Mutex<HashMap<[u8; SWAP_ID_LEN], crate::swap_session::SwapMirror>>,
 }
 
 impl WorkerCtx {

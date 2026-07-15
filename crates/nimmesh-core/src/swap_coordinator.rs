@@ -366,6 +366,21 @@ impl SwapCoordinator {
         }
     }
 
+    /// Whether this coordinator is sitting in a phase that AWAITS the counterparty's on-chain
+    /// funding — the responder before it observes the initiator's NIM leg (`Accepted`), and the
+    /// initiator after it funded but before it observes the responder's counterparty leg
+    /// (`SelfFunded`). These are exactly the phases from which
+    /// [`verify_and_observe_funding`](Self::verify_and_observe_funding) can advance, so the tick-driven
+    /// re-verification (which re-consults the chain on a clock, not only on a `FundingProof` arrival)
+    /// need only consider a coordinator in one of them.
+    pub(crate) fn awaits_counterparty_funding(&self) -> bool {
+        matches!(
+            (self.swap.role, self.swap.phase),
+            (SwapRole::Responder, SwapPhase::Accepted)
+                | (SwapRole::Initiator, SwapPhase::SelfFunded)
+        )
+    }
+
     /// M3: whether revealing `S` NOW is inside the safety window (G4 / #75) — the check the
     /// node's driver MUST run **before** handing the secret to a signer. A live claim
     /// broadcasts `withdraw(S)` (the on-chain reveal), so the coordinator's identical gate

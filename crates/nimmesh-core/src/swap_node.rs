@@ -351,7 +351,7 @@ pub(crate) fn handle_swap_packet(
                     session.record_action(swap_id, last.0, last.1);
                 }
             }
-            sync_swap_phases(ctx, st);
+            crate::swap_mirror::sync_swap_phases(ctx, st);
             for (mt, payload) in replies {
                 flood_swap_reply(ctx, mt, payload, st);
             }
@@ -423,9 +423,21 @@ fn drive_swap(
         }
     }
 
-    // Read this swap's action context, then build the tx via the signer and feed it to the
-    // coordinator. (role/phase/secret are Copy, so the read borrow is dropped before the signer +
-    // coordinator borrows.)
+    drive_phase_action(st, swap_id, head)
+}
+
+/// Take this node's next phase-driven chain action for `swap_id` — fund / claim / settle, per
+/// (role, phase) — and return the envelope(s) to flood. Shared by the message-driven [`drive_swap`]
+/// and the tick-driven re-verification path ([`gc_tick`]): both act on a coordinator that just
+/// advanced to a fund/reveal-ready phase, and the phase is the idempotency guard (a re-drive of an
+/// unchanged phase does nothing twice).
+fn drive_phase_action(
+    st: &mut WorkerState,
+    swap_id: [u8; SWAP_ID_LEN],
+    head: u64,
+) -> Vec<(MessageType, Vec<u8>)> {
+    // Read this swap's action context (role/phase/secret are Copy, so the read borrow drops before
+    // the signer + coordinator borrows below), then build + feed the tx.
     let Some((role, phase, secret, sctx)) =
         coordinator(st, &swap_id).map(|c| (c.role(), c.phase(), c.secret(), c.context().clone()))
     else {
@@ -687,23 +699,11 @@ pub(crate) fn flood_swap_reply(
     }
 }
 
-/// Refresh the node's observable swap-phase mirror to exactly the session's live set, so the FFI
-/// side can read a swap's progress without reaching into the worker-thread-local session. Rebuilt
-/// (not merged) so a swap the GC tick dropped vanishes from the mirror too.
-pub(crate) fn sync_swap_phases(ctx: &WorkerCtx, st: &WorkerState) {
-    let mut map = ctx.swaps.lock().unwrap();
-    map.clear();
-    if let Some(session) = st.swap.as_ref() {
-        for (id, phase) in session.phases() {
-            map.insert(id, phase);
-        }
-    }
-}
-
 /// G16/G18/G19: GC tick — refund funds-locked-expired swaps + drop terminal/stale ones (so a
 /// long-lived node sheds abandoned half-opened swaps), then (G19) flood a teardown `SwapAbort` for
-/// each stale un-funded swap dropped so the counterparty frees its slot too. Refresh the phase
-/// mirror. Driven off the worker's maintenance tick.
+/// each stale un-funded swap dropped so the counterparty frees its slot too. It ALSO re-runs the
+/// counterparty-funding gate on our own clock (the field-stall fix) and refreshes the phase mirror.
+/// Driven off the worker's maintenance (BeaconTick) heartbeat.
 pub(crate) fn gc_tick(ctx: &WorkerCtx, st: &mut WorkerState) {
     if st.swap.is_none() {
         return;
@@ -718,6 +718,23 @@ pub(crate) fn gc_tick(ctx: &WorkerCtx, st: &mut WorkerState) {
     };
     for (mt, payload) in retransmits {
         flood_swap_reply(ctx, mt, payload, st);
+    }
+    // The field-stall fix: re-consult the chain for every swap awaiting counterparty funding on this
+    // heartbeat (not only when a bounded, TTL-32 `FundingProof` retransmit arrives), then drive the
+    // next money-path step for each that advanced (fund USDC/BTC; reveal `S`) and record it so a lossy
+    // mesh retransmits it. Same fail-closed gate, same depths — a clock instead of a message.
+    let advanced = match st.swap.as_mut() {
+        Some(session) => session.reverify_awaited_funding(),
+        None => Vec::new(),
+    };
+    for swap_id in advanced {
+        let replies = drive_phase_action(st, swap_id, head);
+        if let (Some(session), Some(last)) = (st.swap.as_mut(), replies.last().cloned()) {
+            session.record_action(swap_id, last.0, last.1);
+        }
+        for (mt, payload) in replies {
+            flood_swap_reply(ctx, mt, payload, st);
+        }
     }
     let aborted = match st.swap.as_mut() {
         Some(session) => session.tick(head),
@@ -743,7 +760,7 @@ pub(crate) fn gc_tick(ctx: &WorkerCtx, st: &mut WorkerState) {
         }
     }
     readvertise_intent(ctx, st, head);
-    sync_swap_phases(ctx, st);
+    crate::swap_mirror::sync_swap_phases(ctx, st);
 }
 
 /// G37: re-advertise this node's standing swap intent on the maintenance tick. While the node is
@@ -780,21 +797,4 @@ fn readvertise_intent(ctx: &WorkerCtx, st: &mut WorkerState, head: u64) {
         let bytes = crate::swap_intent::encode_intent(&intent);
         flood_swap_reply(ctx, MessageType::SwapIntent, bytes, st);
     }
-}
-
-/// The live swaps this node participates in, as FFI [`crate::swap_intent::FfiSwapMatch`] records
-/// (`swap_id` hex + phase), sorted by id. Reads the observable phase mirror (kept current by
-/// [`sync_swap_phases`]) so the app lists in-flight swaps without touching the worker session.
-pub(crate) fn active_swaps(ctx: &WorkerCtx) -> Vec<crate::swap_intent::FfiSwapMatch> {
-    use crate::swap_intent::FfiSwapMatch;
-    let map = ctx.swaps.lock().unwrap();
-    let mut out: Vec<FfiSwapMatch> = map
-        .iter()
-        .map(|(id, phase)| FfiSwapMatch {
-            swap_id: crate::nimiq::hex::bytes_to_hex(id),
-            phase: (*phase).into(),
-        })
-        .collect();
-    out.sort_by(|a, b| a.swap_id.cmp(&b.swap_id));
-    out
 }

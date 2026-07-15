@@ -14,15 +14,16 @@ use std::sync::Arc;
 
 use crate::nimiq::signer::EnclaveKey;
 use crate::packet::MessageType;
-use crate::swap::LadderParams;
+use crate::swap::{LadderParams, SwapPhase, SwapRole};
 use crate::swap_coordinator::{CoordError, SwapContext, SwapCoordinator};
 use crate::swap_funding_verify::{
-    AcceptAllVerifier, ConfirmationPolicy, FundingVerifier, SwapCaps,
+    AcceptAllVerifier, ConfirmationPolicy, FundingRejected, FundingVerifier, MismatchReason,
+    SwapCaps,
 };
 use crate::swap_intent::Asset;
 use crate::swap_messages::{SwapProposal, PROPOSE_PUBKEY_LEN, PROPOSE_SIG_LEN};
 use crate::swap_wire::{
-    decode_swap, encode_swap, SwapEnvelope, SwapKind, SwapWireError, BTC_PUBKEY_LEN,
+    decode_swap, encode_swap, SwapEnvelope, SwapKind, SwapLegId, SwapWireError, BTC_PUBKEY_LEN,
     NIM_ADDRESS_LEN, SWAP_ID_LEN,
 };
 
@@ -95,6 +96,86 @@ struct PendingAction {
     ttl: u8,
 }
 
+/// One entry of the observable swap mirror ([`crate::engine::WorkerCtx::swaps`]): a swap's current
+/// phase plus its last counterparty-funding verify verdict (`None` until a `FundingProof` has been
+/// verified). [`crate::swap_mirror`] rebuilds the map from this and reads it back as `FfiSwapMatch`.
+pub(crate) type SwapMirror = (SwapPhase, Option<SwapVerifyNote>);
+
+/// The LAST counterparty-funding verification outcome for one swap, kept purely so the app can SEE
+/// the verifier's live verdict instead of guessing why a swap is stalled (the diagnostics deliverable).
+/// It is telemetry — nothing in the swap state machine reads it, and it never authorizes a transition.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SwapVerifyNote {
+    /// A short plain-English verdict, e.g. `"NIM too shallow 3/10"` or `"verified — funding USDC"`.
+    pub(crate) text: String,
+    /// How many verification attempts (message-arrival + tick re-checks) this swap has seen.
+    pub(crate) attempts: u32,
+    /// Unix-ms wall clock at the last attempt (telemetry only — the app renders it as "Xs ago";
+    /// the consensus swap logic remains head-anchored and clock-free, ADR-0005).
+    pub(crate) at_ms: u64,
+}
+
+/// Telemetry wall clock (Unix ms) for the verify note's "Xs ago" — display only, never consensus.
+fn verify_now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// The human name of the counterparty leg being verified: the NIM leg is always `"NIM"`; the
+/// counterparty leg carries whichever chain this session settles on.
+fn leg_word(leg: SwapLegId, counter: Asset) -> &'static str {
+    match leg {
+        SwapLegId::Nim => "NIM",
+        SwapLegId::Counterparty => match counter {
+            Asset::Usdc => "USDC",
+            Asset::Btc => "BTC",
+            Asset::Nim => "NIM",
+        },
+    }
+}
+
+/// Turn a verification result into the plain-English diagnostic the app surfaces. On success it names
+/// the node's NEXT money-path step (a responder that just confirmed the NIM leg funds its own USDC/BTC
+/// leg; an initiator that confirmed the counterparty leg reveals `S`); on refusal it names the leg and
+/// the reason — a shallow depth shows the live `have/need` so the operator watches it climb.
+fn describe_verify(
+    role: SwapRole,
+    leg: SwapLegId,
+    counter: Asset,
+    result: &Result<(), CoordError>,
+) -> String {
+    let cp = leg_word(leg, counter);
+    match result {
+        Ok(()) => match role {
+            SwapRole::Responder => format!(
+                "verified — funding {}",
+                leg_word(SwapLegId::Counterparty, counter)
+            ),
+            SwapRole::Initiator => "verified — revealing S".to_string(),
+        },
+        Err(CoordError::FundingUnverified(r)) => match r {
+            FundingRejected::NotFundedYet => format!("{cp} not funded yet"),
+            FundingRejected::TooShallow { have, need } => {
+                format!("{cp} too shallow {have}/{need}")
+            }
+            FundingRejected::Underfunded { have, need } => {
+                format!("{cp} underfunded {have}/{need}")
+            }
+            FundingRejected::TimeoutTooShort { .. } => format!("{cp} timeout too short"),
+            FundingRejected::Mismatch(MismatchReason::Hashlock) => {
+                format!("{cp} hashlock mismatch")
+            }
+            FundingRejected::Mismatch(MismatchReason::Recipient) => {
+                format!("{cp} recipient mismatch")
+            }
+        },
+        // An illegal transition here means the phase moved on already — nothing to report.
+        Err(_) => format!("{cp} not ready"),
+    }
+}
+
 /// One node's view of all its in-flight swaps.
 pub struct SwapSession {
     pub(crate) identity: NodeIdentity,
@@ -141,6 +222,20 @@ pub struct SwapSession {
     /// (initiator) or accept (responder) a swap above it — so real value can never exceed the
     /// agreed ≤ $5 test size even if a counterparty asks for more.
     caps: Option<SwapCaps>,
+    /// The swaps for which a counterparty `FundingProof` has arrived (so the verifier has been
+    /// handed a locating hint) but whose funding is not yet confirmed to the required depth. The
+    /// tick [`reverify_awaited_funding`](Self::reverify_awaited_funding) re-runs the SAME gate for
+    /// these on every maintenance beat — so a swap advances the instant its counterparty HTLC reaches
+    /// its per-chain depth, not only when a (bounded, TTL-32) `FundingProof` retransmit happens to
+    /// arrive inside that window. This is the field-stall fix: message-only verification stalled
+    /// forever whenever the depth was reached AFTER the retransmits ran out. Gated on the arrival of a
+    /// proof so a tick never polls the (shared-IP-rate-limited) chain RPC for a swap whose counterparty
+    /// hasn't even claimed to have funded.
+    funding_proof_seen: HashSet<[u8; SWAP_ID_LEN]>,
+    /// The LAST counterparty-funding verify verdict per swap (the diagnostics surface). Written on
+    /// every verify attempt — message-arrival and tick alike — and mirrored to the app so the operator
+    /// SEES the verdict (`verify ▸ NIM too shallow 3/10 · attempt 4`) instead of guessing.
+    verify_notes: HashMap<[u8; SWAP_ID_LEN], SwapVerifyNote>,
 }
 
 impl SwapSession {
@@ -159,6 +254,8 @@ impl SwapSession {
             secret_source: Box::new(crate::swap_node::sim_secret),
             secret_is_sim: true,
             caps: None,
+            funding_proof_seen: HashSet::new(),
+            verify_notes: HashMap::new(),
         }
     }
 
@@ -383,12 +480,10 @@ impl SwapSession {
                 // S1 / #72: a `FundingProof` message no longer advances the swap by itself — the node
                 // first confirms the counterparty's HTLC on-chain via its verifier. It advances only on
                 // a verified funding; otherwise it stays put (a not-yet-confirmed funding retries next
-                // tick; a real mismatch/underfunding stalls to a timeout refund). The verifier and the
-                // coordinators map are disjoint fields, so we borrow both directly (not via `route`).
-                let coord = self
-                    .coordinators
-                    .get_mut(&swap_id)
-                    .ok_or(SessionError::UnknownSwap)?;
+                // tick; a real mismatch/underfunding stalls to a timeout refund).
+                if !self.coordinators.contains_key(&swap_id) {
+                    return Err(SessionError::UnknownSwap);
+                }
                 // A2b: hand the proof's claimed funding wire to the verifier as an UNTRUSTED
                 // locating hint (a live NIM verifier derives the HTLC contract address from it;
                 // the Polygon verifier anchors its capped log scan at the named tx). Scoped to
@@ -396,14 +491,14 @@ impl SwapSession {
                 if let (Some(leg), Some(wire)) = (env.leg, env.tx_wire.as_deref()) {
                     self.verifier.note_funding_wire(leg, wire);
                 }
-                // #74 / G3: verify at the counterparty leg's *own* chain depth, not one flat floor —
-                // the responder checks the initiator's NIM leg (NIM depth), the initiator checks the
-                // counterparty leg (BTC/USDC depth). Fields are disjoint from `coord`.
-                let leg = coord.counterparty_expectation().leg;
-                let min_confirmations = self
-                    .confirm_policy
-                    .required_for_leg(leg, self.counterparty_chain);
-                coord.verify_and_observe_funding(self.verifier.as_ref(), min_confirmations)?;
+                // The proof arrived → this swap is now eligible for tick re-verification, so it
+                // advances the moment the counterparty HTLC reaches its depth even if this proof is
+                // still too shallow and no later retransmit lands (the field-stall fix).
+                self.funding_proof_seen.insert(swap_id);
+                // #74 / G3: verify at the counterparty leg's own chain depth. Records the verdict for
+                // the diagnostics surface, then propagates any refusal (the node treats an Err as
+                // "no reply" — the coordinator's phase is unchanged, exactly as before).
+                self.verify_counterparty_funding(swap_id)?;
                 Ok(vec![])
             }
             SwapKind::PreimageReveal => {
@@ -423,6 +518,8 @@ impl SwapSession {
                 {
                     self.coordinators.remove(&swap_id);
                     self.pending.remove(&swap_id); // torn down — stop retransmitting.
+                    self.funding_proof_seen.remove(&swap_id);
+                    self.verify_notes.remove(&swap_id);
                 }
                 Ok(vec![])
             }
@@ -435,18 +532,107 @@ impl SwapSession {
             .ok_or(SessionError::UnknownSwap)
     }
 
+    /// Run the counterparty-funding gate for `swap_id` (S1 / #72) at the leg's own chain depth, RECORD
+    /// the verdict for the diagnostics surface, and return the coordinator result. Shared by the
+    /// message path (a `FundingProof` just arrived) and the tick path (re-consulting the chain on our
+    /// own clock). **Precondition:** the coordinator exists. Adds no trust — the same fail-closed
+    /// [`SwapCoordinator::verify_and_observe_funding`], the same per-chain confirmation depth.
+    fn verify_counterparty_funding(
+        &mut self,
+        swap_id: [u8; SWAP_ID_LEN],
+    ) -> Result<(), CoordError> {
+        // Read the leg + role first (immutable), so the mutable coordinator borrow below stays
+        // disjoint from the `confirm_policy` / `verifier` fields the gate needs.
+        let (leg, role) = {
+            let c = &self.coordinators[&swap_id];
+            (c.counterparty_expectation().leg, c.role())
+        };
+        let min_confirmations = self
+            .confirm_policy
+            .required_for_leg(leg, self.counterparty_chain);
+        let coord = self
+            .coordinators
+            .get_mut(&swap_id)
+            .expect("caller ensured the coordinator exists");
+        let result = coord.verify_and_observe_funding(self.verifier.as_ref(), min_confirmations);
+        // The coordinator borrow ends with `result` (owned); record the verdict for the app.
+        let note = SwapVerifyNote {
+            text: describe_verify(role, leg, self.counterparty_chain, &result),
+            attempts: self
+                .verify_notes
+                .get(&swap_id)
+                .map_or(0, |n| n.attempts)
+                .saturating_add(1),
+            at_ms: verify_now_ms(),
+        };
+        self.verify_notes.insert(swap_id, note);
+        result
+    }
+
+    /// The field-stall fix (deliverable A): on every maintenance tick, re-run the counterparty-funding
+    /// gate for each swap that is (1) awaiting counterparty funding and (2) has already received a
+    /// `FundingProof` (so the verifier holds a locating hint). A swap whose counterparty HTLC was still
+    /// too shallow when the proof arrived now advances the instant it reaches its per-chain depth —
+    /// with NO dependence on a retransmitted proof landing inside the bounded (TTL-32) retransmit
+    /// window. Returns the swap_ids that ADVANCED this tick, so the node can drive their next money-path
+    /// action (a responder funds its USDC/BTC leg; an initiator reveals `S`).
+    pub(crate) fn reverify_awaited_funding(&mut self) -> Vec<[u8; SWAP_ID_LEN]> {
+        let candidates: Vec<[u8; SWAP_ID_LEN]> = self
+            .funding_proof_seen
+            .iter()
+            .filter(|id| {
+                self.coordinators
+                    .get(*id)
+                    .is_some_and(|c| c.awaits_counterparty_funding())
+            })
+            .copied()
+            .collect();
+        let mut advanced = Vec::new();
+        for id in candidates {
+            if self.verify_counterparty_funding(id).is_ok() {
+                advanced.push(id);
+            }
+        }
+        // Drop swaps that advanced past the awaiting phase (or vanished) — a verified/gone swap needs
+        // no further chain polling, keeping the shared-IP RPC quiet.
+        let coords = &self.coordinators;
+        self.funding_proof_seen.retain(|id| {
+            coords
+                .get(id)
+                .is_some_and(|c| c.awaits_counterparty_funding())
+        });
+        advanced
+    }
+
+    /// The last per-swap verify verdict (diagnostics mirror). `None` until a `FundingProof` has been
+    /// verified for the swap at least once.
+    pub(crate) fn verify_note(&self, swap_id: &[u8; SWAP_ID_LEN]) -> Option<SwapVerifyNote> {
+        self.verify_notes.get(swap_id).cloned()
+    }
+
+    /// Drop the retransmit / re-verify / diagnostics state for coordinators that are no longer present,
+    /// so a long-lived node's side tables stay bounded to its live swaps.
+    fn prune_dropped_swap_state(&mut self) {
+        let coords = &self.coordinators;
+        self.funding_proof_seen.retain(|id| coords.contains_key(id));
+        self.verify_notes.retain(|id, _| coords.contains_key(id));
+    }
+
     /// Drop every coordinator that has reached a terminal phase (Settled / Aborted / Refunded),
     /// freeing its slot. Returns how many were reaped. The node calls this after it settles a swap;
     /// the session GC tick (G16) calls it to keep a node from being memory-exhausted by stale swaps.
     pub fn reap_terminal(&mut self) -> usize {
         let before = self.coordinators.len();
         self.coordinators.retain(|_, c| !c.phase().is_terminal());
+        self.prune_dropped_swap_state();
         before - self.coordinators.len()
     }
 
     /// Forget a swap (e.g. the node aborted it locally), freeing its slot. Returns whether one was
     /// present.
     pub fn remove(&mut self, swap_id: &[u8; SWAP_ID_LEN]) -> bool {
+        self.funding_proof_seen.remove(swap_id);
+        self.verify_notes.remove(swap_id);
         self.coordinators.remove(swap_id).is_some()
     }
 
@@ -461,6 +647,8 @@ impl SwapSession {
         }
         self.coordinators.remove(swap_id);
         self.pending.remove(swap_id);
+        self.funding_proof_seen.remove(swap_id);
+        self.verify_notes.remove(swap_id);
         Some(crate::swap_messages::abort(*swap_id, 0))
     }
 
@@ -535,6 +723,7 @@ impl SwapSession {
         for id in prune {
             self.pending.remove(&id);
         }
+        self.prune_dropped_swap_state();
         stale
     }
 }

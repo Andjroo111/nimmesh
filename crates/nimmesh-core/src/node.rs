@@ -465,7 +465,7 @@ impl MeshNode {
 
     /// G9 (#80): this node's in-flight swaps over FFI ([`crate::swap_intent::FfiSwapMatch`]), sorted by id; a relay with no `SwapSession` returns empty.
     pub fn active_swaps(&self) -> Vec<crate::swap_intent::FfiSwapMatch> {
-        crate::swap_node::active_swaps(&self.ctx)
+        crate::swap_mirror::active_swaps(&self.ctx)
     }
 
     /// Tear the node down: stop the worker and release the radio. Idempotent; also runs

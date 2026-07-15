@@ -762,6 +762,9 @@
   .swap-phase .ph-leg { margin-left: auto; font-size: 11.5px; font-weight: 700; letter-spacing: .5px;
     color: rgba(31,35,72,.35); }
   .swap-status-line { text-align: center; margin: 14px 24px 0; font-size: 13px; font-weight: 600; color: rgba(31,35,72,.6); }
+  /* The verifier's LAST verdict, under the phase timeline — a mono diagnostic so a stalled swap
+     shows WHY (e.g. "verify ▸ NIM too shallow 3/10 · attempt 4 · 12s ago") instead of guessing. */
+  .swap-verify-line { text-align: center; margin: 8px 24px 0; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: rgba(31,35,72,.5); }
 
   /* Account sheet: identicon + address + a plain action list (copy / backup / log out). */
   .acct-actions { display: flex; flex-direction: column; margin: 12px 24px 0; }
@@ -1888,6 +1891,7 @@ Don't share them and keep them safe.</p>
       <div class="copyable" id="swap-fund-copyable" tabindex="0"><div class="background"></div><div class="address" id="swap-fund-addr"></div><div class="tooltip" data-i18n="a.copied">Copied</div></div>
     </div>
     <div class="swap-phases" id="swap-phases" hidden></div>
+    <div class="swap-verify-line" id="swap-verify" hidden></div>
     <div class="swap-status-line" id="swap-status"></div>
     <button class="send-btn" id="swap-done" data-i18n="a.done" hidden>Done</button>
     <p class="swap-sim-note" data-i18n="swap.simnote">Simulation: no real funds move yet</p>
@@ -2973,6 +2977,23 @@ Don't share them and keep them safe.</p>
         `<span>${T(ph.key)}</span><span class="ph-leg">${leg}</span></div>`;
     }).join('');
   }
+  // The verifier's live verdict under the phase timeline — a plain mono diagnostic so a stalled swap
+  // shows WHY (the `ble ▸` precedent). Hidden until the core has a verdict (a FundingProof was verified).
+  function renderSwapVerify(sw) {
+    const el = document.getElementById('swap-verify');
+    if (!el) return;
+    const note = sw && sw.verify;
+    if (!note) { el.hidden = true; el.textContent = ''; return; }
+    let line = 'verify ▸ ' + note;
+    if (sw.verifyAttempts) {
+      line += ' · attempt ' + sw.verifyAttempts;
+      if (sw.verifyAtMs) {
+        line += ' · ' + Math.max(0, Math.round((Date.now() - sw.verifyAtMs) / 1000)) + 's ago';
+      }
+    }
+    el.textContent = line;
+    el.hidden = false;
+  }
   function resetSwapSheet() {
     if (swapTimer) { clearTimeout(swapTimer); swapTimer = null; }
     if (swapPoll) { clearInterval(swapPoll); swapPoll = null; }
@@ -3001,6 +3022,7 @@ Don't share them and keep them safe.</p>
     document.getElementById('swap-progress').hidden = true;
     document.getElementById('swap-discovery').hidden = false;
     document.getElementById('swap-phases').hidden = true;
+    renderSwapVerify(null);
     document.getElementById('swap-done').hidden = true;
     document.getElementById('swap-status').textContent = '';
   }
@@ -3263,6 +3285,7 @@ Don't share them and keep them safe.</p>
     const sw = (st.swaps || [])[0];
     if (!sw) {
       // No swap matched yet: a responder is LISTENING; an initiator is broadcasting its intent.
+      renderSwapVerify(null);
       const head = respondMode ? T('swap.respond.listening') : (liveMode ? liveLabel : T('swap.live'));
       statusEl.textContent = `${head} · ${st.peers} peers · ${st.seen} intents${lockNote}`;
       return;
@@ -3270,6 +3293,7 @@ Don't share them and keep them safe.</p>
     const step = PHASE_STEP[sw.phase] != null ? PHASE_STEP[sw.phase] : 0;
     document.getElementById('swap-discovery').hidden = true;
     document.getElementById('swap-phases').hidden = false;
+    renderSwapVerify(sw);
     if (step < 0) {   // aborted / refunded — say so honestly, never fake success
       renderSwapPhases(0);
       statusEl.textContent = `${T('swap.ended')} (${sw.phase})`;
