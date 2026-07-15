@@ -134,6 +134,11 @@
   .set-list button:first-child { border-top: 0; }
   .set-list button svg, .set-list button img { width: 22px; height: 22px; flex: 0 0 auto; color: rgba(31,35,72,.45); }
   .set-list button.danger, .set-list button.danger svg { color: var(--nimiq-red); }
+  /* #233 Bitchat interop row: ₿ glyph icon + an On/Off state chip on the right. */
+  .set-list .set-bt-ic { width: 22px; flex: 0 0 auto; text-align: center; font-weight: 800;
+    font-size: 18px; line-height: 1; color: rgba(31,35,72,.45); }
+  .set-list .set-state { margin-left: auto; font-size: 12px; font-weight: 800;
+    color: rgba(31,35,72,.4); text-transform: uppercase; letter-spacing: .05em; }
 
   /* ---- P1: the wallet's portfolio home ---- */
   .view[hidden] { display: none !important; }
@@ -693,6 +698,7 @@
     background-image: var(--nimiq-light-blue-bg, radial-gradient(100% 100% at bottom right, #265DD7, #0582CA)); }
   .chat-msg.theirs { background: #f1f1f4; color: #1f2348; border-bottom-left-radius: 4px; }
   .chat-msg .cm-nick { display: block; font-size: 11px; font-weight: 800; letter-spacing: .3px; color: #0582CA; margin-bottom: 1px; }
+  .chat-msg .cm-net { display: inline-block; margin-right: 4px; color: #F7931A; }
   .chat-msg .cm-time { display: block; font-size: 10px; opacity: .55; margin-top: 2px; text-align: right; }
   /* Cashlink claim cards (#230): a cashlink in chat is money — render a card, not a URL. */
   .chat-msg.has-card { background: none; padding: 0; max-width: 86%; color: #1f2348; }
@@ -1255,6 +1261,7 @@
   <div class="set-list">
     <button id="set-lang"><img id="set-lang-flag" src="flags/en.svg" width="22" height="20" alt=""><span data-i18n="a.lang">Language</span></button>
     <button id="set-backup"><svg viewBox="0 0 20 20" fill="none"><rect x="3" y="2.5" width="14" height="15" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M6.5 7h7M6.5 10.5h7M6.5 14h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span data-i18n="acct.backup">Backup</span></button>
+    <button id="set-bitchat"><span class="set-bt-ic">₿</span><span data-i18n="set.bitchat">Bitchat interop</span><span class="set-state" id="set-bitchat-state"></span></button>
     <button id="set-logout" class="danger"><svg viewBox="0 0 20 20" fill="none"><path d="M12.5 6.5V4.75A1.75 1.75 0 0 0 10.75 3h-6A1.75 1.75 0 0 0 3 4.75v10.5A1.75 1.75 0 0 0 4.75 17h6a1.75 1.75 0 0 0 1.75-1.75V13.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M8 10h9.5M14.5 7l3 3-3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="acct.logout">Log out of this device</span></button>
   </div>
   <div class="acct-meta" id="set-meta"></div>
@@ -2105,7 +2112,7 @@ Don't share them and keep them safe.</p>
       'cl.share': 'Compartir', 'cl.copy': 'Copiar', 'cl.tochat': 'Al chat', 'cl.newlink': 'Nuevo enlace',
       'cl.funded': 'Financiado — listo para compartir', 'cl.fundedmesh': 'Enviado por la malla — entregándose',
       'cl.unclaimed': 'Sin cobrar — listo para compartir', 'cl.claimed': 'Cobrado ✓', 'cl.copied': 'Copiado',
-      'cl.none': 'Todavía no hay enlaces', 'cl.chip.open': 'abierto', 'cl.chip.claimed': 'cobrado', 'ccard.label': 'Cashlink', 'ccard.claim': 'Reclamar', 'ccard.claiming': 'Reclamando…', 'ccard.claimedok': 'Reclamado ✓', 'ccard.copied': 'Enlace copiado. Ábrelo en tu navegador para reclamar tus NIM.', 'cl.claim.title': 'Reclamar un enlace', 'cl.claim.ph': 'Pega un cash link', 'cl.claim.invalid': 'Eso no es un cash link',
+      'cl.none': 'Todavía no hay enlaces', 'cl.chip.open': 'abierto', 'cl.chip.claimed': 'cobrado', 'ccard.label': 'Cashlink', 'ccard.claim': 'Reclamar', 'ccard.claiming': 'Reclamando…', 'ccard.claimedok': 'Reclamado ✓', 'ccard.copied': 'Enlace copiado. Ábrelo en tu navegador para reclamar tus NIM.', 'cl.claim.title': 'Reclamar un enlace', 'cl.claim.ph': 'Pega un cash link', 'cl.claim.invalid': 'Eso no es un cash link', 'set.bitchat': 'Interop con Bitchat', 'set.on': 'Activado', 'set.off': 'Desactivado', 'chat.public.bc': 'Público — va a la malla nimmesh Y a Bitchat cerca',
       'cl.sharetext': 'NIM para ti — abre el enlace para cobrarlo:',
       'swap.ph.propose': 'Propuesta enviada', 'swap.ph.accept': 'Socio aceptó', 'swap.ph.fundnim': 'HTLC de NIM fondeado',
       'swap.ph.fundother': 'HTLC del socio fondeado', 'swap.ph.reveal': 'Secreto revelado', 'swap.ph.settled': 'Liquidado',
@@ -2182,7 +2189,7 @@ Don't share them and keep them safe.</p>
       'cl.share': 'Teilen', 'cl.copy': 'Kopieren', 'cl.tochat': 'In den Chat', 'cl.newlink': 'Neuer Cash-Link',
       'cl.funded': 'Finanziert — bereit zum Teilen', 'cl.fundedmesh': 'Über das Mesh gesendet — wird zugestellt',
       'cl.unclaimed': 'Nicht eingelöst — bereit zum Teilen', 'cl.claimed': 'Eingelöst ✓', 'cl.copied': 'Kopiert',
-      'cl.none': 'Noch keine Cash-Links', 'cl.chip.open': 'offen', 'cl.chip.claimed': 'eingelöst', 'ccard.label': 'Cashlink', 'ccard.claim': 'Einlösen', 'ccard.claiming': 'Wird eingelöst…', 'ccard.claimedok': 'Eingelöst ✓', 'ccard.copied': 'Link kopiert. Öffne ihn im Browser, um deine NIM einzulösen.', 'cl.claim.title': 'Einen Link einlösen', 'cl.claim.ph': 'Cash-Link einfügen', 'cl.claim.invalid': 'Das ist kein Cash-Link',
+      'cl.none': 'Noch keine Cash-Links', 'cl.chip.open': 'offen', 'cl.chip.claimed': 'eingelöst', 'ccard.label': 'Cashlink', 'ccard.claim': 'Einlösen', 'ccard.claiming': 'Wird eingelöst…', 'ccard.claimedok': 'Eingelöst ✓', 'ccard.copied': 'Link kopiert. Öffne ihn im Browser, um deine NIM einzulösen.', 'cl.claim.title': 'Einen Link einlösen', 'cl.claim.ph': 'Cash-Link einfügen', 'cl.claim.invalid': 'Das ist kein Cash-Link', 'set.bitchat': 'Bitchat-Interop', 'set.on': 'An', 'set.off': 'Aus', 'chat.public.bc': 'Öffentlich — geht ins nimmesh-Mesh UND an Bitchat in der Nähe',
       'cl.sharetext': 'NIM für dich — Link öffnen und einlösen:',
       'swap.ph.propose': 'Vorschlag gesendet', 'swap.ph.accept': 'Partner hat angenommen', 'swap.ph.fundnim': 'NIM-HTLC finanziert',
       'swap.ph.fundother': 'Partner-HTLC finanziert', 'swap.ph.reveal': 'Geheimnis enthüllt', 'swap.ph.settled': 'Abgewickelt',
@@ -2259,7 +2266,7 @@ Don't share them and keep them safe.</p>
       'cl.share': 'Partager', 'cl.copy': 'Copier', 'cl.tochat': 'Vers le chat', 'cl.newlink': 'Nouveau lien',
       'cl.funded': 'Financé — prêt à partager', 'cl.fundedmesh': 'Envoyé via le mesh — en cours',
       'cl.unclaimed': 'Non encaissé — prêt à partager', 'cl.claimed': 'Encaissé ✓', 'cl.copied': 'Copié',
-      'cl.none': 'Pas encore de liens', 'cl.chip.open': 'ouvert', 'cl.chip.claimed': 'encaissé', 'ccard.label': 'Cashlink', 'ccard.claim': 'Encaisser', 'ccard.claiming': 'Encaissement…', 'ccard.claimedok': 'Encaissé ✓', 'ccard.copied': 'Lien copié. Ouvre-le dans ton navigateur pour encaisser tes NIM.', 'cl.claim.title': 'Encaisser un lien', 'cl.claim.ph': 'Colle un cash link', 'cl.claim.invalid': 'Ce n’est pas un cash link',
+      'cl.none': 'Pas encore de liens', 'cl.chip.open': 'ouvert', 'cl.chip.claimed': 'encaissé', 'ccard.label': 'Cashlink', 'ccard.claim': 'Encaisser', 'ccard.claiming': 'Encaissement…', 'ccard.claimedok': 'Encaissé ✓', 'ccard.copied': 'Lien copié. Ouvre-le dans ton navigateur pour encaisser tes NIM.', 'cl.claim.title': 'Encaisser un lien', 'cl.claim.ph': 'Colle un cash link', 'cl.claim.invalid': 'Ce n’est pas un cash link', 'set.bitchat': 'Interop Bitchat', 'set.on': 'Activé', 'set.off': 'Désactivé', 'chat.public.bc': 'Public — part sur le mesh nimmesh ET vers Bitchat à proximité',
       'cl.sharetext': 'Du NIM pour vous — ouvrez le lien pour l\'encaisser :',
       'swap.ph.propose': 'Proposition envoyée', 'swap.ph.accept': 'Partenaire a accepté', 'swap.ph.fundnim': 'HTLC NIM financé',
       'swap.ph.fundother': 'HTLC du partenaire financé', 'swap.ph.reveal': 'Secret révélé', 'swap.ph.settled': 'Réglé',
@@ -2336,7 +2343,7 @@ Don't share them and keep them safe.</p>
       'cl.share': 'Compartilhar', 'cl.copy': 'Copiar', 'cl.tochat': 'Para o chat', 'cl.newlink': 'Novo link',
       'cl.funded': 'Financiado — pronto para compartilhar', 'cl.fundedmesh': 'Enviado pela mesh — entregando',
       'cl.unclaimed': 'Não resgatado — pronto para compartilhar', 'cl.claimed': 'Resgatado ✓', 'cl.copied': 'Copiado',
-      'cl.none': 'Ainda sem links', 'cl.chip.open': 'aberto', 'cl.chip.claimed': 'resgatado', 'ccard.label': 'Cashlink', 'ccard.claim': 'Resgatar', 'ccard.claiming': 'Resgatando…', 'ccard.claimedok': 'Resgatado ✓', 'ccard.copied': 'Link copiado. Abra no navegador para resgatar seus NIM.', 'cl.claim.title': 'Resgatar um link', 'cl.claim.ph': 'Cole um cash link', 'cl.claim.invalid': 'Isso não é um cash link',
+      'cl.none': 'Ainda sem links', 'cl.chip.open': 'aberto', 'cl.chip.claimed': 'resgatado', 'ccard.label': 'Cashlink', 'ccard.claim': 'Resgatar', 'ccard.claiming': 'Resgatando…', 'ccard.claimedok': 'Resgatado ✓', 'ccard.copied': 'Link copiado. Abra no navegador para resgatar seus NIM.', 'cl.claim.title': 'Resgatar um link', 'cl.claim.ph': 'Cole um cash link', 'cl.claim.invalid': 'Isso não é um cash link', 'set.bitchat': 'Interop com Bitchat', 'set.on': 'Ativado', 'set.off': 'Desativado', 'chat.public.bc': 'Público — vai para a malha nimmesh E para o Bitchat por perto',
       'cl.sharetext': 'NIM para você — abra o link para resgatar:',
       'swap.ph.propose': 'Proposta enviada', 'swap.ph.accept': 'Parceiro aceitou', 'swap.ph.fundnim': 'HTLC de NIM financiado',
       'swap.ph.fundother': 'HTLC do parceiro financiado', 'swap.ph.reveal': 'Segredo revelado', 'swap.ph.settled': 'Liquidado',
@@ -2420,7 +2427,7 @@ Don't share them and keep them safe.</p>
     'cl.share': 'Share', 'cl.copy': 'Copy', 'cl.tochat': 'To chat', 'cl.newlink': 'New cash link',
     'cl.funded': 'Funded — ready to share', 'cl.fundedmesh': 'Sent over the mesh — delivering',
     'cl.unclaimed': 'Unclaimed — ready to share', 'cl.claimed': 'Claimed ✓', 'cl.copied': 'Copied',
-    'cl.none': 'No cash links yet', 'cl.chip.open': 'open', 'cl.chip.claimed': 'claimed', 'ccard.label': 'Cash link', 'ccard.claim': 'Claim', 'ccard.claiming': 'Claiming…', 'ccard.claimedok': 'Claimed ✓', 'ccard.copied': 'Link copied. Open it in your browser to claim your NIM.', 'cl.claim.title': 'Claim a link', 'cl.claim.ph': 'Paste a cash link', 'cl.claim.invalid': 'That is not a cash link',
+    'cl.none': 'No cash links yet', 'cl.chip.open': 'open', 'cl.chip.claimed': 'claimed', 'ccard.label': 'Cash link', 'ccard.claim': 'Claim', 'ccard.claiming': 'Claiming…', 'ccard.claimedok': 'Claimed ✓', 'ccard.copied': 'Link copied. Open it in your browser to claim your NIM.', 'cl.claim.title': 'Claim a link', 'cl.claim.ph': 'Paste a cash link', 'cl.claim.invalid': 'That is not a cash link', 'set.bitchat': 'Bitchat interop', 'set.on': 'On', 'set.off': 'Off', 'chat.public.bc': 'Public — goes to the nimmesh mesh AND Bitchat nearby',
     'cl.sharetext': 'NIM for you — open the link to claim it:',
     'swap.ph.propose': 'Proposal sent', 'swap.ph.accept': 'Partner accepted', 'swap.ph.fundnim': 'NIM HTLC funded',
     'swap.ph.fundother': 'Partner HTLC funded', 'swap.ph.reveal': 'Secret revealed', 'swap.ph.settled': 'Settled',
@@ -2546,7 +2553,7 @@ Don't share them and keep them safe.</p>
     document.getElementById('chat-list').innerHTML = msgs.map((m) => {
       const body = clcBody(m);
       return `<div class="chat-msg ${m.mine ? 'mine' : 'theirs'}${body.card ? ' has-card' : ''}">` +
-        (m.mine ? '' : `<span class="cm-nick">${chatEsc(m.nickname || 'Anon')}</span>`) +
+        (m.mine ? '' : `<span class="cm-nick">${m.net === 'bitchat' ? '<span class="cm-net">₿</span>' : ''}${chatEsc(m.nickname || 'Anon')}</span>`) +
         `${body.html}<span class="cm-time">${fmt(m.timestamp)}</span></div>`;
     }).join('');
     clcResolveChips();
@@ -2656,9 +2663,19 @@ Don't share them and keep them safe.</p>
   document.getElementById('menu-chat').addEventListener('click', () => {
     closeMenu();
     open('chat');
+    refreshChatNote();
     pollChat();
     if (!chatPoll) chatPoll = setInterval(pollChat, 2500);
   });
+  // #233: honest publish note — when the Bitchat link is live, a send goes to BOTH meshes.
+  async function refreshChatNote() {
+    if (!(window.nimmesh && window.nimmesh.bitchatStatus)) return;
+    try {
+      const s = await window.nimmesh.bitchatStatus();
+      document.querySelector('#chat-sheet .chat-note').textContent =
+        s.active ? T('chat.public.bc') : T('chat.public');
+    } catch (e) {}
+  }
 
   // ---- Cash links: NIM as a URL (hub-claimable in any browser), QR + share + chat ----
   const clLocal = [];   // browser fallback so the sheet demos without the bridge
@@ -2909,7 +2926,33 @@ Don't share them and keep them safe.</p>
   }
   document.getElementById('nw-invite').addEventListener('click', inviteToMesh);
   document.getElementById('menu-invite').addEventListener('click', () => { closeMenu(); inviteToMesh(); });
-  document.getElementById('menu-settings').addEventListener('click', () => { closeMenu(); open('settings'); });
+  document.getElementById('menu-settings').addEventListener('click', () => { closeMenu(); refreshBitchatRow(); open('settings'); });
+  // #233: the Bitchat interop toggle — the app itself joins the REAL Bitchat mesh as a
+  // peer (announce + signed public messages). Defaults OFF: it runs a second pair of
+  // BLE managers and the battery cost on-device is unmeasured yet.
+  async function refreshBitchatRow() {
+    const state = document.getElementById('set-bitchat-state');
+    if (!(window.nimmesh && window.nimmesh.bitchatStatus)) { state.textContent = ''; return; }
+    try {
+      const s = await window.nimmesh.bitchatStatus();
+      state.textContent = s.enabled ? T('set.on') : T('set.off');
+    } catch (e) { state.textContent = ''; }
+  }
+  document.getElementById('set-bitchat').addEventListener('click', async () => {
+    if (!(window.nimmesh && window.nimmesh.bitchatSetEnabled)) return;
+    const state = document.getElementById('set-bitchat-state');
+    try {
+      const s = await window.nimmesh.bitchatStatus();
+      const r = await window.nimmesh.bitchatSetEnabled({ enabled: !s.enabled, nickname: chatNick() });
+      state.textContent = r.enabled ? T('set.on') : T('set.off');
+    } catch (e) {
+      alert(String((e && e.message) || e));
+      refreshBitchatRow();
+    }
+  });
+  // Resume a previously-enabled Bitchat link at boot (fire-and-forget; the bridge's
+  // status call is also its startIfEnabled hook).
+  if (window.nimmesh && window.nimmesh.bitchatStatus) { window.nimmesh.bitchatStatus().catch(() => {}); }
   document.getElementById('set-lang').addEventListener('click', () => open('lang'));
   document.getElementById('set-backup').addEventListener('click', () => { close(); openBackupHub(); });
   document.getElementById('set-logout').addEventListener('click', async () => {

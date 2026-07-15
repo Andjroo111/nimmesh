@@ -242,6 +242,8 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         // Public mesh chat (0x50): broadcast text over BLE; the rolling heard/sent log.
         sendChat: function (nick, text) { return call('sendChat', { nickname: nick, text: text }); },
         chatMessages: function () { return call('chatMessages'); },
+        bitchatStatus: function () { return call('bitchatStatus'); },
+        bitchatSetEnabled: function (a) { return call('bitchatSetEnabled', a || {}); },
         // Cashlinks: NIM as a URL (official hub format — any browser claims). The wallet
         // funds a fresh single-use key; the link is cash — whoever holds it can claim.
         cashlinkCreate: function (a) { return call('cashlinkCreate', a || {}); },
@@ -550,28 +552,9 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             return (true, ["gas": gas, "claim": claim, "fund": fund])
         case "cashlinkList":
             return cashlinkList()
-        case "sendChat":
-            // Public mesh chat: text + chosen nickname flood to everyone nearby (0x50).
-            // Nothing but text crosses — no keys, no addresses, not money-path.
-            let a = args as? [String: Any] ?? [:]
-            let text = (a["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            var nick = (a["nickname"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            if nick.isEmpty { nick = "Anon" }
-            guard !text.isEmpty else { return (false, "empty message") }
-            let ok = node.sendChat(
-                nickname: String(nick.prefix(24)), text: text,
-                timestampMs: UInt64(Date().timeIntervalSince1970 * 1000))
-            var payload: [String: Any] = ["ok": ok]
-            if !ok { payload["reason"] = "too long" }
-            return (ok, payload)
-        case "chatMessages":
-            let msgs: [[String: Any]] = node.chatMessages().map {
-                [
-                    "id": $0.id, "nickname": $0.nickname, "text": $0.text,
-                    "timestamp": Double($0.timestampMs), "mine": $0.mine,
-                ]
-            }
-            return (true, ["messages": msgs])
+        case "sendChat", "chatMessages", "bitchatStatus", "bitchatSetEnabled":
+            // Mesh chat + the Bitchat interop toggle — one family seam (BitchatChat.swift).
+            return chatHandle(method: method, args: args)
         case "meshQueryHistory":
             // Transactions over the mesh: flood a nimiqTxHistoryQuery — the Mac gateway
             // answers up to 10 compact rows through the fragmenter. Fire-and-forget.

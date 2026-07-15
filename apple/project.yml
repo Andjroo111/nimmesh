@@ -14,6 +14,9 @@ targets:
     platform: iOS
     sources:
       - NimmeshApp/Sources
+      # Bitchat interop phase 2 (#233): the byte-exact Bitchat wire kit, SHARED with
+      # the mac-node (single source of truth for the protocol).
+      - path: ../shared/BitchatKit.swift
       # App icon (gold Nimiq hexagon on the navy radial gradient) — required for TestFlight.
       - NimmeshApp/Assets.xcassets
       # C1e: the official BIP39 English wordlist (2048 words), bundled flat so
