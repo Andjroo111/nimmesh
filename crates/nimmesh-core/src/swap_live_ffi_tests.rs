@@ -154,6 +154,18 @@ mod unsupported {
             Err(LiveSwapFfiError::Unsupported)
         ));
     }
+
+    #[cfg(not(feature = "gateway-rpc"))]
+    #[test]
+    fn the_mainnet_refunder_refuses_without_gateway_rpc() {
+        let key = std::sync::Arc::new(crate::nimiq::signer::InMemoryEnclaveKey::from_secret(
+            &[1; 32],
+        ));
+        assert!(matches!(
+            NimHtlcRefunder::new_mainnet(key, "https://rpc.nimiqwatch.com".into()),
+            Err(LiveSwapFfiError::Unsupported)
+        ));
+    }
 }
 
 // --- with the live features: the full door -------------------------------------------------------
@@ -552,6 +564,74 @@ mod live {
             },
         );
         assert_eq!(r.refund(lock).unwrap(), FfiRefundOutcome::AlreadyResolved);
+    }
+
+    #[test]
+    fn the_mainnet_refunder_stamps_the_mainnet_wire_id() {
+        // The 20-NIM strand of 2026-07-15: a MAINNET lock refunded through a testnet-stamped
+        // refunder builds an unrelayable tx. The network-aware seam must stamp the refund
+        // with the refunder's OWN network id — byte-exact, like the testnet twin above.
+        let key = InMemoryEnclaveKey::from_secret(&[0x51; 32]);
+        let pk: [u8; 32] = EnclaveKey::public_key(&key).try_into().unwrap();
+        let funder = Address::from_public_key(&pk);
+        let contract = Address::from_bytes([0xCA; 20]);
+        let contract_nq = contract.to_user_friendly();
+        let mut lock = super::tests_lock_for(&contract_nq);
+        lock.timeout_ms = NOW_MS - 100_000;
+
+        let rpc = Arc::new(MockRpc::new(500));
+        rpc.set_account(
+            &contract_nq,
+            RpcAccount {
+                balance: 500_000,
+                account_type: "htlc".into(),
+                address: Some(contract_nq.clone()),
+            },
+        );
+        let r = NimHtlcRefunder::from_parts_on(
+            Arc::new(InMemoryEnclaveKey::from_secret(&[0x51; 32])),
+            rpc.clone(),
+            crate::NetworkId::Mainnet,
+        )
+        .with_clock(|| NOW_MS);
+        let out = r.refund(lock).unwrap();
+
+        let redeem = HtlcRedeem {
+            contract,
+            recipient: funder,
+            value: 500_000,
+            fee: 0,
+            validity_start_height: 500,
+            network_id: crate::NetworkId::Mainnet.wire_id(),
+        };
+        let sig: [u8; 64] = key
+            .sign_content(redeem.serialize_content())
+            .try_into()
+            .unwrap();
+        let expected = redeem.serialize_wire(&timeout_resolve_proof(&pk, &sig));
+        assert_eq!(rpc.broadcasts(), vec![bytes_to_hex(&expected)]);
+        assert_eq!(
+            out,
+            FfiRefundOutcome::Refunded {
+                tx_hash: bytes_to_hex(&redeem.tx_hash())
+            }
+        );
+
+        // And the two stamps genuinely differ — the testnet twin cannot satisfy this wire.
+        assert_ne!(
+            crate::NetworkId::Mainnet.wire_id(),
+            crate::NetworkId::Testnet.wire_id()
+        );
+    }
+
+    #[cfg(feature = "gateway-rpc")]
+    #[test]
+    fn the_mainnet_refunder_ctor_refuses_a_testnet_url() {
+        let key = Arc::new(InMemoryEnclaveKey::from_secret(&[1; 32]));
+        assert!(matches!(
+            NimHtlcRefunder::new_mainnet(key, "https://rpc.testnet.nimiqwatch.com".into()),
+            Err(crate::swap_live_ffi::LiveSwapFfiError::Refused { .. })
+        ));
     }
 
     #[cfg(feature = "polygon-leg")]

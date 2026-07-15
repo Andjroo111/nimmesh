@@ -798,6 +798,8 @@
   .swap-phase .ph-leg { margin-left: auto; font-size: 11.5px; font-weight: 700; letter-spacing: .5px;
     color: rgba(31,35,72,.35); }
   .swap-status-line { text-align: center; margin: 14px 24px 0; font-size: 13px; font-weight: 600; color: rgba(31,35,72,.6); }
+  #swap-refund-note { text-align: center; margin: 12px 24px 0; font-size: 13px; font-weight: 600; color: var(--nimiq-gold, #e9b213); }
+  #swap-refund-note[hidden] { display: none !important; }
   /* The verifier's LAST verdict, under the phase timeline — a mono diagnostic so a stalled swap
      shows WHY (e.g. "verify ▸ NIM too shallow 3/10 · attempt 4 · 12s ago") instead of guessing. */
   .swap-verify-line { text-align: center; margin: 8px 24px 0; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: rgba(31,35,72,.5); }
@@ -1832,6 +1834,8 @@ Don't share them and keep them safe.</p>
     <div class="title" data-i18n="swap.sheet.title">Swap Currencies</div>
     <button class="s-close sheet-close" aria-label="Close"><svg viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
   </div>
+  <!-- never-strand: the lock-refund sweep's honest one-liner (hidden unless a lock exists) -->
+  <p id="swap-refund-note" hidden></p>
   <div id="swap-setup">
     <!-- the wallet's pair selector pills + the fee line (Swap Currencies modal) -->
     <div class="swap-pairsel">
@@ -2082,6 +2086,8 @@ Don't share them and keep them safe.</p>
       'swap.title': 'Intercambiar', 'swap.sheet.title': 'Intercambiar divisas', 'swap.fee': 'comisión', 'swap.sub': 'Intercambia NIM con un socio encontrado en la malla, liquidado con un HTLC atómico',
       'swap.yousend': 'Envías', 'swap.youget': 'Recibes', 'swap.rate': 'La tasa y las comisiones se acuerdan directamente con tu socio',
       'swap.cta': 'Confirmar', 'swap.simnote': 'Simulación: todavía no se mueven fondos reales',
+      'swap.refund.broadcast': 'Reembolsando NIM bloqueado a tu cartera…', 'swap.refund.done': 'NIM bloqueado reembolsado ✓',
+      'swap.refund.locked': 'Un bloqueo de NIM aún no expira, se reintentará', 'swap.refund.error': 'No se pudo verificar un bloqueo de NIM, se reintentará',
       'swap.searching': 'Buscando un socio en la malla', 'swap.searching.sub': 'Tu intención de intercambio se retransmite de teléfono en teléfono hasta que un socio compatible responde. Puede tardar un momento.',
       'swap.matched': 'Socio encontrado, negociando…', 'swap.settled': 'Intercambio liquidado',
       'swap.live': 'En vivo por Bluetooth — testnet, fondos simulados', 'swap.ended': 'Intercambio terminado',
@@ -2159,6 +2165,8 @@ Don't share them and keep them safe.</p>
       'swap.title': 'Tauschen', 'swap.sheet.title': 'Währungen tauschen', 'swap.fee': 'Gebühr', 'swap.sub': 'Tausche NIM mit einem über das Mesh gefundenen Partner, abgewickelt per atomarem HTLC',
       'swap.yousend': 'Du sendest', 'swap.youget': 'Du erhältst', 'swap.rate': 'Kurs und Gebühren werden direkt mit deinem Partner vereinbart',
       'swap.cta': 'Bestätigen', 'swap.simnote': 'Simulation: noch bewegen sich keine echten Gelder',
+      'swap.refund.broadcast': 'Gesperrtes NIM wird an deine Wallet erstattet…', 'swap.refund.done': 'Gesperrtes NIM erstattet ✓',
+      'swap.refund.locked': 'Ein NIM-Lock ist noch nicht abgelaufen, wird später erneut versucht', 'swap.refund.error': 'NIM-Lock-Prüfung fehlgeschlagen, wird wiederholt',
       'swap.searching': 'Suche einen Tauschpartner im Mesh', 'swap.searching.sub': 'Deine Tauschabsicht wird von Handy zu Handy weitergereicht, bis ein passender Partner antwortet. Das kann einen Moment dauern.',
       'swap.matched': 'Partner gefunden, verhandle…', 'swap.settled': 'Tausch abgewickelt',
       'swap.live': 'Live über Bluetooth — Testnet, Sim-Guthaben', 'swap.ended': 'Tausch beendet',
@@ -2236,6 +2244,8 @@ Don't share them and keep them safe.</p>
       'swap.title': 'Échanger', 'swap.sheet.title': 'Échanger des devises', 'swap.fee': 'frais', 'swap.sub': 'Échange des NIM avec un partenaire trouvé sur le mesh, réglé par un HTLC atomique',
       'swap.yousend': 'Tu envoies', 'swap.youget': 'Tu reçois', 'swap.rate': 'Le taux et les frais se négocient directement avec ton partenaire',
       'swap.cta': 'Confirmer', 'swap.simnote': 'Simulation : aucun fonds réel ne bouge encore',
+      'swap.refund.broadcast': 'Remboursement du NIM verrouillé vers votre portefeuille…', 'swap.refund.done': 'NIM verrouillé remboursé ✓',
+      'swap.refund.locked': 'Un verrou NIM n\'a pas encore expiré, nouvel essai plus tard', 'swap.refund.error': 'Impossible de vérifier un verrou NIM, nouvel essai',
       'swap.searching': 'Recherche d’un partenaire sur le mesh', 'swap.searching.sub': 'Ton intention d’échange est relayée de téléphone en téléphone jusqu’à ce qu’un partenaire compatible réponde. Cela peut prendre un moment.',
       'swap.matched': 'Partenaire trouvé, négociation…', 'swap.settled': 'Échange réglé',
       'swap.live': 'En direct via Bluetooth — testnet, fonds simulés', 'swap.ended': 'Échange terminé',
@@ -2313,6 +2323,8 @@ Don't share them and keep them safe.</p>
       'swap.title': 'Trocar', 'swap.sheet.title': 'Trocar moedas', 'swap.fee': 'taxa', 'swap.sub': 'Troque NIM com um parceiro encontrado na mesh, liquidado por um HTLC atômico',
       'swap.yousend': 'Você envia', 'swap.youget': 'Você recebe', 'swap.rate': 'A taxa e as tarifas são combinadas diretamente com seu parceiro',
       'swap.cta': 'Confirmar', 'swap.simnote': 'Simulação: nenhum fundo real se move ainda',
+      'swap.refund.broadcast': 'Reembolsando NIM bloqueado para sua carteira…', 'swap.refund.done': 'NIM bloqueado reembolsado ✓',
+      'swap.refund.locked': 'Um bloqueio de NIM ainda não expirou, tentaremos novamente', 'swap.refund.error': 'Não foi possível verificar um bloqueio de NIM, tentaremos novamente',
       'swap.searching': 'Procurando um parceiro na mesh', 'swap.searching.sub': 'Sua intenção de troca é retransmitida de telefone em telefone até um parceiro compatível responder. Pode levar um momento.',
       'swap.matched': 'Parceiro encontrado, negociando…', 'swap.settled': 'Troca liquidada',
       'swap.live': 'Ao vivo via Bluetooth — testnet, fundos simulados', 'swap.ended': 'Troca encerrada',
@@ -2400,6 +2412,8 @@ Don't share them and keep them safe.</p>
     'swap.respond.mainnet.fund': 'Fund this MAINNET address with REAL USDC + POL (same address as testnet — EVM addresses are chain-agnostic)',
     'swap.locks': 'NIM lock pending refund',
     'swap.cta': 'Confirm',
+    'swap.refund.broadcast': 'Refunding locked NIM to your wallet…', 'swap.refund.done': 'Locked NIM refunded ✓',
+    'swap.refund.locked': 'A NIM lock has not expired yet, retrying later', 'swap.refund.error': 'Could not check a NIM lock, will retry',
     'swap.respond.label': 'Respond to swaps (give USDC, receive NIM)',
     'swap.respond.cta': 'Respond to swaps',
     'swap.respond.listening': 'Listening for a swap offer on the mesh',
@@ -2462,6 +2476,10 @@ Don't share them and keep them safe.</p>
   }
   await initLang();
   applyI18n();
+
+  // Never-strand at boot: sweep persisted NIM locks shortly after launch, without waiting
+  // for the user to find the Swap sheet (the refund pays this wallet back, nothing else).
+  setTimeout(() => { try { sweepLiveLocks(); } catch (e) {} }, 4000);
 
   // Swap every identicon placeholder for the real deterministic iqon.
   // CRITICAL: Iqons.svgPath (the part sprite) must be set BEFORE toDataUrl().
@@ -3170,7 +3188,42 @@ Don't share them and keep them safe.</p>
     el.textContent = line;
     el.hidden = false;
   }
+  // Never-strand sweep: ask the bridge to refund every persisted REAL NIM lock (both chains
+  // probed native-side; a lock is forgotten only when chain truth proves it empty). Runs at
+  // boot and on every swap-sheet open; re-arms itself while anything is pending so a
+  // broadcast refund is confirmed landed (AlreadyResolved) a couple of blocks later.
+  let refundSweepTimer = null;
+  let refundHadPending = false;
+  async function sweepLiveLocks() {
+    if (!(window.nimmesh && window.nimmesh.swapMeshRefund)) return;
+    if (refundSweepTimer) { clearTimeout(refundSweepTimer); refundSweepTimer = null; }
+    let res;
+    try { res = await window.nimmesh.swapMeshRefund(); } catch (e) { return; }
+    if (!res || res.ok !== true) return;
+    const rows = res.results || [];
+    const note = document.getElementById('swap-refund-note');
+    if (!rows.length) { if (note && !refundHadPending) note.hidden = true; return; }
+    const broadcast = rows.some((r) => r.status === 'refund-broadcast');
+    const still = rows.some((r) => r.status === 'still-locked');
+    if (note) {
+      note.hidden = false;
+      if (broadcast) note.textContent = T('swap.refund.broadcast');
+      else if (res.remaining === 0) note.textContent = T('swap.refund.done');
+      else if (still) note.textContent = T('swap.refund.locked');
+      else note.textContent = T('swap.refund.error');
+    }
+    if (res.remaining > 0) {
+      refundHadPending = true;
+      refundSweepTimer = setTimeout(sweepLiveLocks, 20000); // ~a couple of NIM blocks
+    } else if (refundHadPending) {
+      // Everything just resolved: leave the ✓ up briefly, then clear.
+      refundHadPending = false;
+      if (note) setTimeout(() => { note.hidden = true; }, 10000);
+    }
+  }
+
   function resetSwapSheet() {
+    sweepLiveLocks();
     if (swapTimer) { clearTimeout(swapTimer); swapTimer = null; }
     if (swapPoll) { clearInterval(swapPoll); swapPoll = null; }
     if (swapMeshLive) {

@@ -3,6 +3,40 @@
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
 
+## [0.86.1] — 2026-07-15
+
+### Fixed — the never-strand refund sweep never ran, and could not have refunded a mainnet lock
+
+Andjroo's 20 NIM from the two stalled 2026-07-14 mainnet swap runs sat in expired HTLCs
+(`NQ85 SECV…XHHN`, `NQ19 X84E…CGRV`, 10 NIM each) after he opened the Swap sheet with the
+real toggle on — "nothing happened. Still the same amount." Three stacked defects:
+
+1. **Nothing ever invoked the sweep.** `swapMeshRefund` existed on the bridge (G10b), but no
+   webui code called it — the "sweep on open" the checkpoint promised was never wired.
+2. **The refunder was testnet-pinned twice.** The Swift sweep passed the testnet RPC url, and
+   the core `NimHtlcRefunder` hardcoded `NetworkId::Testnet` in both its RPC guard and the
+   refund tx's `network_id` — a mainnet refund built here would be unrelayable.
+3. **A wrong-chain read could forget a mainnet lock.** Querying a mainnet HTLC address on the
+   testnet chain reads "no account" → balance 0 → `AlreadyResolved` → the Swift sweep dropped
+   the lock from persistence while 10 NIM stayed locked on mainnet. (Bug 1 is the only reason
+   bug 3 never fired.)
+
+Fixes, each proven by a test or the Playwright harness:
+
+- Core: `NimHtlcRefunder` is network-aware (`from_parts_on`) and stamps the refund tx with its
+  OWN network's wire id; new `NimHtlcRefunder.newMainnet` FFI constructor over
+  `HttpGatewayRpc::new_mainnet`. Byte-exact mainnet-wire test + testnet-url refusal +
+  bindings-parity refusal. **Deliberately NOT behind the `mainnet_swap` arming switch**: a
+  `TimeoutResolve` can only pay the HTLC's own sender (chain-enforced — this wallet), so the
+  never-strand door reduces exposure and must stay open even if a later build disarms.
+- Swift: the sweep probes BOTH chains per lock (a lock record carries no network) and forgets
+  a lock ONLY when every probed chain reads the contract empty; any broadcast, still-locked,
+  or error keeps it. `AlreadyResolved` docs now state the caller contract explicitly.
+- webui: the sweep actually runs — at boot (~4 s after launch) and on every Swap-sheet open —
+  with an honest gold one-liner (`#swap-refund-note`, i18n ×5) walking
+  "Refunding locked NIM to your wallet…" → "Locked NIM refunded ✓", re-sweeping every 20 s
+  while anything is pending so a broadcast is chain-confirmed before the record is forgotten.
+
 ## [0.86.0] — 2026-07-15
 
 ### Fixed — the FFI configs printed their private keys (G11 / #82)

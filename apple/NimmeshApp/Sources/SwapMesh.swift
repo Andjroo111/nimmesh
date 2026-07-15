@@ -326,7 +326,11 @@ extension Bridge {
 
     /// G10b (never-strand): try to refund every persisted REAL NIM lock via the core's
     /// `NimHtlcRefunder` — idempotent: `still-locked` before the timeout, `refund-broadcast`
-    /// once past it, and only the chain-truth `resolved` (contract emptied) forgets a lock.
+    /// once past it. A lock record does not carry its network, so every sweep probes BOTH
+    /// chains (the 2026-07-15 20-NIM strand was a MAINNET lock and the old sweep was
+    /// testnet-pinned — a wrong-chain read is `AlreadyResolved` and must prove nothing).
+    /// A lock is forgotten ONLY when every probed chain reads the contract empty; a
+    /// broadcast, a still-locked, or ANY error keeps it (fail-closed, never forget early).
     func swapMeshRefund() async -> (Bool, Any) {
         guard let nimKey = Wallet.enclaveKey else { return (false, "no wallet yet") }
         var locks = persistedLiveLocks()
@@ -336,34 +340,53 @@ extension Bridge {
             }
         }
         guard !locks.isEmpty else { return (true, ["ok": true, "results": [], "remaining": 0]) }
+        let chains: [(String, NimHtlcRefunder)]
         do {
-            let refunder = try NimHtlcRefunder(nimKey: nimKey, nimRpcUrl: liveNimRpcUrl)
-            var results: [[String: Any]] = []
-            var remaining: [FfiNimLock] = []
-            for lock in locks {
+            chains = [
+                ("mainnet", try NimHtlcRefunder.newMainnet(nimKey: nimKey, nimRpcUrl: mainnetNimRpcUrl)),
+                ("testnet", try NimHtlcRefunder(nimKey: nimKey, nimRpcUrl: liveNimRpcUrl)),
+            ]
+        } catch {
+            return (false, "\(error)")
+        }
+        var results: [[String: Any]] = []
+        var remaining: [FfiNimLock] = []
+        for lock in locks {
+            var broadcast: [String: Any]?
+            var stillLocked: [String: Any]?
+            var failed: [String: Any]?
+            for (chain, refunder) in chains {
                 do {
                     switch try refunder.refund(lock: lock) {
                     case .refunded(let txHash):
                         // Broadcast ≠ landed: keep the lock until a later pass reads the
                         // contract empty (the A2c verified-refund rule).
-                        results.append(["contract": lock.contract, "status": "refund-broadcast", "txHash": txHash])
-                        remaining.append(lock)
+                        broadcast = [
+                            "contract": lock.contract, "status": "refund-broadcast",
+                            "txHash": txHash, "network": chain,
+                        ]
                     case .alreadyResolved:
-                        results.append(["contract": lock.contract, "status": "resolved"])
+                        break // empty on THIS chain — proves nothing about the other
                     case .stillLocked(let untilMs):
-                        results.append(["contract": lock.contract, "status": "still-locked", "untilMs": Int(untilMs)])
-                        remaining.append(lock)
+                        stillLocked = [
+                            "contract": lock.contract, "status": "still-locked",
+                            "untilMs": Int(untilMs), "network": chain,
+                        ]
                     }
                 } catch {
-                    results.append(["contract": lock.contract, "status": "error", "reason": "\(error)"])
-                    remaining.append(lock)
+                    failed = [
+                        "contract": lock.contract, "status": "error",
+                        "reason": "\(error)", "network": chain,
+                    ]
                 }
             }
-            storeLiveLocks(remaining)
-            return (true, ["ok": true, "results": results, "remaining": remaining.count])
-        } catch {
-            return (false, "\(error)")
+            // nil row ⟺ every chain read AlreadyResolved — the only state that forgets.
+            let row = broadcast ?? stillLocked ?? failed
+            results.append(row ?? ["contract": lock.contract, "status": "resolved"])
+            if row != nil { remaining.append(lock) }
         }
+        storeLiveLocks(remaining)
+        return (true, ["ok": true, "results": results, "remaining": remaining.count])
     }
 
     // MARK: live-lock persistence (UserDefaults JSON; no secrets — contracts + amounts only)

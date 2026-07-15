@@ -285,8 +285,10 @@ pub enum FfiRefundOutcome {
         /// The refund tx hash (lowercase hex).
         tx_hash: String,
     },
-    /// The contract is already empty/gone — claimed by the counterparty or refunded. The
-    /// lock can be forgotten.
+    /// The contract is already empty/gone **on this refunder's chain** — claimed by the
+    /// counterparty or refunded. A caller probing more than one chain (a lock record does
+    /// not carry its network) may forget the lock ONLY when every probed chain reads
+    /// `AlreadyResolved`; a wrong-chain read alone proves nothing.
     AlreadyResolved,
     /// The HTLC timeout has not passed yet — try again after `until_ms`.
     StillLocked {
@@ -303,6 +305,7 @@ pub enum FfiRefundOutcome {
 pub struct NimHtlcRefunder {
     key: Arc<dyn EnclaveKey>,
     rpc: Arc<dyn GatewayRpc>,
+    network: crate::NetworkId,
     clock_ms: fn() -> u64,
 }
 
@@ -324,6 +327,37 @@ impl NimHtlcRefunder {
             Ok(Arc::new(NimHtlcRefunder::from_parts(
                 nim_key,
                 Arc::new(rpc),
+            )))
+        }
+        #[cfg(not(feature = "gateway-rpc"))]
+        {
+            let _ = (nim_key, nim_rpc_url);
+            Err(LiveSwapFfiError::Unsupported)
+        }
+    }
+
+    /// The MAINNET refunder — the never-strand door for REAL NIM locks. Deliberately **NOT**
+    /// behind the `mainnet_swap` arming switch, unlike every swap constructor: a
+    /// `TimeoutResolve` can only ever pay the HTLC's own `htlc_sender` (chain-enforced — this
+    /// wallet, the funder), so this door cannot create exposure, only reduce it; and a lock
+    /// funded by an ARMED build must stay refundable even if a later build disarms. The url
+    /// must be a mainnet RPC (a "testnet"-looking url is refused). Requires `gateway-rpc`.
+    #[uniffi::constructor]
+    pub fn new_mainnet(
+        nim_key: Arc<dyn EnclaveKey>,
+        nim_rpc_url: String,
+    ) -> Result<Arc<Self>, LiveSwapFfiError> {
+        #[cfg(feature = "gateway-rpc")]
+        {
+            let rpc = crate::rpc::HttpGatewayRpc::new_mainnet(nim_rpc_url).map_err(|e| {
+                LiveSwapFfiError::Refused {
+                    reason: e.to_string(),
+                }
+            })?;
+            Ok(Arc::new(NimHtlcRefunder::from_parts_on(
+                nim_key,
+                Arc::new(rpc),
+                crate::NetworkId::Mainnet,
             )))
         }
         #[cfg(not(feature = "gateway-rpc"))]
@@ -373,7 +407,7 @@ impl NimHtlcRefunder {
             value: balance, // refund everything the contract still holds
             fee: 0,
             validity_start_height: head,
-            network_id: crate::NetworkId::Testnet.wire_id(),
+            network_id: self.network.wire_id(),
         };
         let signature: [u8; 64] = self
             .key
@@ -394,11 +428,22 @@ impl NimHtlcRefunder {
 
 impl NimHtlcRefunder {
     /// The seam constructor (tests + rigs inject a mock RPC; the FFI ctor injects the
-    /// testnet-guarded HTTP client).
+    /// testnet-guarded HTTP client). Testnet wire id — the historical default.
     pub fn from_parts(key: Arc<dyn EnclaveKey>, rpc: Arc<dyn GatewayRpc>) -> Self {
+        NimHtlcRefunder::from_parts_on(key, rpc, crate::NetworkId::Testnet)
+    }
+
+    /// The network-aware seam constructor: the refund tx is stamped with THIS network's wire
+    /// id (a testnet-stamped refund of a mainnet HTLC is unrelayable, and vice versa).
+    pub fn from_parts_on(
+        key: Arc<dyn EnclaveKey>,
+        rpc: Arc<dyn GatewayRpc>,
+        network: crate::NetworkId,
+    ) -> Self {
         NimHtlcRefunder {
             key,
             rpc,
+            network,
             clock_ms: now_ms,
         }
     }
