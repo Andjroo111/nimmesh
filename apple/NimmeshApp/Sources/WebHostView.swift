@@ -246,7 +246,9 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         // funds a fresh single-use key; the link is cash — whoever holds it can claim.
         cashlinkCreate: function (a) { return call('cashlinkCreate', a || {}); },
         cashlinkList: function () { return call('cashlinkList'); },
-        cashlinkStatus: function (addr) { return call('cashlinkStatus', { address: addr }); }
+        cashlinkStatus: function (addr) { return call('cashlinkStatus', { address: addr }); },
+        cashlinkPeek: function (a) { return call('cashlinkPeek', a || {}); },
+        cashlinkClaim: function (a) { return call('cashlinkClaim', a || {}); }
       };
     })();
     """
@@ -261,7 +263,7 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         switch method {
         case "headHeight", "walletBalance", "walletHistory", "sendTransaction", "meshSendTransaction",
              "prices", "market", "swapMeshStart", "swapMeshRefund", "cashlinkCreate", "cashlinkStatus",
-             "usdcBalances", "usdcHistory", "sendUsdc":
+             "usdcBalances", "usdcHistory", "sendUsdc", "cashlinkPeek", "cashlinkClaim":
             Task { let (ok, payload) = await self.handleAsync(method: method, args: args)
                 self.resolve(id: id, ok: ok, payload: payload) }
         case "authenticate":
@@ -494,10 +496,8 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         case "swapMeshRefund":
             // Never-strand: refund expired REAL NIM locks back to the wallet (chain IO).
             return await swapMeshRefund()
-        case "cashlinkCreate":
-            return await cashlinkCreate(args: args)
-        case "cashlinkStatus":
-            return await cashlinkStatus(args: args)
+        case "cashlinkCreate", "cashlinkStatus", "cashlinkPeek", "cashlinkClaim":
+            return await cashlinkHandle(method: method, args: args)
         case "usdcBalances", "usdcHistory":
             // Read-only Polygon (mainnet, 137) reads for the wallet-derived USDC swap accounts.
             return await PolygonReads.handle(method: method, args: args)

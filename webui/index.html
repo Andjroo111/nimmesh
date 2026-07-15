@@ -729,6 +729,16 @@
 
   /* ---- Cash link sheet: NIM as a URL/QR, hub-claimable in any browser ---- */
   #cashlink-sheet { overflow-x: hidden; }
+  /* #229 claim row: paste a received link, sweep it to MY wallet (online or mesh). */
+  .cl-claimrow { display: flex; gap: 8px; margin: 10px 24px 0; }
+  .cl-claimrow input { flex: 1; min-width: 0; height: 42px; padding: 0 14px; font: inherit;
+    font-size: 16px; border: 1.5px solid rgba(31,35,72,.16); border-radius: 500px;
+    color: #1f2348; outline: none; background: #fff; }
+  .cl-claimrow input:focus { border-color: #0582CA; }
+  .cl-claimrow button { height: 42px; padding: 0 18px; border: 0; border-radius: 500px;
+    cursor: pointer; font-family: inherit; font-weight: 700; font-size: 14px; color: #fff;
+    background-image: radial-gradient(100% 100% at bottom right, #265DD7, #0582CA); }
+  .cl-claimrow button:disabled { opacity: .6; }
   .cl-body { padding: 6px 24px calc(18px + env(safe-area-inset-bottom)); max-height: 66vh; overflow-y: auto; overflow-x: hidden; }
   .cl-amount { display: flex; align-items: baseline; justify-content: center; gap: 8px; margin: 14px 0 2px; }
   .cl-amount input { width: 5ch; border: none; outline: none; font: inherit; font-size: 40px; font-weight: 700;
@@ -1954,6 +1964,12 @@ Don't share them and keep them safe.</p>
       <div class="cl-status" id="cl-create-status"></div>
       <div class="cl-list-title" data-i18n="cl.yours">Your cash links</div>
       <div id="cl-list"></div>
+      <div class="cl-list-title" data-i18n="cl.claim.title">Claim a link</div>
+      <div class="cl-claimrow">
+        <input id="cl-claim-input" placeholder="Paste a cash link" data-i18n-ph="cl.claim.ph" autocomplete="off">
+        <button id="cl-claim-btn" data-i18n="ccard.claim">Claim</button>
+      </div>
+      <div class="cl-status" id="cl-claim-status"></div>
     </div>
     <div id="cl-result" hidden>
       <div class="cl-qr-wrap">
@@ -2089,7 +2105,7 @@ Don't share them and keep them safe.</p>
       'cl.share': 'Compartir', 'cl.copy': 'Copiar', 'cl.tochat': 'Al chat', 'cl.newlink': 'Nuevo enlace',
       'cl.funded': 'Financiado — listo para compartir', 'cl.fundedmesh': 'Enviado por la malla — entregándose',
       'cl.unclaimed': 'Sin cobrar — listo para compartir', 'cl.claimed': 'Cobrado ✓', 'cl.copied': 'Copiado',
-      'cl.none': 'Todavía no hay enlaces', 'cl.chip.open': 'abierto', 'cl.chip.claimed': 'cobrado', 'ccard.label': 'Cashlink', 'ccard.claim': 'Reclamar', 'ccard.claiming': 'Reclamando…', 'ccard.claimedok': 'Reclamado ✓', 'ccard.copied': 'Enlace copiado. Ábrelo en tu navegador para reclamar tus NIM.',
+      'cl.none': 'Todavía no hay enlaces', 'cl.chip.open': 'abierto', 'cl.chip.claimed': 'cobrado', 'ccard.label': 'Cashlink', 'ccard.claim': 'Reclamar', 'ccard.claiming': 'Reclamando…', 'ccard.claimedok': 'Reclamado ✓', 'ccard.copied': 'Enlace copiado. Ábrelo en tu navegador para reclamar tus NIM.', 'cl.claim.title': 'Reclamar un enlace', 'cl.claim.ph': 'Pega un cash link', 'cl.claim.invalid': 'Eso no es un cash link',
       'cl.sharetext': 'NIM para ti — abre el enlace para cobrarlo:',
       'swap.ph.propose': 'Propuesta enviada', 'swap.ph.accept': 'Socio aceptó', 'swap.ph.fundnim': 'HTLC de NIM fondeado',
       'swap.ph.fundother': 'HTLC del socio fondeado', 'swap.ph.reveal': 'Secreto revelado', 'swap.ph.settled': 'Liquidado',
@@ -2166,7 +2182,7 @@ Don't share them and keep them safe.</p>
       'cl.share': 'Teilen', 'cl.copy': 'Kopieren', 'cl.tochat': 'In den Chat', 'cl.newlink': 'Neuer Cash-Link',
       'cl.funded': 'Finanziert — bereit zum Teilen', 'cl.fundedmesh': 'Über das Mesh gesendet — wird zugestellt',
       'cl.unclaimed': 'Nicht eingelöst — bereit zum Teilen', 'cl.claimed': 'Eingelöst ✓', 'cl.copied': 'Kopiert',
-      'cl.none': 'Noch keine Cash-Links', 'cl.chip.open': 'offen', 'cl.chip.claimed': 'eingelöst', 'ccard.label': 'Cashlink', 'ccard.claim': 'Einlösen', 'ccard.claiming': 'Wird eingelöst…', 'ccard.claimedok': 'Eingelöst ✓', 'ccard.copied': 'Link kopiert. Öffne ihn im Browser, um deine NIM einzulösen.',
+      'cl.none': 'Noch keine Cash-Links', 'cl.chip.open': 'offen', 'cl.chip.claimed': 'eingelöst', 'ccard.label': 'Cashlink', 'ccard.claim': 'Einlösen', 'ccard.claiming': 'Wird eingelöst…', 'ccard.claimedok': 'Eingelöst ✓', 'ccard.copied': 'Link kopiert. Öffne ihn im Browser, um deine NIM einzulösen.', 'cl.claim.title': 'Einen Link einlösen', 'cl.claim.ph': 'Cash-Link einfügen', 'cl.claim.invalid': 'Das ist kein Cash-Link',
       'cl.sharetext': 'NIM für dich — Link öffnen und einlösen:',
       'swap.ph.propose': 'Vorschlag gesendet', 'swap.ph.accept': 'Partner hat angenommen', 'swap.ph.fundnim': 'NIM-HTLC finanziert',
       'swap.ph.fundother': 'Partner-HTLC finanziert', 'swap.ph.reveal': 'Geheimnis enthüllt', 'swap.ph.settled': 'Abgewickelt',
@@ -2243,7 +2259,7 @@ Don't share them and keep them safe.</p>
       'cl.share': 'Partager', 'cl.copy': 'Copier', 'cl.tochat': 'Vers le chat', 'cl.newlink': 'Nouveau lien',
       'cl.funded': 'Financé — prêt à partager', 'cl.fundedmesh': 'Envoyé via le mesh — en cours',
       'cl.unclaimed': 'Non encaissé — prêt à partager', 'cl.claimed': 'Encaissé ✓', 'cl.copied': 'Copié',
-      'cl.none': 'Pas encore de liens', 'cl.chip.open': 'ouvert', 'cl.chip.claimed': 'encaissé', 'ccard.label': 'Cashlink', 'ccard.claim': 'Encaisser', 'ccard.claiming': 'Encaissement…', 'ccard.claimedok': 'Encaissé ✓', 'ccard.copied': 'Lien copié. Ouvre-le dans ton navigateur pour encaisser tes NIM.',
+      'cl.none': 'Pas encore de liens', 'cl.chip.open': 'ouvert', 'cl.chip.claimed': 'encaissé', 'ccard.label': 'Cashlink', 'ccard.claim': 'Encaisser', 'ccard.claiming': 'Encaissement…', 'ccard.claimedok': 'Encaissé ✓', 'ccard.copied': 'Lien copié. Ouvre-le dans ton navigateur pour encaisser tes NIM.', 'cl.claim.title': 'Encaisser un lien', 'cl.claim.ph': 'Colle un cash link', 'cl.claim.invalid': 'Ce n’est pas un cash link',
       'cl.sharetext': 'Du NIM pour vous — ouvrez le lien pour l\'encaisser :',
       'swap.ph.propose': 'Proposition envoyée', 'swap.ph.accept': 'Partenaire a accepté', 'swap.ph.fundnim': 'HTLC NIM financé',
       'swap.ph.fundother': 'HTLC du partenaire financé', 'swap.ph.reveal': 'Secret révélé', 'swap.ph.settled': 'Réglé',
@@ -2320,7 +2336,7 @@ Don't share them and keep them safe.</p>
       'cl.share': 'Compartilhar', 'cl.copy': 'Copiar', 'cl.tochat': 'Para o chat', 'cl.newlink': 'Novo link',
       'cl.funded': 'Financiado — pronto para compartilhar', 'cl.fundedmesh': 'Enviado pela mesh — entregando',
       'cl.unclaimed': 'Não resgatado — pronto para compartilhar', 'cl.claimed': 'Resgatado ✓', 'cl.copied': 'Copiado',
-      'cl.none': 'Ainda sem links', 'cl.chip.open': 'aberto', 'cl.chip.claimed': 'resgatado', 'ccard.label': 'Cashlink', 'ccard.claim': 'Resgatar', 'ccard.claiming': 'Resgatando…', 'ccard.claimedok': 'Resgatado ✓', 'ccard.copied': 'Link copiado. Abra no navegador para resgatar seus NIM.',
+      'cl.none': 'Ainda sem links', 'cl.chip.open': 'aberto', 'cl.chip.claimed': 'resgatado', 'ccard.label': 'Cashlink', 'ccard.claim': 'Resgatar', 'ccard.claiming': 'Resgatando…', 'ccard.claimedok': 'Resgatado ✓', 'ccard.copied': 'Link copiado. Abra no navegador para resgatar seus NIM.', 'cl.claim.title': 'Resgatar um link', 'cl.claim.ph': 'Cole um cash link', 'cl.claim.invalid': 'Isso não é um cash link',
       'cl.sharetext': 'NIM para você — abra o link para resgatar:',
       'swap.ph.propose': 'Proposta enviada', 'swap.ph.accept': 'Parceiro aceitou', 'swap.ph.fundnim': 'HTLC de NIM financiado',
       'swap.ph.fundother': 'HTLC do parceiro financiado', 'swap.ph.reveal': 'Segredo revelado', 'swap.ph.settled': 'Liquidado',
@@ -2404,7 +2420,7 @@ Don't share them and keep them safe.</p>
     'cl.share': 'Share', 'cl.copy': 'Copy', 'cl.tochat': 'To chat', 'cl.newlink': 'New cash link',
     'cl.funded': 'Funded — ready to share', 'cl.fundedmesh': 'Sent over the mesh — delivering',
     'cl.unclaimed': 'Unclaimed — ready to share', 'cl.claimed': 'Claimed ✓', 'cl.copied': 'Copied',
-    'cl.none': 'No cash links yet', 'cl.chip.open': 'open', 'cl.chip.claimed': 'claimed', 'ccard.label': 'Cash link', 'ccard.claim': 'Claim', 'ccard.claiming': 'Claiming…', 'ccard.claimedok': 'Claimed ✓', 'ccard.copied': 'Link copied. Open it in your browser to claim your NIM.',
+    'cl.none': 'No cash links yet', 'cl.chip.open': 'open', 'cl.chip.claimed': 'claimed', 'ccard.label': 'Cash link', 'ccard.claim': 'Claim', 'ccard.claiming': 'Claiming…', 'ccard.claimedok': 'Claimed ✓', 'ccard.copied': 'Link copied. Open it in your browser to claim your NIM.', 'cl.claim.title': 'Claim a link', 'cl.claim.ph': 'Paste a cash link', 'cl.claim.invalid': 'That is not a cash link',
     'cl.sharetext': 'NIM for you — open the link to claim it:',
     'swap.ph.propose': 'Proposal sent', 'swap.ph.accept': 'Partner accepted', 'swap.ph.fundnim': 'NIM HTLC funded',
     'swap.ph.fundother': 'Partner HTLC funded', 'swap.ph.reveal': 'Secret revealed', 'swap.ph.settled': 'Settled',
@@ -2766,6 +2782,26 @@ Don't share them and keep them safe.</p>
     chatSendBtn.disabled = false;
   });
   document.getElementById('cl-back').addEventListener('click', clShowCreate);
+  // #229: claim a received link right here — the LINK key signs a sweep to MY wallet,
+  // online RPC or over the mesh (the bridge picks). Browser fallback: open the hub.
+  const clClaimBtn = document.getElementById('cl-claim-btn');
+  clClaimBtn.addEventListener('click', async () => {
+    const input = document.getElementById('cl-claim-input');
+    const status = document.getElementById('cl-claim-status');
+    const url = input.value.trim();
+    if (!CLC_RE.test(url)) { status.textContent = T('cl.claim.invalid'); return; }
+    if (!(window.nimmesh && window.nimmesh.cashlinkClaim)) { window.open(url, '_blank'); return; }
+    clClaimBtn.disabled = true;
+    status.textContent = T('ccard.claiming');
+    try {
+      const r = await window.nimmesh.cashlinkClaim({ url });
+      status.textContent = `${T('ccard.claimedok')} ${clFmtNim(r.amountLuna || 0)}`;
+      input.value = '';
+    } catch (e) {
+      status.textContent = String((e && e.message) || e);
+    }
+    clClaimBtn.disabled = false;
+  });
   document.getElementById('menu-cashlink').addEventListener('click', () => {
     closeMenu();
     clShowCreate();
