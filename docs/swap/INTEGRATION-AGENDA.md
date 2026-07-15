@@ -135,10 +135,29 @@ the protocol math is real. Everything above is at the **money-path edge**, which
     are baked into the constructors, so the run validated the safe path.
   - **Still testnet-only:** the on-device BLE run (G12) and mainnet (Phase 4) remain human/owner gates.
 
-### G11 — Real secret + real signer on device  *(OG-2, OG-3)*
+### G11 — Real secret + real signer on device  *(OG-2, OG-3)*  🚧 **in progress**
 - **Do:** replace `swap_node::sim_secret` with a CSPRNG draw; wire the real `SwapSigner`/`EnclaveKey`
   + `BtcEnclaveKey` on device so the seed never crosses FFI (only signed bytes do).
 - **Done when:** signing happens in the enclave seam; `assert` no secret/seed material crosses FFI or hits logs/mesh.
+- **Shipped:**
+  - **"no secret hits logs"** (PR #249, v0.86.0) — hand-written redacting `Debug` for every
+    `uniffi::Record` carrying key material; re-deriving `Debug` now fails CI. [ADR-0012](../adr/0012-ffi-secret-redaction.md).
+  - **Real entropy, enforced** (PR #252, v0.87.0) — the live doors took the `intent_seed` /
+    `nim_claim_seed` on **length alone**, and `SwapMesh.swift` drew them with a discarded
+    `SecRandomCopyBytes` status over a zero-filled buffer: a failing RNG silently produced an
+    all-zero seed, from which every `S` is derivable off the on-wire `swap_id` — **S1 reopened
+    through the app's RNG**. `live_safety`'s C1 gate could not catch it (a zero-seeded PRF still
+    counts as "not the sim source"). New `swap_secret` module: the OS-CSPRNG drawer
+    (`drawSwapSeed()` over UniFFI, now what Swift calls), the entropy gate on every live door, and
+    the one PRF definition. [ADR-0013](../adr/0013-swap-entropy-gate.md).
+- **Still open, roughly in order:**
+  1. **The seed still crosses FFI inbound** — `FfiLiveResponderConfig` passes a raw Ed25519 seed +
+     a funded secp256k1 key straight across, contradicting this goal's "seed never crosses FFI". The
+     initiator's funding key is already behind `EnclaveKey`; the responder's claim key should follow.
+     `evm_address_for_secret(secret: Vec<u8>)` also takes a bare private key as an FFI arg.
+  2. `sim_secret` is still `SwapSession::new`'s default (C1-gated, not eliminated).
+  3. `BtcEnclaveKey` is unwired on the live path (only `SwapEngineHandle` + examples take one).
+  4. No `zeroize` — secrets sit in `Vec<u8>` for the config's lifetime.
 
 ### G12 — On-device swap over real BLE mesh  *(Phase D — partly human)*
 - **Do:** run the full swap end-to-end on hardware — iOS↔iOS and iOS↔Android over real BLE, multi-hop,

@@ -3,6 +3,48 @@
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
 
+## [0.87.0] — 2026-07-15
+
+### Fixed — a failed CSPRNG in the app handed the swap an all-zero seed, and every door accepted it
+
+G11 (#82). The live FFI doors validated `intent_seed` / `nim_claim_seed` for **length only**. That
+seed is doubly load-bearing: it is the PRF master every per-swap secret `S` derives from, and (via
+`InMemoryEnclaveKey::from_secret`) the Ed25519 key that *is* the node's swap identity.
+
+`SwapMesh.swift` drew it with `_ = seed.withUnsafeMutableBytes { SecRandomCopyBytes(...) }` — the
+`OSStatus` **discarded**, over a zero-filled `Data(count: 32)`. A failing RNG therefore left the
+seed all zeros, silently. (`Mnemonic.swift`, the wallet path, `precondition`s the identical call;
+only the swap money path dropped it.) With a zero seed every `S` is `sha256(master ‖ swap_id ‖
+label)` over a *publicly known* master, and `swap_id` travels the wire in cleartext — so any relay
+that saw a Propose could recompute `S` and claim the counterparty leg first. That is **S1, the
+CRITICAL theft this agenda exists to close, reopened through the app's RNG**.
+
+Nothing downstream caught it. Every 32-byte value is a valid Ed25519 seed (the secp256k1 secrets
+were protected only by the accident that zero is not a valid scalar — which does not cover a
+stuck-byte value either). And `live_safety`'s C1 gate passes: a zero-seeded PRF still counts as
+"not the sim source", so `secret_is_sim` flips false. C1 checks **that** you replaced the sim
+secret source, not that what you replaced it with carries any entropy.
+
+- **New `swap_secret` module** — one auditable entropy inventory (mirroring `ffi_secret_redaction`):
+  the entropy gate, the OS-CSPRNG drawer, the per-swap secret PRF, and `sim_secret` (moved here from
+  `swap_node`, name unchanged — the OWNER-GATED doclint pins it; the move also brought `swap_node`
+  back under the 800-line ceiling it was sitting exactly on).
+- **`check_seed_entropy` at every live door** — Rust no longer trusts the app's RNG, the same way
+  G1 taught it not to trust a peer's message. In `swap_live_ffi_live_impl` the gate sits inside
+  `seed32`, the single chokepoint all four secrets funnel through, so a new secret field inherits it.
+  It is a health test (NIST SP 800-90B-style repetition/stuck-output), **not** an entropy estimator:
+  it catches the canonical catastrophic failures (unwritten buffer, latched RNG, hand-typed
+  placeholder), not a weak-but-well-formed PRNG.
+- **`drawSwapSeed()` over UniFFI + Swift uses it** — the actual fix, removing the failure mode by
+  construction rather than detecting it. A failing RNG now aborts instead of returning zeros.
+- **The PRF recipe is defined once** — the two live doors carried copy-pasted twins of it.
+- Test suites no longer seed themselves with `[7; 32]` / `[0x5A; 32]` — those are exactly what the
+  gate refuses. `swap_secret::test_seed(tag)` gives deterministic, gate-clearing seeds.
+- `getrandom` is now a direct (non-optional) dependency; `x25519-dalek` already linked it
+  unconditionally, so this adds no dependency or portability surface.
+
+See [ADR-0013](docs/adr/0013-swap-entropy-gate.md).
+
 ## [0.86.1] — 2026-07-15
 
 ### Fixed — the never-strand refund sweep never ran, and could not have refunded a mainnet lock

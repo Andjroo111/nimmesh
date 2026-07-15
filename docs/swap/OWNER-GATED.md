@@ -50,13 +50,24 @@ The building blocks exist but are gated:
 
 ## OG-3 — Real swap secret `S`
 
-**State:** an intent-initiated swap derives `S` from **`swap_node::sim_secret`**
-(`crates/nimmesh-core/src/swap_node.rs`) — a deterministic `"NIMMESH-SIM-INTENT-SECRET-DO-NOT-USE-IN-PROD"`
-placeholder so the no-RNG sim is reproducible.
+**State:** partly wired (G11 / #82).
 
-**Seam to wire:** replace `sim_secret(swap_id)` with a CSPRNG draw at initiation. **Why gated:** a
-predictable `S` lets an attacker pre-claim the BTC leg — only safe to flip on with the real money-path,
-never in the deterministic test harness.
+- **Live paths draw real entropy.** The live FFI doors stretch a CSPRNG seed into `S` through
+  `swap_secret::secret_source` (a domain-separated PRF), and `swap_secret::draw_swap_seed` is the
+  OS-CSPRNG drawer the app calls over UniFFI as `drawSwapSeed()`. Every 32-byte secret arriving at a
+  live door is entropy-gated by `swap_secret::check_seed_entropy`, so a zero/stuck seed — what a
+  swallowed CSPRNG error produces — is refused rather than turned into a public-derivable `S`
+  ([ADR-0013](../adr/0013-swap-entropy-gate.md)).
+- **The sim default remains.** `SwapSession::new` still defaults to **`swap_secret::sim_secret`**
+  (`crates/nimmesh-core/src/swap_secret.rs` — moved there from `swap_node.rs` in G11, name
+  unchanged), the deterministic `"NIMMESH-SIM-INTENT-SECRET-DO-NOT-USE-IN-PROD"` placeholder that
+  keeps the no-RNG sim reproducible. `SwapSession::live_safety` (C1) refuses to pair it with a live
+  signer, so it is **gated, not eliminated**.
+
+**Seam left to wire:** make a CSPRNG draw the *default* rather than an injection, so `sim_secret` is
+opt-in for tests instead of opt-out for production. **Why gated:** a predictable `S` lets an attacker
+pre-claim the BTC leg — only safe to flip on with the real money-path, never in the deterministic
+test harness.
 
 ## OG-4 — Mainnet / real funds / live broadcast
 

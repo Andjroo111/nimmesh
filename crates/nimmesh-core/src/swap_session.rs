@@ -251,7 +251,7 @@ impl SwapSession {
             propose_signer: None,
             confirm_policy: ConfirmationPolicy::testnet_defaults(),
             counterparty_chain: Asset::Btc,
-            secret_source: Box::new(crate::swap_node::sim_secret),
+            secret_source: Box::new(crate::swap_secret::sim_secret),
             secret_is_sim: true,
             caps: None,
             funding_proof_seen: HashSet::new(),

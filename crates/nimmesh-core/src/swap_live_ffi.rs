@@ -139,6 +139,18 @@ pub(crate) fn mainnet_htlc_if_armed(
 /// **App probe:** whether the mainnet swap path is fully armed (the master switch is on AND a
 /// deployed HTLC address is recorded — see [`crate::mainnet_swap::mainnet_swap_armed`]). `false` on
 /// any shipped/merged build, so the UI keeps its testnet path + labels; the arming release flips it.
+/// **App entry point:** draw a fresh 32-byte swap seed from the OS CSPRNG (G11 / #82).
+///
+/// Callers must use this rather than rolling their own draw. It is not a convenience: the app's
+/// hand-rolled `SecRandomCopyBytes` call discarded its `OSStatus` over a zero-filled buffer, so a
+/// failing RNG silently produced an all-zero seed — from which every per-swap secret is derivable
+/// off the on-wire `swap_id`. Here, a failing RNG aborts instead of returning zeros, and the value
+/// is guaranteed to clear the entropy gate the live doors apply ([`crate::swap_secret`]).
+#[uniffi::export]
+pub fn draw_swap_seed() -> Vec<u8> {
+    crate::swap_secret::draw_swap_seed().to_vec()
+}
+
 #[uniffi::export]
 pub fn mainnet_swap_armed() -> bool {
     crate::mainnet_swap::mainnet_swap_armed()

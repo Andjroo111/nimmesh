@@ -85,11 +85,11 @@ name = "swap_demo_server"
 required-features = ["bitcoin-leg"]
 
 [features]
-# G8: the real blocking HTTP JSON-RPC gateway client (`ureq` + `serde_json`) + the
-# keypair-entropy source for the live example. OFF by default so the pure-protocol core
-# stays dependency-light and WASM-friendly; the `gateway::RpcGateway` + `rpc::MockRpc`
-# (offline tests) need no feature. TESTNET-only either way (every constructor is guarded).
-gateway-rpc = ["dep:ureq", "dep:serde_json", "dep:getrandom"]
+# G8: the real blocking HTTP JSON-RPC gateway client (`ureq` + `serde_json`). OFF by default so
+# the pure-protocol core stays dependency-light and WASM-friendly; the `gateway::RpcGateway` +
+# `rpc::MockRpc` (offline tests) need no feature. TESTNET-only either way (every constructor is
+# guarded).
+gateway-rpc = ["dep:ureq", "dep:serde_json"]
 
 # Mesh swap (B1): the Bitcoin counterparty leg — `rust-bitcoin` builds the HTLC P2WSH script +
 # the claim/refund segwit txs (BIP143 sighash, secp256k1). OFF by default so the pure-protocol
@@ -99,7 +99,7 @@ bitcoin-leg = ["dep:bitcoin"]
 # B2: the BTC gateway — broadcast + confirmation queries against a public signet indexer
 # (mempool.space/signet/api). Reuses the blocking `ureq` HTTP client + `serde_json` (same deps as
 # `gateway-rpc`). The on-device tx-building (`bitcoin-leg`) needs no HTTP; only a gateway node does.
-bitcoin-gateway = ["bitcoin-leg", "dep:ureq", "dep:serde_json", "dep:getrandom"]
+bitcoin-gateway = ["bitcoin-leg", "dep:ureq", "dep:serde_json"]
 
 # P1 (mesh swap): the USDC-on-Polygon counterparty leg — EVM HTLC contract calls + tx signing. `sha3`
 # gives Keccak-256 (EVM addresses + ABI selectors). OFF by default so the pure-protocol core stays
@@ -119,12 +119,16 @@ uniffi = { workspace = true, features = ["cli"] }
 
 # G8: gateway broadcast (TESTNET, money-path). `ureq` is a lightweight BLOCKING HTTP client
 # (no tokio) for the Albatross JSON-RPC POST; `serde_json` builds/parses the JSON-RPC 2.0
-# envelope; `getrandom` seeds the live example's ephemeral testnet keypair. All three are
-# OPTIONAL and pulled in ONLY by the `gateway-rpc` feature — the protocol core never links
-# them. The pure-protocol path + the offline `MockRpc` tests compile without them.
+# envelope. Both are OPTIONAL and pulled in ONLY by the `gateway-rpc` feature — the protocol
+# core never links them. The pure-protocol path + the offline `MockRpc` tests compile without them.
 ureq = { version = "2", optional = true, features = ["json"] }
 serde_json = { version = "1", optional = true }
-getrandom = { version = "0.2", optional = true }
+
+# G11 (#82): the OS CSPRNG behind `swap_secret::draw_swap_seed` — the swap money path draws its own
+# entropy rather than trusting the app to. NOT optional (it was, back when only the gateway examples
+# seeded a keypair): the entropy gate is on the core money path, and `x25519-dalek` below already
+# links `getrandom` unconditionally, so making it direct adds no dependency or portability surface.
+getrandom = "0.2"
 
 # B1: the Bitcoin leg (mesh swap). `bitcoin` (rust-bitcoin) owns the HTLC redeem script, the P2WSH
 # address, BIP143 segwit sighash, and secp256k1 signing — it bundles `secp256k1`. OPTIONAL, pulled

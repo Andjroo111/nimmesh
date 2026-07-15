@@ -132,10 +132,21 @@ fn refused(reason: impl std::fmt::Display) -> LiveSwapFfiError {
     }
 }
 
+/// Convert + **health-check** a 32-byte secret arriving over FFI. Every secret the live doors take
+/// funnels through here (`intent_seed`, `nim_claim_seed`, `evm_gas_secret`, `evm_funding_secret`),
+/// so the G11 entropy gate is applied once, at the one chokepoint, and a new secret field cannot
+/// be added without inheriting it.
+///
+/// Length was the only check until G11. That was enough for the secp256k1 secrets by accident (zero
+/// is not a valid scalar, so the key build rejects it downstream) but not for the Ed25519 seeds:
+/// **every** 32-byte value is a valid Ed25519 seed, so an all-zero `intent_seed` sailed through and
+/// made every per-swap `S` public-derivable. See [`crate::swap_secret`].
 fn seed32(bytes: &[u8], what: &str) -> Result<[u8; 32], LiveSwapFfiError> {
-    bytes
+    let seed: [u8; 32] = bytes
         .try_into()
-        .map_err(|_| bad(format!("{what} must be 32 bytes")))
+        .map_err(|_| bad(format!("{what} must be 32 bytes")))?;
+    crate::swap_secret::check_seed_entropy(&seed).map_err(|why| bad(format!("{what}: {why}")))?;
+    Ok(seed)
 }
 
 fn evm_addr(s: &str, what: &str) -> Result<EvmAddress, LiveSwapFfiError> {
@@ -174,22 +185,7 @@ fn btc_pubkey_filler(seed: &[u8; 32]) -> [u8; BTC_PUBKEY_LEN] {
     k
 }
 
-/// The G11 per-swap secret PRF over a caller-CSPRNG seed (the exact
-/// `new_swap_participant` recipe): unpredictable without the seed, distinct per swap,
-/// domain-separated from the seed's identity use; no secret ever crosses back over FFI.
-fn secret_source(seed: &[u8; 32]) -> crate::swap_session::SecretSource {
-    let master = {
-        let mut buf = seed.to_vec();
-        buf.extend_from_slice(b"nimmesh-swap-secret-master-v1");
-        sha256(&buf)
-    };
-    Box::new(move |swap_id| {
-        let mut buf = master.to_vec();
-        buf.extend_from_slice(swap_id);
-        buf.extend_from_slice(b"nimmesh-swap-secret-v1");
-        sha256(&buf)
-    })
-}
+use crate::swap_secret::secret_source;
 
 /// Build + ephemerally sign the live NIM⇄USDC standing intent on Albatross **testnet**. Pure —
 /// unit-testable. The mainnet path calls [`build_live_intent_on`] with `NetworkId::Mainnet`.

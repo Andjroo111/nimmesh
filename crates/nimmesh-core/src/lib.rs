@@ -304,6 +304,13 @@ pub mod swap_participant_ffi;
 // G11: hand-written `Debug` for every FFI record that carries key material, so a seed/secret can
 // never reach a log through a derive. The one auditable list of what is secret at the door.
 mod ffi_secret_redaction;
+// G11 (#82): the one place a swap seed is drawn, health-checked, and stretched into per-swap
+// secrets. Rust draws its own entropy and refuses a degenerate caller seed at every live door —
+// a zero seed (a swallowed CSPRNG error) makes every `S` public-derivable from the on-wire
+// swap_id, which is the S1 theft reopened through the app's RNG.
+mod swap_secret;
+#[cfg(test)]
+mod swap_secret_tests;
 // G10a: the LIVE swap-participant constructors over UniFFI — the production door that carries
 // the Act-2-proven live NIM⇄USDC signer + the real funding verifiers onto a phone/Mac node
 // (testnet/Amoy pinned; honest refusal without the polygon-gateway + gateway-rpc features),

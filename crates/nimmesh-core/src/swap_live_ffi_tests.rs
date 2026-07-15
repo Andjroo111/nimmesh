@@ -91,9 +91,9 @@ mod unsupported {
             nim_luna: 500_000,
             usdc_micro: 1_000_000,
             expiry_height: 1_000_000,
-            intent_seed: vec![7; 32],
+            intent_seed: crate::swap_secret::test_seed(1).to_vec(),
             evm_claim_address: vec![0xA5; 20],
-            evm_gas_secret: vec![0x46; 32],
+            evm_gas_secret: crate::swap_secret::test_seed(3).to_vec(),
             nim_rpc_url: "https://rpc.testnet.nimiqwatch.com".into(),
             amoy_rpc_url: "https://rpc-amoy.polygon.technology".into(),
             htlc_address: "0xb3B3703E07AC897B7E3e864C113a2Fa547D76736".into(),
@@ -174,10 +174,7 @@ mod unsupported {
 mod live {
     use std::sync::Arc;
 
-    use super::live_impl::{
-        assemble_initiator_mainnet, assemble_responder_mainnet, build_live_intent,
-        mainnet_money_path, LockRecordingSigner, OneShotSigner,
-    };
+    use super::live_impl::{build_live_intent, LockRecordingSigner, OneShotSigner};
     use super::*;
     use crate::mock_radio::{MockEther, MockRadio};
     use crate::nimiq::address::Address;
@@ -190,7 +187,6 @@ mod live {
     use crate::radio::BleRadio;
     use crate::rpc::{MockRpc, RpcAccount};
     use crate::swap_coordinator::SwapContext;
-    use crate::swap_funding_verify::{ConfirmationPolicy, SwapCaps};
     use crate::swap_intent::Asset;
     use crate::swap_signer::SwapSigner;
     use crate::swap_wire::{SwapLegId, NIM_ADDRESS_LEN, SWAP_ID_LEN};
@@ -198,22 +194,22 @@ mod live {
     const HTLC_HEX: &str = "0xb3B3703E07AC897B7E3e864C113a2Fa547D76736";
     const USDC_HEX: &str = "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582";
 
-    fn radio(id: &str) -> Arc<dyn BleRadio> {
+    pub(super) fn radio(id: &str) -> Arc<dyn BleRadio> {
         MockRadio::new(id, MockEther::new())
     }
 
-    fn wallet_key() -> Arc<dyn EnclaveKey> {
+    pub(super) fn wallet_key() -> Arc<dyn EnclaveKey> {
         Arc::new(InMemoryEnclaveKey::from_secret(&[0x51; 32]))
     }
 
-    fn init_cfg() -> FfiLiveInitiatorConfig {
+    pub(super) fn init_cfg() -> FfiLiveInitiatorConfig {
         FfiLiveInitiatorConfig {
             nim_luna: 500_000,
             usdc_micro: 1_000_000,
             expiry_height: 1_000_000,
-            intent_seed: vec![7; 32],
+            intent_seed: crate::swap_secret::test_seed(1).to_vec(),
             evm_claim_address: vec![0xA5; 20],
-            evm_gas_secret: vec![0x46; 32],
+            evm_gas_secret: crate::swap_secret::test_seed(3).to_vec(),
             nim_rpc_url: "https://rpc.testnet.nimiqwatch.com".into(),
             amoy_rpc_url: "https://rpc-amoy.polygon.technology".into(),
             htlc_address: HTLC_HEX.into(),
@@ -222,13 +218,13 @@ mod live {
         }
     }
 
-    fn resp_cfg() -> FfiLiveResponderConfig {
+    pub(super) fn resp_cfg() -> FfiLiveResponderConfig {
         FfiLiveResponderConfig {
             usdc_micro: 1_000_000,
             nim_luna: 500_000,
             expiry_height: 1_000_000,
-            nim_claim_seed: vec![0x52; 32],
-            evm_funding_secret: vec![0x46; 32],
+            nim_claim_seed: crate::swap_secret::test_seed(2).to_vec(),
+            evm_funding_secret: crate::swap_secret::test_seed(4).to_vec(),
             nim_rpc_url: "https://rpc.testnet.nimiqwatch.com".into(),
             amoy_rpc_url: "https://rpc-amoy.polygon.technology".into(),
             htlc_address: HTLC_HEX.into(),
@@ -250,6 +246,50 @@ mod live {
             cfg,
             gw,
         )
+    }
+
+    /// G11 (#82): every 32-byte secret at the live door is entropy-gated, not just length-checked.
+    /// `intent_seed`/`nim_claim_seed` are Ed25519 seeds — every 32-byte value is valid, so nothing
+    /// downstream rejects a zero-filled buffer left by a swallowed CSPRNG error. (The secp256k1
+    /// secrets were incidentally protected: zero is not a valid scalar. That accident does not
+    /// cover a stuck-byte value, which is why the gate applies to all four.)
+    #[test]
+    fn the_live_doors_refuse_secrets_with_no_entropy() {
+        for (label, mutate) in [
+            (
+                "intent_seed zeros",
+                (|c: &mut FfiLiveInitiatorConfig| c.intent_seed = vec![0u8; 32])
+                    as fn(&mut FfiLiveInitiatorConfig),
+            ),
+            (
+                "intent_seed stuck byte",
+                |c: &mut FfiLiveInitiatorConfig| c.intent_seed = vec![7u8; 32],
+            ),
+            (
+                "evm_gas_secret stuck byte",
+                |c: &mut FfiLiveInitiatorConfig| c.evm_gas_secret = vec![0x46u8; 32],
+            ),
+        ] {
+            let mut c = init_cfg();
+            mutate(&mut c);
+            assert!(
+                matches!(
+                    build_initiator(c, None),
+                    Err(LiveSwapFfiError::BadInput { .. })
+                ),
+                "the initiator door must refuse: {label}"
+            );
+        }
+
+        let mut c = resp_cfg();
+        c.nim_claim_seed = vec![0u8; 32];
+        assert!(
+            matches!(
+                MeshNode::new_live_swap_responder(b"ph".to_vec(), radio("r"), c, None),
+                Err(LiveSwapFfiError::BadInput { .. })
+            ),
+            "the responder door must refuse a zero nim_claim_seed"
+        );
     }
 
     #[test]
@@ -644,146 +684,6 @@ mod live {
         assert!(evm_address_for_secret(vec![1; 16]).is_err());
         assert!(evm_address_for_secret(vec![0; 32]).is_err());
     }
-
-    // --- MAINNET assembly (armed with an injected HTLC address; the shipped const stays off) ------
-
-    /// A stand-in deployed HTLC for the ARMED-assembly tests: any valid 20-byte 0x-hex. This is
-    /// injected straight into `assemble_*_mainnet`, so it NEVER touches the shipped
-    /// `MAINNET_HTLC_ADDRESS` const (still empty) or `MAINNET_SWAP_ENABLED` (still false).
-    const MAINNET_HTLC_HEX: &str = "0xA7bB819Ba03743643249dFCCa7508280eCE059b1";
-    /// A Nimiq mainnet RPC (no "testnet" fragment → `HttpGatewayRpc::new_mainnet` admits it).
-    const MAINNET_NIM_RPC: &str = "https://rpc.nimiqwatch.com";
-    /// An allow-listed Polygon mainnet RPC (`HttpPolygonRpc::new_mainnet` admits only these).
-    const MAINNET_POLY_RPC: &str = "https://polygon.drpc.org";
-
-    fn mainnet_init_cfg() -> FfiLiveInitiatorConfig {
-        let mut c = init_cfg();
-        c.nim_rpc_url = MAINNET_NIM_RPC.into();
-        c.amoy_rpc_url = MAINNET_POLY_RPC.into();
-        c.htlc_address = String::new(); // ignored on the mainnet path (the const wins)
-        c
-    }
-
-    fn mainnet_resp_cfg() -> FfiLiveResponderConfig {
-        let mut c = resp_cfg();
-        c.nim_rpc_url = MAINNET_NIM_RPC.into();
-        c.amoy_rpc_url = MAINNET_POLY_RPC.into();
-        c.htlc_address = String::new();
-        c.usdc_address = String::new(); // ignored — the native mainnet USDC const wins
-        c
-    }
-
-    #[test]
-    fn mainnet_money_path_selects_every_mainnet_component() {
-        let m = mainnet_money_path(MAINNET_HTLC_HEX).expect("valid htlc resolves");
-        assert_eq!(m.evm_chain_id, crate::evm_rlp::POLYGON_MAINNET_CHAIN_ID);
-        assert_eq!(m.evm_chain_id, 137, "Polygon mainnet chain id");
-        assert_eq!(m.network, crate::NetworkId::Mainnet);
-        assert_eq!(m.confirm_policy, ConfirmationPolicy::mainnet_defaults());
-        assert_eq!(m.caps, SwapCaps::mainnet_first_swap());
-        // The escrow contract is the injected address; the token is the NATIVE Circle USDC.
-        assert!(format!("0x{}", bytes_to_hex(&m.htlc)).eq_ignore_ascii_case(MAINNET_HTLC_HEX));
-        assert!(format!("0x{}", bytes_to_hex(&m.usdc))
-            .eq_ignore_ascii_case(crate::polygon_gateway::NATIVE_USDC_POLYGON_MAINNET));
-    }
-
-    #[test]
-    fn armed_initiator_assembly_is_mainnet_and_caps_refuse_over_cap() {
-        let (session, _signer, gateway, money) = assemble_initiator_mainnet(
-            wallet_key(),
-            LiveLockBook::new(),
-            mainnet_init_cfg(),
-            None,
-            MAINNET_HTLC_HEX,
-        )
-        .expect("armed initiator assembles");
-        // The intent is stamped MAINNET and gives NIM (the initiator role).
-        let intent = session
-            .identity
-            .standing_intent
-            .as_ref()
-            .expect("standing intent");
-        assert_eq!(intent.network_id, crate::NetworkId::Mainnet.wire_id());
-        assert_eq!(intent.gives, Asset::Nim);
-        assert!(gateway.is_none(), "no gateway requested");
-        // C1 live-safety holds: chain-backed verifier + non-sim secret + non-zero mainnet depths.
-        assert!(session.live_safety().is_ok());
-        // The hard mainnet caps are wired into the session and REFUSE over-cap.
-        assert_eq!(money.caps, SwapCaps::mainnet_first_swap());
-        assert!(
-            session.within_caps(50 * 100_000, 5 * 1_000_000),
-            "exactly at cap is admitted"
-        );
-        assert!(
-            !session.within_caps(51 * 100_000, 5 * 1_000_000),
-            "over the NIM cap is refused"
-        );
-        assert!(
-            !session.within_caps(50 * 100_000, 6 * 1_000_000),
-            "over the USDC cap is refused"
-        );
-    }
-
-    #[test]
-    fn armed_responder_assembly_uses_native_usdc_and_mainnet() {
-        let (session, _signer, gateway, money) =
-            assemble_responder_mainnet(mainnet_resp_cfg(), None, MAINNET_HTLC_HEX)
-                .expect("armed responder assembles");
-        let intent = session
-            .identity
-            .standing_intent
-            .as_ref()
-            .expect("standing intent");
-        assert_eq!(intent.network_id, crate::NetworkId::Mainnet.wire_id());
-        assert_eq!(intent.gives, Asset::Usdc);
-        assert!(gateway.is_none());
-        assert!(session.live_safety().is_ok());
-        // The responder escrows the NATIVE Polygon-mainnet USDC (never `config.usdc_address`).
-        assert!(format!("0x{}", bytes_to_hex(&money.usdc))
-            .eq_ignore_ascii_case(crate::polygon_gateway::NATIVE_USDC_POLYGON_MAINNET));
-        assert!(
-            !session.within_caps(50 * 100_000, 6 * 1_000_000),
-            "over the USDC cap is refused"
-        );
-    }
-
-    #[test]
-    fn the_mainnet_ctors_gate_on_the_arm_flag() {
-        // State-agnostic (the mainnet_swap.rs pattern): the mainnet FFI ctors REFUSE while the path
-        // is unarmed and PROCEED once Andjroo's arming release opens the flag + records the escrow.
-        let init = MeshNode::new_live_swap_initiator_mainnet(
-            b"m".to_vec(),
-            radio("m"),
-            wallet_key(),
-            LiveLockBook::new(),
-            mainnet_init_cfg(),
-            None,
-        );
-        let resp = MeshNode::new_live_swap_responder_mainnet(
-            b"m2".to_vec(),
-            radio("m2"),
-            mainnet_resp_cfg(),
-            None,
-        );
-        if mainnet_swap_armed() {
-            // ARMED: the arm gate is open, so the ctors build a real mainnet-network node from the
-            // (valid) mainnet RPC fixtures — no longer a refusal. The armed-assembly invariants are
-            // proven by the dedicated `assemble_*_mainnet` tests above; here just confirm they no
-            // longer refuse on the arm gate.
-            assert!(init.is_ok(), "armed mainnet initiator constructs");
-            assert!(resp.is_ok(), "armed mainnet responder constructs");
-        } else {
-            // UNARMED (pre-arming build): both ctors REFUSE outright (flag off / empty HTLC) — inert.
-            assert!(
-                matches!(init, Err(LiveSwapFfiError::Refused { .. })),
-                "the unarmed mainnet initiator refuses"
-            );
-            assert!(
-                matches!(resp, Err(LiveSwapFfiError::Refused { .. })),
-                "the unarmed mainnet responder refuses"
-            );
-        }
-    }
 }
 
 /// A lock fixture for a given contract (shared with the featured module).
@@ -796,3 +696,11 @@ fn tests_lock_for(contract_nq: &str) -> FfiNimLock {
         funding_tx_hash: "aa".repeat(32),
     }
 }
+
+// --- MAINNET assembly (armed with an INJECTED HTLC address; the shipped const stays off) --------
+// Extracted to a sibling when this file hit the 800-line ceiling. Declared here at the top level
+// rather than inside `live` because a #[path] on a nested inline module resolves against
+// `src/<mod name>/`; at this level the base is `src/`. It reuses `live`'s fixtures via `super::live`.
+#[cfg(all(feature = "polygon-gateway", feature = "gateway-rpc"))]
+#[path = "swap_live_ffi_mainnet_tests.rs"]
+mod mainnet;

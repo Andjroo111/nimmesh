@@ -197,11 +197,17 @@ impl MeshNode {
         config: FfiParticipantConfig,
         gateway_rpc_url: Option<String>,
     ) -> Result<Arc<Self>, ParticipantInitError> {
+        // G11 (#82): length is not enough. This seed is BOTH the per-swap secret master and (below)
+        // the Ed25519 key that is this node's swap identity — and every 32-byte value is a valid
+        // Ed25519 seed, so nothing downstream would catch a zero-filled buffer from a swallowed
+        // CSPRNG error. A zero seed makes every `S` derivable from the on-wire swap_id (S1).
         let seed: [u8; 32] = config
             .intent_seed
             .as_slice()
             .try_into()
             .map_err(|_| bad("intent_seed must be 32 bytes"))?;
+        crate::swap_secret::check_seed_entropy(&seed)
+            .map_err(|why| bad(format!("intent_seed: {why}")))?;
         let btc_pubkey: [u8; BTC_PUBKEY_LEN] = config
             .btc_pubkey
             .as_slice()
@@ -246,23 +252,12 @@ impl MeshNode {
             delta_safe_blocks: config.delta_safe_blocks,
             min_claim_window_blocks: config.min_claim_window_blocks,
         };
-        // G11: replace the deterministic sim secret with a CSPRNG-backed PRF — the per-swap
-        // secret is sha256(master ‖ swap_id ‖ label), master = sha256(caller's CSPRNG seed ‖
-        // label). Unpredictable without the seed, distinct per swap, domain-separated from
-        // the seed's identity use. No secret ever crosses back over FFI.
-        let secret_master = {
-            let mut buf = seed.to_vec();
-            buf.extend_from_slice(b"nimmesh-swap-secret-master-v1");
-            crate::swap_leg::sha256(&buf)
-        };
+        // G11: replace the deterministic sim secret with the entropy-gated PRF over the caller's
+        // seed (the one definition lives in `swap_secret` — this door and the live doors used to
+        // carry copy-pasted twins of the recipe). No secret ever crosses back over FFI.
         let session = SwapSession::new(identity, ladder)
             .with_propose_signer(Arc::new(propose_key))
-            .with_secret_source(Box::new(move |swap_id| {
-                let mut buf = secret_master.to_vec();
-                buf.extend_from_slice(swap_id);
-                buf.extend_from_slice(b"nimmesh-swap-secret-v1");
-                crate::swap_leg::sha256(&buf)
-            }));
+            .with_secret_source(crate::swap_secret::secret_source(&seed));
 
         let gateway = match gateway_rpc_url {
             None => None,
@@ -388,7 +383,9 @@ mod tests {
             delta_safe_blocks: 600,
             min_claim_window_blocks: 600,
             standing_intent: standing,
-            intent_seed: vec![0x5A; 32],
+            // Deterministic but gate-clearing: `[0x5A; 32]` (what this used to be) is a stuck-byte
+            // seed the G11 door now rightly refuses.
+            intent_seed: crate::swap_secret::test_seed(1).to_vec(),
         }
     }
 
@@ -424,6 +421,29 @@ mod tests {
         let mut c = intent_cfg(FfiIntentAsset::Nim, FfiIntentAsset::Btc);
         c.nim_amount = 0;
         assert!(build_signed_intent(&c, [2; 33], vec![1], &[7; 32]).is_err());
+    }
+
+    /// G11 (#82): the door must refuse a *right-length, no-entropy* seed. This is the shape of a
+    /// real failure, not a hypothetical: `SwapMesh.swift` drew this seed with
+    /// `_ = SecRandomCopyBytes(...)` — discarding the OSStatus over a zero-filled `Data(count: 32)`
+    /// — so a failing CSPRNG silently produced exactly these bytes. Nothing downstream catches it
+    /// (every 32-byte value is a valid Ed25519 seed), and `live_safety`'s C1 gate passes because a
+    /// zero-seeded PRF still counts as "not the sim source". The door is the only place to stop it.
+    #[test]
+    fn the_participant_door_refuses_a_seed_with_no_entropy() {
+        let mut c = cfg(None);
+        c.intent_seed = vec![0u8; 32]; // a buffer the CSPRNG never wrote
+        assert!(
+            MeshNode::new_swap_participant(b"p".to_vec(), radio("z"), c, None).is_err(),
+            "a zero seed makes every S public-derivable from the on-wire swap_id (S1)"
+        );
+
+        let mut c = cfg(None);
+        c.intent_seed = vec![7u8; 32]; // a stuck RNG / hand-typed placeholder
+        assert!(
+            MeshNode::new_swap_participant(b"p".to_vec(), radio("s"), c, None).is_err(),
+            "a stuck-byte seed must not reach a live swap identity"
+        );
     }
 
     #[test]

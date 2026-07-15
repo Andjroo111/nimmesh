@@ -86,8 +86,11 @@ extension Bridge {
         // fallback and the core reads an unheard head as fresh either way).
         let head = await testnetHead() ?? 0
 
-        var seed = Data(count: 32)
-        _ = seed.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!) }
+        // G11 (#82): the core draws the swap seed. This used to be a local `SecRandomCopyBytes`
+        // whose OSStatus was discarded over a zero-filled `Data(count: 32)` — a failing RNG left
+        // the seed all zeros, and the seed is the per-swap secret master, so every `S` would have
+        // been derivable from the on-wire swap_id. `drawSwapSeed` aborts instead of returning zeros.
+        let seed = NimmeshCore.drawSwapSeed()
         var pk = Data([0x02])
         var rnd = Data(count: 32)
         _ = rnd.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!) }
@@ -148,8 +151,8 @@ extension Bridge {
         // core. Unarmed → today's TESTNET path, byte-identical.
         let mainnet = NimmeshCore.mainnetSwapArmed()
         let head = mainnet ? (await mainnetHead() ?? 0) : (await testnetHead() ?? 0)
-        var seed = Data(count: 32)
-        _ = seed.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!) }
+        // G11 (#82): core-drawn seed — see `startSwapDemo`. This one is the LIVE money path.
+        let seed = NimmeshCore.drawSwapSeed()
         let cfg = FfiLiveInitiatorConfig(
             nimLuna: nimLuna, usdcMicro: usdcMicro,
             expiryHeight: head > 0 ? head + 20_000 : UInt64.max / 2,

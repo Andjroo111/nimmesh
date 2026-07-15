@@ -648,15 +648,6 @@ pub(crate) fn derive_swap_id(
     h[..SWAP_ID_LEN].try_into().unwrap()
 }
 
-/// A SIM stand-in for the swap secret `S`. **GATED:** production MUST draw `S` from a CSPRNG — a
-/// predictable secret lets an attacker pre-claim the BTC leg. This deterministic placeholder exists
-/// only so the no-RNG sim/test is reproducible; it is never used on a real-fund path.
-pub(crate) fn sim_secret(swap_id: &[u8; SWAP_ID_LEN]) -> [u8; 32] {
-    let mut buf = b"NIMMESH-SIM-INTENT-SECRET-DO-NOT-USE-IN-PROD".to_vec();
-    buf.extend_from_slice(swap_id);
-    crate::swap_leg::sha256(&buf)
-}
-
 /// Ask this node's signer to build the funding tx for `leg` (money-path seam).
 fn sign_funding(
     st: &WorkerState,
