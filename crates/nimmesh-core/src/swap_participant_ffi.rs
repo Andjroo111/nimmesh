@@ -76,7 +76,9 @@ pub struct FfiStandingIntent {
 }
 
 /// Everything a production swap participant needs at construction.
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+// `Debug` is hand-written in `crate::ffi_secret_redaction` — it MUST NOT be derived here: the
+// derive renders `intent_seed` as raw bytes at any `{:?}`.
+#[derive(Clone, PartialEq, Eq, uniffi::Record)]
 pub struct FfiParticipantConfig {
     /// This node's BTC claimant/funder pubkey (33 bytes, compressed) carried in its intent.
     pub btc_pubkey: Vec<u8>,

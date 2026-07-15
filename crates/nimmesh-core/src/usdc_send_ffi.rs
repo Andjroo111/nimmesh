@@ -39,7 +39,9 @@ pub const USDC_TRANSFER_GAS_MAX: u64 = 200_000;
 
 /// Everything the app hands the core to send USDC. `source_secret` enters ONCE and never crosses back
 /// (the G45/G11 rule) — only the tx hash + public sender address are returned.
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+// `Debug` is hand-written in `crate::ffi_secret_redaction` — it MUST NOT be derived here: the
+// derive renders `source_secret` as raw bytes at any `{:?}`.
+#[derive(Clone, PartialEq, Eq, uniffi::Record)]
 pub struct FfiUsdcSendConfig {
     /// The 32-byte secp256k1 secret of the FUNDED source account (the wallet-derived claim/fund
     /// account the app picked because it holds ≥ the amount). Enters once; never returned.

@@ -3,6 +3,36 @@
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
 
+## [0.86.0] — 2026-07-15
+
+### Fixed — the FFI configs printed their private keys (G11 / #82)
+
+Four `uniffi::Record` config types take raw key material into the core, and every one of them
+**derived `Debug`** — so `{:?}`, `dbg!`, a Swift `String(describing:)`, or a UniFFI panic in a
+crash report rendered the raw bytes:
+
+| Record | Leaked | What it controls |
+|---|---|---|
+| `FfiLiveInitiatorConfig` | `intent_seed`, `evm_gas_secret` | the master for **every** per-swap secret `S`; a spendable Amoy account |
+| `FfiLiveResponderConfig` | `nim_claim_seed`, `evm_funding_secret` | the key that **redeems the NIM HTLC**; the **funded** account escrowing the USDC |
+| `FfiParticipantConfig` | `intent_seed` | ephemeral identity + secret master |
+| `FfiUsdcSendConfig` | `source_secret` | the account holding the USDC |
+
+`intent_seed` is the sharp one: it is the master for the per-swap secret PRF, so a seed in a log
+lets an attacker derive `S` for every swap that node will ever run and pre-claim the counterparty
+leg — the theft S1 closed on-chain, reopened through stdout. Logs are not a trust boundary.
+
+The derives are replaced by hand-written `Debug` impls in a new `ffi_secret_redaction` module: a
+key-material field renders as `<redacted 32 bytes>` (length only — never a prefix, never a hash),
+public fields render normally so a bad url or amount is still debuggable. They live together as the
+one auditable inventory of what is secret at the door, and the sibling test suite asserts the
+rendering never contains what a derive would print — so re-deriving `Debug` on any of them fails
+CI instead of silently reopening the leak. `{:#?}` is covered too (it is what panics use).
+
+No ABI change — the record fields and generated bindings are untouched. Decision + what this
+deliberately does NOT cover (the seed still crosses FFI inbound; no zeroize; entropy still
+caller-supplied) in [`ADR-0012`](docs/adr/0012-ffi-secret-redaction.md).
+
 ## [0.85.0] — 2026-07-15
 
 ### Added — stop advertising a swap intent without tearing the node down (G9 / #80)

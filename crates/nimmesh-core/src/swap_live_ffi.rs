@@ -161,7 +161,9 @@ pub fn mainnet_swap_reason() -> String {
 /// Everything the PHONE (NIM-giver / initiator) needs to run one real testnet⇄Amoy swap.
 /// Secrets in this record enter the core once and never cross back (the G45/G11 rule); the
 /// wallet's NIM key is NOT here — it stays behind the [`EnclaveKey`] foreign trait argument.
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+// `Debug` is hand-written in `crate::ffi_secret_redaction` — it MUST NOT be derived here: the
+// derive renders `intent_seed`/`evm_gas_secret` as raw bytes at any `{:?}`.
+#[derive(Clone, PartialEq, Eq, uniffi::Record)]
 pub struct FfiLiveInitiatorConfig {
     /// NIM this node gives, in luna.
     pub nim_luna: u64,
@@ -193,7 +195,8 @@ pub struct FfiLiveInitiatorConfig {
 /// Everything the MAC RIG (USDC-giver / responder) needs to answer one real swap.
 /// (No `term_anchor` in either config: M4 wires the anchor into each swap's own
 /// `SwapContext` from the head its terms were minted against.)
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+// `Debug` is hand-written in `crate::ffi_secret_redaction` — see the initiator config above.
+#[derive(Clone, PartialEq, Eq, uniffi::Record)]
 pub struct FfiLiveResponderConfig {
     /// USDC this node gives, in micro-USDC.
     pub usdc_micro: u64,

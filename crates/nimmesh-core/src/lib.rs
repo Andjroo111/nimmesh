@@ -301,6 +301,9 @@ pub mod gateway_ffi;
 // real money-path signer is a later, gated drop-in); the intent/Propose identity is an
 // ephemeral key from caller randomness (G45), never the wallet key.
 pub mod swap_participant_ffi;
+// G11: hand-written `Debug` for every FFI record that carries key material, so a seed/secret can
+// never reach a log through a derive. The one auditable list of what is secret at the door.
+mod ffi_secret_redaction;
 // G10a: the LIVE swap-participant constructors over UniFFI — the production door that carries
 // the Act-2-proven live NIM⇄USDC signer + the real funding verifiers onto a phone/Mac node
 // (testnet/Amoy pinned; honest refusal without the polygon-gateway + gateway-rpc features),
