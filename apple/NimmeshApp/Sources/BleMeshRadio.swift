@@ -27,7 +27,24 @@ final class BleMeshRadio: NSObject, BleRadio {
     /// the peer but the mesh node never did (phone read 0 while the Mac saw 1). The node is
     /// app-lifetime here (never torn down), so the node↔radio cycle is an accepted one-instance
     /// leak in exchange for the callbacks actually landing. `stop()` breaks it if ever needed.
-    var node: MeshNode?
+    /// Swapping this (the Swap sheet replaces the wallet node with a swap participant, and
+    /// restores it on close) REPLAYS the links that are already up onto the new node — see
+    /// `didSet`. Without that, a node swap while a peer is connected leaves the new node
+    /// permanently at 0 peers (field bug 2026-07-14: "Listening… · 0 peers" forever).
+    var node: MeshNode? {
+        didSet {
+            // `linkUp` announces a peer ONLY on its first link (the two directed BLE links per
+            // pair are ref-counted), and `linkCount` lives on the RADIO, which outlives any
+            // node. So a node installed AFTER a peer linked would never hear onPeerConnected —
+            // the radio is linked, the new node sees nobody, discovery never starts. Replay the
+            // live links onto whoever the node is now. Idempotent: the core dedups a peer it
+            // already knows; on the first launch `linkCount` is empty, so this is a no-op.
+            guard let n = node else { return }
+            queue.async {
+                for id in self.linkCount.keys { n.onPeerConnected(peerId: id) }
+            }
+        }
+    }
 
     private let queue = DispatchQueue(label: "com.nimmesh.ble")
     private var central: CBCentralManager?

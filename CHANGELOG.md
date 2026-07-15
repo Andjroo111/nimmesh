@@ -3,6 +3,23 @@
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
 
+## [0.80.3] — 2026-07-14
+
+### Fixed — a node swap now inherits the peers that are already connected
+
+The first live mainnet swap attempt sat at "Listening for a swap offer on the mesh · 0
+peers" with both phones linked. ROOT CAUSE: `BleMeshRadio.linkUp` announces a peer to the
+node only on its FIRST link (the two directed BLE links per pair are ref-counted), and
+`linkCount` lives on the RADIO, which outlives any node. Opening the Swap sheet REPLACES
+the node (wallet node → swap participant), so a peer that linked before the swap was never
+announced to the new node: the radio stayed linked, the new node saw nobody, and discovery
+could never start. Same family as the v0.51.5 weak-`node` bug — the radio counted a peer
+the Rust node never did.
+
+Fix: `BleMeshRadio.node`'s `didSet` replays every live link onto the incoming node (on the
+radio queue; idempotent — `add_peer` is a set insert; a no-op on first launch). Restoring
+the wallet node on sheet close inherits the links the same way.
+
 ## [0.80.2] — 2026-07-14
 
 ### Fixed — the Send sheets use the wallet's REAL components (Andjroo's round-4 catch)
