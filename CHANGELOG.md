@@ -3,6 +3,82 @@
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
 
+## [0.89.0] — 2026-07-19
+
+### Fixed — MONEY PATH: a responder never settles on a failed claim (the run-4 one-sided loss)
+
+The 07-19 G10c soak, run 4, proved a REAL one-sided loss end to end on chain. The swap ran
+clean to the finish line: the initiator funded the 5 tNIM HTLC, the responder escrowed 1 USDC
+on Amoy, and the initiator's `withdraw(S)` MINED — `S` public, the responder's USDC gone. Then
+the responder's `claim_nim` hit ONE transient `rpc http 429 (getBlockNumber)` on the shared-IP
+public RPC… and the driver settled anyway: `drive_phase_action`'s `(Responder, Revealed)` arm
+discarded the signer result (`let _ = sign_claim(…)`) and called `settle()` unconditionally.
+One tick later the mirror read `Settled` and the GC reaped the coordinator. Chain truth: the
+NIM HTLC still holds the 5 NIM, the responder's claim address holds 0, and NOTHING will ever
+retry — at the timelock the INITIATOR refunds. The phones ride this exact code path against
+the same rate-limited house IP: a straight-line mainnet risk.
+
+The fix is the responder-claim ladder (`swap_claim`), M3-symmetric with the gated reveal:
+
+- **Broadcast is not settlement.** The drive arm now only RECORDS a successful claim broadcast
+  (`SwapCoordinator::note_claim_broadcast`); a failed build/broadcast leaves the phase at
+  `Revealed` — funds-locked, never stale, never reapable.
+- **Retry on both tick cadences.** `gc_tick` and the ~3 s fast tick run the ladder: re-attempt
+  unbroadcast claims, then consult the chain for broadcast ones. The NIM HTLC stays claimable
+  until `T_A`, so a transient 429 now costs seconds, not the swap.
+- **Settle only on chain truth.** New `FundingVerifier::observe_claim` (default `Unavailable`
+  — fail-closed) is consulted per broadcast claim: `Included` at the NIM depth → `Settled`;
+  `NotFound` (both endpoints, under the M5 cross-read) → re-arm the broadcast; `Unavailable`
+  (the 429) → change NOTHING. `NimHtlcVerifier` implements it as a positive
+  `getTransactionByHash` of our own redeem — never inferred from the HTLC account vanishing.
+- **Foreclose honestly.** Past `T_A` unconfirmed — after one last-chance confirmation consult —
+  the swap becomes the new terminal `SwapPhase::Lost` (mirrored for a tick, then reaped): a
+  one-sided loss is SAID, never a silent `Settled`, and never `Refunded` (the tick's blanket
+  refund now refuses a Revealed responder — its own leg already left with the public `S`).
+- **Never strand across a restart.** The recovery blob grows a compatible third trailer of
+  `(swap_id, claim_tx)` pairs, so a responder that crashes mid-claim resumes the confirmation
+  watch instead of blind-rebroadcasting (or forgetting the claim ever went out).
+
+Regression tests pinned RED on main (verified against `origin/main`: the probe read
+`Some(Settled)` with the claim signer failing): a responder whose claim signer fails
+transiently holds at `Revealed`, re-attempts on the tick cadence, and settles ONLY once the
+sim ledger shows the claim buried to depth; a responder whose claim never lands surfaces
+`Lost` at the timelock. Plus coordinator/session/verifier/recovery unit coverage either side.
+
+### Fixed — data-mule: a void-flooded tx now re-offers on its FIRST tick, even on a young worker
+
+Found chasing this PR's 2-core CI reds (`a_send_into_the_void_delivers_when_the_mesh_reappears`
+failed 1 of 3 runs): `pending_retry` encoded "never delivered to anyone" as `last_flood_ms: 0`,
+so the retry gate `now − 0 ≥ RETRY_MS` could not fire until the WORKER ITSELF was 15 s old —
+a tx signed into the void within the first 15 s of a worker's life was silently not re-offered
+on its first tick with peers. The e2e test only ever passed through an accident: the "void"
+flood's ether delivery raced `connect` and usually arrived late, after the link existed. On a
+loaded runner the delivery landed pre-connect (truly reaching nobody) and the broken first-tick
+re-offer was exposed. Now `last_flood_ms` is an explicit `Option` (`None` = never delivered →
+re-offer unconditionally on the first tick with peers), and the test fences the void delivery
+to completion BEFORE connecting, so it deterministically exercises the retry path it exists
+for (RED under the old sentinel, green now — no wall-clock anywhere).
+
+### Changed — e2e: the gossip-sync gap test absorbs the documented GCS false positive
+
+`gossip_sync_only_sends_the_packets_a_peer_lacks` red-lighted CI ~1 run in 15 by design
+arithmetic, not load: the GCS advertisement has a documented ~1% false-positive rate per id
+(`GCS_FALSE_POSITIVE_RATE`) and the test performs 7 membership lookups over ids that hash the
+wall-clock `timestamp_ms` — content-randomness that no fence can drain. The sync is now a
+bounded (≤ 4) fence-drained resync loop: each retry re-advertises a differently-membered
+filter (B's cache grew), re-hashing the stray id, so the residual is ~1e-8 while the
+"A re-sent nothing B already had" assertion stays exact (`rsr_sent == late` — the filter has
+no false negatives, so a resync can never duplicate). Zero wall-clock waits, ADR-0005 intact.
+
+### Changed — test infrastructure: `live_ffi_mesh_swap` stops feeding the 429 storm
+
+The soak example's own settle-detection was a big slice of the storm that broke the claim:
+balance reads every 2nd tick with a tight 3×2 s retry hammer, against the same shared-IP RPC.
+Now: settle checks every 8th tick, exponential backoff (2 s / 6 s / 12 s), a failed USDC read
+skips the check instead of killing the run, and `RUN_BUDGET_TICKS` 260 → 400 (~20 min) so a
+rate-limit storm can ride out while the tick-retried claim waits for the RPC to recover.
+
+
 ## [0.88.4] — 2026-07-19
 
 ### Fixed — the zero-head discovery trap (the 07-19 G10c soak stall)

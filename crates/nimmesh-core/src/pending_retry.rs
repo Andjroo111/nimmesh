@@ -39,7 +39,13 @@ struct PendingTx {
     bytes: Vec<u8>,
     valid_until: Option<u32>,
     created_ms: u64,
-    last_flood_ms: u64,
+    /// When this tx last actually reached a peer's radio (`None` = never — flooded into the
+    /// void). An explicit Option, NOT a `0` sentinel: the old `last_flood_ms: 0` encoding made
+    /// the retry gate `now − 0 ≥ RETRY_MS`, which cannot fire until the worker itself is
+    /// `RETRY_MS` old — so a tx signed into the void within the first 15 s of a worker's life
+    /// was silently NOT re-offered on its first tick (found chasing the 2-core CI reds on the
+    /// run-4 PR: the send e2e only ever passed via an ether-delivery race with `connect`).
+    last_flood_ms: Option<u64>,
 }
 
 /// The origin's bounded set of still-pending own txs (worker-thread state).
@@ -70,7 +76,11 @@ impl PendingRetry {
             bytes,
             valid_until,
             created_ms: now_ms,
-            last_flood_ms: if delivered_to_someone { now_ms } else { 0 },
+            last_flood_ms: if delivered_to_someone {
+                Some(now_ms)
+            } else {
+                None // the void: re-offer on the FIRST tick that has peers, whatever the clock
+            },
         });
     }
 
@@ -110,8 +120,14 @@ pub(crate) fn tick(ctx: &WorkerCtx, st: &mut WorkerState) {
         return;
     }
     for e in st.pending.entries.iter_mut() {
-        if now.saturating_sub(e.last_flood_ms) >= RETRY_MS {
-            e.last_flood_ms = now;
+        // Never-delivered (void-flooded) txs re-offer unconditionally; delivered ones hold
+        // the RETRY_MS cadence. A `match`, not a `0` sentinel — see `last_flood_ms`.
+        let due = match e.last_flood_ms {
+            None => true,
+            Some(last) => now.saturating_sub(last) >= RETRY_MS,
+        };
+        if due {
+            e.last_flood_ms = Some(now);
             // Same bytes, same relay key: peers that saw it dedup; new peers carry it.
             ctx.flood(e.bytes.clone());
         }

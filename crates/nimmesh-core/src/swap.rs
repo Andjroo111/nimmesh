@@ -207,6 +207,12 @@ pub enum SwapPhase {
     Aborted,
     /// This node's locked funds were refunded via the timeout path. Terminal, no loss.
     Refunded,
+    /// (Responder) the inbound claim window closed (`T_A` passed) with this node's NIM claim never
+    /// chain-confirmed — while its own leg was already claimed with the now-public `S`. Terminal,
+    /// **one-sided LOSS**, surfaced honestly: never mapped to `Settled` (the claim did not land)
+    /// nor `Refunded` (there is nothing left to refund). The 2026-07-19 run-4 soak reached exactly
+    /// this fate silently, as a fake `Settled`; this phase is its honest name.
+    Lost,
 }
 
 impl SwapPhase {
@@ -222,7 +228,7 @@ impl SwapPhase {
     pub const fn is_terminal(self) -> bool {
         matches!(
             self,
-            SwapPhase::Settled | SwapPhase::Aborted | SwapPhase::Refunded
+            SwapPhase::Settled | SwapPhase::Aborted | SwapPhase::Refunded | SwapPhase::Lost
         )
     }
 }
@@ -486,6 +492,36 @@ impl Swap {
         Ok(())
     }
 
+    /// (Responder) the inbound claim window closed with the claim never chain-confirmed →
+    /// [`SwapPhase::Lost`], the honest terminal for a one-sided loss (run-4 fix, 2026-07-19).
+    ///
+    /// Only legal for a **responder** at `Revealed` once `current_head > T_A` (`nim_timeout` — the
+    /// timeout of the leg the responder claims; past it the initiator can refund the NIM HTLC).
+    /// The counterparty leg was already claimed with the public `S`, so nothing is recoverable:
+    /// the state must SAY so — never a silent `Settled`, never a fictitious `Refunded`. The caller
+    /// (the session GC tick) runs the claim-confirmation consult first, so a claim that DID land
+    /// settles instead of forfeiting.
+    pub fn forfeit_claim(&mut self, current_head: u64) -> Result<(), SwapError> {
+        if !matches!(
+            (self.role, self.phase),
+            (SwapRole::Responder, SwapPhase::Revealed)
+        ) {
+            return Err(SwapError::IllegalTransition {
+                from: self.phase,
+                action: "forfeit_claim",
+            });
+        }
+        let timeout = self.terms.nim_timeout; // the leg WE claim forecloses at T_A
+        if current_head <= timeout {
+            return Err(SwapError::TimeoutNotReached {
+                timeout,
+                head: current_head,
+            });
+        }
+        self.phase = SwapPhase::Lost;
+        Ok(())
+    }
+
     /// Cancel a swap **before this node has funded** → `Aborted`. Illegal once funds are locked
     /// (then only claim or timeout-refund can resolve it — the timelock is the guarantee).
     pub fn abort(&mut self) -> Result<(), SwapError> {
@@ -502,8 +538,20 @@ impl Swap {
     /// Refund this node's own funded leg via the timeout path — only legal **after** its timeout
     /// height has elapsed (`current_head > own_timeout`). This is the always-available safety exit
     /// whenever a swap stalls: the worst case is getting your own money back.
+    ///
+    /// **Except** a RESPONDER at `Revealed` (run-4 fix, 2026-07-19): `Revealed` means the
+    /// initiator already claimed the responder's leg with `S` (that claim is how `S` got out), so
+    /// "refund my own leg" is fiction — the escrow is spent. Its real exits are the inbound NIM
+    /// claim (open until `T_A`, i.e. `Δ_safe` past its own `T_B`) or, past `T_A` unconfirmed,
+    /// the honest [`forfeit_claim`](Self::forfeit_claim) → [`SwapPhase::Lost`]. Without this
+    /// refusal the GC tick would stamp the loss `Refunded` ("no loss") the moment `T_B` passed.
     pub fn refund_after_timeout(&mut self, current_head: u64) -> Result<SwapAction, SwapError> {
-        if !self.phase.has_funds_locked() {
+        if !self.phase.has_funds_locked()
+            || matches!(
+                (self.role, self.phase),
+                (SwapRole::Responder, SwapPhase::Revealed)
+            )
+        {
             return Err(SwapError::IllegalTransition {
                 from: self.phase,
                 action: "refund",
@@ -524,269 +572,5 @@ impl Swap {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// A safe ladder at head 0: T_A and T_B both far ahead, big margin.
-    fn safe_terms() -> SwapTerms {
-        SwapTerms {
-            nim_timeout: 10_000,
-            counterparty_timeout: 5_000, // margin 5000 >= 3600; window 5000 >= 1800
-        }
-    }
-
-    #[test]
-    fn ladder_safe_when_well_laddered() {
-        assert_eq!(
-            assess_ladder(&safe_terms(), 0, &LadderParams::default()),
-            LadderVerdict::Safe
-        );
-    }
-
-    #[test]
-    fn ladder_rejects_inversion_thin_margin_and_short_window() {
-        let p = LadderParams::default();
-        // Inverted: T_A <= T_B.
-        assert_eq!(
-            assess_ladder(
-                &SwapTerms {
-                    nim_timeout: 5_000,
-                    counterparty_timeout: 5_000
-                },
-                0,
-                &p
-            ),
-            LadderVerdict::Inverted
-        );
-        // Thin margin: T_A - T_B = 1000 < 3600.
-        assert!(matches!(
-            assess_ladder(
-                &SwapTerms {
-                    nim_timeout: 6_000,
-                    counterparty_timeout: 5_000
-                },
-                0,
-                &p
-            ),
-            LadderVerdict::MarginTooThin { have: 1000, .. }
-        ));
-        // Short window: T_B - head = 1000 < 1800 (head crept up to 4000).
-        assert!(matches!(
-            assess_ladder(&safe_terms(), 4_000, &p),
-            LadderVerdict::WindowTooShort { have: 1000, .. }
-        ));
-    }
-
-    #[test]
-    fn accept_refuses_unsafe_ladder() {
-        let mut s = Swap::new(
-            SwapRole::Initiator,
-            SwapTerms {
-                nim_timeout: 6_000,
-                counterparty_timeout: 5_000, // thin margin
-            },
-        );
-        assert!(matches!(
-            s.accept(0, &LadderParams::default()),
-            Err(SwapError::UnsafeLadder(LadderVerdict::MarginTooThin { .. }))
-        ));
-        // Phase unchanged — nothing committed.
-        assert_eq!(s.phase, SwapPhase::Proposed);
-    }
-
-    #[test]
-    fn initiator_happy_path_to_settled() {
-        let p = LadderParams::default();
-        let mut s = Swap::new(SwapRole::Initiator, safe_terms());
-        s.accept(0, &p).unwrap();
-        assert_eq!(
-            s.fund(0, &p).unwrap(),
-            SwapAction::FundLeg {
-                leg: SwapLegId::Nim,
-                timeout: 10_000
-            }
-        );
-        s.observe_counterparty_funded().unwrap();
-        assert_eq!(
-            s.reveal_and_claim(0, &p).unwrap(),
-            SwapAction::ClaimLeg {
-                leg: SwapLegId::Counterparty
-            }
-        );
-        s.observe_settled().unwrap();
-        assert_eq!(s.phase, SwapPhase::Settled);
-    }
-
-    #[test]
-    fn reveal_refuses_when_the_counterparty_timeout_is_too_close() {
-        // G4 / #75: the initiator claims the counterparty leg (T_B = 5000). If the head has crept to
-        // within the claim window (1800) of T_B, revealing burns the secret with too little time to
-        // claim safely → refuse, and keep the secret secret (phase unchanged, refund still the exit).
-        let p = LadderParams::default();
-        let mut s = Swap::new(SwapRole::Initiator, safe_terms());
-        s.accept(0, &p).unwrap();
-        s.fund(0, &p).unwrap();
-        s.observe_counterparty_funded().unwrap(); // BothFunded, secret still held
-        assert_eq!(s.reveal_deadline_margin(4_000), 1_000); // 5000 - 4000, below the 1800 window
-        assert!(matches!(
-            s.reveal_and_claim(4_000, &p),
-            Err(SwapError::RevealTooLate(RevealVerdict::DeadlineTooClose {
-                have: 1_000,
-                need: 1_800
-            }))
-        ));
-        assert_eq!(s.phase, SwapPhase::BothFunded); // never revealed
-
-        // Earlier, with room to spare, the same reveal is allowed.
-        assert_eq!(
-            s.reveal_and_claim(0, &p).unwrap(),
-            SwapAction::ClaimLeg {
-                leg: SwapLegId::Counterparty
-            }
-        );
-        assert_eq!(s.phase, SwapPhase::Revealed);
-    }
-
-    #[test]
-    fn assess_reveal_deadline_is_safe_with_room_and_close_at_the_edge() {
-        let p = LadderParams::default();
-        let terms = safe_terms(); // T_B = 5000, window need = 1800
-        assert_eq!(assess_reveal_deadline(&terms, 0, &p), RevealVerdict::Safe);
-        // Exactly at the boundary: window == need is still safe (need is a floor).
-        assert_eq!(
-            assess_reveal_deadline(&terms, 3_200, &p),
-            RevealVerdict::Safe
-        );
-        // One block past the boundary → too close.
-        assert_eq!(
-            assess_reveal_deadline(&terms, 3_201, &p),
-            RevealVerdict::DeadlineTooClose {
-                have: 1_799,
-                need: 1_800
-            }
-        );
-        // Past T_B entirely → window saturates to 0.
-        assert_eq!(
-            assess_reveal_deadline(&terms, 9_999, &p),
-            RevealVerdict::DeadlineTooClose {
-                have: 0,
-                need: 1_800
-            }
-        );
-    }
-
-    #[test]
-    fn responder_must_observe_initiator_funding_before_funding() {
-        let p = LadderParams::default();
-        let mut s = Swap::new(SwapRole::Responder, safe_terms());
-        s.accept(0, &p).unwrap();
-        // Responder cannot fund straight from Accepted — must see the initiator lock first.
-        assert!(matches!(
-            s.fund(0, &p),
-            Err(SwapError::IllegalTransition { action: "fund", .. })
-        ));
-        s.observe_initiator_funded().unwrap();
-        assert_eq!(
-            s.fund(0, &p).unwrap(),
-            SwapAction::FundLeg {
-                leg: SwapLegId::Counterparty,
-                timeout: 5_000
-            }
-        );
-        // Responder claims the NIM leg once the secret is out.
-        s.observe_counterparty_funded().unwrap();
-        assert_eq!(
-            s.observe_secret().unwrap(),
-            SwapAction::ClaimLeg {
-                leg: SwapLegId::Nim
-            }
-        );
-        s.observe_settled().unwrap();
-        assert_eq!(s.phase, SwapPhase::Settled);
-    }
-
-    #[test]
-    fn fund_rechecks_safety_at_fund_time() {
-        let p = LadderParams::default();
-        let mut s = Swap::new(SwapRole::Initiator, safe_terms());
-        s.accept(0, &p).unwrap(); // safe at head 0
-                                  // Head crept forward so the window is now too short to fund safely.
-        assert!(matches!(
-            s.fund(4_000, &p),
-            Err(SwapError::UnsafeLadder(
-                LadderVerdict::WindowTooShort { .. }
-            ))
-        ));
-        assert_eq!(s.phase, SwapPhase::Accepted); // not funded
-    }
-
-    #[test]
-    fn refund_only_after_timeout_and_only_when_funded() {
-        let p = LadderParams::default();
-        let mut s = Swap::new(SwapRole::Initiator, safe_terms());
-        s.accept(0, &p).unwrap();
-        // Can't refund before funding.
-        assert!(matches!(
-            s.refund_after_timeout(99_999),
-            Err(SwapError::IllegalTransition {
-                action: "refund",
-                ..
-            })
-        ));
-        s.fund(0, &p).unwrap();
-        // Can't refund before the timeout height (own leg = nim_timeout = 10_000).
-        assert!(matches!(
-            s.refund_after_timeout(9_999),
-            Err(SwapError::TimeoutNotReached {
-                timeout: 10_000,
-                ..
-            })
-        ));
-        // After the timeout, refund is allowed.
-        assert_eq!(
-            s.refund_after_timeout(10_001).unwrap(),
-            SwapAction::RefundLeg {
-                leg: SwapLegId::Nim
-            }
-        );
-        assert_eq!(s.phase, SwapPhase::Refunded);
-    }
-
-    #[test]
-    fn abort_is_legal_only_before_funding() {
-        let p = LadderParams::default();
-        let mut s = Swap::new(SwapRole::Initiator, safe_terms());
-        s.accept(0, &p).unwrap();
-        let mut pre = s.clone();
-        pre.abort().unwrap();
-        assert_eq!(pre.phase, SwapPhase::Aborted);
-        // Once funded, abort is illegal — only claim or timeout-refund resolves it.
-        s.fund(0, &p).unwrap();
-        assert!(matches!(
-            s.abort(),
-            Err(SwapError::IllegalTransition {
-                action: "abort",
-                ..
-            })
-        ));
-    }
-
-    #[test]
-    fn every_funded_phase_keeps_a_refund_exit() {
-        // The atomicity guarantee: in any phase where funds are locked, refund_after_timeout is a
-        // legal action (past the timeout). This is what makes "worst case = refund, never theft".
-        for phase in [
-            SwapPhase::SelfFunded,
-            SwapPhase::BothFunded,
-            SwapPhase::Revealed,
-        ] {
-            assert!(phase.has_funds_locked());
-            let mut s = Swap::new(SwapRole::Initiator, safe_terms());
-            s.phase = phase;
-            assert!(
-                s.refund_after_timeout(safe_terms().nim_timeout + 1).is_ok(),
-                "phase {phase:?} must allow a timeout refund"
-            );
-        }
-    }
-}
+#[path = "swap_tests.rs"]
+mod tests;

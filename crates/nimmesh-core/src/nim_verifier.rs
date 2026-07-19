@@ -51,7 +51,7 @@ use crate::nimiq::hex::bytes_to_hex;
 use crate::nimiq::htlc::{decode_creation_wire, HashAlgorithm, HtlcCreation};
 use crate::rpc::GatewayRpc;
 use crate::swap_funding_verify::{
-    FundingObservation, FundingVerifier, HtlcExpectation, MismatchReason,
+    ClaimObservation, FundingObservation, FundingVerifier, HtlcExpectation, MismatchReason,
 };
 use crate::swap_wire::SwapLegId;
 
@@ -357,6 +357,60 @@ impl FundingVerifier for NimHtlcVerifier {
 
     fn chain_backed(&self) -> bool {
         true // C1: reads the real Albatross testnet — live-signer eligible
+    }
+
+    /// Run-4 fix: the responder's claim watch — `getTransactionByHash` on our OWN broadcast NIM
+    /// redeem. A POSITIVE inclusion signal, never inferred from the HTLC account vanishing (a
+    /// gone contract is ambiguous with a refund, and an RPC failure must never read as either).
+    /// Three-valued, fail-closed:
+    /// - included at block `b` → `Included { head − b + 1 }` (0 while in the mempool, or when the
+    ///   head read fails — included-but-depth-unknown stays shallow rather than lying deep);
+    /// - the RPC affirmatively does not know the tx → `NotFound` (the caller may re-claim);
+    /// - transport failure, a mismatched reported hash, or (M5) secondary disagreement →
+    ///   `Unavailable` (change nothing; retry next tick).
+    fn observe_claim(&self, leg: SwapLegId, tx_id: &[u8; 32]) -> ClaimObservation {
+        if leg != SwapLegId::Nim {
+            return ClaimObservation::Unavailable; // this verifier speaks only the NIM leg
+        }
+        let hash = bytes_to_hex(tx_id);
+        let block = match self.rpc.get_transaction(&hash) {
+            Err(_) => return ClaimObservation::Unavailable,
+            Ok(None) => None,
+            Ok(Some(tx)) if !tx.hash.eq_ignore_ascii_case(&hash) => {
+                return ClaimObservation::Unavailable; // not our digest — trust nothing off it
+            }
+            Ok(Some(tx)) => Some(tx.block_number),
+        };
+        // M5: when a secondary endpoint is configured it must AGREE before we trust either a
+        // NotFound (which re-arms a re-broadcast) or an inclusion (which authorizes a settle).
+        if let Some(sec) = &self.secondary {
+            match sec.get_transaction(&hash) {
+                Err(_) => return ClaimObservation::Unavailable,
+                Ok(None) if block.is_none() => {}
+                Ok(Some(tx))
+                    if tx.hash.eq_ignore_ascii_case(&hash) && Some(tx.block_number) == block => {}
+                _ => return ClaimObservation::Unavailable, // disagreement → fail-closed
+            }
+        }
+        match block {
+            None => ClaimObservation::NotFound,
+            Some(None) => ClaimObservation::Included { confirmations: 0 }, // known, mempool
+            Some(Some(b)) => {
+                let mut head = match self.rpc.block_number() {
+                    Err(_) => return ClaimObservation::Included { confirmations: 0 },
+                    Ok(h) => h,
+                };
+                if let Some(sec) = &self.secondary {
+                    match sec.block_number() {
+                        Ok(sh) => head = head.min(sh), // conservative (shallower) depth wins
+                        Err(_) => return ClaimObservation::Included { confirmations: 0 },
+                    }
+                }
+                ClaimObservation::Included {
+                    confirmations: head.saturating_sub(b).saturating_add(1),
+                }
+            }
+        }
     }
 }
 

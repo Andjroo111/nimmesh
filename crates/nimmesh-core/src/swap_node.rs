@@ -490,16 +490,13 @@ pub(crate) fn drive_phase_action(
                 }
             }
         }
-        // Responder: S is out — claim OUR NIM leg with it (a live signer builds + lands the
-        // on-chain claim; the mock returns a stand-in), then settle. No mesh message — the
-        // claim lives on-chain, and the phase flip makes this idempotent across replays.
+        // Responder: S is out — claim OUR NIM leg with it. Run-4 fix (2026-07-19): the old arm
+        // discarded the signer result and settled unconditionally — one transient 429 at the
+        // claim moment became a permanent one-sided loss. Now the claim must BROADCAST and then
+        // CHAIN-CONFIRM before `Settled` (`crate::swap_claim` owns the ladder); the gc/fast
+        // ticks re-enter this arm until it lands or `T_A` forecloses (honest `Lost`).
         (SwapRole::Responder, SwapPhase::Revealed) => {
-            if let Some(s) = secret {
-                let _ = sign_claim(st, &sctx, s);
-            }
-            if let Some(c) = coordinator(st, &swap_id) {
-                let _ = c.settle();
-            }
+            crate::swap_claim::attempt_responder_claim(st, swap_id, secret, &sctx);
         }
         _ => {}
     }
@@ -741,6 +738,10 @@ pub(crate) fn gc_tick(ctx: &WorkerCtx, st: &mut WorkerState) {
             flood_swap_reply(ctx, MessageType::SwapAbort, payload, st);
         }
     }
+    // Run-4 fix: the responder-claim ladder — confirm broadcast claims, re-attempt failed ones.
+    // AFTER the session tick, so a settle this pass stays mirrored one tick before the next reap
+    // (the T_A boundary is safe: the forfeiture runs its own last-chance confirmation consult).
+    crate::swap_claim::drive_responder_claims(ctx, st, head);
     // G39: close the match window (if due) and initiate against the best buffered candidate, recording
     // the Propose so a lossy mesh retransmits it. Zero-head gate (`swap_head_gate` docs): a LIVE node
     // with no heard head FREEZES the window instead — it closes on the first post-beacon tick.

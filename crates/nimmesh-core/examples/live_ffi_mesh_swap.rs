@@ -53,7 +53,13 @@ const GIVE_LUNA: u64 = 500_000;
 const TAKE_MICRO_USDC: u64 = 1_000_000;
 const DEFAULT_AMOY_USDC: &str = "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582";
 const TICK: Duration = Duration::from_secs(3);
-const RUN_BUDGET_TICKS: u32 = 260;
+/// Run-4 pacing: 400 ticks (~20 min) so a shared-IP rate-limit storm can ride out — the old 260
+/// expired while the responder's tick-retried claim was still waiting for the RPC to recover.
+const RUN_BUDGET_TICKS: u32 = 400;
+/// Run-4 pacing: consult the settle-detection balances every ~8th tick (~24 s), not every 2nd —
+/// the every-6s double-read (x3 inner retries) was itself a large slice of the 429 storm that
+/// then broke the claim on the SAME shared-IP RPC.
+const SETTLE_CHECK_EVERY_TICKS: u32 = 8;
 const NIM_EXPLORER: &str = "https://nimiq-testnet.observer/transactions";
 const AMOY_EXPLORER: &str = "https://amoy.polygonscan.com/tx";
 const FAUCET_URL: &str = "https://faucet.pos.nimiq-testnet.com/tapit";
@@ -90,12 +96,15 @@ fn derive(parent: &[u8; 32], label: &str) -> [u8; 32] {
 }
 
 fn nim_balance(rpc: &HttpGatewayRpc, addr: &str) -> u64 {
-    for attempt in 0..3u8 {
+    // Run-4 pacing: exponential backoff (2 s / 6 s / 12 s) instead of a tight 3x2 s hammer —
+    // a rate-limited RPC needs ROOM, not more requests (the 429 storm this fed nearly cost a
+    // one-sided loss when it hit the responder's claim at the same shared IP).
+    for (attempt, wait_s) in [2u64, 6, 12].into_iter().enumerate() {
         match rpc.get_account(addr) {
             Ok(acct) => return acct.map(|a| a.balance).unwrap_or(0),
             Err(e) => {
                 eprintln!("[balance] read failed for {addr} (attempt {attempt}): {e}");
-                sleep(Duration::from_secs(2));
+                sleep(Duration::from_secs(wait_s));
             }
         }
     }
@@ -503,10 +512,17 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
 
         // Chain truth: the responder's NIM claim funded AND the initiator's USDC claim
-        // funded ⇒ the atomic swap settled (both `S`-claims landed on-chain).
-        if nim_lock_saved && tick % 2 == 0 {
+        // funded ⇒ the atomic swap settled (both `S`-claims landed on-chain). Paced (run-4):
+        // every ~8th tick, and a failed USDC read is a skipped check, never a dead run.
+        if nim_lock_saved && tick % SETTLE_CHECK_EVERY_TICKS == 0 {
             let resp_nim = nim_balance(&nim_rpc, &resp_claim_nq);
-            let init_usdc = usdc_balance(&amoy, &usdc, &init_claim_addr)?;
+            let init_usdc = match usdc_balance(&amoy, &usdc, &init_claim_addr) {
+                Ok(v) => v,
+                Err(e) => {
+                    eprintln!("[balance] USDC read failed (skipping this check): {e}");
+                    continue;
+                }
+            };
             if resp_nim >= resp_nim_before + GIVE_LUNA
                 && init_usdc >= usdc_claim_before + TAKE_MICRO_USDC
             {

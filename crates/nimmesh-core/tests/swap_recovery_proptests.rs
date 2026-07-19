@@ -23,7 +23,8 @@ fn phase_of(tag: u8) -> SwapPhase {
         5 => SwapPhase::Revealed,
         6 => SwapPhase::Settled,
         7 => SwapPhase::Aborted,
-        _ => SwapPhase::Refunded,
+        8 => SwapPhase::Refunded,
+        _ => SwapPhase::Lost,
     }
 }
 
@@ -32,7 +33,7 @@ proptest! {
     #[test]
     fn snapshot_round_trips_byte_for_byte(
         role_tag in 0u8..2,
-        phase_tag in 0u8..9,
+        phase_tag in 0u8..10,
         swap_id in any::<[u8; 16]>(),
         nim_timeout in any::<u64>(),
         counterparty_timeout in any::<u64>(),
@@ -64,6 +65,9 @@ proptest! {
             },
             secret,
             peer_btc_pubkey,
+            // The pending-claim tx rides the SESSION-level trailer, not the per-record bytes
+            // (run-4 fix) — a record round-trip is claim-agnostic by design.
+            claim_tx: None,
         };
 
         let bytes = encode_snapshot(std::slice::from_ref(&snap));
@@ -78,7 +82,7 @@ proptest! {
     fn a_list_round_trips(n in 0usize..8, seed in any::<u8>()) {
         let snaps: Vec<CoordinatorSnapshot> = (0..n).map(|i| CoordinatorSnapshot {
             role: SwapRole::Initiator,
-            phase: phase_of((i as u8) % 9),
+            phase: phase_of((i as u8) % 10),
             ctx: SwapContext {
                 swap_id: [seed.wrapping_add(i as u8); 16],
                 terms: SwapTerms { nim_timeout: 10_000, counterparty_timeout: 5_000 },
@@ -93,6 +97,7 @@ proptest! {
             },
             secret: Some([42; 32]),
             peer_btc_pubkey: None,
+            claim_tx: None,
         }).collect();
         let bytes = encode_snapshot(&snaps);
         let decoded = decode_snapshot(&bytes).expect("round-trips");

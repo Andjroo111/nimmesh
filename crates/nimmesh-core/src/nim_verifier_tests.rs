@@ -385,3 +385,98 @@ fn the_timeout_mapping_round_trips_with_slack() {
     // Saturation: a timeout already in the past maps to just the slack + anchor.
     assert_eq!(term_equivalent_of_timeout_ms(1_000, 2_000, 0, 900), 900);
 }
+
+#[test]
+fn observe_claim_reports_inclusion_depth_notfound_and_unavailable_fail_closed() {
+    // Run-4 fix: the live claim watch. A POSITIVE `getTransactionByHash` consult of our OWN
+    // broadcast redeem — three-valued so run 4's transient 429 is DISTINGUISHABLE from "the
+    // chain does not know this tx" (conflating them is exactly how a 429 became a fake settle).
+    let rpc = Arc::new(MockRpc::new(0));
+    let verifier = NimHtlcVerifier::new(rpc.clone(), Arc::new(NimFundingStore::new()));
+    let tx = [0x5A; 32];
+    let hex = bytes_to_hex(&tx);
+
+    // The chain affirmatively does not know the tx → NotFound (the caller may re-claim).
+    assert_eq!(
+        verifier.observe_claim(SwapLegId::Nim, &tx),
+        ClaimObservation::NotFound
+    );
+    // The wrong leg → Unavailable (this verifier speaks only the NIM leg).
+    assert_eq!(
+        verifier.observe_claim(SwapLegId::Counterparty, &tx),
+        ClaimObservation::Unavailable
+    );
+
+    // Included at block 100 with head 101 → depth 2 (inclusive count, like the funding read).
+    rpc.confirm(&hex, 100);
+    rpc.set_head(101);
+    assert_eq!(
+        verifier.observe_claim(SwapLegId::Nim, &tx),
+        ClaimObservation::Included { confirmations: 2 }
+    );
+
+    // Run 4's exact failure: a transport error must read Unavailable, never a verdict.
+    rpc.fail_transient("rpc http 429 (getTransactionByHash)");
+    assert_eq!(
+        verifier.observe_claim(SwapLegId::Nim, &tx),
+        ClaimObservation::Unavailable
+    );
+    rpc.recover();
+
+    // M5 content bind: a returned tx whose REPORTED hash is not the queried digest is trusted
+    // for nothing — neither an inclusion nor a NotFound.
+    let liar = Arc::new(MockRpc::new(101));
+    liar.confirm_as(&hex, &bytes_to_hex(&[0x77u8; 32]), 100);
+    let lied_to = NimHtlcVerifier::new(liar, Arc::new(NimFundingStore::new()));
+    assert_eq!(
+        lied_to.observe_claim(SwapLegId::Nim, &tx),
+        ClaimObservation::Unavailable
+    );
+}
+
+#[test]
+fn observe_claim_with_a_secondary_needs_agreement_and_takes_the_conservative_depth() {
+    // M5 cross-read on the claim watch: a single endpoint can neither fake an inclusion (which
+    // authorizes a settle) nor a NotFound (which re-arms a re-broadcast) once a secondary is
+    // configured — disagreement of any kind reads Unavailable, and the shallower head wins.
+    let tx = [0x5B; 32];
+    let hex = bytes_to_hex(&tx);
+
+    let primary = Arc::new(MockRpc::new(120));
+    primary.confirm(&hex, 100);
+    let secondary = Arc::new(MockRpc::new(105));
+    let verifier = NimHtlcVerifier::new(primary.clone(), Arc::new(NimFundingStore::new()))
+        .with_secondary(secondary.clone());
+
+    // The secondary does not know the tx yet → no verdict.
+    assert_eq!(
+        verifier.observe_claim(SwapLegId::Nim, &tx),
+        ClaimObservation::Unavailable
+    );
+    // Agreement on the inclusion block → included; depth from the CONSERVATIVE head
+    // (min(120, 105) = 105 → 105 − 100 + 1 = 6, not the primary's 21).
+    secondary.confirm(&hex, 100);
+    assert_eq!(
+        verifier.observe_claim(SwapLegId::Nim, &tx),
+        ClaimObservation::Included { confirmations: 6 }
+    );
+    // Disagreement on the inclusion block → fail-closed again.
+    let disagreeing = Arc::new(MockRpc::new(105));
+    disagreeing.confirm(&hex, 99);
+    let split =
+        NimHtlcVerifier::new(primary, Arc::new(NimFundingStore::new())).with_secondary(disagreeing);
+    assert_eq!(
+        split.observe_claim(SwapLegId::Nim, &tx),
+        ClaimObservation::Unavailable
+    );
+
+    // And a NotFound now needs BOTH endpoints to say unknown.
+    let p2 = Arc::new(MockRpc::new(10));
+    let s2 = Arc::new(MockRpc::new(10));
+    let both_unknown =
+        NimHtlcVerifier::new(p2, Arc::new(NimFundingStore::new())).with_secondary(s2);
+    assert_eq!(
+        both_unknown.observe_claim(SwapLegId::Nim, &[0x5C; 32]),
+        ClaimObservation::NotFound
+    );
+}

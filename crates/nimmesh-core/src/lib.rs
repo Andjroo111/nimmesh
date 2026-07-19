@@ -77,6 +77,13 @@ pub mod swap_node;
 // the first real beacon, and the #189 tombstone then bricks the pair (the 2026-07-19 soak stall).
 mod swap_head_gate;
 
+// Mesh swap: the responder claim ladder (run-4 fix, 2026-07-19). A responder never reaches
+// `Settled` — nor gets reaped — while its inbound NIM claim is unconfirmed on-chain: a failed
+// claim broadcast retries on both tick cadences, settlement is gated on the verifier's
+// claim-inclusion consult, and a claim window that closes unconfirmed forecloses to the honest
+// `Lost` terminal instead of a silent fake settle.
+mod swap_claim;
+
 // Mesh swap: the observable FFI mirror. `swap_mirror` syncs the worker-thread session's per-swap
 // phase + last verify verdict into the shared `WorkerCtx.swaps`, and reads it back as `FfiSwapMatch`
 // records — so the app lists in-flight swaps + the verifier's live verdict without touching the

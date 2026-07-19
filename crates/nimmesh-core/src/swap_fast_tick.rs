@@ -68,13 +68,17 @@ impl FastTickScheduler {
 /// fast tick touches nothing shared.
 pub(crate) fn fast_tick(ctx: &WorkerCtx, st: &mut WorkerState) {
     let now = st.now_ms();
+    // The combined work-exists + rate-limit gate (`fast_due`): an idle poll consults
+    // nothing and burns no slot; a due one re-runs the funding gate for awaited swaps.
     let advanced = match st.swap.as_mut() {
-        Some(session) => session.fast_reverify(now),
+        Some(session) => {
+            if !session.fast_due(now) {
+                return; // idle or rate-limited
+            }
+            session.reverify_awaited_funding()
+        }
         None => return, // a relay-only node has no swaps to poll.
     };
-    if advanced.is_empty() {
-        return;
-    }
     let head = ctx.cached_head().map(u64::from).unwrap_or(0);
     for swap_id in advanced {
         let replies = crate::swap_node::drive_phase_action(st, swap_id, head);
@@ -85,6 +89,10 @@ pub(crate) fn fast_tick(ctx: &WorkerCtx, st: &mut WorkerState) {
             crate::swap_node::flood_swap_reply(ctx, mt, payload, st);
         }
     }
+    // Run-4 fix: the responder-claim ladder rides the fast beat too — the claim + its
+    // confirmation are the LAST settlement leg, so leaving them slow-tick-only would put a
+    // ~15 s quantum right back into the sub-30 s goal. Same gates, same code as the slow tick.
+    crate::swap_claim::drive_responder_claims(ctx, st, head);
     crate::swap_mirror::sync_swap_phases(ctx, st);
 }
 

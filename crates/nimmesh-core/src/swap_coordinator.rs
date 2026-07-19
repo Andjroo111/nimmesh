@@ -86,6 +86,11 @@ pub struct SwapCoordinator {
     secret: Option<[u8; HASH_LEN]>,
     peer_btc_pubkey: Option<[u8; BTC_PUBKEY_LEN]>,
     ladder: LadderParams,
+    /// Run-4 fix (2026-07-19): the tx id of this RESPONDER's broadcast-but-not-yet-confirmed
+    /// NIM-leg claim. `Some` while the claim is on the wire awaiting chain confirmation — the
+    /// phase stays `Revealed` (so the tick keeps consulting the chain and the GC can never reap
+    /// the swap) until the claim confirms (→ `settle`) or `T_A` forecloses (→ `Lost`).
+    claim_tx: Option<[u8; HASH_LEN]>,
 }
 
 /// G31: a serializable capture of a coordinator's essential state for crash recovery. The node
@@ -100,10 +105,14 @@ pub struct CoordinatorSnapshot {
     pub phase: SwapPhase,
     /// The full swap context (terms, hashlock, addresses, amounts, network).
     pub ctx: SwapContext,
-    /// The initiator's secret `S` (`None` for a responder). Sensitive.
+    /// The initiator's secret `S` (`None` for a responder **until** it extracts `S` off the
+    /// reveal — a responder restarting mid-claim still holds it here). Sensitive.
     pub secret: Option<[u8; HASH_LEN]>,
     /// The peer's BTC pubkey, once it has been learned.
     pub peer_btc_pubkey: Option<[u8; BTC_PUBKEY_LEN]>,
+    /// The responder's broadcast-but-unconfirmed NIM-claim tx id, if any (run-4 fix) — persisted
+    /// so a restart mid-claim resumes the confirmation watch instead of blind-rebroadcasting.
+    pub claim_tx: Option<[u8; HASH_LEN]>,
 }
 
 impl SwapCoordinator {
@@ -132,6 +141,7 @@ impl SwapCoordinator {
                 secret: Some(secret),
                 peer_btc_pubkey: None,
                 ladder,
+                claim_tx: None,
             },
             propose,
         )
@@ -145,6 +155,7 @@ impl SwapCoordinator {
             secret: None,
             peer_btc_pubkey: None,
             ladder,
+            claim_tx: None,
         }
     }
 
@@ -186,6 +197,7 @@ impl SwapCoordinator {
             ctx: self.ctx.clone(),
             secret: self.secret,
             peer_btc_pubkey: self.peer_btc_pubkey,
+            claim_tx: self.claim_tx,
         }
     }
 
@@ -202,6 +214,7 @@ impl SwapCoordinator {
             secret: snapshot.secret,
             peer_btc_pubkey: snapshot.peer_btc_pubkey,
             ladder,
+            claim_tx: snapshot.claim_tx,
         }
     }
 
@@ -454,6 +467,35 @@ impl SwapCoordinator {
     /// Record that this node's claim settled on-chain → terminal success.
     pub fn settle(&mut self) -> Result<(), CoordError> {
         self.swap.observe_settled()?;
+        Ok(())
+    }
+
+    // --- the responder claim ladder (run-4 fix, 2026-07-19) --------------------------------------
+
+    /// (Responder) record that our NIM-leg claim was BROADCAST as `tx_id`. The phase stays
+    /// `Revealed`: settling is only legal once the claim is **chain-confirmed** (the session's
+    /// claim-confirmation consult, [`crate::swap_claim`]) — a broadcast is a hope, not a payment.
+    pub fn note_claim_broadcast(&mut self, tx_id: [u8; HASH_LEN]) {
+        self.claim_tx = Some(tx_id);
+    }
+
+    /// The broadcast-but-unconfirmed claim tx id, if any.
+    pub fn claim_broadcast(&self) -> Option<[u8; HASH_LEN]> {
+        self.claim_tx
+    }
+
+    /// Forget a broadcast claim the chain affirmatively does NOT know (evicted/never landed) —
+    /// re-arms the tick-driven claim broadcast. Never called on a mere consult failure: an
+    /// unreachable chain changes nothing (fail-closed).
+    pub fn clear_claim_broadcast(&mut self) {
+        self.claim_tx = None;
+    }
+
+    /// (Responder) the inbound claim window closed (`head > T_A`) with the claim unconfirmed →
+    /// [`SwapPhase::Lost`], the honest one-sided-loss terminal. A no-op error for any other
+    /// role/phase/height — the GC tick calls it blanket-style, like `refund_after_timeout`.
+    pub fn forfeit_expired_claim(&mut self, head: u64) -> Result<(), CoordError> {
+        self.swap.forfeit_claim(head)?;
         Ok(())
     }
 }

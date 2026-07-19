@@ -55,13 +55,30 @@ impl SwapSession {
     /// swap is reaped from the coordinator map before a snapshot, so without the trailer a
     /// settle → reap → restart would forget the id and the deterministic secret source could
     /// reissue its now-PUBLIC `S` to a re-derived swap. Tombstones are 16-byte ids only.
+    /// Run-4 fix: the blob's third section is the **claim trailer** — `(swap_id, claim_tx)` for
+    /// every responder whose NIM claim is broadcast but not yet chain-confirmed, so a restart
+    /// mid-claim resumes the confirmation watch instead of blind-rebroadcasting (or worse,
+    /// forgetting the claim ever went out). Appended AFTER the tombstones: a pre-trailer decoder
+    /// ignores trailing bytes, and a pre-trailer blob simply reads as zero pending claims —
+    /// compatible both ways, like the tombstone trailer before it.
     pub fn encode_snapshot(&self) -> Vec<u8> {
-        let mut out = encode_snapshot(&self.snapshot());
+        let snaps = self.snapshot();
+        let mut out = encode_snapshot(&snaps);
         let mut ids: Vec<[u8; 16]> = self.initiated_ever.iter().copied().collect();
         ids.sort_unstable(); // deterministic bytes
         out.extend_from_slice(&(ids.len() as u16).to_be_bytes());
         for id in &ids {
             out.extend_from_slice(id);
+        }
+        let mut claims: Vec<([u8; 16], [u8; 32])> = snaps
+            .iter()
+            .filter_map(|s| s.claim_tx.map(|tx| (s.ctx.swap_id, tx)))
+            .collect();
+        claims.sort_unstable_by_key(|(id, _)| *id); // deterministic bytes
+        out.extend_from_slice(&(claims.len() as u16).to_be_bytes());
+        for (id, tx) in &claims {
+            out.extend_from_slice(id);
+            out.extend_from_slice(tx);
         }
         out
     }
@@ -73,11 +90,18 @@ impl SwapSession {
         ladder: LadderParams,
         bytes: &[u8],
     ) -> Result<Self, SnapshotError> {
-        let (snaps, tombstones) = decode_snapshot_with_tombstones(bytes)?;
+        let (snaps, tombstones, claims) = decode_snapshot_full(bytes)?;
         let mut session = SwapSession::restore(identity, ladder, snaps);
         // H2: re-arm every persisted tombstone, including those whose coordinator was
         // already reaped (the settle → reap → restart hole the review flagged).
         session.initiated_ever.extend(tombstones);
+        // Run-4 fix: re-arm every persisted pending claim so the restored responder resumes
+        // the confirmation watch where the crash left it (never re-broadcasts blind).
+        for (swap_id, tx_id) in claims {
+            if let Some(c) = session.coordinators.get_mut(&swap_id) {
+                c.note_claim_broadcast(tx_id);
+            }
+        }
         Ok(session)
     }
 }
@@ -143,6 +167,20 @@ pub fn decode_snapshot(bytes: &[u8]) -> Result<Vec<CoordinatorSnapshot>, Snapsho
 pub fn decode_snapshot_with_tombstones(
     bytes: &[u8],
 ) -> Result<(Vec<CoordinatorSnapshot>, Vec<[u8; 16]>), SnapshotError> {
+    decode_snapshot_full(bytes).map(|(snaps, tombs, _)| (snaps, tombs))
+}
+
+/// Run-4 fix: decode snapshots + tombstones + the pending-claim trailer (`(swap_id, claim_tx)`
+/// pairs). Each trailer is optional-if-absent (a shorter, older blob reads as zero entries) but
+/// hard-`Truncated` if PRESENT and torn — never silently drop a tombstone or a pending claim.
+type FullSnapshot = (
+    Vec<CoordinatorSnapshot>,
+    Vec<[u8; 16]>,
+    Vec<([u8; 16], [u8; 32])>,
+);
+
+/// The three-section decode behind [`decode_snapshot_with_tombstones`] / `restore_bytes`.
+pub fn decode_snapshot_full(bytes: &[u8]) -> Result<FullSnapshot, SnapshotError> {
     let mut r = Reader { buf: bytes, pos: 0 };
     let count = r.u16().ok_or(SnapshotError::Truncated)?;
     let mut out = Vec::new();
@@ -150,12 +188,22 @@ pub fn decode_snapshot_with_tombstones(
         out.push(decode_one(&mut r)?);
     }
     let mut tombstones = Vec::new();
-    if let Some(tcount) = r.u16() {
+    if r.remaining() > 0 {
+        let tcount = r.u16().ok_or(SnapshotError::Truncated)?;
         for _ in 0..tcount {
             tombstones.push(r.arr::<16>().ok_or(SnapshotError::Truncated)?);
         }
     }
-    Ok((out, tombstones))
+    let mut claims = Vec::new();
+    if r.remaining() > 0 {
+        let ccount = r.u16().ok_or(SnapshotError::Truncated)?;
+        for _ in 0..ccount {
+            let id = r.arr::<16>().ok_or(SnapshotError::Truncated)?;
+            let tx = r.arr::<32>().ok_or(SnapshotError::Truncated)?;
+            claims.push((id, tx));
+        }
+    }
+    Ok((out, tombstones, claims))
 }
 
 fn decode_one(r: &mut Reader) -> Result<CoordinatorSnapshot, SnapshotError> {
@@ -204,6 +252,9 @@ fn decode_one(r: &mut Reader) -> Result<CoordinatorSnapshot, SnapshotError> {
         },
         secret,
         peer_btc_pubkey,
+        // The pending-claim tx rides the session-level claim trailer, not the per-record bytes
+        // (kept out of the record so pre-trailer decoders still parse these records verbatim).
+        claim_tx: None,
     })
 }
 
@@ -214,6 +265,9 @@ struct Reader<'a> {
 }
 
 impl Reader<'_> {
+    fn remaining(&self) -> usize {
+        self.buf.len().saturating_sub(self.pos)
+    }
     fn take(&mut self, n: usize) -> Option<&[u8]> {
         let end = self.pos.checked_add(n)?;
         let s = self.buf.get(self.pos..end)?;
@@ -261,6 +315,7 @@ fn phase_tag(p: SwapPhase) -> u8 {
         SwapPhase::Settled => 6,
         SwapPhase::Aborted => 7,
         SwapPhase::Refunded => 8,
+        SwapPhase::Lost => 9,
     }
 }
 
@@ -275,6 +330,7 @@ fn phase_from_tag(t: u8) -> Result<SwapPhase, SnapshotError> {
         6 => SwapPhase::Settled,
         7 => SwapPhase::Aborted,
         8 => SwapPhase::Refunded,
+        9 => SwapPhase::Lost,
         _ => return Err(SnapshotError::Malformed),
     })
 }

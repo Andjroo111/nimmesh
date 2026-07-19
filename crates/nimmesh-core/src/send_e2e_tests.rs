@@ -103,15 +103,22 @@ fn a_send_into_the_void_delivers_when_the_mesh_reappears() {
     let gw = Arc::new(MockGateway::new(default_network()));
     let origin = h.add_node("origin", &[1]);
     let _gateway = h.add_gateway("gw", &[3], gw.clone());
-    // NOT connected yet: the initial flood reaches nobody.
+    // NOT connected yet: the initial flood reaches nobody. Fence origin AND the ether so the
+    // void delivery conclusively COMPLETES (to nobody) before the link appears — without this
+    // drain the transmit could still sit in the ether at `connect` and be delivered late,
+    // silently rescuing the test from the exact bug it exists to catch (that race is how it
+    // "passed" while the first-tick re-offer was broken for young workers — the 2-core CI
+    // reds on the run-4 PR; see `pending_retry::PendingTx::last_flood_ms`).
     let tx_id = origin.submit_signed_transfer(signed);
+    origin.fence();
+    h.ether().fence();
     assert_eq!(gw.submission_count(), 0);
 
-    // Drive home: the mesh appears, and the ~15s heartbeat tick re-offers the tx
-    // immediately (a void-flooded tx skips the retry cadence on its first chance).
-    // Fence-driven drain (ADR-0005) rather than a wall-clock wait — the beacon re-flood →
-    // gateway submit → receipt round-trip is deterministic once the workers quiesce, so
-    // this no longer races CI's 2-core oversubscription (the old `wait_payment` did).
+    // Drive home: the mesh appears, and the heartbeat tick re-offers the tx immediately —
+    // a void-flooded tx skips the RETRY_MS cadence on its first chance, INCLUDING within
+    // the first 15 s of the worker's life (the `Option` fix; the old `0` sentinel gated it
+    // on `now ≥ RETRY_MS`, i.e. never this early). Fence-driven drain (ADR-0005) rather
+    // than a wall-clock wait throughout.
     h.connect("origin", "gw");
     origin.poll_beacon();
     for _ in 0..3 {

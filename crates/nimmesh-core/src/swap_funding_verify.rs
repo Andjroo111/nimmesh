@@ -74,6 +74,26 @@ pub enum MismatchReason {
     Recipient,
 }
 
+/// What a [`FundingVerifier`] found on-chain for THIS node's own broadcast **claim** tx (run-4 fix,
+/// 2026-07-19). The responder's settle gate: `Revealed → Settled` is only legal once the claim is
+/// `Included` at the leg's confirmation depth — a broadcast (let alone a mere attempt) settles
+/// nothing. Deliberately three-valued so a transport failure is DISTINGUISHABLE from "the chain
+/// does not know this tx": conflating them is exactly how run 4 turned one 429 into a fake settle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClaimObservation {
+    /// The claim tx is on-chain (0 = still in the mempool); settle once deep enough.
+    Included {
+        /// Blocks burying the claim tx (0 = known but unconfirmed).
+        confirmations: u32,
+    },
+    /// The chain affirmatively does NOT know the tx — it never landed or was evicted. The caller
+    /// may clear the recorded broadcast and re-claim (the HTLC is still open until its timeout).
+    NotFound,
+    /// The chain could not be consulted (transport failure / unimplemented verifier). Fail-closed:
+    /// change NOTHING — neither settle nor re-broadcast — and retry on a later tick.
+    Unavailable,
+}
+
 /// Observe a chain for the HTLC described by an [`HtlcExpectation`]. The sole boundary between the pure
 /// swap logic and a real chain: tests use [`SimVerifier`]; slice 2 adds gateway-backed impls behind
 /// this same trait. Read-only — carries no keys and signs nothing.
@@ -101,6 +121,16 @@ pub trait FundingVerifier: Send + Sync {
     /// must *deliberately* declare itself chain-backed before it may.
     fn chain_backed(&self) -> bool {
         false
+    }
+
+    /// Run-4 fix: report whether THIS node's own broadcast claim `tx_id` on `leg`'s chain has
+    /// landed, and how deep. **Default `Unavailable` — fail-closed:** a verifier that has not
+    /// implemented the claim watch can never confirm one, so a responder over it stays
+    /// `Revealed` (funds-safe, tick-retried) rather than settling on faith. The gateway-backed
+    /// NIM verifier overrides this with a real `getTransactionByHash` consult; the sim
+    /// [`AcceptAllVerifier`] answers maximally-buried (mirroring its accept-all funding).
+    fn observe_claim(&self, _leg: SwapLegId, _tx_id: &[u8; HASH_LEN]) -> ClaimObservation {
+        ClaimObservation::Unavailable
     }
 }
 
@@ -314,6 +344,15 @@ impl FundingVerifier for AcceptAllVerifier {
             confirmations: u32::MAX,
         }
     }
+
+    /// The sim has no chain: a broadcast claim is "maximally buried" at once, so the mesh-sim
+    /// responder settles on the same message-driven beat it always did. `live_safety` (C1)
+    /// keeps this verifier — and thus this shortcut — permanently off the money path.
+    fn observe_claim(&self, _leg: SwapLegId, _tx_id: &[u8; HASH_LEN]) -> ClaimObservation {
+        ClaimObservation::Included {
+            confirmations: u32::MAX,
+        }
+    }
 }
 
 /// The decision to proceed was refused — with the reason, so the caller surfaces it and keeps waiting
@@ -442,12 +481,19 @@ pub struct OnChainHtlc {
 #[derive(Debug, Clone, Default)]
 pub struct LedgerVerifier {
     htlcs: Vec<OnChainHtlc>,
+    /// Claim txs the (sim) chain has included: `tx_id → confirmations` (run-4 fix). A tx not in
+    /// here reads [`ClaimObservation::NotFound`] — this ledger is always consultable, unlike a
+    /// real RPC, so `Unavailable` never arises from it.
+    claims: Vec<([u8; HASH_LEN], u32)>,
 }
 
 impl LedgerVerifier {
     /// An empty ledger — nothing funded yet.
     pub fn new() -> Self {
-        LedgerVerifier { htlcs: Vec::new() }
+        LedgerVerifier {
+            htlcs: Vec::new(),
+            claims: Vec::new(),
+        }
     }
     /// Publish (or re-publish at a deeper confirmation) an on-chain HTLC.
     pub fn fund(&mut self, htlc: OnChainHtlc) {
@@ -467,6 +513,16 @@ impl LedgerVerifier {
     /// The gate then sees nothing on-chain — [`FundingObservation::Absent`] — i.e. NotFundedYet.
     pub fn orphan_all(&mut self) {
         self.htlcs.clear();
+    }
+
+    /// Include (or re-bury) a broadcast claim tx at `confirmations` depth (run-4 fix) — the sim
+    /// chain accepting the responder's NIM claim.
+    pub fn include_claim(&mut self, tx_id: [u8; HASH_LEN], confirmations: u32) {
+        if let Some(c) = self.claims.iter_mut().find(|(id, _)| *id == tx_id) {
+            c.1 = confirmations;
+        } else {
+            self.claims.push((tx_id, confirmations));
+        }
     }
 }
 
@@ -504,6 +560,15 @@ impl FundingVerifier for LedgerVerifier {
             return FundingObservation::Mismatch(MismatchReason::Recipient);
         }
         FundingObservation::Absent
+    }
+
+    fn observe_claim(&self, _leg: SwapLegId, tx_id: &[u8; HASH_LEN]) -> ClaimObservation {
+        match self.claims.iter().find(|(id, _)| id == tx_id) {
+            Some((_, confirmations)) => ClaimObservation::Included {
+                confirmations: *confirmations,
+            },
+            None => ClaimObservation::NotFound,
+        }
     }
 }
 

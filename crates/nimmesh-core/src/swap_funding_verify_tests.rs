@@ -406,3 +406,44 @@ fn a_reorg_that_orphans_the_funding_tx_reads_as_absent() {
         Err(FundingRejected::NotFundedYet)
     );
 }
+
+#[test]
+fn claim_observation_defaults_fail_closed_and_the_sim_verifiers_answer_by_role() {
+    // Run-4 fix: the claim watch's fail-closed geometry. The TRAIT default is Unavailable — a
+    // verifier that never implemented `observe_claim` can never settle a responder (SimVerifier
+    // inherits it). The accept-all sim chain answers maximally buried, so the deterministic mesh
+    // suites settle message-synchronously (C1 keeps it off the money path forever). The ledger
+    // reference is an actual claim registry: NotFound until included, then the seeded depth.
+    let sim = SimVerifier::healthy(100_000, 10_000, 10);
+    assert_eq!(
+        sim.observe_claim(SwapLegId::Nim, &[0x5A; HASH_LEN]),
+        ClaimObservation::Unavailable
+    );
+    assert_eq!(
+        AcceptAllVerifier.observe_claim(SwapLegId::Nim, &[0x5A; HASH_LEN]),
+        ClaimObservation::Included {
+            confirmations: u32::MAX
+        }
+    );
+
+    let mut ledger = LedgerVerifier::new();
+    assert_eq!(
+        ledger.observe_claim(SwapLegId::Nim, &[0x5A; HASH_LEN]),
+        ClaimObservation::NotFound
+    );
+    ledger.include_claim([0x5A; HASH_LEN], 1);
+    assert_eq!(
+        ledger.observe_claim(SwapLegId::Nim, &[0x5A; HASH_LEN]),
+        ClaimObservation::Included { confirmations: 1 }
+    );
+    ledger.include_claim([0x5A; HASH_LEN], 7); // buried deeper in place, no duplicate entry
+    assert_eq!(
+        ledger.observe_claim(SwapLegId::Nim, &[0x5A; HASH_LEN]),
+        ClaimObservation::Included { confirmations: 7 }
+    );
+    // A different tx id is a different claim.
+    assert_eq!(
+        ledger.observe_claim(SwapLegId::Nim, &[0x66; HASH_LEN]),
+        ClaimObservation::NotFound
+    );
+}

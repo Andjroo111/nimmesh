@@ -323,6 +323,10 @@ pub enum FfiSwapPhase {
     Aborted,
     /// Refunded via timeout (terminal).
     Refunded,
+    /// (Responder) the claim window closed with the NIM claim unconfirmed while the counterparty
+    /// leg was already claimed with the public `S` — an honest one-sided LOSS (terminal). Run-4
+    /// fix, 2026-07-19: never surfaced as `Settled`.
+    Lost,
 }
 
 impl From<crate::swap::SwapPhase> for FfiSwapPhase {
@@ -338,6 +342,7 @@ impl From<crate::swap::SwapPhase> for FfiSwapPhase {
             SwapPhase::Settled => FfiSwapPhase::Settled,
             SwapPhase::Aborted => FfiSwapPhase::Aborted,
             SwapPhase::Refunded => FfiSwapPhase::Refunded,
+            SwapPhase::Lost => FfiSwapPhase::Lost,
         }
     }
 }

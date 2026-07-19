@@ -702,9 +702,23 @@ fn gossip_sync_only_sends_the_packets_a_peer_lacks() {
     assert_eq!(a.recent_stored(), early + late);
 
     // B rejoins and syncs: A should send back only the `late` packets B is missing.
+    //
+    // Resync (bounded) rather than a single shot: the GCS advertisement has a DOCUMENTED
+    // ~1% false-positive rate PER ID (`gcs::GCS_FALSE_POSITIVE_RATE`), and packet ids hash
+    // the wall-clock `timestamp_ms` — so ~1 run in 15 (7 lookups x 1%) A wrongly reads one
+    // missing packet as already-held and leaves B one short. That is the chronic red on the
+    // 2-core CI runner (it is content-randomness, not load). A SECOND sync is not a re-roll
+    // of the same dice: B's grown cache yields a differently-membered filter, re-hashing
+    // the stray id, so each extra fence-drained attempt multiplies the residual by ~1e-2.
+    // Four attempts ≈ 1e-8 — deterministic for CI purposes, still zero wall-clock waits.
     h.ether().heal("a", "b");
-    b.request_sync();
-    drain(&b, &a);
+    for _ in 0..4 {
+        b.request_sync();
+        drain(&b, &a);
+        if b.recent_stored() == early + late {
+            break;
+        }
+    }
     assert_eq!(b.recent_stored(), early + late, "B did not fill the gap");
     assert_eq!(
         a.rsr_sent(),

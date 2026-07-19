@@ -275,6 +275,13 @@ fn a_mesh_swap_gated_by_the_real_nim_verifier_settles_once_the_chain_confirms() 
     // live with the full amount. The next retransmit passes the gate → the swap completes.
     rpc.confirm(&bytes_to_hex(&creation.tx_hash()), 100);
     rpc.set_head(102); // depth 3 ≥ the testnet NIM policy (2)
+                       // Run-4 fix: bob's REAL verifier now also gates his `Revealed → Settled` on his OWN claim
+                       // being included — a broadcast alone no longer settles. Model the chain accepting his
+                       // (deterministic sim) claim tx at depth 2, so the claim watch confirms it.
+    rpc.confirm(
+        &bytes_to_hex(&crate::swap_signer::sim_tx_id(swap_id, 0xF3)),
+        101,
+    );
     rpc.set_account(
         &creation.contract_address().to_user_friendly(),
         RpcAccount {
