@@ -330,6 +330,11 @@ pub(crate) fn handle_swap_packet(
             // candidate (the window close in `gc_tick` initiates the best). G36: keyed by the flood's
             // origin (`sender_id`) so the per-sender throttle caps a flooder, not a real advertiser.
             handle_intent(ctx, st, packet.sender_id, &packet.payload);
+        } else if SwapKind::from_message_type(packet.msg_type) == Some(SwapKind::Propose)
+            && crate::swap_head_gate::live_headless(ctx, st)
+        {
+            // Zero-head gate (`swap_head_gate` docs): defer a fresh Propose while LIVE with no
+            // heard head — the peer's retransmits recover it; it still blind-relays onward below.
         } else if let Some(kind) = SwapKind::from_message_type(packet.msg_type) {
             let head = ctx.cached_head().map(u64::from).unwrap_or(0);
             let mut replies = match st.swap.as_mut() {
@@ -737,17 +742,20 @@ pub(crate) fn gc_tick(ctx: &WorkerCtx, st: &mut WorkerState) {
         }
     }
     // G39: close the match window (if due) and initiate against the best buffered candidate, recording
-    // the Propose so a lossy mesh retransmits it.
-    if let Some(swap_id) = st.intents.matcher.tick() {
-        let replies = initiate_from_intent(st, swap_id, head);
-        if !replies.is_empty() {
-            ctx.intent_metrics.note_matched(); // a discovered swap actually started (G42)
-        }
-        for (mt, payload) in replies {
-            if let Some(session) = st.swap.as_mut() {
-                session.record_action(swap_id, mt, payload.clone());
+    // the Propose so a lossy mesh retransmits it. Zero-head gate (`swap_head_gate` docs): a LIVE node
+    // with no heard head FREEZES the window instead — it closes on the first post-beacon tick.
+    if !crate::swap_head_gate::live_headless(ctx, st) {
+        if let Some(swap_id) = st.intents.matcher.tick() {
+            let replies = initiate_from_intent(st, swap_id, head);
+            if !replies.is_empty() {
+                ctx.intent_metrics.note_matched(); // a discovered swap actually started (G42)
             }
-            flood_swap_reply(ctx, mt, payload, st);
+            for (mt, payload) in replies {
+                if let Some(session) = st.swap.as_mut() {
+                    session.record_action(swap_id, mt, payload.clone());
+                }
+                flood_swap_reply(ctx, mt, payload, st);
+            }
         }
     }
     readvertise_intent(ctx, st, head);

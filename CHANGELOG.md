@@ -3,6 +3,34 @@
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
 
+## [0.88.4] — 2026-07-19
+
+### Fixed — the zero-head discovery trap (the 07-19 G10c soak stall)
+
+The G10c soak (`live_ffi_mesh_swap`) funded a real 5 tNIM HTLC and then read
+`phone None · mac None` for 15 minutes. Root cause: a LIVE node that had not yet heard a
+`nimiqHeadBeacon` negotiated at `cached_head = 0`, minting the sim's ABSOLUTE timelocks
+(`10_000 / 5_000`) around real money (the responder, equally headless after its gateway's t0
+RPC probe failed — a failure that also arms the ~60 s beacon backoff — judged them against
+head 0 and accepted). The first real beacon (~5.06M) then annihilated both sides at once: the
+funded initiator flipped `Refunded` (phase-only — the live refund is the lock book's job) and
+was GC-reaped, the un-funded responder was stale-reaped before its NIM verification could pass,
+and the #189 tombstone (fixed per-construction identity → fixed `derive_swap_id`) forbade the
+pair from ever re-initiating. Latent since the 0.68.0 live doors; the 07-09 green run simply
+won the beacon race.
+
+New `swap_head_gate`: while a node pairs a **live** signer with **no cached head**, discovery
+neither initiates (the G39 match window FREEZES — candidates keep — and closes on the first
+post-beacon tick) nor accepts a fresh `Propose` (deferred; the peer's TTL-32 slow-tick
+retransmit budget, ~8 min, far outlasts the beacon backoff). Sim nodes are exempt — the no-RNG
+suites run at head 0 by design. The discovery sibling of the G9 `anchored_intent` rule.
+
+Two node-loop regression tests (live-flagged signer over a live-safe session, zero network,
+zero funds) pin both halves red→green, and a new no-money diagnostic example
+(`diag_ffi_mesh_no_money`) replays the soak through the REAL FFI ctors with dead RPCs +
+an injectable real-scale head beacon — the repro that found this.
+
+
 ## [0.88.3] — 2026-07-19
 
 ### Changed — the ARMED swap sheet is wallet-like: Confirm IS the mainnet swap

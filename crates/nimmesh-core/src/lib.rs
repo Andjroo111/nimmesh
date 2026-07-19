@@ -72,6 +72,11 @@ pub mod swap_session;
 // the `SwapSession` and flood the reply -- packets in, coordinator dispatch, envelopes out.
 pub mod swap_node;
 
+// Mesh swap: the zero-head discovery gate. A LIVE node that has heard no chain head must neither
+// initiate nor accept a swap — head-0-minted absolute timelocks around real money are expired by
+// the first real beacon, and the #189 tombstone then bricks the pair (the 2026-07-19 soak stall).
+mod swap_head_gate;
+
 // Mesh swap: the observable FFI mirror. `swap_mirror` syncs the worker-thread session's per-swap
 // phase + last verify verdict into the shared `WorkerCtx.swaps`, and reads it back as `FfiSwapMatch`
 // records — so the app lists in-flight swaps + the verifier's live verdict without touching the
