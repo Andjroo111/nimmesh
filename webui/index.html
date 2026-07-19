@@ -658,6 +658,7 @@
   .swap-real-row { display: flex; align-items: center; justify-content: center; gap: 8px;
     margin: 14px 0 0; font-size: 14px; color: rgba(31,35,72,.7); cursor: pointer; }
   .swap-real-row input { width: 16px; height: 16px; accent-color: #0582CA; }
+  .swap-real-row[hidden] { display: none !important; } /* the class display beats [hidden] otherwise */
   .swap-sim-note.live { color: #c4510b; font-weight: 600; }
   /* §8.3: REAL MAINNET FUNDS — louder than the testnet-live note (dormant until armed). */
   .swap-sim-note.mainnet { color: #fff; background: #d24317; font-weight: 800; letter-spacing: .2px;
@@ -3270,6 +3271,8 @@ Don't share them and keep them safe.</p>
     const respondToggle = document.getElementById('swap-respond-toggle');
     if (respondToggle) { respondToggle.checked = false; }
     showRespondFund('');
+    // Armed builds default to the real initiator mode — the gas panel shows up front.
+    showInitiatorGas(!!window.__mainnetArmed);
     const startBtn = document.getElementById('swap-start');
     if (startBtn) { startBtn.textContent = T('swap.cta'); }
     const st = document.getElementById('swap-searching-title');
@@ -3388,7 +3391,7 @@ Don't share them and keep them safe.</p>
     const realToggle = document.getElementById('swap-real-toggle');
     const respondToggle = document.getElementById('swap-respond-toggle');
     // Both the "real" initiator path and the responder path move real coins → live note.
-    const live = !!((realToggle && realToggle.checked) || (respondToggle && respondToggle.checked));
+    const live = !!(swapRealSelected() || (respondToggle && respondToggle.checked));
     // §8.3: on an ARMED build the live note is the loud MAINNET one (off on any shipped build).
     const mainnet = live && !!window.__mainnetArmed;
     // The responder-fund note carries its own copy (`showRespondFund`) — never clobber it here.
@@ -3401,8 +3404,13 @@ Don't share them and keep them safe.</p>
   // §8.3: when the mainnet swap path is ARMED (off on any shipped build), relabel the toggles +
   // honesty notes to shout REAL MAINNET FUNDS. Dormant until Andjroo's arming release flips the flag.
   function applyMainnetSwapLabels() {
+    // Wallet-like on ARMED builds (Andjroo, 2026-07-19): the real-funds checkbox is GONE —
+    // Confirm is the mainnet swap. The row hides, the claim-gas panel shows up front, and
+    // the pair is pinned to the live NIM/USDC. Respond stays a visible role choice.
     const realRow = document.getElementById('swap-real-row');
-    if (realRow) { realRow.classList.add('mainnet'); const s = realRow.querySelector('span'); if (s) s.textContent = T('swap.real.mainnet.label'); }
+    if (realRow) realRow.hidden = true;
+    showInitiatorGas(true);
+    if (swapAsset !== 'usdc') setSwapAsset('usdc');
     const respondRow = document.getElementById('swap-respond-row');
     if (respondRow) { respondRow.classList.add('mainnet'); const s = respondRow.querySelector('span'); if (s) s.textContent = T('swap.respond.mainnet.label'); }
     updateSwapHonestyNotes();
@@ -3426,13 +3434,13 @@ Don't share them and keep them safe.</p>
       // Proposing real coins and responding are mutually exclusive modes.
       if (toggle.checked && respondToggle) respondToggle.checked = false;
       if (toggle.checked && swapAsset !== 'usdc') setSwapAsset('usdc'); // the live pair
-      showInitiatorGas(toggle.checked); // fund the claim-gas account BEFORE Confirm
+      showInitiatorGas(swapRealSelected()); // fund the claim-gas account BEFORE Confirm
       updateSwapMode();
     });
     if (respondToggle) {
       respondToggle.addEventListener('change', () => {
         if (respondToggle.checked) { toggle.checked = false; if (swapAsset !== 'usdc') setSwapAsset('usdc'); }
-        showInitiatorGas(toggle.checked); // hidden when responding (fund panel takes over)
+        showInitiatorGas(swapRealSelected()); // hidden when responding (fund panel takes over)
         updateSwapMode();
       });
     }
@@ -3441,6 +3449,15 @@ Don't share them and keep them safe.</p>
   // or respond. Responding is inherently the LIVE testnet path (real test coins).
   function swapRespondSelected() {
     const t = document.getElementById('swap-respond-toggle');
+    return !!(t && t.checked);
+  }
+  // ARMED builds are wallet-like (Andjroo, 2026-07-19: "more like the actual wallet"):
+  // Confirm IS the real mainnet swap — no opt-in checkbox. The caps, the loud orange
+  // banner, and the gas panel all stay; only the extra click goes. Un-armed dev builds
+  // keep the explicit toggle (sim stays reachable there).
+  function swapRealSelected() {
+    if (window.__mainnetArmed) return !swapRespondSelected();
+    const t = document.getElementById('swap-real-toggle');
     return !!(t && t.checked);
   }
   function updateSwapMode() {
@@ -3627,8 +3644,7 @@ Don't share them and keep them safe.</p>
         }
         return;
       }
-      const realToggle = document.getElementById('swap-real-toggle');
-      if (realToggle && realToggle.checked) {
+      if (swapRealSelected()) {
         // G10b: the LIVE TESTNET path — real test coins move (NIM \u21c4 USDC). The
         // micro-USDC ask comes from the live indicative prices; without prices we refuse
         // rather than invent a rate for real coins.

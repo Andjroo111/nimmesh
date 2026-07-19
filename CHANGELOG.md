@@ -3,6 +3,21 @@
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
 
+## [0.88.3] — 2026-07-19
+
+### Changed — the ARMED swap sheet is wallet-like: Confirm IS the mainnet swap
+
+Andjroo: "I don't really wanna have to click press the mainnet. I would like it to be more
+like the actual wallet. I already know that I'm gonna be testing it." On an armed build the
+"REAL MAINNET funds" checkbox is gone — the sheet is pair pills, amounts, the Respond role
+choice, the claim-gas panel (shown up front), Confirm, and the loud orange banner. The caps
+(≤50 NIM / ≤5 USDC) and every core gate are untouched; only the extra click goes. Un-armed
+dev builds keep the explicit toggle (sim stays reachable there).
+
+Also fixed: `.swap-real-row { display:flex }` silently beat the `[hidden]` attribute, so the
+mode rows rendered even when hidden (masked until now because the bridge always un-hid them).
+
+
 ## [0.88.2] — 2026-07-19
 
 ### Fixed — the screen-lock swap killer (the 2026-07-18 field report, and likely the 07-15 freeze)
