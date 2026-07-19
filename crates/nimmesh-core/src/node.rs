@@ -137,6 +137,9 @@ fn run_worker(
             Job::Inbound { src, bytes } => {
                 let _ = catch_unwind(AssertUnwindSafe(|| {
                     process_inbound(&ctx, src.as_deref(), &bytes, &mut st);
+                    // A suspended app's timers are dead but BLE delivery still wakes the worker —
+                    // inbound packets drive the rate-limited fast re-verify (2026-07-18 stall).
+                    crate::swap_fast_tick::fast_tick(&ctx, &mut st);
                 }));
             }
             Job::LocalTx(wire) => {

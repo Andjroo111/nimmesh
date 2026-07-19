@@ -2088,6 +2088,7 @@ Don't share them and keep them safe.</p>
       'swap.title': 'Intercambiar', 'swap.sheet.title': 'Intercambiar divisas', 'swap.fee': 'comisión', 'swap.sub': 'Intercambia NIM con un socio encontrado en la malla, liquidado con un HTLC atómico',
       'swap.yousend': 'Envías', 'swap.youget': 'Recibes', 'swap.rate': 'La tasa y las comisiones se acuerdan directamente con tu socio',
       'swap.cta': 'Confirmar', 'swap.simnote': 'Simulación: todavía no se mueven fondos reales',
+      'swap.close.confirm': 'Hay un intercambio en curso. ¿Cerrarlo y terminarlo?',
       'swap.refund.broadcast': 'Reembolsando NIM bloqueado a tu cartera…', 'swap.refund.done': 'NIM bloqueado reembolsado ✓',
       'swap.refund.locked': 'Un bloqueo de NIM aún no expira, se reintentará', 'swap.refund.error': 'No se pudo verificar un bloqueo de NIM, se reintentará',
       'swap.searching': 'Buscando un socio en la malla', 'swap.searching.sub': 'Tu intención de intercambio se retransmite de teléfono en teléfono hasta que un socio compatible responde. Puede tardar un momento.',
@@ -2167,6 +2168,7 @@ Don't share them and keep them safe.</p>
       'swap.title': 'Tauschen', 'swap.sheet.title': 'Währungen tauschen', 'swap.fee': 'Gebühr', 'swap.sub': 'Tausche NIM mit einem über das Mesh gefundenen Partner, abgewickelt per atomarem HTLC',
       'swap.yousend': 'Du sendest', 'swap.youget': 'Du erhältst', 'swap.rate': 'Kurs und Gebühren werden direkt mit deinem Partner vereinbart',
       'swap.cta': 'Bestätigen', 'swap.simnote': 'Simulation: noch bewegen sich keine echten Gelder',
+      'swap.close.confirm': 'Ein Tausch läuft. Schließen und den Tausch beenden?',
       'swap.refund.broadcast': 'Gesperrtes NIM wird an deine Wallet erstattet…', 'swap.refund.done': 'Gesperrtes NIM erstattet ✓',
       'swap.refund.locked': 'Ein NIM-Lock ist noch nicht abgelaufen, wird später erneut versucht', 'swap.refund.error': 'NIM-Lock-Prüfung fehlgeschlagen, wird wiederholt',
       'swap.searching': 'Suche einen Tauschpartner im Mesh', 'swap.searching.sub': 'Deine Tauschabsicht wird von Handy zu Handy weitergereicht, bis ein passender Partner antwortet. Das kann einen Moment dauern.',
@@ -2246,6 +2248,7 @@ Don't share them and keep them safe.</p>
       'swap.title': 'Échanger', 'swap.sheet.title': 'Échanger des devises', 'swap.fee': 'frais', 'swap.sub': 'Échange des NIM avec un partenaire trouvé sur le mesh, réglé par un HTLC atomique',
       'swap.yousend': 'Tu envoies', 'swap.youget': 'Tu reçois', 'swap.rate': 'Le taux et les frais se négocient directement avec ton partenaire',
       'swap.cta': 'Confirmer', 'swap.simnote': 'Simulation : aucun fonds réel ne bouge encore',
+      'swap.close.confirm': 'Un échange est en cours. Fermer et terminer l\'échange ?',
       'swap.refund.broadcast': 'Remboursement du NIM verrouillé vers votre portefeuille…', 'swap.refund.done': 'NIM verrouillé remboursé ✓',
       'swap.refund.locked': 'Un verrou NIM n\'a pas encore expiré, nouvel essai plus tard', 'swap.refund.error': 'Impossible de vérifier un verrou NIM, nouvel essai',
       'swap.searching': 'Recherche d’un partenaire sur le mesh', 'swap.searching.sub': 'Ton intention d’échange est relayée de téléphone en téléphone jusqu’à ce qu’un partenaire compatible réponde. Cela peut prendre un moment.',
@@ -2325,6 +2328,7 @@ Don't share them and keep them safe.</p>
       'swap.title': 'Trocar', 'swap.sheet.title': 'Trocar moedas', 'swap.fee': 'taxa', 'swap.sub': 'Troque NIM com um parceiro encontrado na mesh, liquidado por um HTLC atômico',
       'swap.yousend': 'Você envia', 'swap.youget': 'Você recebe', 'swap.rate': 'A taxa e as tarifas são combinadas diretamente com seu parceiro',
       'swap.cta': 'Confirmar', 'swap.simnote': 'Simulação: nenhum fundo real se move ainda',
+      'swap.close.confirm': 'Uma troca está em andamento. Fechar e encerrar a troca?',
       'swap.refund.broadcast': 'Reembolsando NIM bloqueado para sua carteira…', 'swap.refund.done': 'NIM bloqueado reembolsado ✓',
       'swap.refund.locked': 'Um bloqueio de NIM ainda não expirou, tentaremos novamente', 'swap.refund.error': 'Não foi possível verificar um bloqueio de NIM, tentaremos novamente',
       'swap.searching': 'Procurando um parceiro na mesh', 'swap.searching.sub': 'Sua intenção de troca é retransmitida de telefone em telefone até um parceiro compatível responder. Pode levar um momento.',
@@ -2414,6 +2418,7 @@ Don't share them and keep them safe.</p>
     'swap.respond.mainnet.fund': 'Fund this MAINNET address with REAL USDC + POL (same address as testnet — EVM addresses are chain-agnostic)',
     'swap.locks': 'NIM lock pending refund',
     'swap.cta': 'Confirm',
+    'swap.close.confirm': 'A swap is running. Close it and end the swap?',
     'swap.refund.broadcast': 'Refunding locked NIM to your wallet…', 'swap.refund.done': 'Locked NIM refunded ✓',
     'swap.refund.locked': 'A NIM lock has not expired yet, retrying later', 'swap.refund.error': 'Could not check a NIM lock, will retry',
     'swap.respond.label': 'Respond to swaps (give USDC, receive NIM)',
@@ -2505,7 +2510,17 @@ Don't share them and keep them safe.</p>
     usdcAccounts: document.getElementById('usdc-accounts-sheet'),
   };
   const open = (k) => { backdrop.classList.add('open'); sheets[k].classList.add('open'); };
-  const close = () => { backdrop.classList.remove('open'); Object.values(sheets).forEach(s => s.classList.remove('open')); };
+  const close = () => {
+    // 2026-07-18 field bug: the screen dimmed mid-swap, Andjroo's rescue tap landed on the
+    // backdrop, and the in-flight swap died silently. Closing the swap sheet while a REAL
+    // mesh session runs now asks first; an OK also tears the session down honestly (no
+    // zombie participant running behind a closed sheet).
+    if (sheets.swap.classList.contains('open')) {
+      if (typeof swapMeshLive !== 'undefined' && swapMeshLive && !confirm(T('swap.close.confirm'))) return;
+      resetSwapSheet(); // hand the node back to the wallet (uniform for every close path)
+    }
+    backdrop.classList.remove('open'); Object.values(sheets).forEach(s => s.classList.remove('open'));
+  };
   // The bottom Receive/Send bar is context-aware: in the USD Coin view it opens the USDC sheets.
   const inUsdcView = () => { const v = document.getElementById('view-usdc'); return v && !v.hidden; };
   document.getElementById('open-receive').addEventListener('click', () => {
@@ -3679,10 +3694,9 @@ Don't share them and keep them safe.</p>
     };
     swapTimer = setTimeout(tick, 2600);   // the mesh-search beat
   });
-  document.getElementById('swap-done').addEventListener('click', () => { close(); resetSwapSheet(); });
-  // Closing the sheet mid-demo must also hand the node back to mainnet.
-  document.querySelectorAll('#swap-sheet .sheet-close').forEach((b) =>
-    b.addEventListener('click', resetSwapSheet));
+  // Reset FIRST so `close()` sees the session already ended (no confirm on a settled swap).
+  document.getElementById('swap-done').addEventListener('click', () => { resetSwapSheet(); close(); });
+  // (Closing mid-session is handled inside `close()` itself — confirm-guarded, then reset.)
 
   // The wallet's privacy eye: one tap hides every amount (the wallet's TOTAL BALANCE eye).
   let privacyOn = false;

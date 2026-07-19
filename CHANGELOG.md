@@ -3,6 +3,29 @@
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
 
+## [0.88.2] — 2026-07-19
+
+### Fixed — the screen-lock swap killer (the 2026-07-18 field report, and likely the 07-15 freeze)
+
+Andjroo, mid-swap: "my phone started to go dark, so I tapped it. And then the swap went away."
+Three compounding failures, three fixes:
+
+1. **No keep-awake.** The app never held the iOS idle timer, so a minutes-long swap let the
+   screen dim and LOCK — and a locked screen suspends the app: the 3 s fast timer, the 15 s
+   keepalive, and the webui poll all die. This is the strongest explanation yet for the 07-15
+   responder freeze (verify stuck at attempt 1 while sim-proven drivers "ran"). Now
+   `isIdleTimerDisabled` is held for the life of any swap session and released on stop.
+2. **The rescue tap killed the sheet.** The backdrop's click-to-close dismissed the swap sheet
+   (and the next open reset the session). Closing the swap sheet while a REAL session runs now
+   asks first (confirm, i18n ×5), and a confirmed close tears the session down honestly instead
+   of leaving a zombie participant behind a closed sheet.
+3. **Timers were the only heartbeat.** Even suspended, BLE delivery still wakes the worker —
+   the inbound job now also drives the rate-limited, idle-free fast re-verify, so the
+   gateway's ~14 s head beacons advance an awaiting swap with zero working timers. Proven by
+   `an_inbound_packet_advances_an_awaiting_swap_with_no_timer_at_all` (a junk frame suffices —
+   delivery itself is the heartbeat).
+
+
 ## [0.88.1] — 2026-07-15
 
 ### Added — `tick ▸` wedge-proof worker heartbeat diagnostics (the `ble ▸` playbook, for ticks)

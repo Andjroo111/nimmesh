@@ -1,5 +1,6 @@
 import Foundation
 import NimmeshCore
+import UIKit
 
 // G10b: the LIVE testnet endpoints + the deployed `NimmeshHtlc` v2 (docs/swap/AMOY.md).
 // TESTNET/Amoy only — the core's `guard_testnet`/`guard_amoy` refuse anything else at
@@ -81,12 +82,22 @@ extension Bridge {
         t.setEventHandler { [weak self] in self?.node.pollSwapFast() }
         t.resume()
         swapFastTimer = t
+        // 2026-07-18 field bug: the screen auto-locked mid-swap (a LOCKED screen suspends
+        // the app — every timer dies, the swap freezes) and the rescue tap killed the sheet.
+        // A live swap holds the screen awake; swapMeshStop releases it.
+        setSwapKeepAwake(true)
     }
 
     /// Cancel the fast heartbeat (the swap demo ended — the normal node needs no fast polls).
     func stopSwapFastTimer() {
         swapFastTimer?.cancel()
         swapFastTimer = nil
+    }
+
+    /// Hold (or release) the iOS idle timer: the screen must not auto-lock while a swap
+    /// session runs, because a locked screen suspends the app and freezes the swap.
+    private func setSwapKeepAwake(_ on: Bool) {
+        DispatchQueue.main.async { UIApplication.shared.isIdleTimerDisabled = on }
     }
 
     /// Start the demo: replace the live node with a TESTNET swap participant advertising
@@ -352,6 +363,7 @@ extension Bridge {
     func swapMeshStop() -> (Bool, Any) {
         guard swapDemoOn else { return (true, ["ok": true]) }
         stopSwapFastTimer()
+        setSwapKeepAwake(false) // the screen may sleep again — the session is over
         if let book = liveLockBook { persistLiveLocks(book.locks()) }
         node.shutdown()
         node = makeNormalNode()

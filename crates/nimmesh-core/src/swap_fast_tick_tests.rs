@@ -259,3 +259,39 @@ fn a_fast_poll_advances_an_awaiting_swap_through_the_real_node_loop() {
     node.shutdown();
     ether.shutdown();
 }
+
+#[test]
+fn an_inbound_packet_advances_an_awaiting_swap_with_no_timer_at_all() {
+    // The 2026-07-18 screen-lock stall: a suspended app's timers are DEAD (no poll_swap_fast,
+    // no keepalive BeaconTick), but BLE delivery still wakes the worker with inbound packets —
+    // e.g. the gateway's ~14 s head beacons. The inbound job now drives the same rate-limited
+    // fast re-verify, so an awaiting swap advances with ZERO timer polls. The packet does not
+    // even have to be valid — delivery alone is the heartbeat.
+    use crate::mock_radio::{MockEther, MockRadio};
+    use crate::node::MeshNode;
+    use crate::relay::RelayPolicy;
+
+    let (bob_session, chain, swap_id) = awaiting_responder();
+    chain.set(found(10)); // buried to policy depth — one re-verify must suffice.
+
+    let ether = MockEther::new();
+    let radio = MockRadio::new("solo", ether.clone());
+    let node = MeshNode::build(
+        vec![2],
+        radio.clone(),
+        None,
+        RelayPolicy::deterministic(),
+        false,
+        Some(bob_session),
+        Some(Box::new(crate::swap_signer::MockSigner)),
+        crate::NetworkId::Testnet,
+    );
+    radio.bind(Arc::downgrade(&node));
+
+    node.on_packet_received(vec![0xFF; 8]); // junk frame — dropped, but delivery ticks the verify
+    node.fence();
+    assert_eq!(node.swap_phase(swap_id), Some(SwapPhase::BothFunded));
+
+    node.shutdown();
+    ether.shutdown();
+}
