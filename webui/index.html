@@ -1265,6 +1265,9 @@
     <button id="set-lang"><img id="set-lang-flag" src="flags/en.svg" width="22" height="20" alt=""><span data-i18n="a.lang">Language</span></button>
     <button id="set-backup"><svg viewBox="0 0 20 20" fill="none"><rect x="3" y="2.5" width="14" height="15" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M6.5 7h7M6.5 10.5h7M6.5 14h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span data-i18n="acct.backup">Backup</span></button>
     <button id="set-bitchat"><span class="set-bt-ic">₿</span><span data-i18n="set.bitchat">Bitchat interop</span><span class="set-state" id="set-bitchat-state"></span></button>
+    <!-- The responder ROLE lives here, not on the swap sheet (wallet-like sheet: pair,
+         amount, Confirm). The responding phone flips this once; it persists per device. -->
+    <button id="set-respond"><span class="set-bt-ic">⇄</span><span data-i18n="swap.respond.label">Respond to swaps (give USDC, receive NIM)</span><span class="set-state" id="set-respond-state"></span></button>
     <button id="set-logout" class="danger"><svg viewBox="0 0 20 20" fill="none"><path d="M12.5 6.5V4.75A1.75 1.75 0 0 0 10.75 3h-6A1.75 1.75 0 0 0 3 4.75v10.5A1.75 1.75 0 0 0 4.75 17h6a1.75 1.75 0 0 0 1.75-1.75V13.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M8 10h9.5M14.5 7l3 3-3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="acct.logout">Log out of this device</span></button>
   </div>
   <div class="acct-meta" id="set-meta"></div>
@@ -2989,6 +2992,20 @@ Don't share them and keep them safe.</p>
   // Resume a previously-enabled Bitchat link at boot (fire-and-forget; the bridge's
   // status call is also its startIfEnabled hook).
   if (window.nimmesh && window.nimmesh.bitchatStatus) { window.nimmesh.bitchatStatus().catch(() => {}); }
+  // The responder role toggle (armed builds read THIS, not a sheet checkbox — the swap
+  // sheet stays wallet-like). Per-device, persisted; the 12 Pro flips it once.
+  function respondSettingOn() {
+    try { return localStorage.getItem('nimmesh.swap.respond') === '1'; } catch (e) { return false; }
+  }
+  function refreshRespondRow() {
+    const state = document.getElementById('set-respond-state');
+    if (state) state.textContent = respondSettingOn() ? T('set.on') : T('set.off');
+  }
+  document.getElementById('set-respond').addEventListener('click', () => {
+    try { localStorage.setItem('nimmesh.swap.respond', respondSettingOn() ? '0' : '1'); } catch (e) {}
+    refreshRespondRow();
+  });
+  refreshRespondRow();
   document.getElementById('set-lang').addEventListener('click', () => open('lang'));
   document.getElementById('set-backup').addEventListener('click', () => { close(); openBackupHub(); });
   document.getElementById('set-logout').addEventListener('click', async () => {
@@ -3272,9 +3289,9 @@ Don't share them and keep them safe.</p>
     if (respondToggle) { respondToggle.checked = false; }
     showRespondFund('');
     // Armed builds default to the real initiator mode — the gas panel shows up front.
-    showInitiatorGas(!!window.__mainnetArmed);
+    showInitiatorGas(swapRealSelected());
     const startBtn = document.getElementById('swap-start');
-    if (startBtn) { startBtn.textContent = T('swap.cta'); }
+    if (startBtn) { startBtn.textContent = T(swapRespondSelected() ? 'swap.respond.cta' : 'swap.cta'); }
     const st = document.getElementById('swap-searching-title');
     if (st) { st.textContent = T('swap.searching'); }
     const ss = document.getElementById('swap-searching-sub');
@@ -3404,13 +3421,16 @@ Don't share them and keep them safe.</p>
   // §8.3: when the mainnet swap path is ARMED (off on any shipped build), relabel the toggles +
   // honesty notes to shout REAL MAINNET FUNDS. Dormant until Andjroo's arming release flips the flag.
   function applyMainnetSwapLabels() {
-    // Wallet-like on ARMED builds (Andjroo, 2026-07-19): the real-funds checkbox is GONE —
-    // Confirm is the mainnet swap. The row hides, the claim-gas panel shows up front, and
-    // the pair is pinned to the live NIM/USDC. Respond stays a visible role choice.
+    // Wallet-like on ARMED builds (Andjroo, 2026-07-19): NO checkboxes on the sheet at all —
+    // Confirm is the mainnet swap, and the responder ROLE lives in Settings (set-respond).
+    // The gas panel shows only in initiator mode; the pair pins to the live NIM/USDC.
     const realRow = document.getElementById('swap-real-row');
     if (realRow) realRow.hidden = true;
-    showInitiatorGas(true);
+    showInitiatorGas(swapRealSelected());
     if (swapAsset !== 'usdc') setSwapAsset('usdc');
+    const armedRespondRow = document.getElementById('swap-respond-row');
+    if (armedRespondRow) armedRespondRow.hidden = true;
+    updateSwapMode();
     const respondRow = document.getElementById('swap-respond-row');
     if (respondRow) { respondRow.classList.add('mainnet'); const s = respondRow.querySelector('span'); if (s) s.textContent = T('swap.respond.mainnet.label'); }
     updateSwapHonestyNotes();
@@ -3448,6 +3468,8 @@ Don't share them and keep them safe.</p>
   // The Confirm CTA + honesty notes reflect the selected mode: propose-sim, propose-real,
   // or respond. Responding is inherently the LIVE testnet path (real test coins).
   function swapRespondSelected() {
+    // Armed builds: the role is the Settings toggle (the sheet carries no checkboxes).
+    if (window.__mainnetArmed) return respondSettingOn();
     const t = document.getElementById('swap-respond-toggle');
     return !!(t && t.checked);
   }

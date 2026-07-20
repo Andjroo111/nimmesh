@@ -3,6 +3,18 @@
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
 
+## [0.89.1] — 2026-07-19
+
+### Changed — the responder role moves to Settings; the swap sheet has NO checkboxes
+
+Andjroo, on 0.89.0: "The mainnet button is still there." The last remaining checkbox was the
+responder-role switch. It now lives in Settings ("Respond to swaps", On/Off chip, persisted
+per device) — the responding phone flips it once. On an armed build the swap sheet is now
+exactly the wallet: pair pills, amounts, Confirm (or "Respond to swaps" as the CTA when the
+Settings role is on), the claim-gas panel only in initiator mode, and the orange honesty
+banner. Un-armed dev builds keep the sheet checkboxes.
+
+
 ## [0.89.0] — 2026-07-19
 
 ### Fixed — MONEY PATH: a responder never settles on a failed claim (the run-4 one-sided loss)
