@@ -3,6 +3,19 @@
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
 
+## [0.89.2] — 2026-07-19
+
+### Fixed — the fund banners check the chain before nagging
+
+Andjroo, on 0.89.1: both phones demanded "send it a little POL first" while both accounts had
+been funded for days (main gas: 0.5 POL; responder fund: 1.0 POL + 2.0 USDC — chain-verified).
+`swapEvmAddresses` now also returns live mainnet balances (display-only URLSession reads via
+polygon.drpc.org; -1 on any failure), and both banners hide when the account is actually
+stocked (gas ≥ 0.05 POL; fund ≥ 1 USDC and ≥ 0.05 POL). Fail-visible: an unreadable balance
+keeps the banner — a network error must never hide a real need. Long-term the POL requirement
+itself goes away (gas abstraction, #225 / ADR-0006/0008 — the forwarder is already deployed).
+
+
 ## [0.89.1] — 2026-07-19
 
 ### Changed — the responder role moves to Settings; the swap sheet has NO checkboxes

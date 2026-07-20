@@ -3490,12 +3490,21 @@ Don't share them and keep them safe.</p>
   // Responder mode: reveal the derived Amoy escrow address so it can be funded (test USDC +
   // POL). Tap-to-copy, the wallet's Copyable treatment (blue "Copied" tooltip, ~800ms).
   let swapFundAddr = '';
-  function showRespondFund(addr) {
+  async function showRespondFund(addr) {
     swapFundAddr = addr || '';
     const panel = document.getElementById('swap-respond-fund');
     const line = document.getElementById('swap-fund-addr');
     if (!panel || !line) return;
     if (!swapFundAddr) { panel.hidden = true; return; }
+    // Balance-aware (2026-07-19): a responder account already holding USDC + claim gas
+    // needs no banner. A failed read keeps it visible (fail-visible, like the gas panel).
+    try {
+      if (window.nimmesh && window.nimmesh.swapEvmAddresses) {
+        const a = await window.nimmesh.swapEvmAddresses();
+        if (a && typeof a.fundUsdc === 'number' && typeof a.fundPol === 'number'
+            && a.fundUsdc >= 1 && a.fundPol >= 0.05) { panel.hidden = true; return; }
+      }
+    } catch (e) {}
     line.textContent = swapFundAddr;
     // §8.3: on an ARMED build this is the wallet-derived MAINNET EVM funding address — the SAME
     // address as testnet (EVM addresses are chain-agnostic), funded with REAL USDC + POL.
@@ -3532,10 +3541,15 @@ Don't share them and keep them safe.</p>
     const line = document.getElementById('swap-gas-addr');
     if (!panel || !line) return;
     if (!on || !(window.nimmesh && window.nimmesh.swapEvmAddresses)) { panel.hidden = true; return; }
+    let bal = -1;
     try {
       const a = await window.nimmesh.swapEvmAddresses();
       swapGasAddr = (a && a.gas) || '';
+      if (a && typeof a.gasPol === 'number') bal = a.gasPol;
     } catch (e) { swapGasAddr = ''; }
+    // Already funded? Say nothing (2026-07-19: both phones nagged for accounts stocked for
+    // days). A failed read (-1) keeps the banner — never hide a real need behind an error.
+    if (bal >= 0.05) { panel.hidden = true; return; }
     if (!swapGasAddr) { panel.hidden = true; return; }
     line.textContent = swapGasAddr;
     const note = panel.querySelector('.fund-note');

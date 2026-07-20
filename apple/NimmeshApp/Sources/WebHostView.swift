@@ -542,17 +542,9 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             // shipped build → the UI keeps its testnet path/labels. `reason` labels the state.
             return (true, ["armed": NimmeshCore.mainnetSwapArmed(), "reason": NimmeshCore.mainnetSwapReason()])
         case "swapEvmAddresses":
-            // The wallet-DERIVED EVM accounts for BOTH swap roles, readable BEFORE any swap
-            // starts, so they can be funded up front (the initiator's GAS account pays its
-            // Polygon `withdraw(S)` claim — an empty one stalls the swap at reveal and only
-            // the timelock refund recovers it). Public addresses only; no secret crosses the
-            // bridge, nothing touches the node.
-            guard let evm = Wallet.swapEvmSecrets(), let rs = Wallet.swapResponderSecrets()
-            else { return (false, "no wallet") }
-            let gas = (try? NimmeshCore.evmAddressForSecret(secret: evm.gas)) ?? ""
-            let claim = (try? NimmeshCore.evmAddressForSecret(secret: evm.claim)) ?? ""
-            let fund = (try? NimmeshCore.evmAddressForSecret(secret: rs.fund)) ?? ""
-            return (true, ["gas": gas, "claim": claim, "fund": fund])
+            // Addresses + live mainnet balances (SwapMesh.swift) — the fund banners only
+            // show when an account is actually short (2026-07-19 field frustration).
+            return await swapEvmAddresses()
         case "cashlinkList":
             return cashlinkList()
         case "sendChat", "chatMessages", "bitchatStatus", "bitchatSetEnabled":

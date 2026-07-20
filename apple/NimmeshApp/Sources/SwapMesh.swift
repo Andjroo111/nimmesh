@@ -100,6 +100,67 @@ extension Bridge {
         DispatchQueue.main.async { UIApplication.shared.isIdleTimerDisabled = on }
     }
 
+    /// The wallet-derived EVM accounts for BOTH swap roles + their LIVE mainnet balances
+    /// (display-only honesty probe: the fund banners must not nag for accounts that are
+    /// already funded — Andjroo, 2026-07-19: both phones showed "send it a little POL first"
+    /// while both accounts had been stocked for days). A failed read returns -1 and the UI
+    /// SHOWS the banner (fail-visible — a network error must never hide a real need).
+    /// Public addresses + balances only; nothing here touches the money path.
+    func swapEvmAddresses() async -> (Bool, Any) {
+        guard let evm = Wallet.swapEvmSecrets(), let rs = Wallet.swapResponderSecrets()
+        else { return (false, "no wallet") }
+        let gas = (try? NimmeshCore.evmAddressForSecret(secret: evm.gas)) ?? ""
+        let claim = (try? NimmeshCore.evmAddressForSecret(secret: evm.claim)) ?? ""
+        let fund = (try? NimmeshCore.evmAddressForSecret(secret: rs.fund)) ?? ""
+        async let gasPol = polygonPol(gas)
+        async let fundPol = polygonPol(fund)
+        async let fundUsdc = polygonUsdc(fund)
+        return (true, [
+            "gas": gas, "claim": claim, "fund": fund,
+            "gasPol": await gasPol, "fundPol": await fundPol, "fundUsdc": await fundUsdc,
+        ])
+    }
+
+    private func polygonRpcHex(_ body: [String: Any]) async -> String? {
+        guard let url = URL(string: "https://polygon.drpc.org") else { return nil }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        guard let (data, _) = try? await URLSession.shared.data(for: req),
+              let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let hex = json["result"] as? String
+        else { return nil }
+        return hex
+    }
+
+    /// Hex quantity → Double at `scale`; -1 on any parse failure (incl. balances past
+    /// UInt64 — a whale account just keeps its banner, which is the safe direction).
+    private func hexQuantity(_ hex: String?, scale: Double) -> Double {
+        guard let h = hex, h.hasPrefix("0x"), let v = UInt64(h.dropFirst(2), radix: 16)
+        else { return -1 }
+        return Double(v) / scale
+    }
+
+    private func polygonPol(_ addr: String) async -> Double {
+        guard addr.hasPrefix("0x") else { return -1 }
+        let hex = await polygonRpcHex([
+            "jsonrpc": "2.0", "id": 1, "method": "eth_getBalance", "params": [addr, "latest"],
+        ])
+        return hexQuantity(hex, scale: 1e18)
+    }
+
+    private func polygonUsdc(_ addr: String) async -> Double {
+        guard addr.hasPrefix("0x") else { return -1 }
+        let bare = String(addr.dropFirst(2))
+        let data = "0x70a08231" + String(repeating: "0", count: 64 - bare.count) + bare
+        let hex = await polygonRpcHex([
+            "jsonrpc": "2.0", "id": 2, "method": "eth_call",
+            "params": [["to": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", "data": data], "latest"],
+        ])
+        return hexQuantity(hex, scale: 1e6)
+    }
+
     /// Start the demo: replace the live node with a TESTNET swap participant advertising
     /// "gives `nimLuna` NIM, wants `counterSat` sats". The intent/Propose identity is an
     /// ephemeral key from fresh randomness (never the wallet key — it stays in the Keychain).
