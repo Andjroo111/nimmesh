@@ -2423,6 +2423,8 @@ Don't share them and keep them safe.</p>
     'swap.locks': 'NIM lock pending refund',
     'swap.cta': 'Confirm',
     'swap.close.confirm': 'A swap is running. Close it and end the swap?',
+    'swap.searching': 'Finding a swap partner on the mesh',
+    'swap.searching.sub': 'Your swap intent is relayed phone to phone until a matching partner answers. This can take a moment.',
     'swap.refund.broadcast': 'Refunding locked NIM to your wallet…', 'swap.refund.done': 'Locked NIM refunded ✓',
     'swap.refund.locked': 'A NIM lock has not expired yet, retrying later', 'swap.refund.error': 'Could not check a NIM lock, will retry',
     'swap.respond.label': 'Respond to swaps (give USDC, receive NIM)',
@@ -2993,17 +2995,34 @@ Don't share them and keep them safe.</p>
   // status call is also its startIfEnabled hook).
   if (window.nimmesh && window.nimmesh.bitchatStatus) { window.nimmesh.bitchatStatus().catch(() => {}); }
   // The responder role toggle (armed builds read THIS, not a sheet checkbox — the swap
-  // sheet stays wallet-like). Per-device, persisted; the 12 Pro flips it once.
-  function respondSettingOn() {
-    try { return localStorage.getItem('nimmesh.swap.respond') === '1'; } catch (e) { return false; }
-  }
+  // sheet stays wallet-like). Persisted NATIVELY (UserDefaults via the bridge): the
+  // 2026-07-19 both-initiators failure was this value living in localStorage, which resets
+  // on-device across relaunches — the 12 Pro silently flipped back to initiator and the
+  // two phones advertised the SAME side forever. localStorage stays as the browser shim.
+  let respondPref = false;
+  try { respondPref = localStorage.getItem('nimmesh.swap.respond') === '1'; } catch (e) {}
+  function respondSettingOn() { return respondPref; }
   function refreshRespondRow() {
     const state = document.getElementById('set-respond-state');
     if (state) state.textContent = respondSettingOn() ? T('set.on') : T('set.off');
   }
+  if (window.nimmesh && window.nimmesh.getRespondRole) {
+    window.nimmesh.getRespondRole().then((r) => {
+      respondPref = !!(r && r.on);
+      refreshRespondRow();
+      updateSwapMode();
+      showInitiatorGas(swapRealSelected());
+    }).catch(() => {});
+  }
   document.getElementById('set-respond').addEventListener('click', () => {
-    try { localStorage.setItem('nimmesh.swap.respond', respondSettingOn() ? '0' : '1'); } catch (e) {}
+    respondPref = !respondPref;
+    try { localStorage.setItem('nimmesh.swap.respond', respondPref ? '1' : '0'); } catch (e) {}
+    if (window.nimmesh && window.nimmesh.setRespondRole) {
+      window.nimmesh.setRespondRole({ on: respondPref }).catch(() => {});
+    }
     refreshRespondRow();
+    updateSwapMode();
+    showInitiatorGas(swapRealSelected());
   });
   refreshRespondRow();
   document.getElementById('set-lang').addEventListener('click', () => open('lang'));

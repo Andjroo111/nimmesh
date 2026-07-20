@@ -184,6 +184,8 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         // Keepalive: emit a head beacon to peers so the BLE link doesn't idle-timeout (~every
         // 15s from the UI). Real mesh traffic (G9 beacon), not filler.
         keepalive: function () { return call('keepalive'); },
+        getRespondRole: function () { return call('getRespondRole'); },
+        setRespondRole: function (a) { return call('setRespondRole', a); },
         // "Unlock your Backup": Face ID / device passcode. Resolves { ok }.
         authenticate: function () { return call('authenticate'); },
         // Backup: the wallet's two-code XOR backup + whether ANY backup was completed
@@ -696,6 +698,15 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         case "setLang":
             let a = args as? [String: Any] ?? [:]
             UserDefaults.standard.set((a["lang"] as? String) ?? "", forKey: Bridge.langKey)
+            return (true, ["ok": true])
+        case "getRespondRole":
+            // The swap responder role must survive relaunches NATIVELY (2026-07-19: the
+            // localStorage copy silently reset on-device — both phones became initiators
+            // and could never match). UserDefaults, like the language.
+            return (true, ["on": UserDefaults.standard.bool(forKey: "nimmesh.swap.respond")])
+        case "setRespondRole":
+            let a = args as? [String: Any] ?? [:]
+            UserDefaults.standard.set((a["on"] as? Bool) ?? false, forKey: "nimmesh.swap.respond")
             return (true, ["ok": true])
         case "backupUrgency":
             // G19: read-only — the Rust policy decides how hard to nudge a backup from the

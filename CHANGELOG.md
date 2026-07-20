@@ -3,6 +3,20 @@
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
 
+## [0.89.3] — 2026-07-19
+
+### Fixed — the responder role persists natively; both-initiators can no longer happen silently
+
+Andjroo's field report: both phones sat at "searching" forever with intents seen and no match —
+BOTH were initiators. The 0.89.1 Settings role lived in localStorage, which does not reliably
+survive app relaunches in a file:// WKWebView (a long-flagged suspicion, now field-confirmed):
+the 12 Pro silently reverted to initiator, and two same-side adverts can never match. The role
+now persists in UserDefaults via new getRespondRole/setRespondRole bridge cases (the language
+pattern); the native value hydrates at boot and wins over any stale browser copy, which
+remains only as the plain-browser shim. Also fixed: the searching screen rendered raw
+"swap.searching" keys (missing from the English dynamic dict — markup-only until now).
+
+
 ## [0.89.2] — 2026-07-19
 
 ### Fixed — the fund banners check the chain before nagging
