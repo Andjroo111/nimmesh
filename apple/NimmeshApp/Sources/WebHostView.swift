@@ -268,7 +268,8 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         switch method {
         case "headHeight", "walletBalance", "walletHistory", "sendTransaction", "meshSendTransaction",
              "prices", "market", "swapMeshStart", "swapMeshRefund", "cashlinkCreate", "cashlinkStatus",
-             "usdcBalances", "usdcHistory", "sendUsdc", "cashlinkPeek", "cashlinkClaim":
+             "usdcBalances", "usdcHistory", "sendUsdc", "cashlinkPeek", "cashlinkClaim",
+             "swapEvmAddresses":
             Task { let (ok, payload) = await self.handleAsync(method: method, args: args)
                 self.resolve(id: id, ok: ok, payload: payload) }
         case "authenticate":
@@ -348,6 +349,10 @@ final class Bridge: NSObject, WKScriptMessageHandler {
     /// signed blob is sent). The recipient/amount are public.
     private func handleAsync(method: String, args: Any?) async -> (Bool, Any) {
         switch method {
+        case "swapEvmAddresses":
+            // Addresses + live mainnet balances (SwapMesh.swift) — the fund banners only
+            // show when an account is actually short (2026-07-19 field frustration).
+            return await swapEvmAddresses()
         case "headHeight":
             guard let h = try? await NimiqRpc.headHeight() else { return (false, "head fetch failed") }
             return (true, ["height": Int(h)])
@@ -541,10 +546,6 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             // §8.3 probe: is the mainnet swap path armed (flag + recorded HTLC)? `false` on any
             // shipped build → the UI keeps its testnet path/labels. `reason` labels the state.
             return (true, ["armed": NimmeshCore.mainnetSwapArmed(), "reason": NimmeshCore.mainnetSwapReason()])
-        case "swapEvmAddresses":
-            // Addresses + live mainnet balances (SwapMesh.swift) — the fund banners only
-            // show when an account is actually short (2026-07-19 field frustration).
-            return await swapEvmAddresses()
         case "cashlinkList":
             return cashlinkList()
         case "sendChat", "chatMessages", "bitchatStatus", "bitchatSetEnabled":
