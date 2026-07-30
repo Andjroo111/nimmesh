@@ -3,6 +3,21 @@
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
 
+## [0.89.4] — 2026-07-30
+
+### Changed — the app wears its own mark: the teal mesh hexagon
+
+Andjroo approved a brand mark for nimmesh (live on his bio site today): the Nimiq hexagon
+filled with the app's green gradient (#41A38E → #21BCA5, the mesh banner's colors) with the
+white three-dot mesh triangle centered inside. Every place the app shows ITS OWN logo now
+wears it — the splash wordmark, the side-menu wordmark, all 19 onboarding/backup-sheet
+`ob-logo` headers, the OTA install page hexagon (same linear-gradient structure, green
+stops), and the home-screen app icon (same navy tile, 1024x1024, no alpha). Gold that means
+NIMIQ-the-coin is untouched: the NIM asset card hex, the portfolio donut, the network-map
+"you" cell, and the official Nimiq loading spinner all stay exactly as they were. Zero
+layout or behavior changes — a fill-and-glyph swap only.
+
+
 ## [0.89.3] — 2026-07-19
 
 ### Fixed — the responder role persists natively; both-initiators can no longer happen silently
