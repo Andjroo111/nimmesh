@@ -1,0 +1,50 @@
+nimiq.nimmesh
+Copyright 2026 Andjroo111
+
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+This product includes work derived from the projects below.
+
+================================================================================
+Bitchat
+github.com/permissionlesstech/bitchat
+The Unlicense (public domain dedication)
+
+The BLE mesh wire protocol is derived from Bitchat: packet header layout,
+TTL and hop relay semantics, fragmentation, and the Noise session handshake.
+`shared/BitchatKit.swift` implements Bitchat's public message frames so that
+nimmesh can interoperate with real Bitchat meshes. See docs/PROTOCOL.md.
+
+================================================================================
+@nimiq/vue-components
+github.com/nimiq/vue-components
+Apache License 2.0
+
+`webui/components/identicon/` is derived from Identicon.vue. The remaining
+component structure under `webui/components/` follows the same upstream.
+
+================================================================================
+nimiq-style
+github.com/nimiq/nimiq-style
+MIT License
+
+Icon assets and the `.nq-*` class vocabulary used throughout `webui/`.
+
+================================================================================
+BIP-39 English wordlist
+github.com/bitcoin/bips (BIP-0039)
+Public domain
+
+`apple/NimmeshApp/Resources/bip39-english.txt` is the official 2048 word list,
+bundled verbatim for recovery phrase generation and import.
+
+================================================================================
+Nimiq Wallet
+github.com/nimiq/wallet
+NO LICENSE DECLARED UPSTREAM
+
+`webui/swap/swap.html` contains one SVG animation block adapted from
+src/components/swap/SwapAnimation.vue. That repository publishes no LICENSE
+file, so no redistribution grant exists for it. The block appears only in the
+local browser demo page under `webui/swap/`, never in the shipped app. It will
+be replaced or removed unless upstream declares a license.

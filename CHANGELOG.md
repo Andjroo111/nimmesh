@@ -3,6 +3,33 @@
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
 
+## [0.89.5] - 2026-08-21
+
+### Added - Apache 2.0, a NOTICE, and a README that tells the truth
+
+Public release preparation. The repo carried no LICENSE at all, which meant that even once it
+went public nobody would have had the right to use it. It is now **Apache 2.0**, copyright
+Andjroo111, with a patent grant, and a `NOTICE` file crediting every upstream the code draws on:
+Bitchat (public domain, the wire protocol and `BitchatKit.swift`), @nimiq/vue-components
+(Apache 2.0, the identicon), nimiq-style (MIT, icons and the `.nq-*` classes), and the BIP-39
+word list. The NOTICE also records one open problem honestly: `github.com/nimiq/wallet` declares
+no license upstream, and one SVG animation block in the local demo page `webui/swap/swap.html`
+is adapted from it. That block never ships in the app, and it gets replaced or removed unless
+upstream declares a license.
+
+The README was two months stale. It still said "bootstrapping (testnet-first)" and "no mainnet
+/ real funds", written before the app carried real value on chain. It now leads with the 139 byte
+fact, states what is proven with block numbers next to each claim (55488525, then 56054933 /
+56055090 / 56055105 phone to phone), and states plainly what is **not** proven: the cross chain
+swaps settle on testnet and Amoy, and the mainnet phone to phone swap has not been run. An
+honest status line replaces the old one: field tested, not audited.
+
+Also scrubbed a real mainnet USDC address that was sitting in a code comment in `webui/index.html`
+as a formatting example. It is a placeholder now.
+
+No behavior change. Docs, licensing, and one comment.
+
+
 ## [0.89.4] — 2026-07-30
 
 ### Changed — the app wears its own mark: the teal mesh hexagon

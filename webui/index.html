@@ -4267,7 +4267,7 @@ Don't share them and keep them safe.</p>
       return `${num} ${sym}`;
     } catch (e) { return ''; }
   }
-  // The wallet's under-QR address treatment: start ··· end (e.g. "0x4CB31bB44 ··· 0dDf4A0D7c3").
+  // The wallet's under-QR address treatment: start ··· end (e.g. "0x1234567890 ··· abcdef12345").
   const usdcAddrShort = (a) => { const c = a || ''; return c.length >= 24 ? `${c.slice(0, 11)} ··· ${c.slice(-11)}` : c; };
 
   // Total USDC = sum across the receive-bearing accounts (fund + claim; gas holds POL only).
