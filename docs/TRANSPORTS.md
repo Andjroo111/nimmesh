@@ -142,6 +142,39 @@ references NIP-17 gift-wrap, so the vocabulary is familiar.
 - **Wi-Fi Direct / Aware.** Higher bandwidth than BLE but shorter range than LoRa, so it
   adds complexity without adding reach.
 
+## There is already a mesh in the metro
+
+This is the finding that changes the shape of the work.
+
+[the local community mesh][kcmesh] is an existing community Meshtastic network with **60+ active
+nodes**. Coverage runs across downtown, central and the east side, thins out north, south and
+southwest, and follows a chain of outlier nodes along the interstate. They
+run a Discord, recruit hosts for a backbone initiative on the metro edges, and do weekly
+drone lifts to reach silent nodes. A separate [a MeshCore group][meshtastic] group exists too.
+
+So the honest framing is not "build a LoRa mesh". It is **join the one already outside the
+window**. One $30 radio puts a nimmesh gateway on a city-wide network that other people
+already maintain, power, and extend.
+
+Their published node settings, worth matching so we behave like a good citizen rather than
+a chatty stranger:
+
+| Setting | Value |
+| --- | --- |
+| MQTT | disabled |
+| Role | Client, **not** Router & Client |
+| Hop limit | 3 |
+| Position / telemetry broadcast | 1 hour |
+
+Their own recommended starting hardware runs from a ~$35 DIY build to a ~$70 LILYGO T-Echo,
+with solar nodes at $100-200 for anyone mounting outside.
+
+**One caution before we show up.** This is a community network built for off-grid messaging,
+not a payment rail we get to annex. Riding it with a custom `PRIVATE_APP` port is polite and
+invisible to their chat, but the courteous move is to say hello in their Discord first and
+explain what the traffic is. A demo that shows a payment crossing their mesh is also a great
+introduction, so the social path and the technical path point the same way.
+
 ## Recommendation
 
 Add **one** transport next, and make it Meshtastic over LoRa. Then SMS, which is nearly
@@ -185,6 +218,7 @@ line is not optional.
 - [MeshCore vs Meshtastic, same hardware different firmware][hexaspot]
 - [SMS 140-byte limit under 8-bit encoding][sms]
 - [PotatoMesh, federated Meshtastic/MeshCore dashboard, Apache 2.0][potato]
+- [the local community mesh, the local network and its node settings][kcmesh]
 
 [btcmesh]: https://github.com/eddieoz/btcmesh
 [btcbridge]: https://github.com/BTCtoolshed/MeshtasticBitcoinCore_Bridge
@@ -194,3 +228,5 @@ line is not optional.
 [hexaspot]: https://hexaspot.com/blogs/news/meshtastic-vs-meshcore-explained-same-hardware-different-firmware
 [sms]: https://www.twilio.com/docs/glossary/what-sms-character-limit
 [potato]: https://github.com/l5yth/potato-mesh
+[kcmesh]: https://meshtastic.org/
+[meshtastic]: https://meshtastic.org/
