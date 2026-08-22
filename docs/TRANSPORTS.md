@@ -175,6 +175,54 @@ invisible to their chat, but the courteous move is to say hello in their Discord
 explain what the traffic is. A demo that shows a payment crossing their mesh is also a great
 introduction, so the social path and the technical path point the same way.
 
+## No computer is needed at either end
+
+The question that decides the shape of the work, answered before any hardware was bought.
+
+Meshtastic publishes a [BLE client API][bleapi] whose whole purpose is third-party clients.
+One service, three characteristics:
+
+| UUID | Role |
+| --- | --- |
+| `6ba1b218-15a8-461f-9fa8-5dcae273eafd` | the Meshtastic service |
+| `f75c76d2-129e-4dad-a1dd-7866124401e7` | `toRadio`, write a ToRadio protobuf to send |
+| `2c55e69e-4993-11ed-b878-0242ac120002` | `fromRadio`, read the next inbound packet |
+| `ed9da18c-a800-4f66-a670-aa7547e34453` | `fromNum`, notify, read until caught up |
+
+nimmesh already runs CoreBluetooth in the central role, so talking to a radio is the same
+class of work the app does today. That means a phone can put a transaction onto a LoRa mesh
+directly, with no Mac in the loop:
+
+```
+ phone (offline)  --BLE-->  radio A  --LoRa-->  the mesh relays
+                                                     |
+                    Nimiq  <--internet--  phone B + radio B
+```
+
+Both ends are phones. The mac-node can be the gateway instead if one should sit at home, but
+it is a convenience, not a requirement.
+
+**Two caveats, stated rather than buried.** BLE bonding needs a PIN: screenless boards default
+to a fixed `123456`, which should be changed. And this verifies that the API is public and
+documented, not that nimmesh's Swift drives it. That is what the first radio proves.
+
+### What to buy
+
+**2x [RAK WisBlock Meshtastic Starter Kit US915][rak], about $35 each.** One gateway, one
+carried. the mesh supplies every hop in between, so a third node for multi-hop is unnecessary.
+
+Chosen over the cheaper Heltec V3 deliberately, for four reasons. It ships **pre-flashed with
+Meshtastic**, so there is no firmware step. The RAK4631 is an nRF52840 rather than an ESP32
+and draws far less power in a pocket. It sits on Meshtastic's own recommended list, where the
+Heltec V3 does not. And the box already contains both the LoRa and BLE antennas.
+
+That last point carries more weight than its price suggests. A bare Heltec needs an antenna
+bought separately, and the antenna is both the part people forget and the part that dominates
+range.
+
+Battery and case are not included and are not needed to start. The gateway runs on USB and the
+carried node runs off any USB power bank for a day of testing.
+
 ## Recommendation
 
 Add **one** transport next, and make it Meshtastic over LoRa. Then SMS, which is nearly
@@ -196,18 +244,6 @@ turns every future radio into an additive change instead of a rewrite.
 4. **Field test.** Two radios, one carried out of BLE range, transaction lands on chain.
 5. **SMS gateway.** Issue #24, and by then the seam already exists.
 
-### What to buy
-
-Two nodes minimum to prove a hop, three to prove multi-hop routing.
-
-| Item | Qty | Approx |
-| --- | --- | --- |
-| Heltec V3 (or V4 for the extra power) | 3 | $20-30 each |
-| Upgraded antenna (17 cm whip or elbow) | 3 | ~$10 each |
-
-Roughly $90-120 all in. Stock 2 dBi antennas are the usual bottleneck, so the antenna
-line is not optional.
-
 ## Sources
 
 - [btcmesh, Bitcoin over Meshtastic (chunked hex)][btcmesh]
@@ -219,6 +255,7 @@ line is not optional.
 - [SMS 140-byte limit under 8-bit encoding][sms]
 - [PotatoMesh, federated Meshtastic/MeshCore dashboard, Apache 2.0][potato]
 - [the local community mesh, the local network and its node settings][kcmesh]
+- [Meshtastic BLE client API, service and characteristic UUIDs][bleapi]
 
 [btcmesh]: https://github.com/eddieoz/btcmesh
 [btcbridge]: https://github.com/BTCtoolshed/MeshtasticBitcoinCore_Bridge
@@ -228,5 +265,7 @@ line is not optional.
 [hexaspot]: https://hexaspot.com/blogs/news/meshtastic-vs-meshcore-explained-same-hardware-different-firmware
 [sms]: https://www.twilio.com/docs/glossary/what-sms-character-limit
 [potato]: https://github.com/l5yth/potato-mesh
+[bleapi]: https://meshtastic.org/docs/development/device/client-api/
+[rak]: https://store.rokland.com/products/rak-wireless-wisblock-meshtastic-starter-kit
 [kcmesh]: https://meshtastic.org/
 [meshtastic]: https://meshtastic.org/
