@@ -3,6 +3,37 @@
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
 
+## [0.89.6] - 2026-08-21
+
+### Added - transport research, and the size invariant that makes it cheap
+
+`docs/TRANSPORTS.md` researches where nimmesh goes after Bluetooth. The finding that
+governs everything: a signed Albatross transfer is 139 B basic and ~205 B with a memo,
+and a Meshtastic packet carries 237 B. It fits in ONE packet. A single binary SMS carries
+exactly 140 B under 8-bit encoding, so a basic transfer fits there with one byte to spare.
+
+That is a real advantage, not a nice coincidence. Both prior-art projects that put Bitcoin
+on a LoRa mesh (btcmesh, MeshtasticBitcoinCore_Bridge) have to chunk and reassemble, partly
+because a Bitcoin transaction is bigger and partly because they ship it as a hex string,
+which doubles the byte count before it reaches the radio. Meshtastic's PRIVATE_APP port
+carries raw bytes, so 139 binary bytes stay 139 binary bytes: one packet, delivered or not,
+no half states.
+
+Recommendation in the doc: Meshtastic over LoRa next (Heltec V3 at $20-30, unlicensed
+915 MHz, kilometre range, an official Rust crate for serial and TCP), then SMS, then
+MeshCore on the same hardware. Reticulum is the best architectural fit and the worst
+near-term fit, so it is parked. Airtime for a 155 B frame at LongFast is computed from the
+Semtech AN1200.13 formula at roughly 1.35 s, stated as computed rather than measured.
+
+`transport_mtu_tests` turns the size claim into a CI gate. Five tests measure a REAL
+serialized transaction (never a magic number) against every candidate MTU, so widening the
+wire format past a transport's limit goes red here instead of failing silently in a field
+with no signal. The guards were mutation-checked: dropping the Meshtastic ceiling to 100 B
+makes the right test fail with the right message.
+
+No behavior change. Research, docs, and tests.
+
+
 ## [0.89.5] - 2026-08-21
 
 ### Added - Apache 2.0, a NOTICE, and a README that tells the truth
