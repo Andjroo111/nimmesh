@@ -3,6 +3,37 @@
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
 
+## [0.89.7] - 2026-08-22
+
+### Added - the Meshtastic frame codec, proven byte-exact with no hardware
+
+`shared/MeshtasticFrame.swift` wraps a signed Nimiq transaction into a Meshtastic packet and
+pulls one back out. It is the piece that lets a phone put a payment onto a LoRa mesh over
+Meshtastic's documented BLE client API, with no computer at either end.
+
+Hand-rolled rather than pulling swift-protobuf and the whole Meshtastic schema in for two
+message shapes, which matches how this codebase already treats wire formats (the Nimiq tx
+serializer, CashlinkCodec and BitchatKit are all hand-rolled). Carries the raw transaction on
+`PRIVATE_APP` (portnum 256), which needs no protobuf rebuild and no registration. Raw bytes,
+never hex: hex doubles the size and is precisely why the Bitcoin bridges have to chunk.
+
+Also included: the BLE service and characteristic UUIDs, the 221-byte usable payload ceiling,
+and the local community mesh's published hop limit of 3 so we behave like a good citizen on a network
+built for off-grid messaging rather than for our traffic. Inbound traffic that is not ours
+(everyone's chat and telemetry arrive on the same characteristic) returns nil rather than
+throwing, because it is not an error condition.
+
+`apple/scripts/verify-meshtastic-frame-main.swift` proves it: 15 checks, all passing. The
+expected frame was computed BY HAND from meshtastic/protobufs mesh.proto rather than captured
+from this implementation, since a test that compares the code to itself would pass with every
+field number wrong. Mutation-checked: changing the portnum from 256 to 257 flips `8002` to
+`8102` and the byte-exactness check catches it. The parser also refuses truncated frames and
+length prefixes that overrun the buffer, because a relay hands us bytes from strangers.
+
+Not yet wired into the app target, since nothing consumes it until the BLE client lands. The
+harness is its build gate. See issue #33 and `docs/TRANSPORTS.md`.
+
+
 ## [0.89.6] - 2026-08-21
 
 ### Added - transport research, and the size invariant that makes it cheap
