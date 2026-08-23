@@ -40,7 +40,7 @@ Every claim here has an on chain or in repo receipt. Nothing below is a simulati
 | --- | --- |
 | First real funds mesh payment | 1 NIM, block **55488525**, tx `8ad87a7b…677f5`. Phone in airplane mode, over Bluetooth to a Mac gateway, onto the chain. |
 | Phone to phone, no Mac | 1 + 15 + 2 NIM, blocks **56054933 / 56055090 / 56055105**. Airplane mode iPhone 17 relayed to an iPhone 12 Pro that broadcast them. |
-| Bitchat interoperability | Live both directions, phone to phone, no Mac. A nimmesh message rendered in real Bitchat `#mesh`, and a Bitchat message rendered in nimmesh. `shared/BitchatKit.swift` is byte exact against their wire format. |
+| Bitchat interoperability | Live both directions, phone to phone, no Mac. A NIMmesh message rendered in real Bitchat `#mesh`, and a Bitchat message rendered in NIMmesh. `shared/BitchatKit.swift` is byte exact against their wire format. |
 | Offline cashlink claim | A cashlink handed over the mesh and swept in app, with the link key signing the sweep natively. |
 
 **Not yet proven, and labelled as such.** Cross chain NIM to USDC atomic swaps run end to end
@@ -57,7 +57,7 @@ See [ADR-0001](docs/adr/0001-native-rust-core-uniffi-stack.md).
   client. Headless tested in CI.
 - **iOS** in Swift with CoreBluetooth, running central and peripheral roles concurrently.
   That is what makes it a real mesh rather than a hub and spoke.
-  It is also why nimmesh can never be a WebView mini app. Web Bluetooth is central role only.
+  It is also why NIMmesh can never be a WebView mini app. Web Bluetooth is central role only.
 - **Android** planned in Kotlin on `android.bluetooth.le`. The core is already UniFFI ready.
 - **UI** is the Nimiq wallet's own design language, running in a WKWebView over the native core.
 - **Protocol** ported from Bitchat, public domain. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
@@ -83,7 +83,7 @@ anyone but its author. Treat it accordingly.
 | Doc | What |
 | --- | ---- |
 | [docs/GOAL.md](docs/GOAL.md) | North star, the magic moment, the demo loop, core values |
-| [docs/PROTOCOL.md](docs/PROTOCOL.md) | The nimmesh wire format |
+| [docs/PROTOCOL.md](docs/PROTOCOL.md) | The NIMmesh wire format |
 | [docs/RISKS.md](docs/RISKS.md) | Offline payment hazard analysis and mitigations |
 | [docs/MAINNET-GATING.md](docs/MAINNET-GATING.md) | The safety contract around real funds |
 | [docs/adr/](docs/adr/) | Architecture decisions |

@@ -34,7 +34,7 @@ targets:
     info:
       path: NimmeshApp/Info.plist
       properties:
-        CFBundleDisplayName: nimmesh
+        CFBundleDisplayName: NIMmesh
         # Drive version + build number from the build settings (xcodegen otherwise defaults them
         # to 1.0 / 1). build-testflight.sh overrides MARKETING_VERSION (cargo version) and
         # CURRENT_PROJECT_VERSION (a unique timestamp) so each TestFlight upload is unique.
