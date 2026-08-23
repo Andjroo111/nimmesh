@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Test Nimmesh</title>
+<meta name="description" content="How to set up two phones and send a real payment with no internet, and what to report when it breaks.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Mulish:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css?family=Fira+Mono&text=0123456789ABCDEFGHJKLMNPQRSTUVXY%20" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/@nimiq/style@latest/nimiq-style.min.css" rel="stylesheet">
+<link href="/assets/site.css" rel="stylesheet">
+</head>
+<body>
+
+<p class="alpha">Public alpha</p>
+
+<header class="page-head">
+  <div class="wrap">
+    <a href="/" style="text-decoration:none">
+    <span class="lockup">
+      <svg viewBox="0 0 20 18" aria-label="NIMmesh" role="img"><path fill="url(#mark-grad)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="mark-grad" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#41A38E"/><stop offset="1" stop-color="#21BCA5"/></radialGradient></defs><g transform="translate(4.6 3.9) scale(0.45)" fill="none"><circle cx="5" cy="18" r="2.4" fill="#fff"/><circle cx="19" cy="18" r="2.4" fill="#fff"/><circle cx="12" cy="5" r="2.4" fill="#fff"/><path d="M6.4 16.3 10.7 6.9M13.3 6.9l4.3 9.4M7.2 18h9.6" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/></g></svg>
+      <span class="word">NIMmesh</span>
+    </span>
+    </a>
+    <nav class="nav">
+      <a href="/how/">How it works</a>
+      <a href="/test/" aria-current="page">Test it</a>
+      <a href="/#roadmap">Roadmap</a>
+    </nav>
+    <h1>Test it</h1>
+    <p class="sub">Installing is the easy half. This is how you recreate the actual test.</p>
+  </div>
+</header>
+
+<article>
+  <div class="wrap">
+    <h2>What you need</h2>
+    <p>
+      Testing a mesh needs <strong>two iPhones</strong>. One alone cannot demonstrate anything,
+      for the reason set out in <a href="/how/">how it works</a>: there has to be somebody to
+      hand the payment to.
+    </p>
+    <ul>
+      <li>Two iPhones, both on iOS 16 or newer</li>
+      <li>Both registered for install. Send the device IDs over and they get added</li>
+      <li>A small amount of real NIM on the sending phone. A few coins is plenty</li>
+      <li>Bluetooth on, both phones, and the app open in the foreground on both</li>
+    </ul>
+
+    <div class="callout">
+      <p>
+        <strong>This is real mainnet money.</strong> There is no test mode. Send amounts you
+        would not mind losing while we find the rough edges, because finding them is the point
+        of a public alpha.
+      </p>
+    </div>
+
+    <h2>The test that proves it</h2>
+    <ol>
+      <li><strong>Install on both phones.</strong> Open the install page in Safari on each. Chrome and Brave cannot install it, which is an Apple restriction rather than a choice.</li>
+      <li><strong>Open the app on both and leave it in the foreground.</strong> iOS suspends background apps, and a suspended phone stops relaying.</li>
+      <li><strong>Put phone A in airplane mode, then switch Bluetooth back on.</strong> Airplane mode turns Bluetooth off with everything else, so you have to re-enable it. This is the step people miss.</li>
+      <li><strong>Leave phone B online.</strong> It is the gateway. Wi-Fi or cellular, either works.</li>
+      <li><strong>Wait for both to say meshed.</strong> The status line at the bottom of the home screen tells you when they have found each other.</li>
+      <li><strong>Send from phone A.</strong> Any amount, to any address. Phone A has no internet at all.</li>
+      <li><strong>Watch it settle.</strong> The payment crosses to phone B over Bluetooth, phone B broadcasts it, and a receipt travels back. Phone A flips from pending to settled without ever having a connection.</li>
+    </ol>
+    <p>
+      Then look the transaction up on a block explorer. It is an ordinary Nimiq transaction and
+      it will be sitting there like any other.
+    </p>
+
+    <h2>When it does not work</h2>
+    <h3>Both phones say searching forever</h3>
+    <p>
+      Usually one phone went to sleep or got backgrounded. Wake both, keep the app on screen,
+      and give it a few seconds.
+    </p>
+    <h3>The sending phone never leaves pending</h3>
+    <p>
+      Check the receiving phone actually has internet. The mesh can carry a payment perfectly
+      and still have nowhere to hand it off.
+    </p>
+    <h3>Nothing happens at all in airplane mode</h3>
+    <p>
+      Check Bluetooth is genuinely back on. Airplane mode disables it, and the app cannot mesh
+      without it.
+    </p>
+
+    <h2>What is worth reporting</h2>
+    <p>
+      Anything that surprised you is worth knowing about, but these are the most useful:
+    </p>
+    <ul>
+      <li>A payment that never settled, with roughly how long you waited</li>
+      <li>A status line that said one thing while the app did another</li>
+      <li>Anything that made you unsure whether your money was safe</li>
+      <li>The moment you first got confused, whatever it was</li>
+    </ul>
+    <p>
+      That last one matters more than it sounds. Most of what is wrong with an alpha is not a
+      crash, it is a screen that assumed you already knew how the thing worked.
+    </p>
+
+    <h2>How to tell us</h2>
+    <p>
+      There is a report button in the corner of every page here. Tap it, then either talk or
+      type. It attaches what the browser saw at that moment, so you do not have to describe
+      the technical part, and it files the report for you. No account, nothing to sign up for.
+    </p>
+    <div class="callout">
+      <p>
+        <strong>Reporting from the app itself is better when you can.</strong> The report picks
+        up the errors and failed requests behind the screen you were looking at, which is
+        usually the half that explains what went wrong.
+      </p>
+    </div>
+  </div>
+</article>
+
+<footer>
+  <div class="wrap">
+    <p style="margin-bottom:12px"><a href="/">Home</a> &middot; <a href="/how/">How it works</a> &middot; <a href="/test/">Test it</a></p>
+    An independent project built on Nimiq. Open source, Apache 2.0. Field tested, not audited.
+  </div>
+</footer>
+
+<!-- Fleet bug reporter. One script tag: floating button, voice or text, optional
+     screenshot, AI-drafted issue filed straight into the repo. No token in the page.
+     Needs nimiq.nimmesh on the service allowlist (nimiq.bot#4) and on the GitHub
+     App's selected repositories, or it answers unknown_repo. -->
+<script src="https://bot.nimiq.tech/widget.js" data-repo="nimiq.nimmesh" data-accent="#0582CA" defer></script>
+</body>
+</html>

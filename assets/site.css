@@ -1,0 +1,191 @@
+:root {
+    --navy: #1F2348;
+    --navy-bg: radial-gradient(100% 100% at bottom right, #260133, #1F2348);
+    --blue-bg: radial-gradient(100% 100% at bottom right, #265DD7, #0582CA);
+    --green: #21BCA5;
+    --ease: cubic-bezier(0.25, 0, 0, 1);
+  }
+
+  * { box-sizing: border-box; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+  }
+
+  body {
+    margin: 0;
+    background: #F8F8F8;
+    color: var(--navy);
+    font-family: 'Mulish', 'Muli', system-ui, sans-serif !important;
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2 { text-wrap: balance; margin: 0; letter-spacing: 0; font-weight: 700; }
+  h1 { font-size: clamp(34px, 6.5vw, 56px); line-height: 1.1; }
+  h2 { font-size: clamp(24px, 3.6vw, 32px); line-height: 1.2; }
+  p { margin: 0; text-wrap: pretty; }
+
+  .wrap { max-width: 800px; margin: 0 auto; padding: 0 24px; }
+
+  /* header, the nimiq.blog lockup pattern */
+  .site-head { padding: 0 0 40px; text-align: center; }
+  .lockup { display: inline-flex; align-items: center; gap: 16px; }
+  .lockup svg { width: 72px; height: auto; display: block; }
+  .lockup .word { font-size: 40px; font-weight: 700; letter-spacing: .08em; color: var(--navy); }
+
+  /* hero, the nimiq.com centred pattern */
+  /* One centred group: logo, nav, headline, CTA. The nav sits above the headline, it is
+     not pinned to the viewport's top edge. Pinning it was the mistake, because it forced
+     the leftover height to open as a gap between the nav and the headline. */
+  .hero {
+    background: #fff; color: var(--navy);
+    /* 100dvh. svh fits on load then lets the next section show through once the toolbars
+       retract; vh covers but extends BEHIND the browser's bottom bar, so on a phone about
+       280px of the box is not visible and centring lands lopsided, wide at the top and
+       tight at the bottom. dvh tracks the height actually on screen, so the content centres
+       in what you can see and the hero still covers when the toolbars move.
+       vh is the fallback for anything without dvh. */
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding: 48px 0;
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .hero .inner {
+    text-align: center; padding: 0;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  .hero h1 { margin: 0 auto 20px; max-width: 19ch; }
+  .hero .lede {
+    font-size: clamp(17px, 2.1vw, 20px); color: rgba(31,35,72,.6);
+    max-width: 46ch; margin: 0 auto 32px;
+  }
+  .cta {
+    display: inline-flex; align-items: center; gap: 8px; justify-content: center;
+    background-image: var(--blue-bg); color: #fff;
+    font-weight: 700; font-size: 17px; text-decoration: none;
+    padding: 16px 40px; border-radius: 999px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.15);
+    transition: transform .25s var(--ease), box-shadow .25s var(--ease);
+  }
+  .cta:hover { transform: translateY(-2px); box-shadow: 0 16px 40px rgba(0,0,0,.2); }
+  .cta:active { transform: translateY(1px); box-shadow: 0 3px 5px rgba(0,0,0,.2); }
+  .cta:focus-visible { outline: 2px solid #0CA6FE; outline-offset: 3px; }
+  .cta-note { margin-top: 16px; font-size: 14px; color: rgba(31,35,72,.5); }
+
+  /* screens */
+  .screens { padding: 80px 0; background: #FAFAFA; }
+  .shots { display: flex; gap: 32px; justify-content: center; flex-wrap: wrap; margin-top: 48px; }
+  .shot { width: 264px; margin: 0; }
+  .shot img {
+    width: 100%; height: auto; display: block;
+    border-radius: 12px; box-shadow: 0 8px 56px rgba(0,0,0,.111);
+  }
+  .shot figcaption { margin-top: 16px; font-size: 15px; color: rgba(31,35,72,.5); text-align: center; }
+  .shot .frame {
+    aspect-ratio: 390 / 844; border-radius: 12px; background: #EDEDED;
+    display: flex; align-items: center; justify-content: center;
+    color: rgba(31,35,72,.4); font-size: 14px; text-align: center; padding: 24px;
+  }
+
+  /* proof */
+  .proof { background-image: var(--navy-bg); color: #fff; padding: 80px 0; text-align: center; }
+  .proof h2 { margin-bottom: 16px; }
+  .proof > .wrap > p { color: rgba(255,255,255,.6); max-width: 52ch; margin: 0 auto; }
+
+  .ledger { list-style: none; margin: 40px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .ledger li {
+    background: #fff; border-radius: 8px; padding: 24px;
+    display: grid; gap: 8px 24px; text-align: left;
+    grid-template-columns: auto 1fr auto;
+    grid-template-areas: 'amt when blk' 'route route route' 'note note note';
+    align-items: baseline;
+  }
+  @media (max-width: 620px) {
+    .ledger li { grid-template-columns: 1fr auto; grid-template-areas: 'amt when' 'route route' 'blk blk' 'note note'; }
+  }
+  .ledger .amt { grid-area: amt; font-size: 20px; font-weight: 700; color: var(--navy); text-decoration: none; }
+  .ledger .when { grid-area: when; font-size: 14px; color: rgba(31,35,72,.45); }
+  .ledger .blk { grid-area: blk; font-family: 'Fira Mono', monospace; font-size: 13px; color: #0071C3; text-decoration: none; white-space: nowrap; }
+  .ledger .route { grid-area: route; font-family: 'Fira Mono', monospace; font-size: 13px; color: rgba(31,35,72,.6); }
+  .ledger .route a { color: #0071C3; text-decoration: none; font-weight: 700; }
+  .ledger .note { grid-area: note; font-size: 15px; color: rgba(31,35,72,.6); }
+  .ledger a:hover { color: var(--navy); }
+  .ledger a:focus-visible { outline: 2px solid #0CA6FE; outline-offset: 3px; }
+
+  footer { background-image: var(--navy-bg); color: rgba(255,255,255,.6); padding: 48px 0; font-size: 14px; text-align: center; }
+
+  /* ---------- shared page chrome added for how/ and test/ ---------- */
+  /* White strip. It used to be #1a1d3d on the navy hero, which on a phone read as a
+     slightly-off rectangle rather than a notice. */
+  .alpha {
+    background-image: var(--navy-bg); color: #fff; text-align: center;
+    font-size: 17px; font-weight: 700; letter-spacing: .04em;
+    padding: 16px 24px; margin: 0;
+  }
+
+  .nav { display: flex; gap: 24px; justify-content: center; margin-top: 24px; font-size: 15px; }
+
+  .nav a { color: rgba(31,35,72,.6); text-decoration: none; font-weight: 700; }
+  .nav a:hover { color: var(--navy); }
+  .nav a[aria-current] { color: var(--navy); }
+  .nav a:focus-visible { outline: 2px solid #0CA6FE; outline-offset: 3px; }
+
+  /* article pages */
+  .page-head { background: #fff; color: var(--navy); padding: 32px 0 48px; text-align: center; }
+  .page-head h1 { font-size: clamp(30px, 5vw, 44px); margin: 32px auto 16px; max-width: 20ch; }
+  .page-head .sub { color: rgba(31,35,72,.6); max-width: 52ch; margin: 0 auto; }
+
+  article { padding: 48px 0 96px; background: #FAFAFA; }
+  article h2 { margin: 48px 0 16px; }
+  article h2:first-child { margin-top: 0; }
+  article h3 { font-size: 19px; font-weight: 700; margin: 32px 0 8px; }
+  article p { max-width: 640px; margin-bottom: 16px; color: rgba(31,35,72,.75); }
+  article ol, article ul { max-width: 640px; margin: 0 0 16px; padding-left: 24px; color: rgba(31,35,72,.75); }
+  article li { margin-bottom: 8px; }
+  article strong { color: var(--navy); }
+  article a { color: var(--navy); font-weight: 700; text-decoration: none; }
+  article a:hover { color: #0582CA; }
+  article a:focus-visible { outline: 2px solid #0CA6FE; outline-offset: 3px; }
+
+  .callout { background: #fff; border-radius: 8px; padding: 32px 24px; margin: 32px 0; max-width: 640px; }
+  .callout p:last-child { margin-bottom: 0; }
+
+  /* Roadmap on a light band with white cards, the nimiq.kids pattern. It was navy
+     before, which put three dark sections in a row. */
+  .band { background: #FAFAFA; padding: 80px 0; }
+  .band-white { background: #fff; padding: 80px 0; }
+  .eyebrow {
+    font-size: 12px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;
+    color: #6E707E; margin: 0 0 12px;
+  }
+  .roadmap { list-style: none; padding: 0; margin: 32px 0 0; display: flex; flex-direction: column; gap: 24px; }
+  .roadmap li { background: #fff; border: 1px solid rgba(31,35,72,.12); border-radius: 8px; padding: 24px; text-align: left; }
+  .roadmap .state {
+    font-size: 12px; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase;
+    color: #6E707E; display: block; margin-bottom: 8px;
+  }
+  .roadmap h3 { font-size: 19px; font-weight: 700; margin: 0 0 8px; color: var(--navy); }
+  .roadmap p { color: rgba(31,35,72,.6); font-size: 16px; margin: 0; max-width: 62ch; }
+
+  /* Steps, the condensed version of /test/ that lives on the home page */
+  .steps-list { list-style: none; counter-reset: st; padding: 0; margin: 32px 0 0;
+    display: flex; flex-direction: column; gap: 20px; text-align: left; }
+  .steps-list li { counter-increment: st; display: grid; grid-template-columns: 32px 1fr; gap: 16px; align-items: start; }
+  .steps-list li::before {
+    content: counter(st); font-family: 'Fira Mono', monospace; font-size: 13px; font-weight: 600;
+    color: var(--navy); border: 1px solid rgba(31,35,72,.12); border-radius: 6px;
+    height: 32px; display: flex; align-items: center; justify-content: center; background: #fff;
+  }
+  .steps-list b { display: block; color: var(--navy); }
+  .steps-list span { color: rgba(31,35,72,.6); font-size: 16px; }
+
+
+  /* every link on the page gets a brand colour; an unstyled one renders browser blue */
+  footer a { color: #fff; font-weight: 700; text-decoration: none; }
+  footer a:hover { color: var(--green); }
+  footer a:focus-visible { outline: 2px solid #0CA6FE; outline-offset: 3px; }
+  .alpha a { color: #fff; font-weight: 700; text-decoration: none; }
+  .hero .nav a { color: rgba(31,35,72,.6); }
+  .hero .nav a:hover { color: var(--navy); }
+  .page-head a { color: inherit; }

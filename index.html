@@ -4,245 +4,184 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>nimmesh</title>
-<meta name="description" content="Pay with NIM when there is no internet. A Bluetooth mesh wallet for Nimiq that signs offline and hops phone to phone until one device has a connection.">
+<meta name="description" content="Pay with NIM without internet. A Bluetooth mesh wallet for Nimiq that signs offline and hops phone to phone until one device has a connection.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Mulish:wght@400;600;700&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css?family=Fira+Mono&text=0123456789ABCDEFGHJKLMNPQRSTUVXY%20" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/@nimiq/style@latest/nimiq-style.min.css" rel="stylesheet">
-<style>
-  :root {
-    --navy: #1F2348;
-    --navy-bg: radial-gradient(100% 100% at bottom right, #260133, #1F2348);
-    --blue-bg: radial-gradient(100% 100% at bottom right, #265DD7, #0582CA);
-    --mesh-bg: radial-gradient(100% 100% at bottom right, #41A38E, #21BCA5);
-    --green: #21BCA5;
-    --ease: cubic-bezier(0.25, 0, 0, 1);
-  }
-
-  * { box-sizing: border-box; }
-
-  html { scroll-behavior: smooth; }
-  @media (prefers-reduced-motion: reduce) {
-    html { scroll-behavior: auto; }
-    *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
-  }
-
-  body {
-    margin: 0;
-    background: #F8F8F8;
-    color: var(--navy);
-    font-family: 'Mulish', 'Muli', system-ui, sans-serif !important;
-    font-size: 17px;
-    line-height: 1.6;
-    -webkit-font-smoothing: antialiased;
-  }
-
-  h1, h2, h3 { text-wrap: balance; margin: 0; letter-spacing: 0; font-weight: 700; }
-  h1 { font-size: clamp(34px, 7.5vw, 60px); line-height: 1.1; }
-  h2 { font-size: clamp(26px, 4.5vw, 36px); line-height: 1.2; }
-  h3 { font-size: 19px; font-weight: 600; }
-  p { margin: 0; text-wrap: pretty; }
-
-  .wrap { max-width: 800px; margin: 0 auto; padding: 0 24px; }
-  /* keep running prose near 65ch; layout grids stay full width */
-  .measure { max-width: 640px; }
-
-  section { padding: 96px 0; }
-
-  /* ---------- hero ---------- */
-  .hero {
-    background-image: var(--navy-bg);
-    color: #fff;
-    padding: 32px 0 96px;
-  }
-  .brandbar { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 17px; letter-spacing: .04em; }
-  .brandbar svg { width: 26px; height: auto; display: block; }
-
-  .hero-inner { padding-top: 80px; max-width: 640px; }
-  .hero h1 { margin-bottom: 24px; }
-  .hero .lede { font-size: clamp(18px, 2.4vw, 21px); color: rgba(255,255,255,.6); margin-bottom: 40px; }
-
-  .cta {
-    display: inline-flex; align-items: center; justify-content: center;
-    background-image: var(--blue-bg); color: #fff;
-    font-weight: 700; font-size: 17px; text-decoration: none;
-    padding: 16px 40px; border-radius: 999px;
-    box-shadow: 0 8px 24px rgba(0,0,0,.15);
-    transition: transform .25s var(--ease), box-shadow .25s var(--ease);
-  }
-  .cta:hover { transform: translateY(-2px); box-shadow: 0 16px 40px rgba(0,0,0,.2); }
-  .cta:active { transform: translateY(1px); box-shadow: 0 3px 5px rgba(0,0,0,.2); }
-  .cta:focus-visible { outline: 2px solid #0CA6FE; outline-offset: 3px; }
-  .cta-note { margin-top: 16px; font-size: 14px; color: rgba(255,255,255,.6); }
-
-  /* ---------- the byte fact ---------- */
-  .fact { background: #fff; }
-  .fact .big {
-    font-size: clamp(52px, 11vw, 88px); font-weight: 700; line-height: 1;
-    background-image: var(--mesh-bg); -webkit-background-clip: text; background-clip: text;
-    -webkit-text-fill-color: transparent; color: var(--green);
-  }
-  .fact .biglabel { font-size: 19px; color: rgba(31,35,72,.5); margin-top: 8px; }
-
-  /* ---------- steps ---------- */
-  .steps { display: grid; gap: 24px; margin-top: 48px; grid-template-columns: 1fr; }
-  @media (min-width: 720px) { .steps { grid-template-columns: repeat(3, 1fr); } }
-  .step { background: #fff; border-radius: 8px; padding: 32px 24px; display: flex; flex-direction: column; }
-  .step .n {
-    font-family: 'Fira Mono', monospace; font-size: 13px; color: rgba(31,35,72,.5);
-    display: block; margin-bottom: 16px;
-  }
-  .step h3 { margin-bottom: 8px; min-height: 2.4em; }
-  .step p { font-size: 16px; color: rgba(31,35,72,.6); }
-
-  /* ---------- receipts ---------- */
-  .proof { background-image: var(--navy-bg); color: #fff; }
-  .proof h2 { margin-bottom: 16px; }
-  .proof .sub { color: rgba(255,255,255,.6); margin-bottom: 40px; max-width: 640px; }
-  .receipts { display: flex; flex-direction: column; gap: 1px; background: rgba(255,255,255,.12); border-radius: 8px; overflow: hidden; }
-  .receipt { background: #1F2348; padding: 24px; display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: baseline; justify-content: space-between; }
-  .receipt .what { font-weight: 600; }
-  .receipt .block { font-family: 'Fira Mono', monospace; font-size: 14px; color: var(--green); white-space: nowrap; }
-  .receipt .detail { flex-basis: 100%; font-size: 15px; color: rgba(255,255,255,.6); }
-
-  .caveat { margin-top: 40px; font-size: 15px; max-width: 640px; color: rgba(255,255,255,.6); }
-  .caveat b { color: #fff; font-weight: 600; }
-
-  /* ---------- next ---------- */
-  .next { background: #fff; }
-  .next .grid { display: grid; gap: 24px; margin-top: 40px; grid-template-columns: 1fr; }
-  @media (min-width: 720px) { .next .grid { grid-template-columns: 1fr 1fr; } }
-  .tile { border-radius: 8px; padding: 32px 24px; background: #F4F4F4; }
-  .tile h3 { margin-bottom: 8px; }
-  .tile p { font-size: 16px; color: rgba(31,35,72,.6); }
-
-  /* ---------- footer ---------- */
-  footer { background-image: var(--navy-bg); color: rgba(255,255,255,.6); padding: 48px 0; font-size: 15px; }
-  footer .row { display: flex; flex-wrap: wrap; gap: 16px 32px; align-items: center; justify-content: space-between; }
-  footer a { color: #fff; font-weight: 600; text-decoration: none; }
-  footer a:hover { color: var(--green); }
-  footer a:focus-visible { outline: 2px solid #0CA6FE; outline-offset: 3px; }
-  footer .disclaim { flex-basis: 100%; font-size: 14px; max-width: 640px; color: rgba(255,255,255,.4); }
-</style>
+<link href="/assets/site.css" rel="stylesheet">
 </head>
 <body>
 
-<header class="hero">
-  <div class="wrap">
-    <div class="brandbar">
-      <svg viewBox="0 0 20 18" aria-label="nimmesh" role="img"><path fill="url(#mark-grad)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="mark-grad" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#41A38E"/><stop offset="1" stop-color="#21BCA5"/></radialGradient></defs><g transform="translate(4.6 3.9) scale(0.45)" fill="none"><circle cx="5" cy="18" r="2.4" fill="#fff"/><circle cx="19" cy="18" r="2.4" fill="#fff"/><circle cx="12" cy="5" r="2.4" fill="#fff"/><path d="M6.4 16.3 10.7 6.9M13.3 6.9l4.3 9.4M7.2 18h9.6" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/></g></svg>
-      nimmesh
-    </div>
+<p class="alpha">Public alpha</p>
 
-    <div class="hero-inner">
-      <h1>Pay with NIM when there is no internet</h1>
-      <p class="lede">
-        Sign a transaction on a phone with no connection at all. It hops device to device over
-        Bluetooth until it reaches someone who has a connection, and they broadcast it for you.
-      </p>
-      <a class="cta" href="/ota/">Install on iPhone</a>
-      <p class="cta-note">Open in Safari. Installs on registered devices.</p>
-    </div>
+<header class="hero">
+  <div class="wrap site-head">
+    <span class="lockup">
+      <svg viewBox="0 0 20 18" aria-label="NIMmesh" role="img"><path fill="url(#mark-grad)" d="M19.964 8.156 15.758.844A1.69 1.69 0 0014.299 0H5.887c-.6 0-1.156.32-1.456.844L.225 8.156c-.3.523-.3 1.165 0 1.688l4.206 7.312c.3.523.856.844 1.456.844h8.412c.6 0 1.156-.32 1.456-.844l4.206-7.312a1.69 1.69 0 00.003-1.688"/><defs><radialGradient id="mark-grad" cx="0" cy="0" r="1" gradientTransform="matrix(20.1956 0 0 20.2552 15.188 17.766)" gradientUnits="userSpaceOnUse"><stop stop-color="#41A38E"/><stop offset="1" stop-color="#21BCA5"/></radialGradient></defs><g transform="translate(4.6 3.9) scale(0.45)" fill="none"><circle cx="5" cy="18" r="2.4" fill="#fff"/><circle cx="19" cy="18" r="2.4" fill="#fff"/><circle cx="12" cy="5" r="2.4" fill="#fff"/><path d="M6.4 16.3 10.7 6.9M13.3 6.9l4.3 9.4M7.2 18h9.6" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/></g></svg>
+      <span class="word">NIMmesh</span>
+    </span>
+    <nav class="nav">
+      <a href="/how/">How it works</a>
+      <a href="/test/">Test it</a>
+      <a href="#roadmap">Roadmap</a>
+    </nav>
   </div>
+
+  <div class="wrap inner">
+    <h1>Pay with NIM without internet</h1>
+    <p class="lede">
+      Sign on a phone with no signal. It hops phone to phone over Bluetooth until
+      someone online broadcasts it for you.
+    </p>
+    <a class="cta" href="/ota/">Install on iPhone <span aria-hidden="true">&#8599;</span></a>
+    <p class="cta-note">Open this page in Safari</p>
+
+  </div>
+
 </header>
 
-<section class="fact">
-  <div class="wrap">
-    <p class="big">139</p>
-    <p class="biglabel">bytes, and that is the whole idea</p>
-    <p class="measure" style="margin-top:32px;color:rgba(31,35,72,.6)">
-      A signed Nimiq transaction is a self contained blob that carries its own proof and stays
-      valid for about two hours. The network does not care how those bytes arrived, only that
-      they are valid and on time. So the internet is needed at the final hop, and every hop
-      before it can be a phone.
-    </p>
-  </div>
-</section>
-
-<section style="background:#F8F8F8">
-  <div class="wrap">
-    <h2>How it travels</h2>
-    <div class="steps">
-      <div class="step">
-        <span class="n">01</span>
-        <h3>Sign with no signal</h3>
-        <p>Your phone builds and signs the transaction on device. Nothing leaves the secure enclave except bytes that are safe to broadcast.</p>
-      </div>
-      <div class="step">
-        <span class="n">02</span>
-        <h3>Hop through strangers</h3>
-        <p>Nearby phones carry it onward without ever reading it. A relay cannot tell a payment from noise, and does not need to.</p>
-      </div>
-      <div class="step">
-        <span class="n">03</span>
-        <h3>Someone has a connection</h3>
-        <p>The first device with data broadcasts it to the Nimiq network, then a receipt travels back the same way and your screen settles.</p>
-      </div>
+<section class="screens">
+  <div class="wrap" style="text-align:center">
+    <h2>A real wallet, offline</h2>
+    <div class="shots">
+      <figure class="shot">
+        <img src="assets/screens/home.png" alt="The nimmesh wallet home screen, showing NIM, Bitcoin and USD Coin balances above a Bluetooth mesh status line.">
+        <figcaption>Mesh status, always in view</figcaption>
+      </figure>
+      <figure class="shot">
+        <div class="frame">Second screenshot goes here</div>
+        <figcaption>Sending with nothing but Bluetooth</figcaption>
+      </figure>
     </div>
   </div>
 </section>
 
 <section class="proof">
   <div class="wrap">
-    <h2>It has already carried real money</h2>
-    <p class="sub">Every claim here has a block behind it</p>
-
-    <div class="receipts">
-      <div class="receipt">
-        <span class="what">First payment on mainnet</span>
-        <span class="block">block 55488525</span>
-        <span class="detail">1 NIM. Phone in airplane mode, over Bluetooth to a Mac, onto the chain.</span>
-      </div>
-      <div class="receipt">
-        <span class="what">Phone to phone, no computer</span>
-        <span class="block">blocks 56054933 / 56055090 / 56055105</span>
-        <span class="detail">1, 15 and 2 NIM relayed from an airplane mode iPhone to a second phone that broadcast them.</span>
-      </div>
-      <div class="receipt">
-        <span class="what">Bitchat interoperability</span>
-        <span class="block">both directions</span>
-        <span class="detail">Messages crossed between nimmesh and a real Bitchat mesh, byte exact against their wire format.</span>
-      </div>
-    </div>
-
-    <p class="caveat">
-      <b>What is not proven yet.</b> Cross chain swaps between NIM and USDC run end to end and
-      settle, but on test networks. The mainnet phone to phone swap has not been run, and this
-      page will say so until it has.
+    <h2>Real transactions over mesh</h2>
+    <p>
+      Mainnet NIM, signed in airplane mode and carried over Bluetooth to a phone that was
+      online. Every row is on chain. Open any of them.
     </p>
+
+    <ol class="ledger">
+      <li>
+        <a class="amt" href="https://nimiq.watch/#8ad87a7b7246da49e44adf02a128367e168eaa84dedcd0d5edb6044d382677f5" target="_blank" rel="noopener">1 NIM</a>
+        <span class="when">6 July 2026</span>
+        <span class="route">
+          <a href="https://nimiq.watch/#NQ92+TJ5G+KBB5+670Y+5ARV+7DC5+JKDU+4F3A+THBN" target="_blank" rel="noopener">NQ92 TJ5G</a>
+          to
+          <a href="https://nimiq.watch/#NQ87+JY9X+JUEE+HA17+JNBB+HPGM+5ETQ+VT1G+CVN2" target="_blank" rel="noopener">NQ87 JY9X</a>
+        </span>
+        <a class="blk" href="https://nimiq.watch/#55488525" target="_blank" rel="noopener">block 55488525</a>
+        <span class="note">The first real funds to cross the mesh. Phone to a Mac gateway.</span>
+      </li>
+      <li>
+        <a class="amt" href="https://nimiq.watch/#a6a877c4b1128d0a297cdc6cb9129e710419e790fea4e2429a4d9a5d8cbdbbe2" target="_blank" rel="noopener">1 NIM</a>
+        <span class="when">12 July 2026</span>
+        <span class="route">
+          <a href="https://nimiq.watch/#NQ92+TJ5G+KBB5+670Y+5ARV+7DC5+JKDU+4F3A+THBN" target="_blank" rel="noopener">NQ92 TJ5G</a>
+          to
+          <a href="https://nimiq.watch/#NQ22+16BC+PR3B+5HJL+DTHS+NLKU+D8L9+S6KP+JGLH" target="_blank" rel="noopener">NQ22 16BC</a>
+        </span>
+        <a class="blk" href="https://nimiq.watch/#56054933" target="_blank" rel="noopener">block 56054933</a>
+        <span class="note">Phone to phone. No computer anywhere in the path.</span>
+      </li>
+      <li>
+        <a class="amt" href="https://nimiq.watch/#ee88f69fcac8ebeae3b7faabe0f12745630e7fee6a140268d9dfbf0758476849" target="_blank" rel="noopener">15 NIM</a>
+        <span class="when">12 July 2026</span>
+        <span class="route">
+          <a href="https://nimiq.watch/#NQ92+TJ5G+KBB5+670Y+5ARV+7DC5+JKDU+4F3A+THBN" target="_blank" rel="noopener">NQ92 TJ5G</a>
+          to
+          <a href="https://nimiq.watch/#NQ22+16BC+PR3B+5HJL+DTHS+NLKU+D8L9+S6KP+JGLH" target="_blank" rel="noopener">NQ22 16BC</a>
+        </span>
+        <a class="blk" href="https://nimiq.watch/#56055090" target="_blank" rel="noopener">block 56055090</a>
+        <span class="note">Two minutes later, on the same mesh.</span>
+      </li>
+      <li>
+        <a class="amt" href="https://nimiq.watch/#9072c555820884984e147e359e93579c1b170ba7ba630564b95d6a481692d1e7" target="_blank" rel="noopener">2 NIM</a>
+        <span class="when">12 July 2026</span>
+        <span class="route">
+          <a href="https://nimiq.watch/#NQ92+TJ5G+KBB5+670Y+5ARV+7DC5+JKDU+4F3A+THBN" target="_blank" rel="noopener">NQ92 TJ5G</a>
+          to
+          <a href="https://nimiq.watch/#NQ22+16BC+PR3B+5HJL+DTHS+NLKU+D8L9+S6KP+JGLH" target="_blank" rel="noopener">NQ22 16BC</a>
+        </span>
+        <a class="blk" href="https://nimiq.watch/#56055105" target="_blank" rel="noopener">block 56055105</a>
+        <span class="note">Fifteen seconds after the last one.</span>
+      </li>
+    </ol>
   </div>
 </section>
 
-<section class="next">
-  <div class="wrap">
-    <h2>Further than a room</h2>
-    <p class="measure" style="margin-top:16px;color:rgba(31,35,72,.6)">
-      Bluetooth reaches about thirty metres. The same 139 bytes fit inside a single LoRa packet
-      and a single text message, which is where this goes next.
+<section class="band-white">
+  <div class="wrap" style="text-align:center">
+    <p class="eyebrow">Try it yourself</p>
+    <h2>Two phones and ten minutes</h2>
+    <p class="measure" style="margin:16px auto 0;color:rgba(31,35,72,.6)">
+      One phone cannot demonstrate a mesh. There has to be a second device to hand the
+      payment to, and one of the two needs a connection.
     </p>
-    <div class="grid">
-      <div class="tile">
-        <h3>Onto the LoRa mesh</h3>
-        <p>A signed transaction fits in one Meshtastic packet with room to spare, so it needs no splitting and cannot half arrive. Community LoRa networks already cover whole cities, and a radio costs about the same as dinner.</p>
-      </div>
-      <div class="tile">
-        <h3>Down to a text message</h3>
-        <p>One binary SMS carries exactly 140 bytes. A basic transfer is 139. For anywhere with a bar of signal and no data at all, that is the entire payment in a single message.</p>
-      </div>
-    </div>
+    <ol class="steps-list measure" style="margin-left:auto;margin-right:auto">
+      <li><div><b>Install on both phones</b><span>In Safari. Chrome cannot install it, which is Apple's rule rather than ours.</span></div></li>
+      <li><div><b>Open the app on both, and leave it on screen</b><span>iOS suspends background apps, and a suspended phone stops relaying.</span></div></li>
+      <li><div><b>Airplane mode on phone A, then Bluetooth back on</b><span>Airplane mode switches Bluetooth off with everything else. This is the step people miss.</span></div></li>
+      <li><div><b>Leave phone B online</b><span>It is the gateway. Wi-Fi or cellular, either works.</span></div></li>
+      <li><div><b>Wait for both to read meshed, then send</b><span>Phone A has no internet. The payment crosses over Bluetooth, phone B broadcasts it, and a receipt comes back.</span></div></li>
+    </ol>
+    <p style="margin-top:32px"><a class="cta" href="/test/">Read the full guide <span aria-hidden="true">&#8594;</span></a></p>
+  </div>
+</section>
+
+<section class="band" id="roadmap">
+  <div class="wrap" style="text-align:center">
+    <p class="eyebrow">Roadmap</p>
+    <h2>Where this goes</h2>
+    <p class="measure" style="margin:16px auto 0;color:rgba(31,35,72,.6)">
+      Two of these work today. Three do not.
+    </p>
+    <ul class="roadmap">
+      <li>
+        <span class="state">On mainnet</span>
+        <h3>Payments over Bluetooth</h3>
+        <p>Four transfers so far, the largest 15 NIM, every one signed on a phone in airplane mode.</p>
+      </li>
+      <li>
+        <span class="state">Proven both directions</span>
+        <h3>Bitchat interoperability</h3>
+        <p>Messages cross between NIMmesh and a real Bitchat mesh, byte exact against their wire format. Private direct messages are the piece still missing.</p>
+      </li>
+      <li>
+        <span class="state">Building</span>
+        <h3>Cash links and requests</h3>
+        <p>Hand someone a claimable link, or ask them for an amount, with neither of you online. Bitrequest already speaks Nimiq, so a request built there could travel the same way.</p>
+      </li>
+      <li>
+        <span class="state">Settles on testnet</span>
+        <h3>Swaps between chains, offline</h3>
+        <p>Two people trade NIM for USDC with no exchange and no internet, using hash time locked contracts. Three consecutive runs settled in about 30 seconds each. The mainnet version has not been run.</p>
+      </li>
+      <li>
+        <span class="state">Researched, not built</span>
+        <h3>LoRa and text messages</h3>
+        <p>The same 139 bytes fit one LoRa packet and one binary SMS, so nothing has to be split. the metro already has a community LoRa network of 60 or so nodes.</p>
+      </li>
+    </ul>
   </div>
 </section>
 
 <footer>
-  <div class="wrap row">
-    <span>Open source, Apache 2.0</span>
-    <span><a href="/ota/">Install</a></span>
-    <p class="disclaim">
-      An independent project built on Nimiq. Not affiliated with Nimiq. Field tested, not audited.
-    </p>
+  <div class="wrap">
+    <p style="margin-bottom:12px"><a href="/how/">How it works</a> &middot; <a href="/test/">Test it</a></p>
+    An independent project built on Nimiq. Open source, Apache 2.0. Field tested, not audited.
   </div>
 </footer>
 
+<!-- Fleet bug reporter. One script tag: floating button, voice or text, optional
+     screenshot, AI-drafted issue filed straight into the repo. No token in the page.
+     Needs nimiq.nimmesh on the service allowlist (nimiq.bot#4) and on the GitHub
+     App's selected repositories, or it answers unknown_repo. -->
+<script src="https://bot.nimiq.tech/widget.js" data-repo="nimiq.nimmesh" data-accent="#0582CA" defer></script>
 </body>
 </html>
