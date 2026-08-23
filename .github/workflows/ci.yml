@@ -66,3 +66,59 @@ jobs:
 
       - name: forge test
         run: forge test -vv
+
+  # android — the Kotlin gate (A1/A2 of the Android epic, #38). Two things run here that
+  # need no device and no emulator:
+  #
+  #   1. the JVM unit tests, which include the bridge PARITY gate. That one reads the
+  #      method list straight out of apple/NimmeshApp/Sources/WebHostView.swift and fails
+  #      if the Android shim has drifted from the iOS one. webui/ is shared by both apps,
+  #      so a drifted shim is a feature that silently does nothing on one platform.
+  #   2. a compile of the instrumented tests, so a broken test file cannot merge green.
+  #
+  # The instrumented tests themselves need a device and run on the Mini, not here.
+  # ⚠ This job builds the Rust core for Android first: the UniFFI Kotlin bindings are
+  # GENERATED FROM the built .so and are not committed, so :core cannot compile without it.
+  android:
+    name: android (kotlin)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add the Android Rust targets
+        run: rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+
+      - name: Cache cargo registry and target
+        uses: Swatinem/rust-cache@v2
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install the NDK
+        run: sdkmanager --install "ndk;27.3.13750724"
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --version 4.1.2 --locked
+
+      - name: Build the Rust core and generate the Kotlin bindings
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/27.3.13750724
+        run: bash android/scripts/build-core.sh
+
+      - name: Gradle unit tests (includes the iOS/Android bridge parity gate)
+        working-directory: android
+        run: ./gradlew --no-daemon testDebugUnitTest
+
+      - name: Compile the instrumented tests (they run on a device, not here)
+        working-directory: android
+        run: ./gradlew --no-daemon assembleDebugAndroidTest

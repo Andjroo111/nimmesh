@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      The web layer paints the whole screen. The only job this theme has is to make the
+      window match the wallet's page background (#f8f8f8) so there is no white or black
+      flash before the WebView draws, which is the same reason WebHostView sets
+      isOpaque = false and a matching backgroundColor on iOS.
+    -->
+    <style name="Theme.Nimmesh" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/page_background</item>
+        <item name="android:statusBarColor">@color/page_background</item>
+        <item name="android:navigationBarColor">@color/page_background</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>
