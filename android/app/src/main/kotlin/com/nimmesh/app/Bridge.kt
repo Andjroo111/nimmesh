@@ -39,6 +39,8 @@ class Bridge(context: Context) {
     // without growing WebHostView.swift past the repo's 800-line guard; the same reason
     // applies here.
     private val walletBridge = WalletBridge(wallet, prefs)
+    private val networkBridge = NetworkBridge(wallet, prefs)
+    val nativeUi = NativeUiBridge()
     private val executor = Executors.newSingleThreadExecutor { r ->
         Thread(r, "nimmesh-bridge").apply { isDaemon = true }
     }
@@ -65,6 +67,13 @@ class Bridge(context: Context) {
         if (id < 0 || method.isEmpty()) return
         val args = envelope.optJSONObject("args")
 
+        // The native-UI methods (camera, share sheet, unlock prompt) answer only when the
+        // user finishes with them, so they resolve the page's Promise themselves rather
+        // than returning a value through the synchronous path below.
+        if (nativeUi.handles(method)) {
+            if (nativeUi.dispatch(method, args) { ok, payload -> resolve(id, ok, payload) }) return
+        }
+
         executor.execute {
             val (ok, payload) = try {
                 dispatch(method, args)
@@ -83,6 +92,7 @@ class Bridge(context: Context) {
         val node = MeshHost.node
 
         if (walletBridge.handles(method)) return walletBridge.dispatch(method, args)
+        if (networkBridge.handles(method)) return networkBridge.dispatch(method, args)
         if (method in MeshWalletBridge.METHODS) {
             return MeshWalletBridge(node, wallet).dispatch(method, args)
         }
@@ -105,11 +115,14 @@ class Bridge(context: Context) {
             "keepalive" -> { node.pollBeacon(); true to json("ok" to true) }
 
             "reachability" -> {
-                // Deliberately NOT node.reachability(): the iOS bridge learned that a
-                // self-gateway node always reports Online, so reach is computed from a
-                // real recent RPC round trip instead. There is no RPC client until A4,
-                // so the only honest answers here are meshed or offline.
-                val r = if (node.peerCount() > 0u) "meshed" else "offline"
+                // Deliberately NOT node.reachability(): once the phone is itself a gateway
+                // that always reports Online whatever the actual connectivity. Online here
+                // means a real RPC round trip SUCCEEDED in the last 30 seconds.
+                val r = when {
+                    com.nimmesh.app.net.NimiqRpc.isLive() -> "online"
+                    node.peerCount() > 0u -> "meshed"
+                    else -> "offline"
+                }
                 true to json("reachability" to r)
             }
 
@@ -205,7 +218,7 @@ class Bridge(context: Context) {
      */
     private fun notYetOnAndroid(method: String): String {
         val slice = when (method) {
-            in NETWORK_METHODS -> "A4 (network and native UI)"
+            in USDC_METHODS -> "deferred: USDC rides the swap accounts, out of the Android v1 scope"
             in SWAP_METHODS -> "deferred: swap is out of the Android v1 scope"
             in BITCHAT_METHODS -> "deferred: Bitchat interop is out of the Android v1 scope"
             in CASHLINK_METHODS -> "deferred: cashlinks are out of the Android v1 scope"
@@ -245,11 +258,7 @@ class Bridge(context: Context) {
         /** The name the shim posts to. Matches `Bridge.channel` on iOS. */
         const val CHANNEL = "__nimmeshNative"
 
-        private val NETWORK_METHODS = setOf(
-            "headHeight", "walletBalance", "walletHistory", "sendTransaction", "prices",
-            "market", "usdcBalances", "usdcHistory", "sendUsdc", "scanQr", "share",
-            "authenticate",
-        )
+        private val USDC_METHODS = setOf("usdcBalances", "usdcHistory", "sendUsdc")
         private val SWAP_METHODS = setOf(
             "swapMeshStart", "swapMeshStatus", "swapMeshStop", "swapMeshRefund",
             "swapEvmAddresses",

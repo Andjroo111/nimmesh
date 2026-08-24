@@ -118,13 +118,25 @@ class BridgeRoundTripTest {
         // method that has not been built renders as data the user reads as fact. A
         // rejection cannot be mistaken for data.
         //
-        // headHeight belongs to A4 (it needs an RPC client). When A4 lands, point this at
-        // whatever is still unbuilt rather than deleting it: the day nothing is left to
-        // name here is the day the bridge is complete, and that should be a deliberate
-        // edit, not a quietly passing test.
-        val result = eval("window.nimmesh.headHeight()")
+        // This has now moved twice, from walletExists (built in A3) to headHeight (built in
+        // A4) to here. Keep moving it rather than deleting it: the day nothing is left to
+        // name is the day the bridge is complete, and that should be a deliberate edit
+        // rather than a test that quietly stops checking anything.
+        val result = eval("window.nimmesh.usdcBalances()")
         assertTrue("expected a rejection, got: $result", result.startsWith("\"err:"))
-        assertTrue("the rejection does not name the slice, got: $result", result.contains("A4"))
+        assertTrue("the rejection does not say why, got: $result", result.contains("deferred"))
+    }
+
+    @Test
+    fun theBuiltMethodsAnswerRatherThanRejecting() = withBridgedWebView { _, eval ->
+        // The other half of the same contract: everything A1 through A4 claims to have
+        // built must actually answer. A method quietly falling through to the "not on
+        // Android yet" table would otherwise look like a considered decision.
+        listOf("version", "meshStatus", "reachability", "walletExists", "walletStatus", "getLang")
+            .forEach { method ->
+                val result = eval("window.nimmesh.$method()")
+                assertTrue("$method should answer, not reject: $result", result.startsWith("\"ok:"))
+            }
     }
 
     @Test

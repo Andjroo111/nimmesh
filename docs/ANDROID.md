@@ -25,15 +25,16 @@ not a distribution one.
 | A1 Kotlin bindings and a JNI gate | done |
 | A2 WebView host and the bridge | done |
 | A3 wallet, mnemonic, signer | done |
-| A4 network and native UI methods | not started |
+| A4 network and native UI methods | done |
 | A5 the BLE radio | not started |
 | A6 permissions, foreground service, Doze | not started |
 | A7 packaging and distribution | not started |
 | A8 two device field test | not started |
 
 The app launches, runs onboarding, creates or imports a real wallet, derives its `NQ`
-address, and can sign an offline mesh payment. It answers 33 of the 56 bridge methods out of
-the live Rust core. There is still **no radio**, so the mesh honestly reads
+address, reads its balance and history from the chain, sends online, scans a QR code, shares,
+and gates its recovery words behind the device unlock. It answers 42 of the 56 bridge methods
+out of the live Rust core. There is still **no radio**, so the mesh honestly reads
 `offline · 0 nearby` and an offline send has nowhere to go yet.
 
 ## A0: the toolchain
@@ -185,6 +186,59 @@ each turn the right test red with a message that names what happened.
 ciphertext-not-plaintext check, import and delete round trips, and the real interop question,
 that a BouncyCastle Ed25519 signature is accepted by `ed25519-dalek`. Proven on device at
 launch too: `wallet self-test: address=NQ37 7AAH ... signedOk=true`.
+
+## A4: network and native UI
+
+**`HttpURLConnection`, no HTTP dependency.** iOS uses `URLSession`, the platform's own
+client, so the honest twin is the platform's own client. OkHttp was tried and dropped:
+`okhttp-android` 5.5 demands compileSdk 37, which Google has not published a platform for
+yet, and nothing here needs more than a POST and a GET.
+
+**CameraX plus ZXing for the scanner, deliberately not ML Kit.** ML Kit's barcode scanner
+needs Google Play Services, and this app ships as a direct APK precisely so it does not
+depend on anyone's store being installed. CameraX binds to a `LifecycleOwner`; the scanner is
+a plain Activity that owns the camera for exactly as long as it is on screen, so it binds to
+a minimal always-resumed owner and unbinds in `onDestroy` rather than pulling in
+androidx.activity to inherit a lifecycle.
+
+⚠ That owner overrides `getLifecycle()` as a **method**, not a `val`. CameraX 1.6 resolves
+lifecycle-runtime 2.3.1 transitively, where `LifecycleOwner` is still a Java interface with a
+getter. Writing it the modern way compiles against 2.8 and up, and not against what is
+actually on the classpath.
+
+**The framework `BiometricPrompt`, not androidx.biometric**, for the same compileSdk reason.
+minSdk is 31, so the framework class is always present. A device with no biometric and no
+screen lock has nothing to unlock with, so it passes through, exactly like the iOS
+`canEvaluatePolicy` path: such a device is unprotected either way, and refusing would lock
+the owner out of their own words.
+
+### Offline continuity is native, and it is not a nicety
+
+`walletBalance` and `walletHistory` cache their last GOOD answer and serve it when the chain
+is unreachable, flagged `cached: true`. The RPC client **throws** on failure precisely so this
+layer can tell "offline" apart from "you have nothing".
+
+This is not hypothetical. iOS shipped the other behaviour first: a failed read returned 0 and
+an empty list, and the wallet rendered as drained during a Bluetooth-only test, then cached
+that emptiness. A genuinely unfunded account still reads 0 from a SUCCESSFUL call, which is a
+different fact entirely.
+
+The Android version of that path was proved during a **real outage**: `rpc.nimiqwatch.com`
+was returning `HTTP 503 no available server` while these tests ran, and
+`aFailedBalanceReadServesTheCacheInsteadOfPretendingTheWalletIsEmpty` passed against it.
+
+⚠ **Live-chain tests use `assumeTrue`, never a bare `return`.** An early return reports the
+test as PASSED whether or not it checked anything, which is how a network test quietly becomes
+a no-op nobody notices. A skip has to be visible in the results, and during the outage above
+the results correctly read `skipped="2"`.
+
+### The price proxy earns its place differently here
+
+On iOS the CoinGecko proxy is necessary: the page runs on `file://` where WKWebView blocks
+`fetch()` outright. On Android the page has a real https origin and could call CoinGecko
+itself. The proxy is kept for parity so `webui/` stays one codebase, and the whitelist is its
+own justification: the coin goes straight into the URL path, so anything not on the list is
+refused rather than escaped and hoped for.
 
 ## Decisions
 

@@ -52,7 +52,15 @@ tasks.named("preBuild") { dependsOn(syncWebui, syncWordlist) }
 dependencies {
     implementation(project(":core"))
     implementation(libs.bouncycastle)
+    implementation(libs.camera.core)
+    implementation(libs.camera.camera2)
+    implementation(libs.camera.lifecycle)
+    implementation(libs.camera.view)
+    implementation(libs.zxing.core)
     testImplementation(libs.junit)
+    // A REAL org.json for JVM tests. Android stubs org.json in unit tests and every method
+    // throws "not mocked", so without this the JSON-shaping tests would not run at all.
+    testImplementation(libs.json)
     implementation(libs.androidx.webkit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.runner)

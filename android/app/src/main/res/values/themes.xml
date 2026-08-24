@@ -12,4 +12,12 @@
         <item name="android:navigationBarColor">@color/page_background</item>
         <item name="android:windowLightStatusBar">true</item>
     </style>
+
+    <!-- The scanner is a full-bleed camera view, so it gets a black ground rather than the
+         wallet's light page background showing through at the edges. -->
+    <style name="Theme.Nimmesh.Scanner" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:statusBarColor">@android:color/black</item>
+        <item name="android:navigationBarColor">@android:color/black</item>
+    </style>
 </resources>

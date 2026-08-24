@@ -38,6 +38,7 @@ class MainActivity : Activity() {
             .build()
 
         bridge = Bridge(this)
+        bridge.nativeUi.attach(this)
 
         // Prove the Kotlin signer interoperates with the Rust verifier (BouncyCastle
         // Ed25519 against ed25519-dalek) on THIS device, once per launch, the same check
@@ -118,6 +119,14 @@ class MainActivity : Activity() {
         webView.loadUrl(INDEX_URL)
     }
 
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == NativeUiBridge.REQUEST_SCAN_QR) bridge.nativeUi.onScanResult(resultCode, data)
+    }
+
+    // Deprecated in favour of the predictive-back callback, which is opt-in via
+    // android:enableOnBackInvokedCallback and not enabled here, so this still fires.
+    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
     override fun onBackPressed() {
         // The wallet is a single page with its own in-page views and sheets. Letting the
         // system back button unwind WebView history would walk out of a sheet in a way

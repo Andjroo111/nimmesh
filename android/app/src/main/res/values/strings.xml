@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      The app is one WebView, so webui/ owns every string a user reads EXCEPT these three:
+      they appear on native surfaces (the camera activity and the system unlock prompt)
+      that the page cannot reach.
+    -->
+    <string name="scan_hint">Point the camera at a QR code</string>
+    <string name="unlock_title">Unlock your backup</string>
+    <string name="unlock_description">Confirm it is you before your recovery words are shown.</string>
+</resources>
