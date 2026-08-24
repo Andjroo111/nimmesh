@@ -26,7 +26,7 @@ not a distribution one.
 | A2 WebView host and the bridge | done |
 | A3 wallet, mnemonic, signer | done |
 | A4 network and native UI methods | done |
-| A5 the BLE radio | not started |
+| A5 the BLE radio | built, on-air unproven |
 | A6 permissions, foreground service, Doze | not started |
 | A7 packaging and distribution | not started |
 | A8 two device field test | not started |
@@ -34,8 +34,11 @@ not a distribution one.
 The app launches, runs onboarding, creates or imports a real wallet, derives its `NQ`
 address, reads its balance and history from the chain, sends online, scans a QR code, shares,
 and gates its recovery words behind the device unlock. It answers 42 of the 56 bridge methods
-out of the live Rust core. There is still **no radio**, so the mesh honestly reads
-`offline · 0 nearby` and an offline send has nowhere to go yet.
+out of the live Rust core.
+
+The radio is now built and both BLE roles start on a real Bluetooth stack, but **no byte has
+crossed the air**: that needs two Android phones, and none exist yet. Until then the mesh
+honestly reads `offline · 0 nearby`.
 
 ## A0: the toolchain
 
@@ -239,6 +242,85 @@ On iOS the CoinGecko proxy is necessary: the page runs on `file://` where WKWebV
 itself. The proxy is kept for parity so `webui/` stays one codebase, and the whitelist is its
 own justification: the coin goes straight into the URL path, so anything not on the list is
 refused rather than escaped and hoped for.
+
+## A5: the radio
+
+`BleRadio` is a five-method foreign trait. Small surface, large implementation: a
+`BluetoothGattServer` plus advertiser for the peripheral role and a scanner plus GATT client
+for the central role, running at the same time, on the same UUIDs the iOS radio uses.
+
+**What is proved, and what is not.** `bothRolesComeUpConcurrentlyOnARealBluetoothStack` runs
+against the emulator's real Bluetooth stack and confirms the advertiser started, the GATT
+server opened with its service and descriptor, the scanner started with a service filter, and
+neither role displaced the other. That last property is the mesh, and it is the one Web
+Bluetooth cannot offer.
+
+It does **not** prove a byte crossed the air. Discovery, connection, MTU negotiation, the
+notify path and relaying are unproven until two Android phones exist. Do not read the green
+suite as a working mesh.
+
+### The Android-only traps, each paid for once
+
+⚠ **The CCCD, descriptor 0x2902, has no CoreBluetooth counterpart** and is the most common
+reason an Android GATT server never delivers a notification. iOS synthesises it and
+`didSubscribeTo` simply fires. On Android the server must ADD the descriptor and the client
+must WRITE `ENABLE_NOTIFICATION_VALUE` into it. `setCharacteristicNotification` alone sets a
+local flag and tells the remote device nothing. Miss it and connections succeed, writes
+succeed one way, and the reverse direction is silently dead.
+
+⚠ **The advertisement budget is 31 bytes and the nimmesh service UUID is 128-bit**, so
+`setIncludeDeviceName(true)` pushes it over and the whole advertisement is REJECTED. Not a
+theory: flipping that flag turns the dual-role test red with `adv:off`.
+
+⚠ **The default ATT MTU is 23**, leaving 20 usable bytes against a 256-byte packet, so the
+client requests 517 and discovery waits for `onMtuChanged`.
+
+⚠ **`CALLBACK_TYPE_ALL_MATCHES` reports the same device continuously.** Without a connecting
+guard every advertisement opens another GATT connection, and Android caps concurrent
+connections low enough that the mesh wedges within seconds.
+
+⚠ **Two API paths for writes and notifications.** API 33 passes the value as an argument;
+31 and 32 carry it on the characteristic object, which means two writes in flight to the same
+characteristic race. Everything is serialised onto one worker so they cannot be. **Both
+`onCharacteristicChanged` overloads must exist** or inbound bytes are silently dropped on
+exactly the versions minSdk 31 was chosen to include.
+
+⚠ **`adv:on` is stronger evidence than `scan:on`.** The advertiser reports success
+asynchronously through `onStartSuccess`, so `adv:on` means the stack accepted it.
+`startScan` has no success callback at all, only `onScanFailed`, so `scan:on` means only that
+the call was made and has not failed yet. Worth knowing when debugging an empty mesh.
+
+### The link ref-counting is where the bug history is
+
+A pair of phones forms TWO directed links under one peer id. `PeerLinks` counts them so
+`onPeerConnected` fires on the first and `onPeerDisconnected` only on the last. Reporting a
+peer gone when one direction flapped, while the other was still carrying traffic, crashed the
+peer count to zero on iOS and made a working mesh look empty.
+
+It is pure and free of Android on purpose, so the part with the bug history is covered by a
+JVM test that runs in CI rather than only on hardware nobody has. Mutation-checked by
+reintroducing the original field bug, and by removing the per-role dedup.
+
+The link table lives on the RADIO, which outlives any node, and `liveIds` is replayed onto a
+newly installed node. Without that, a node installed after a peer linked sits at zero peers
+forever.
+
+### Degrading rather than failing
+
+- **No permission yet.** The radio is constructed at launch, before the user is asked, so its
+  first `startAdvertising` and `startScanning` are no-ops. `MeshHost.onPermissionsGranted()`
+  exists because nothing else would ever call them again.
+- **Cannot advertise.** A real limit on part of the Android fleet
+  (`isMultipleAdvertisementSupported`). Such a phone still relays and still pays as a central;
+  it simply cannot be discovered, and `debugSummary` says `adv:UNSUPPORTED`.
+- **Bluetooth off, or no adapter at all.** Logged and reported, never a crash.
+
+`debugSummary` reports `perm`, `bt`, `adv`, `scan`, the discovery counters and the peer count,
+because an empty mesh with no reason shown is the state that wastes an afternoon.
+
+⚠ Every callback into Rust is wrapped: an exception crossing the FFI surfaces as
+`UnexpectedUniFFICallbackError` and **aborts the process**, so a transient GATT error during a
+flood burst must never become a crash.
 
 ## Decisions
 

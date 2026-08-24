@@ -40,6 +40,11 @@ class MainActivity : Activity() {
         bridge = Bridge(this)
         bridge.nativeUi.attach(this)
 
+        // Bring the mesh up. The radio no-ops until the Bluetooth permissions are granted,
+        // which is asked for below, so this is safe on a first launch.
+        MeshHost.start(this)
+        requestBluetoothPermissionsIfNeeded()
+
         // Prove the Kotlin signer interoperates with the Rust verifier (BouncyCastle
         // Ed25519 against ed25519-dalek) on THIS device, once per launch, the same check
         // the iOS host logs at startup. It signs nothing that leaves the device. With no
@@ -119,6 +124,32 @@ class MainActivity : Activity() {
         webView.loadUrl(INDEX_URL)
     }
 
+    /**
+     * Asked at launch rather than at first use, because the mesh is the point of the app:
+     * a wallet that quietly is not relaying is worse than one prompt. Declined is a
+     * perfectly workable state, the app just runs online-only and says so.
+     */
+    private fun requestBluetoothPermissionsIfNeeded() {
+        val missing = com.nimmesh.app.ble.BleMeshRadio.REQUIRED_PERMISSIONS
+            .filter { checkSelfPermission(it) != android.content.pm.PackageManager.PERMISSION_GRANTED }
+        if (missing.isEmpty()) MeshHost.onPermissionsGranted()
+        else requestPermissions(missing.toTypedArray(), REQUEST_BLUETOOTH)
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != REQUEST_BLUETOOTH) return
+        // The radio was built before the user was asked, so its first startAdvertising and
+        // startScanning were no-ops. Nothing else would ever call them again.
+        if (grantResults.isNotEmpty() && grantResults.all { it == android.content.pm.PackageManager.PERMISSION_GRANTED }) {
+            MeshHost.onPermissionsGranted()
+        }
+    }
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == NativeUiBridge.REQUEST_SCAN_QR) bridge.nativeUi.onScanResult(resultCode, data)
@@ -136,6 +167,7 @@ class MainActivity : Activity() {
 
     companion object {
         private const val TAG = "nimmesh.app"
+        private const val REQUEST_BLUETOOTH = 2
         private const val ASSET_DOMAIN = "appassets.androidplatform.net"
         const val INDEX_URL = "https://$ASSET_DOMAIN/assets/webui/index.html"
     }

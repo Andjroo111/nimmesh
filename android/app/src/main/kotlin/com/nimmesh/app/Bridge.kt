@@ -89,7 +89,7 @@ class Bridge(context: Context) {
 
     private fun dispatch(method: String, args: JSONObject?): Pair<Boolean, Any> {
         if (method !in BridgeJs.METHODS) return false to "unknown method: $method"
-        val node = MeshHost.node
+        val node = MeshHost.start(appContext)
 
         if (walletBridge.handles(method)) return walletBridge.dispatch(method, args)
         if (networkBridge.handles(method)) return networkBridge.dispatch(method, args)
@@ -106,7 +106,9 @@ class Bridge(context: Context) {
             }
 
             "meshDebug" -> {
-                val radio = if (MeshHost.radioIsPlaceholder) "radio:none(A5)" else "radio:ble"
+                // The live radio state, so the Network screen can show what Bluetooth is
+                // actually doing rather than only what the mesh concluded.
+                val radio = MeshHost.radio?.debugSummary() ?: "radio:none"
                 true to json("debug" to "$radio node-peers:${node.peerCount()}")
             }
 
