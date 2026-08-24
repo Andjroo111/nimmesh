@@ -3,6 +3,20 @@
 All notable changes to nimiq.nimmesh. Each PR bumps the version and adds an entry.
 
 
+## [0.89.8] - 2026-08-24
+
+### Changed - the mesh bar says "meshed", and it got a little bigger
+
+The English connected state read "mesh meshed" — the bar already is the mesh line, so the
+word "mesh" in the state was saying itself twice. It now reads "meshed · N nearby". The
+other languages already said the equivalent of "mesh connected" and are untouched, and the
+network screen still strips nothing extra (the strip regex needs whitespace after "mesh",
+which "meshed" doesn't have).
+
+The bottom-dock mesh indicator also grew a step: glyph 15px → 19px, text 12px → 13.5px.
+Andrew asked for both on 2026-08-24.
+
+
 ## [0.89.7] - 2026-08-22
 
 ### Added - the Meshtastic frame codec, proven byte-exact with no hardware
