@@ -960,7 +960,7 @@ dependencies = [
 
 [[package]]
 name = "nimmesh-core"
-version = "0.89.7"
+version = "0.89.8"
 dependencies = [
  "bitcoin",
  "blake2",
