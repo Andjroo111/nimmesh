@@ -1,8 +1,8 @@
-# nimiq.nimmesh
+# nimmesh
 
 **Pay with NIM when there is no internet.**
 
-nimiq.nimmesh is a native, true multi hop **Bluetooth LE mesh** wallet for Nimiq. You sign a transaction on a phone with zero
+NIMmesh is a native, true multi hop **Bluetooth LE mesh** wallet for Nimiq. You sign a transaction on a phone with zero
 connectivity. It then hops device to device through other people's phones. The first one to
 have a connection, *anyone* at all, broadcasts it to the Nimiq network for you.
 
