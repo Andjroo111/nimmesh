@@ -30,8 +30,8 @@ Parked, non-blocking:
   confidence is high (it's `meshDebug` bridge + `#nw-debug` + `startNwDebug()` in index.html,
   `debugSummary()` in BleMeshRadio.swift, the `meshDebug` case in WebHostView.swift).
 - **Map polish = GitHub issue #163** — map hexes are pointy-top/sharp → should be Nimiq
-  flat-top rounded brand hexagons; the "you" marker is at an arbitrary NA cell → should sit in
-  **the metro** on the 129×52 grid; markers should match the brand hex shape.
+  flat-top rounded brand hexagons; the "you" marker is at an arbitrary NA cell → should sit at
+  **the operator's configured home cell** on the 129×52 grid; markers should match the brand hex shape.
 
 ---
 

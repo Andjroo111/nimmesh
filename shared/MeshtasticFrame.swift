@@ -6,7 +6,7 @@
 //
 //  WHY THIS EXISTS
 //  Bluetooth gives nimmesh roughly 30 m. LoRa gives it kilometres, and there is already a
-//  60-node community Meshtastic network across the metro that will relay for us. A radio
+//  community Meshtastic network already running across the metro that will relay for us. A radio
 //  at each end and their nodes supply every hop in between. See docs/TRANSPORTS.md.
 //
 //  WHY IT IS HAND-ROLLED
@@ -55,7 +55,7 @@ public enum MeshtasticFrame {
     /// transfer carrying a memo still fits.
     public static let maxPayloadBytes = 237 - 16
 
-    /// the local community mesh publishes a hop limit of 3. Matching it keeps us a good citizen on
+    /// Large community meshes publish a hop limit of 3. Matching it keeps us a good citizen on
     /// a network built for off-grid messaging rather than for our traffic.
     public static let defaultHopLimit: UInt64 = 3
 

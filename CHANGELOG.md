@@ -18,7 +18,7 @@ serializer, CashlinkCodec and BitchatKit are all hand-rolled). Carries the raw t
 never hex: hex doubles the size and is precisely why the Bitcoin bridges have to chunk.
 
 Also included: the BLE service and characteristic UUIDs, the 221-byte usable payload ceiling,
-and the local community mesh's published hop limit of 3 so we behave like a good citizen on a network
+and the community-mesh convention of a hop limit of 3 so we behave like a good citizen on a network
 built for off-grid messaging rather than for our traffic. Inbound traffic that is not ours
 (everyone's chat and telemetry arrive on the same characteristic) returns nil rather than
 throwing, because it is not an error condition.

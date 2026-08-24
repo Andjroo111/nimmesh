@@ -142,19 +142,19 @@ references NIP-17 gift-wrap, so the vocabulary is familiar.
 - **Wi-Fi Direct / Aware.** Higher bandwidth than BLE but shorter range than LoRa, so it
   adds complexity without adding reach.
 
-## There is already a mesh in the metro
+## There is already a mesh outside the window
 
 This is the finding that changes the shape of the work.
 
-[the local community mesh][kcmesh] is an existing community Meshtastic network with **60+ active
-nodes**. Coverage runs across downtown, central and the east side, thins out north, south and
-southwest, and follows a chain of outlier nodes along the interstate. They
-run a Discord, recruit hosts for a backbone initiative on the metro edges, and do weekly
-drone lifts to reach silent nodes. A separate [a MeshCore group][meshtastic] group exists too.
+The author's metro area has an existing community Meshtastic network with **60+ active
+nodes** covering the urban core, thinning toward the edges, with a chain of outlier nodes
+along the interstate. They run a Discord, recruit hosts for a backbone initiative on the
+metro edges, and do weekly drone lifts to reach silent nodes. A separate MeshCore group
+exists too. Most large cities have an equivalent; check the public Meshtastic node maps.
 
 So the honest framing is not "build a LoRa mesh". It is **join the one already outside the
 window**. One $30 radio puts a nimmesh gateway on a city-wide network that other people
-already maintain, power, and extend.
+already maintain, power, and extend, in whichever city the gateway lives.
 
 Their published node settings, worth matching so we behave like a good citizen rather than
 a chatty stranger:
@@ -194,7 +194,7 @@ class of work the app does today. That means a phone can put a transaction onto 
 directly, with no Mac in the loop:
 
 ```
- phone (offline)  --BLE-->  radio A  --LoRa-->  the mesh relays
+ phone (offline)  --BLE-->  radio A  --LoRa-->  community mesh relays
                                                      |
                     Nimiq  <--internet--  phone B + radio B
 ```
@@ -209,7 +209,7 @@ documented, not that nimmesh's Swift drives it. That is what the first radio pro
 ### What to buy
 
 **2x [RAK WisBlock Meshtastic Starter Kit US915][rak], about $35 each.** One gateway, one
-carried. the mesh supplies every hop in between, so a third node for multi-hop is unnecessary.
+carried. The community mesh supplies every hop in between, so a third node for multi-hop is unnecessary.
 
 Chosen over the cheaper Heltec V3 deliberately, for four reasons. It ships **pre-flashed with
 Meshtastic**, so there is no firmware step. The RAK4631 is an nRF52840 rather than an ESP32
@@ -254,7 +254,6 @@ turns every future radio into an additive change instead of a rewrite.
 - [MeshCore vs Meshtastic, same hardware different firmware][hexaspot]
 - [SMS 140-byte limit under 8-bit encoding][sms]
 - [PotatoMesh, federated Meshtastic/MeshCore dashboard, Apache 2.0][potato]
-- [the local community mesh, the local network and its node settings][kcmesh]
 - [Meshtastic BLE client API, service and characteristic UUIDs][bleapi]
 
 [btcmesh]: https://github.com/eddieoz/btcmesh
@@ -267,5 +266,3 @@ turns every future radio into an additive change instead of a rewrite.
 [potato]: https://github.com/l5yth/potato-mesh
 [bleapi]: https://meshtastic.org/docs/development/device/client-api/
 [rak]: https://store.rokland.com/products/rak-wireless-wisblock-meshtastic-starter-kit
-[kcmesh]: https://meshtastic.org/
-[meshtastic]: https://meshtastic.org/
