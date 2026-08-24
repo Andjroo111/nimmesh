@@ -107,6 +107,13 @@ anyone but its author. Treat it accordingly.
 
 The hazard analysis, including what these guarantees do not cover, is [docs/RISKS.md](docs/RISKS.md).
 
+## Support
+
+- [Tip 1 NIM](https://wallet.nimiq.com/nimiq:NQ42YDA47SP80AMEUV9YSABAN8M6MJTYM426?amount=1&message=nimmesh)
+- [Send any amount](https://wallet.nimiq.com/nimiq:NQ42YDA47SP80AMEUV9YSABAN8M6MJTYM426?message=nimmesh)
+
+Both open the Nimiq web wallet with the address prefilled.
+
 ## License
 
 [Apache 2.0](LICENSE). Third party attributions are in [NOTICE](NOTICE).
