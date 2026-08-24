@@ -28,7 +28,7 @@ not a distribution one.
 | A4 network and native UI methods | done |
 | A5 the BLE radio | built, on-air unproven |
 | A6 permissions, foreground service, Doze | done |
-| A7 packaging and distribution | not started |
+| A7 packaging and distribution | built, needs a keystore |
 | A8 two device field test | not started |
 
 The app launches, runs onboarding, creates or imports a real wallet, derives its `NQ`
@@ -380,6 +380,72 @@ anything that does not know them, so the shared `webui/` and the parity gate are
 **No copy was written for them.** The wording belongs in `webui/`, in five languages, and is
 Andjroo's. The data is there so the page can eventually say "turn Bluetooth on" or "this phone
 cannot be discovered" instead of only "0 nearby".
+
+## A7: packaging
+
+`android/scripts/build-apk.sh` is the Android twin of `apple/scripts/build-adhoc.sh` and the
+reason the epic exists: its output installs on any Android phone from any browser, with no
+device registration, no cap, no review and no Safari-only step.
+
+**Version comes from `Cargo.toml`**, so the APK and the Rust core it embeds can never
+disagree about what they are.
+
+⚠ **`versionCode` is an `int` capped at 2147483647**, so the iOS trick of stamping
+`YYYYMMDDHHMM` overflows. It is minutes since 2020-01-01 UTC instead: monotonic, increments
+once a minute, and does not reach the cap for another four thousand years.
+
+### R8 is on, and verified rather than assumed
+
+Minifying took the APK from **33.8 MB to 16.9 MB**, half the download. That matters for a
+direct-download app.
+
+It is also the riskiest setting in the build, because a mangled FFI surface fails at RUNTIME
+on a user's phone, not at build time, and there is no crash reporting behind a sideloaded
+APK. The instrumented tests are built against `debug`, so they cannot catch it either.
+
+So `build-apk.sh --verify` installs the shipping artifact on a connected device, creates a
+wallet, and watches for the one line that proves the whole chain survived:
+
+```
+wallet self-test: address=NQ96 BK9U ... signedOk=true
+```
+
+That is a BouncyCastle Ed25519 signature accepted by the Rust `ed25519-dalek` verifier,
+through R8-processed code. Mutation-checked: deleting the `uniffi.nimmesh_core` keep rule
+makes `--verify` exit 1. Run it before any release.
+
+⚠ JNA references `java.awt` for desktop window handles. Android has no `java.awt` at all, so
+R8 fails the build on missing classes until they are marked warn-only. The code path is
+unreachable here.
+
+### Signing is owner-gated, and losing the key is unrecoverable
+
+The keystore never enters the repo and is read from the environment. Without it the script
+produces an **unsigned** release APK, which Android refuses to install, and deliberately does
+NOT copy it to `ota/`: publishing an uninstallable APK is worse than publishing none.
+
+```
+keytool -genkeypair -v -keystore ~/secrets/nimmesh-release.jks \
+  -alias nimmesh -keyalg RSA -keysize 4096 -validity 10000
+```
+
+⚠ **Back it up and never lose it.** Android identifies an app by its signing key. Lose the
+keystore and no future build can ever update an existing install: every user must uninstall,
+destroying their wallet if they have not written down their words, and start again. There is
+no recovery and no Apple-style revocation to fall back on.
+
+### Where the APK lives
+
+`/ota/` gained an Android section beside the iOS one, so one page serves both platforms.
+
+`ota/nimmesh.apk` is exempted from the `*.apk` gitignore, because the site deploys with
+`wrangler pages deploy .` straight from the repo exactly like `ota/nimmesh.ipa`, and an
+untracked APK is one the install page 404s on.
+
+⚠ That is ~17 MB per release and git keeps every version forever. If it becomes a problem,
+move the download to GitHub Releases and point the page there instead. Worth deciding before
+the first few releases rather than after: the repo was carefully rewritten once already, and
+large binaries are the hardest thing to undo.
 
 ## Decisions
 

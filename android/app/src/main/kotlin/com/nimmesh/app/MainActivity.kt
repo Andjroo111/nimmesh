@@ -138,9 +138,18 @@ class MainActivity : Activity() {
             MeshService.stop(this)
             return
         }
-        // Offered only once the mesh can actually run, and only when it would change
-        // something. A brand-new user meets onboarding first, not a system settings screen.
-        if (radio != null && radio.hasPermissions() && radio.bluetoothEnabled()) {
+        // ⚠ Gated on there being a WALLET, not just a working radio.
+        //
+        // Without that check this fires on the very first resume, and the system settings
+        // screen opens ON TOP OF ONBOARDING: a brand-new user's first sight of the app is a
+        // battery menu they have no reason to understand. Caught by driving the real app,
+        // not by a test, because the app was technically working the whole time.
+        //
+        // Someone with a wallet has something worth relaying and has already seen what the
+        // app is for.
+        if (radio != null && radio.hasPermissions() && radio.bluetoothEnabled() &&
+            com.nimmesh.app.wallet.Wallet(this).hasWallet()
+        ) {
             offerBatteryExemptionOnce()
         }
     }
