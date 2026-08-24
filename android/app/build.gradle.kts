@@ -37,10 +37,21 @@ val syncWebui by tasks.registering(Sync::class) {
     from(rootProject.layout.projectDirectory.dir("../webui"))
     into(layout.projectDirectory.dir("src/main/assets/webui"))
 }
-tasks.named("preBuild") { dependsOn(syncWebui) }
+
+// The official BIP39 English wordlist, taken from the iOS app's resources rather than
+// copied. Two copies of a wordlist is a wallet that derives a DIFFERENT ADDRESS on one
+// platform if a single word ever diverges, and nothing would flag it until someone's
+// funds landed somewhere they could not reach.
+val syncWordlist by tasks.registering(Copy::class) {
+    from(rootProject.layout.projectDirectory.file("../apple/NimmeshApp/Resources/bip39-english.txt"))
+    into(layout.projectDirectory.dir("src/main/assets"))
+}
+
+tasks.named("preBuild") { dependsOn(syncWebui, syncWordlist) }
 
 dependencies {
     implementation(project(":core"))
+    implementation(libs.bouncycastle)
     testImplementation(libs.junit)
     implementation(libs.androidx.webkit)
     androidTestImplementation(libs.androidx.junit)

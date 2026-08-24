@@ -24,16 +24,17 @@ not a distribution one.
 | A0 toolchain on the Mini | done |
 | A1 Kotlin bindings and a JNI gate | done |
 | A2 WebView host and the bridge | done |
-| A3 wallet, mnemonic, signer | not started |
+| A3 wallet, mnemonic, signer | done |
 | A4 network and native UI methods | not started |
 | A5 the BLE radio | not started |
 | A6 permissions, foreground service, Doze | not started |
 | A7 packaging and distribution | not started |
 | A8 two device field test | not started |
 
-The app currently launches, renders the real wallet UI from `webui/`, and answers 18 of the
-56 bridge methods out of the live Rust core. There is **no radio**, so the mesh honestly
-reads `offline · 0 nearby`, and there is **no wallet**, so every wallet method rejects.
+The app launches, runs onboarding, creates or imports a real wallet, derives its `NQ`
+address, and can sign an offline mesh payment. It answers 33 of the 56 bridge methods out of
+the live Rust core. There is still **no radio**, so the mesh honestly reads
+`offline · 0 nearby` and an offline send has nowhere to go yet.
 
 ## A0: the toolchain
 
@@ -128,6 +129,63 @@ something empty.
 The `android` CI job runs the JVM tests and compiles the instrumented ones. The instrumented
 tests need a device, so they run on the Mini.
 
+## A3: the wallet
+
+A 24-word Nimiq recovery phrase, the signing key derived at `m/44'/242'/0'/0'`, ported from
+`Mnemonic.swift` and `Wallet.swift`. The phrase and seed never cross the Rust FFI; only a
+public key and detached signatures do, through the `EnclaveKey` foreign trait.
+
+**Ed25519 comes from BouncyCastle, not the platform.** `java.security` gained Ed25519 in API
+33 and this app's minSdk is 31, so Android 12 and 12L have none. AndroidKeyStore is no help
+either: it holds EC on NIST curves and RSA, and cannot hold an Ed25519 signing key at all.
+
+That sounds like a downgrade against iOS and is not. iOS is **not** using the Secure Enclave
+for this key: `Wallet.swift` stores raw `Curve25519.Signing` bytes as a Keychain generic
+password and signs in-process with CryptoKit. Both platforms provide the same property, that
+the key never crosses into Rust, plus encryption at rest. BouncyCastle is used through its
+low-level API and never registered as a JCE provider, because registering one collides with
+the cut-down BouncyCastle Android already ships.
+
+**PBKDF2 also comes from BouncyCastle**, for a sharper reason. The JCE `SecretKeyFactory`
+API takes a `char[]`, and Android's implementation keeps only the low 8 bits of each
+character. That is invisible for the ASCII English wordlist and silently wrong for a
+non-ASCII passphrase, which would derive a different wallet from the same words.
+
+**At rest:** the phrase is AES-256-GCM encrypted under an AndroidKeyStore key, hardware-backed
+where the device offers it and non-exportable regardless. Only ciphertext reaches disk, and a
+test asserts the words are not in the clear there.
+
+⚠ **`walletStatus.recovered` is always false on Android, and it is not a stub.** On iOS the
+Keychain survives an uninstall, so a fresh install can find a previous install's wallet and
+must ask whether to keep it. Android deletes both the app's data and its Keystore key on
+uninstall, so a wallet cannot outlive the app and that state genuinely cannot occur.
+
+**The sender id is random per launch, deliberately not wallet-derived**, matching iOS. It is
+the protocol identity every relay sees, and tying it to the wallet would make a user's
+payments linkable across the mesh by anyone listening.
+
+### The gate that matters most
+
+`WalletVectorsTest` is a JVM test, so it runs in CI on every PR, and it checks three layers:
+
+1. The official BIP39 (Trezor), SLIP-0010 ed25519 and RFC 5869 HKDF vectors.
+2. **iOS ground truth.** The `m/44'/242'/0'/0'` private keys and the rendered backup codes
+   were produced by running the shipping Swift code on this machine and are pinned in the
+   test. Standards conformance alone would not catch a place where the two platforms are
+   wrong in different ways.
+3. Rejection cases, because a wallet that accepts a bad phrase is worse than one that
+   accepts none.
+
+This is the one place where a silent divergence does not surface as a crash. It surfaces as
+somebody's funds sitting at an address they cannot reach. Both parity assertions were
+mutation-checked: changing the coin type from 242 to 243, and changing the HKDF info label,
+each turn the right test red with a message that names what happened.
+
+`WalletDeviceTest` covers what needs a device: Keystore persistence across instances, the
+ciphertext-not-plaintext check, import and delete round trips, and the real interop question,
+that a BouncyCastle Ed25519 signature is accepted by `ed25519-dalek`. Proven on device at
+launch too: `wallet self-test: address=NQ37 7AAH ... signedOk=true`.
+
 ## Decisions
 
 **minSdk 31.** `BLUETOOTH_SCAN` can then declare `neverForLocation` and the app never asks
@@ -180,9 +238,10 @@ This is not cosmetic. Resolving `{exists: false}` for an unbuilt wallet method w
 as "you have no wallet", which a user reads as fact. A rejection cannot be mistaken for data,
 and the web layer already wraps bridge calls in `try/catch`, so it degrades quietly.
 
-⚠ One consequence is visible today: with `walletExists` rejecting, the page skips onboarding
-and renders a home screen for a wallet that does not exist. A3 fixes it. Do not read that
-screen as a working wallet.
+When A4 lands, point `BridgeRoundTripTest.anUnbuiltMethodRejectsByNameInsteadOfFakingAnAnswer`
+at whatever is still unbuilt rather than deleting it. The day nothing is left to name there is
+the day the bridge is complete, and that should be a deliberate edit rather than a test that
+quietly stops checking anything.
 
 `MeshHost.UnimplementedRadio` is the same idea in the radio seam. It satisfies `BleRadio`
 without touching Bluetooth so the core can be constructed and read, and it logs on every

@@ -11,6 +11,7 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.webkit.WebViewAssetLoader
+import com.nimmesh.app.wallet.Wallet
 
 /**
  * The native shell. It owns exactly two things: the WebView that renders `webui/`, and
@@ -37,6 +38,17 @@ class MainActivity : Activity() {
             .build()
 
         bridge = Bridge(this)
+
+        // Prove the Kotlin signer interoperates with the Rust verifier (BouncyCastle
+        // Ed25519 against ed25519-dalek) on THIS device, once per launch, the same check
+        // the iOS host logs at startup. It signs nothing that leaves the device. With no
+        // wallet yet it reports false, which is the honest answer rather than a skip.
+        Thread {
+            val wallet = Wallet(this)
+            val address = wallet.address() ?: "none"
+            android.util.Log.i(TAG, "wallet self-test: address=$address signedOk=${wallet.selfTest()}")
+        }.start()
+
         webView = WebView(this).apply {
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -114,6 +126,7 @@ class MainActivity : Activity() {
     }
 
     companion object {
+        private const val TAG = "nimmesh.app"
         private const val ASSET_DOMAIN = "appassets.androidplatform.net"
         const val INDEX_URL = "https://$ASSET_DOMAIN/assets/webui/index.html"
     }

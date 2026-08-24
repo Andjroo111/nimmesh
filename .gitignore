@@ -45,9 +45,12 @@ crates/nimmesh-core/generated/
 # contract-version mismatch the pinned uniffi version exists to prevent.
 /android/core/src/main/jniLibs/
 /android/core/src/main/kotlin/
-# Synced from webui/ at build time by the :app syncWebui task. The source of truth is
-# webui/ at the repo root, shared with the iOS app.
+# Synced at build time by the :app syncWebui / syncWordlist tasks. The sources of truth
+# are webui/ and apple/NimmeshApp/Resources/bip39-english.txt, both shared with the iOS
+# app. Tracking a second copy of the wordlist is precisely the divergence the sync exists
+# to prevent: one wrong word in one copy derives a DIFFERENT address on one platform.
 /android/app/src/main/assets/webui/
+/android/app/src/main/assets/bip39-english.txt
 
 # Foundry (contracts/)
 contracts/out/

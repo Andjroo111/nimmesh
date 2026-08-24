@@ -43,12 +43,15 @@ object MeshHost {
     private val radio: BleRadio by lazy { UnimplementedRadio() }
 
     /**
-     * The 8-byte protocol sender id. This is NOT the wallet address and NOT a BLE peer id;
-     * it is the protocol's own identity, and A3 will derive it from the wallet key so it is
-     * stable across launches. Until then it is a fixed development id, which is fine
-     * precisely because nothing is on the air yet.
+     * The 8-byte protocol sender id: random per launch, matching what the iOS shim does
+     * (`SwapMesh.makeNormalNode`).
+     *
+     * Deliberately NOT derived from the wallet. It is the protocol's own identity, seen by
+     * every relay that forwards a packet, and tying it to the wallet key would make a
+     * user's payments linkable across the mesh by anyone listening. It is also not a BLE
+     * peer id, which is a connection identity the protocol never sees.
      */
-    private val senderId: ByteArray = byteArrayOf(0x6E, 0x69, 0x6D, 0x6D, 0x65, 0x73, 0x68, 0x00)
+    private val senderId: ByteArray = ByteArray(8).also { java.security.SecureRandom().nextBytes(it) }
 
     val node: MeshNode by lazy { MeshNode(senderId, radio) }
 }

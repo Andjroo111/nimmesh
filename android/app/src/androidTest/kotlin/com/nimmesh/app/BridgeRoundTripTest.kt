@@ -114,12 +114,24 @@ class BridgeRoundTripTest {
 
     @Test
     fun anUnbuiltMethodRejectsByNameInsteadOfFakingAnAnswer() = withBridgedWebView { _, eval ->
-        // The failure this guards against is subtle: resolving `{exists: false}` for a
-        // wallet method that has not been built would render as "you have no wallet",
-        // which the user would read as fact. A rejection cannot be mistaken for data.
-        val result = eval("window.nimmesh.walletExists()")
+        // The failure this guards against is subtle: resolving an empty success for a
+        // method that has not been built renders as data the user reads as fact. A
+        // rejection cannot be mistaken for data.
+        //
+        // headHeight belongs to A4 (it needs an RPC client). When A4 lands, point this at
+        // whatever is still unbuilt rather than deleting it: the day nothing is left to
+        // name here is the day the bridge is complete, and that should be a deliberate
+        // edit, not a quietly passing test.
+        val result = eval("window.nimmesh.headHeight()")
         assertTrue("expected a rejection, got: $result", result.startsWith("\"err:"))
-        assertTrue("the rejection does not name the slice, got: $result", result.contains("A3"))
+        assertTrue("the rejection does not name the slice, got: $result", result.contains("A4"))
+    }
+
+    @Test
+    fun walletExistsAnswersNowThatA3IsBuilt() = withBridgedWebView { _, eval ->
+        val result = eval("window.nimmesh.walletExists()")
+        assertTrue("walletExists should answer, not reject: $result", result.startsWith("\"ok:"))
+        assertTrue("expected an exists flag, got: $result", result.contains("exists"))
     }
 
     @Test

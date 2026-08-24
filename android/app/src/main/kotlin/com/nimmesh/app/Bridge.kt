@@ -6,6 +6,7 @@ import android.os.Looper
 import android.util.Log
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
+import com.nimmesh.app.wallet.Wallet
 import org.json.JSONObject
 import java.util.concurrent.Executors
 
@@ -32,6 +33,12 @@ class Bridge(context: Context) {
 
     private val appContext = context.applicationContext
     private val prefs = Prefs(appContext)
+    private val wallet = Wallet(appContext)
+
+    // Family seams. Splitting the dispatch by family is how the iOS bridge adds methods
+    // without growing WebHostView.swift past the repo's 800-line guard; the same reason
+    // applies here.
+    private val walletBridge = WalletBridge(wallet, prefs)
     private val executor = Executors.newSingleThreadExecutor { r ->
         Thread(r, "nimmesh-bridge").apply { isDaemon = true }
     }
@@ -74,6 +81,11 @@ class Bridge(context: Context) {
     private fun dispatch(method: String, args: JSONObject?): Pair<Boolean, Any> {
         if (method !in BridgeJs.METHODS) return false to "unknown method: $method"
         val node = MeshHost.node
+
+        if (walletBridge.handles(method)) return walletBridge.dispatch(method, args)
+        if (method in MeshWalletBridge.METHODS) {
+            return MeshWalletBridge(node, wallet).dispatch(method, args)
+        }
 
         return when (method) {
             "version" -> true to json("core" to uniffi.nimmesh_core.coreVersion())
@@ -193,7 +205,6 @@ class Bridge(context: Context) {
      */
     private fun notYetOnAndroid(method: String): String {
         val slice = when (method) {
-            in WALLET_METHODS -> "A3 (wallet, mnemonic, signer)"
             in NETWORK_METHODS -> "A4 (network and native UI)"
             in SWAP_METHODS -> "deferred: swap is out of the Android v1 scope"
             in BITCHAT_METHODS -> "deferred: Bitchat interop is out of the Android v1 scope"
@@ -234,12 +245,6 @@ class Bridge(context: Context) {
         /** The name the shim posts to. Matches `Bridge.channel` on iOS. */
         const val CHANNEL = "__nimmeshNative"
 
-        private val WALLET_METHODS = setOf(
-            "walletAddress", "walletExists", "createWallet", "importWallet", "recoveryPhrase",
-            "walletStatus", "resolveRecovered", "deleteWallet", "backupCodes",
-            "importBackupCodes", "meshQueryBalance", "meshCachedBalance", "meshQueryHistory",
-            "meshCachedHistory", "meshSendTransaction",
-        )
         private val NETWORK_METHODS = setOf(
             "headHeight", "walletBalance", "walletHistory", "sendTransaction", "prices",
             "market", "usdcBalances", "usdcHistory", "sendUsdc", "scanQr", "share",
