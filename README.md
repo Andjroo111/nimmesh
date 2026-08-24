@@ -1,8 +1,5 @@
 # nimiq.nimmesh
 
-<!-- nimiq-north-star -->
-> 🧭 **North Star** · Every Nimiq project aligns to one shared set of values and a single mission. See the canonical [Nimiq Values & North Star](https://github.com/Andjroo111/nimiq.life/blob/main/NORTH-STAR.md).
-
 **Pay with NIM when there is no internet.**
 
 nimiq.nimmesh is a native, true multi hop **Bluetooth LE mesh** wallet for Nimiq. You sign a transaction on a phone with zero
