@@ -146,12 +146,23 @@ class NetworkBridgeDeviceTest {
 
         val (ok, payload) = bridge.dispatch("headHeight", null)
         assertTrue("headHeight failed while the chain was reachable: $payload", ok)
-        val height = (payload as JSONObject).getLong("height")
+        val json = payload as JSONObject
+        val height = json.getLong("height")
         assertTrue("a mainnet head height of $height is not plausible", height > 1_000_000L)
 
-        // reachability is computed from a REAL round trip, not from the node, because a
-        // self-gateway node always reports Online whatever the connectivity.
-        assertTrue("a successful RPC call did not mark the app live", NimiqRpc.isLive())
+        // ⚠ A head can now arrive from the block explorer when the node is down (#43), and
+        // that must NOT mark the app online. "Online" means a send will go out, and only a
+        // node can broadcast. So isLive() tracks the NODE alone, and the answer says which
+        // source served it.
+        assertTrue("headHeight should name its source", json.has("source"))
+        when (json.getString("source")) {
+            "node" -> assertTrue("a successful NODE call did not mark the app live", NimiqRpc.isLive())
+            "explorer" -> assertFalse(
+                "an explorer read must not claim the app is online: it cannot broadcast",
+                NimiqRpc.isLive(),
+            )
+            else -> throw AssertionError("unknown read source: ${json.getString("source")}")
+        }
     }
 
     @Test

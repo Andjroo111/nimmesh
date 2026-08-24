@@ -28,7 +28,10 @@ class NetworkBridge(private val wallet: Wallet, private val prefs: Prefs) {
 
     fun dispatch(method: String, args: JSONObject?): Pair<Boolean, Any> = try {
         when (method) {
-            "headHeight" -> true to json("height" to NimiqRpc.headHeight().toLong())
+            "headHeight" -> true to json(
+                "height" to NimiqRpc.headHeight().toLong(),
+                "source" to NimiqRpc.lastReadSource,
+            )
             "walletBalance" -> walletBalance()
             "walletHistory" -> walletHistory()
             "sendTransaction" -> sendTransaction(args)
@@ -49,7 +52,9 @@ class NetworkBridge(private val wallet: Wallet, private val prefs: Prefs) {
         return try {
             val luna = NimiqRpc.balance(address).toLong()
             prefs.setString(key, luna.toString())
-            true to json("luna" to luna)
+            // `source` is additive and parity-safe. It lets the page say where a number came
+            // from rather than presenting an explorer figure as if a node had confirmed it.
+            true to json("luna" to luna, "source" to NimiqRpc.lastReadSource)
         } catch (e: Exception) {
             val cached = prefs.getString(key).toLongOrNull()
                 ?: return false to (e.message ?: "balance unavailable")
@@ -63,7 +68,7 @@ class NetworkBridge(private val wallet: Wallet, private val prefs: Prefs) {
         return try {
             val txs = TxRows.normalize(address, NimiqRpc.transactions(address))
             prefs.setString(key, txs.toString())
-            true to json("txs" to txs)
+            true to json("txs" to txs, "source" to NimiqRpc.lastReadSource)
         } catch (e: Exception) {
             val stored = prefs.getString(key)
             if (stored.isEmpty()) return false to (e.message ?: "history unavailable")

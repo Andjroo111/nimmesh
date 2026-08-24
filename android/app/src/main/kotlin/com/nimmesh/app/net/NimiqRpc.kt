@@ -61,17 +61,38 @@ object NimiqRpc {
         return if (result == JSONObject.NULL) null else result
     }
 
-    /** The head height a fresh transaction anchors its validity window to. */
-    fun headHeight(): UInt {
+    /**
+     * The head height a fresh transaction anchors its validity window to.
+     *
+     * Falls back to the block explorer when the node is unreachable, so a balance and a
+     * history still render during an outage. See [NimiqWatch] for why the fallback is an
+     * explorer rather than a second RPC node.
+     */
+    fun headHeight(): UInt = withReadFallback({
         val n = call("getBlockNumber", JSONArray()) as? Number
             ?: throw RpcException("getBlockNumber: unexpected result shape")
-        return n.toLong().toUInt()
-    }
+        n.toLong().toUInt()
+    }, NimiqWatch::headHeight)
 
-    /** Broadcast a raw signed transaction (hex). Returns the tx hash on accept. */
-    fun sendRawTransaction(rawHex: String): String =
+    /**
+     * Broadcast a raw signed transaction (hex). Returns the tx hash on accept.
+     *
+     * ⚠ **No fallback, deliberately.** Broadcasting needs a real node, and the block
+     * explorer cannot do it. When the node is down an online send is genuinely impossible,
+     * so this fails loudly with a message that says what still works, rather than appearing
+     * to succeed. The offline mesh send is unaffected: it anchors to a gateway beacon heard
+     * over Bluetooth and never touches HTTP.
+     */
+    fun sendRawTransaction(rawHex: String): String = try {
         call("sendRawTransaction", JSONArray().put(rawHex)) as? String
             ?: throw RpcException("sendRawTransaction: unexpected result shape")
+    } catch (e: Exception) {
+        if (e is RpcException && e.message?.contains("unexpected result shape") == true) throw e
+        throw RpcException(
+            "the Nimiq node is unreachable, so an online send is not possible right now. " +
+                "An offline mesh send still works if a peer is nearby. (${e.message})",
+        )
+    }
 
     /**
      * An account's balance in luna.
@@ -83,11 +104,13 @@ object NimiqRpc {
      * SUCCESSFUL call, which is a different thing entirely.
      */
     fun balance(address: String): ULong {
-        val account = call("getAccountByAddress", JSONArray().put(compact(address))) as? JSONObject
-            ?: throw RpcException("getAccountByAddress: unexpected result shape")
-        val b = account.opt("balance") as? Number
-            ?: throw RpcException("getAccountByAddress: no balance in result")
-        return b.toLong().toULong()
+        return withReadFallback({
+            val account = call("getAccountByAddress", JSONArray().put(compact(address))) as? JSONObject
+                ?: throw RpcException("getAccountByAddress: unexpected result shape")
+            val b = account.opt("balance") as? Number
+                ?: throw RpcException("getAccountByAddress: no balance in result")
+            b.toLong().toULong()
+        }) { NimiqWatch.balance(address) }
     }
 
     /**
@@ -96,10 +119,47 @@ object NimiqRpc {
      * permanent.
      */
     fun transactions(address: String, max: Int = 20): List<JSONObject> {
-        val params = JSONArray().put(compact(address)).put(max).put(JSONObject.NULL)
-        val arr = call("getTransactionsByAddress", params) as? JSONArray
-            ?: throw RpcException("getTransactionsByAddress: unexpected result shape")
-        return with(Http) { arr.toObjectList() }
+        return withReadFallback({
+            val params = JSONArray().put(compact(address)).put(max).put(JSONObject.NULL)
+            val arr = call("getTransactionsByAddress", params) as? JSONArray
+                ?: throw RpcException("getTransactionsByAddress: unexpected result shape")
+            with(Http) { arr.toObjectList() }
+        }) { NimiqWatch.transactions(address, max) }
+    }
+
+    /**
+     * Which source last answered a read. Surfaced through the bridge so the page can say
+     * where a number came from instead of presenting an explorer figure as if a node had
+     * confirmed it.
+     */
+    @Volatile
+    var lastReadSource: String = "node"
+        private set
+
+    /**
+     * Try the node, fall back to the explorer.
+     *
+     * ⚠ Only [lastSuccessAtMs] tracks the NODE, and only the node can broadcast, so
+     * `reachability` still reports offline when the explorer alone is answering. That is the
+     * honest reading: "online" is supposed to mean a send will go out, and with no node it
+     * will not.
+     */
+    private fun <T> withReadFallback(primary: () -> T, fallback: () -> T): T = try {
+        val value = primary()
+        lastReadSource = "node"
+        value
+    } catch (nodeFailure: Exception) {
+        try {
+            val value = fallback()
+            lastReadSource = "explorer"
+            value
+        } catch (fallbackFailure: Exception) {
+            // Report the NODE's failure: it is the primary, and its message is the one that
+            // explains why a send is unavailable too.
+            throw RpcException(
+                "${nodeFailure.message} (explorer fallback also failed: ${fallbackFailure.message})",
+            )
+        }
     }
 
     /** Nimiq addresses are displayed in spaced groups; the RPC wants them unspaced. */

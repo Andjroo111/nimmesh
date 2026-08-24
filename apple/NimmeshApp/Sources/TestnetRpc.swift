@@ -54,19 +54,34 @@ enum NimiqRpc {
     static var lastSuccessAt: Date?
 
     /// The current head height — the `validityStartHeight` a fresh tx anchors to.
+    /// Falls back to the block explorer when the node is unreachable (see `NimiqWatch`).
     static func headHeight() async throws -> UInt32 {
-        guard let n = try await call("getBlockNumber", []) as? NSNumber else {
-            throw RpcError(message: "getBlockNumber: unexpected result shape")
-        }
-        return n.uint32Value
+        try await withReadFallback({
+            guard let n = try await call("getBlockNumber", []) as? NSNumber else {
+                throw RpcError(message: "getBlockNumber: unexpected result shape")
+            }
+            return n.uint32Value
+        }, NimiqWatch.headHeight)
     }
 
     /// Broadcast a raw signed transaction (hex); returns the tx hash on accept.
+    ///
+    /// ⚠ **No fallback, deliberately.** Broadcasting needs a real node and the block explorer
+    /// cannot do it, so when the node is down an online send is genuinely impossible. This
+    /// fails with a message that names what still works rather than appearing to succeed.
+    /// The offline mesh send is unaffected: it anchors to a gateway beacon heard over BLE.
     static func sendRawTransaction(_ rawHex: String) async throws -> String {
-        guard let h = try await call("sendRawTransaction", [rawHex]) as? String else {
-            throw RpcError(message: "sendRawTransaction: unexpected result shape")
+        do {
+            guard let h = try await call("sendRawTransaction", [rawHex]) as? String else {
+                throw RpcError(message: "sendRawTransaction: unexpected result shape")
+            }
+            return h
+        } catch let e as RpcError where e.message.contains("unexpected result shape") {
+            throw e
+        } catch {
+            throw RpcError(message: "the Nimiq node is unreachable, so an online send is not "
+                + "possible right now. An offline mesh send still works if a peer is nearby. (\(error))")
         }
-        return h
     }
 
     /// Whether a tx hash is on-chain yet (honours unconfirmed-until-inclusion).
@@ -83,10 +98,12 @@ enum NimiqRpc {
     /// account still reads as 0 from a successful call. Uses `getAccountByAddress`.
     static func balance(_ address: String) async throws -> UInt64 {
         let compact = address.replacingOccurrences(of: " ", with: "")
-        guard let obj = (try await call("getAccountByAddress", [compact])) as? [String: Any],
-              let b = obj["balance"] as? NSNumber
-        else { throw RpcError(message: "getAccountByAddress: unexpected result shape") }
-        return b.uint64Value
+        return try await withReadFallback({
+            guard let obj = (try await call("getAccountByAddress", [compact])) as? [String: Any],
+                  let b = obj["balance"] as? NSNumber
+            else { throw RpcError(message: "getAccountByAddress: unexpected result shape") }
+            return b.uint64Value
+        }, { try await NimiqWatch.balance(compact) })
     }
 
     /// An address's recent transactions, newest first. **Throws on any transport/RPC
@@ -95,9 +112,42 @@ enum NimiqRpc {
     /// head. Each element is the raw RPC tx object (hash/from/to/value/timestamp/…).
     static func transactions(_ address: String, max: Int = 20) async throws -> [[String: Any]] {
         let compact = address.replacingOccurrences(of: " ", with: "")
-        guard let arr = (try await call("getTransactionsByAddress", [compact, max, NSNull()])) as? [[String: Any]]
-        else { throw RpcError(message: "getTransactionsByAddress: unexpected result shape") }
-        return arr
+        return try await withReadFallback({
+            guard let arr = (try await call("getTransactionsByAddress", [compact, max, NSNull()])) as? [[String: Any]]
+            else { throw RpcError(message: "getTransactionsByAddress: unexpected result shape") }
+            return arr
+        }, { try await NimiqWatch.transactions(compact, max: max) })
+    }
+
+    /// Which source last answered a read, so the UI can say where a number came from rather
+    /// than presenting an explorer figure as if a node had confirmed it.
+    static var lastReadSource: String = "node"
+
+    /// Try the node, fall back to the explorer.
+    ///
+    /// ⚠ Only `lastSuccessAt` tracks the NODE, and only a node can broadcast, so
+    /// `reachability` still reports offline when the explorer alone is answering. That is the
+    /// honest reading: "online" is meant to mean a send will go out, and with no node it will
+    /// not.
+    private static func withReadFallback<T>(
+        _ primary: () async throws -> T,
+        _ fallback: () async throws -> T
+    ) async throws -> T {
+        do {
+            let value = try await primary()
+            lastReadSource = "node"
+            return value
+        } catch let nodeFailure {
+            do {
+                let value = try await fallback()
+                lastReadSource = "explorer"
+                return value
+            } catch let fallbackFailure {
+                // Report the NODE's failure: it is the primary, and its message is the one
+                // that also explains why a send is unavailable.
+                throw RpcError(message: "\(nodeFailure) (explorer fallback also failed: \(fallbackFailure))")
+            }
+        }
     }
 
 }
