@@ -378,8 +378,8 @@ alongside the `state` and `peers` that iOS returns. Extra fields are additive an
 anything that does not know them, so the shared `webui/` and the parity gate are unaffected.
 
 **No copy was written for them.** The wording belongs in `webui/`, in five languages, and is
-Andjroo's. The data is there so the page can eventually say "turn Bluetooth on" or "this phone
-cannot be discovered" instead of only "0 nearby".
+the maintainer's call. The data is there so the page can eventually say "turn Bluetooth on" or
+"this phone cannot be discovered" instead of only "0 nearby".
 
 ## A7: packaging
 
@@ -417,6 +417,17 @@ makes `--verify` exit 1. Run it before any release.
 ⚠ JNA references `java.awt` for desktop window handles. Android has no `java.awt` at all, so
 R8 fails the build on missing classes until they are marked warn-only. The code path is
 unreachable here.
+
+⚠ **Rust bakes absolute source paths into the binary** for panic messages and debug info, so a
+stock build ships the builder's home directory inside the `.so`. The first release APK carried
+135 distinct `/Users/<name>/.cargo/...` strings. `build-core.sh` now sets
+`--remap-path-prefix` for the cargo home, the repo and `$HOME`, which takes that to zero and
+makes the build more reproducible as a side effect. Worth rechecking before any public release:
+
+```bash
+unzip -qo ota/nimmesh.apk -d /tmp/apkscan
+grep -rhao '/Users/[A-Za-z0-9._/-]*' /tmp/apkscan | sort -u | wc -l   # must be 0
+```
 
 ### Signing is owner-gated, and losing the key is unrecoverable
 

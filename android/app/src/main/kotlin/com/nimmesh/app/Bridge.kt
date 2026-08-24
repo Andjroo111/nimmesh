@@ -109,7 +109,7 @@ class Bridge(context: Context) {
                 // that does not know them, so this stays parity-safe: the method list is
                 // what BridgeMethodParityTest compares, not the payload.
                 //
-                // No copy is written for them here. The wording is Andjroo's, in webui/,
+                // No copy is written for them here. The wording lives in webui/,
                 // across five languages.
                 true to json(
                     "state" to if (peers > 0) "meshed" else "offline",

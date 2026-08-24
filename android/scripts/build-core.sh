@@ -42,6 +42,16 @@ OUT_JNI="$REPO/android/core/src/main/jniLibs"
 OUT_KT="$REPO/android/core/src/main/kotlin"
 FEATURES="gateway-rpc,polygon-gateway"
 
+# ⚠ Rust bakes ABSOLUTE SOURCE PATHS into the binary for panic messages and debug info, so a
+# stock build ships the builder's home directory inside the .so: 135 distinct
+# /Users/<name>/.cargo/... strings were found in the first release APK. The APK is published
+# for anyone to download, and the repo is public, so remap them to stable placeholders.
+#
+# This is not cosmetic: it also makes the build more reproducible, since two machines with
+# different home directories now produce the same strings.
+CARGO_HOME_DIR="${CARGO_HOME:-$HOME/.cargo}"
+export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$CARGO_HOME_DIR=/cargo --remap-path-prefix=$REPO=/nimmesh --remap-path-prefix=$HOME=/home"
+
 TARGET_ARGS=""
 for abi in $ABIS; do TARGET_ARGS="$TARGET_ARGS -t $abi"; done
 

@@ -22,7 +22,7 @@
 # One-time keystore creation, on the machine that will keep it:
 #
 #   keytool -genkeypair -v \
-#     -keystore ~/secrets/nimmesh-release.jks \
+#     -keystore "$NIMMESH_KEYSTORE" \
 #     -alias nimmesh -keyalg RSA -keysize 4096 -validity 10000
 #
 # ⚠ BACK IT UP AND NEVER LOSE IT. Android identifies an app by its SIGNING KEY. Lose the
@@ -30,8 +30,8 @@
 # uninstall (destroying their wallet if they have not written down their words) and start
 # again. There is no recovery, no appeal, and no Apple-style revocation to fall back on.
 #
-# Then export, e.g. from ~/secrets/all-keys.env:
-#   NIMMESH_KEYSTORE=~/secrets/nimmesh-release.jks
+# Then export these, from wherever this machine keeps its secrets:
+#   NIMMESH_KEYSTORE=/path/to/nimmesh-release.jks
 #   NIMMESH_KEYSTORE_PASSWORD=...
 #   NIMMESH_KEY_ALIAS=nimmesh
 set -euo pipefail
