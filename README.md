@@ -46,9 +46,11 @@ Every claim here has an on chain or in repo receipt. Nothing below is a simulati
 | First real funds mesh payment | 1 NIM, block **55488525**, tx `8ad87a7b…677f5`. Phone in airplane mode, over Bluetooth to a Mac gateway, onto the chain. |
 | Phone to phone, no Mac | 1 + 15 + 2 NIM, blocks **56054933 / 56055090 / 56055105**. Airplane mode iPhone 17 relayed to an iPhone 12 Pro that broadcast them. |
 | Bitchat interoperability | Live both directions, phone to phone, no Mac. A NIMmesh message rendered in real Bitchat `#mesh`, and a Bitchat message rendered in NIMmesh. `shared/BitchatKit.swift` is byte exact against their wire format. |
-| Offline cashlink claim | A cashlink handed over the mesh and swept in app, with the link key signing the sweep natively. |
 
-**Not yet proven, and labelled as such.** Cross chain NIM to USDC atomic swaps run end to end
+**Not yet proven, and labelled as such.** Cash links exist in the app: created, funded (over
+the mesh when offline), shared, and claimable. But no cashlink has been handed over the mesh
+and swept end to end, so that claim carries no receipt and does not belong in the table above.
+Cross chain NIM to USDC atomic swaps run end to end
 and settle, but on Nimiq testnet and Polygon Amoy. Three consecutive clean soak runs at 0.89.0,
 roughly 30 seconds each. The phone to phone **mainnet** swap has not been run. Do not read the
 swap code as mainnet proven.
