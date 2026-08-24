@@ -7,12 +7,12 @@ connectivity. It then hops device to device through other people's phones. The f
 have a connection, *anyone* at all, broadcasts it to the Nimiq network for you.
 
 <p align="center">
-  <img src="assets/screens/offline-proof.jpg" width="190" alt="iOS Control Center with Wi-Fi not connected, cellular data off, and Bluetooth on.">
-  <img src="assets/screens/mesh-offline.png" width="190" alt="The wallet at 2:38, status line reading mesh offline, 0 nearby.">
-  <img src="assets/screens/mesh-meshed.png" width="190" alt="The same wallet at 2:39, status line reading mesh meshed, 1 nearby.">
-  <img src="assets/screens/mesh-peer.png" width="190" alt="A second phone's wallet, also reading mesh meshed, 1 nearby.">
+  <img src="assets/screens/offline-proof.jpg" width="190" alt="iOS Control Center on phone A: Wi-Fi not connected, cellular data off, Bluetooth on.">
+  <img src="assets/screens/mesh-offline.png" width="190" alt="Phone A's wallet, status line reading mesh offline, 0 nearby.">
+  <img src="assets/screens/mesh-meshed.png" width="190" alt="Phone A's wallet moments later, status line reading mesh meshed, 1 nearby.">
+  <img src="assets/screens/mesh-peer.png" width="190" alt="Phone B's wallet, online over Wi-Fi, also reading mesh meshed, 1 nearby.">
 </p>
-<p align="center"><em>Two iPhones, one minute. Cellular data and Wi-Fi off, Bluetooth on; alone at 2:38, meshed at 2:39, and the second phone sees it too.</em></p>
+<p align="center"><em>Phone A has cellular data and Wi-Fi off, Bluetooth on: alone at first, then meshed. Phone B is online over Wi-Fi and sees the same mesh from the other side.</em></p>
 
 The whole idea rests on one fact. A signed Albatross transaction is a self contained
 **~139 byte blob** carrying its own Ed25519 proof, valid for roughly two hours. The chain does
