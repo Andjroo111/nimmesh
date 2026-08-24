@@ -96,10 +96,14 @@ anyone but its author. Treat it accordingly.
 
 ## Safety
 
-Non custodial by construction. **Unconfirmed until inclusion**, so the UI never shows "paid"
-before on chain confirmation. Relays are content blind and carry bytes they cannot read.
-Transactions are verified before relay, so a flooding peer cannot turn the mesh into a junk
-amplifier.
+- Non custodial by construction.
+- The UI never shows "paid" before the transaction confirms on chain.
+- Relays are content blind and carry bytes they cannot read.
+- Transactions are verified before relay, so a flooding peer cannot turn the mesh into a junk amplifier.
+- Keys never leave the phone: iOS holds them in the Keychain, Android keeps the phrase encrypted under an AndroidKeyStore key.
+- Relays cannot tie payments to a wallet: the sender id is random on every launch, never wallet derived.
+
+The hazard analysis, including what these guarantees do not cover, is [docs/RISKS.md](docs/RISKS.md).
 
 ## License
 
