@@ -27,7 +27,7 @@ not a distribution one.
 | A3 wallet, mnemonic, signer | done |
 | A4 network and native UI methods | done |
 | A5 the BLE radio | built, on-air unproven |
-| A6 permissions, foreground service, Doze | not started |
+| A6 permissions, foreground service, Doze | done |
 | A7 packaging and distribution | not started |
 | A8 two device field test | not started |
 
@@ -321,6 +321,65 @@ because an empty mesh with no reason shown is the state that wastes an afternoon
 ⚠ Every callback into Rust is wrapped: an exception crossing the FFI surfaces as
 `UnexpectedUniFFICallbackError` and **aborts the process**, so a transient GATT error during a
 flood burst must never become a crash.
+
+## A6: staying alive off screen
+
+On iOS this is two plist entries, `bluetooth-central` and `bluetooth-peripheral`, and the OS
+keeps CoreBluetooth running with nothing shown to the user. **Android has no equivalent.** The
+only supported way to hold a BLE connection with the app backgrounded is a foreground service,
+and a foreground service must show a notification. That notification is not a design choice;
+it is the price of relaying at all.
+
+Verified on device with the app backgrounded: `isForeground=true`, `types=0x00000010`
+(connectedDevice), an ongoing notification on a silent channel.
+
+⚠ **A `connectedDevice` foreground service needs TWO permissions, and one of them is a
+runtime grant.** The manifest `FOREGROUND_SERVICE_CONNECTED_DEVICE` is necessary and not
+sufficient: the system also requires at least one granted permission from a fixed list, which
+here means one of the Bluetooth trio. Without it `startForeground` throws `SecurityException`
+and the service never comes up. That is why the service is started only after the Bluetooth
+grant lands, never at launch.
+
+⚠ **Never call `stopService` on a foreground service, and this one is a real app-killer.**
+`startForegroundService` opens a contract: the service must call `startForeground` within
+about five seconds. Destroying it before it can leaves the contract unfulfilled and the system
+kills the WHOLE APP with `ForegroundServiceDidNotStartInTimeException`, at a moment that looks
+unrelated to the cause. It is not hypothetical here: `MainActivity.onResume` stops the relay
+when the Bluetooth permissions have been revoked, which can land moments after a launch-time
+start. So `stop()` routes THROUGH the service (an `ACTION_STOP` intent), which honours the
+contract first and only then takes itself down. Redundant starts are guarded for the same
+reason. Both are covered by a test that stops immediately after starting, with no sleep in
+between, because the sleep is what would hide it.
+
+⚠ **`POST_NOTIFICATIONS` is asked for separately and afterwards.** The service runs either
+way; without the permission only the status notification is hidden. Bundling it with the
+Bluetooth prompt would make a refusal look like it disabled the mesh.
+
+### Doze, and what cannot be fixed
+
+The foreground service does not defeat Doze, and nothing does. Deep Doze suspends the app
+entirely, and several vendors (Xiaomi, Oppo, Samsung, OnePlus) kill background work far more
+aggressively than stock Android regardless of foreground-service status.
+
+The mitigation is a battery-optimisation exemption, offered once and only when it would change
+something, through `ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS` rather than
+`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`: the latter needs a permission Google restricts
+and several OEM builds refuse outright. One extra tap, no restricted permission, works
+everywhere.
+
+Even exempt, some vendors kill it anyway. This improves the odds and guarantees nothing. It is
+the Android twin of the iOS background overflow-area dead spot: a platform fact, mitigated and
+stated rather than solved.
+
+### Saying why the mesh is empty
+
+`meshStatus` now returns `permitted`, `bluetoothOn`, `canAdvertise` and `relayingInBackground`
+alongside the `state` and `peers` that iOS returns. Extra fields are additive and ignored by
+anything that does not know them, so the shared `webui/` and the parity gate are unaffected.
+
+**No copy was written for them.** The wording belongs in `webui/`, in five languages, and is
+Andjroo's. The data is there so the page can eventually say "turn Bluetooth on" or "this phone
+cannot be discovered" instead of only "0 nearby".
 
 ## Decisions
 

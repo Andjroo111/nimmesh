@@ -38,5 +38,8 @@ class Prefs(context: Context) {
         const val RESPOND_ROLE = "nimmesh.swap.respond"
         const val RECOVERED_WALLET = "nimmesh.recoveredWallet"
         const val CACHE_PREFIX = "nimmesh.cache."
+
+        /** The battery-optimisation exemption is offered once, never nagged. */
+        const val BATTERY_PROMPT_SHOWN = "nimmesh.batteryPromptShown"
     }
 }

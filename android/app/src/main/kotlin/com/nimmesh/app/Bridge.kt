@@ -102,7 +102,25 @@ class Bridge(context: Context) {
 
             "meshStatus" -> {
                 val peers = node.peerCount().toInt()
-                true to json("state" to if (peers > 0) "meshed" else "offline", "peers" to peers)
+                val radio = MeshHost.radio
+                // `state` and `peers` are the two fields iOS returns and the page reads.
+                // The rest are ADDITIVE, and exist so the page can eventually say WHY a mesh
+                // is empty rather than only that it is. Extra fields are ignored by anything
+                // that does not know them, so this stays parity-safe: the method list is
+                // what BridgeMethodParityTest compares, not the payload.
+                //
+                // No copy is written for them here. The wording is Andjroo's, in webui/,
+                // across five languages.
+                true to json(
+                    "state" to if (peers > 0) "meshed" else "offline",
+                    "peers" to peers,
+                    "permitted" to (radio?.hasPermissions() ?: false),
+                    "bluetoothOn" to (radio?.bluetoothEnabled() ?: false),
+                    // False on a real slice of Android hardware. Such a phone still relays
+                    // and still pays as a central; it just cannot be DISCOVERED.
+                    "canAdvertise" to (radio?.canAdvertise() ?: false),
+                    "relayingInBackground" to MeshService.isRunning,
+                )
             }
 
             "meshDebug" -> {

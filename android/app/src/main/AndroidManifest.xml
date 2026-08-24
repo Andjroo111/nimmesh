@@ -25,6 +25,17 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <!-- A phone without BLE can still hold a wallet and send online, so this must not filter it out. -->
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+
+    <!--
+      Background relaying. iOS gets this from two plist background modes with nothing shown
+      to the user; Android's only supported route is a foreground service, which must show a
+      notification. From API 34 the service type must be declared AND backed by its own
+      permission. POST_NOTIFICATIONS is needed from API 33 or the notification is silently
+      hidden, which would make the service look like it is not running.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- A phone without a camera can still do everything else, so this must not filter it out. -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
@@ -43,6 +54,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <service
+            android:name=".MeshService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
         <activity
             android:name=".QrScannerActivity"
             android:exported="false"

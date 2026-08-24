@@ -8,4 +8,15 @@
     <string name="scan_hint">Point the camera at a QR code</string>
     <string name="unlock_title">Unlock your backup</string>
     <string name="unlock_description">Confirm it is you before your recovery words are shown.</string>
+
+    <!--
+      The foreground-service notification. It is permanently visible while the mesh is
+      relaying, so it says what the phone is actually DOING rather than that an app is
+      running. Android has no silent background mode for BLE; this notification is the price
+      of relaying at all.
+    -->
+    <string name="mesh_channel_name">Mesh relay</string>
+    <string name="mesh_channel_description">Shown while this phone is carrying payments for people nearby.</string>
+    <string name="mesh_notification_title">Carrying payments nearby</string>
+    <string name="mesh_notification_text">Your phone is relaying over Bluetooth so people without internet can pay.</string>
 </resources>

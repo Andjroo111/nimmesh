@@ -2,6 +2,9 @@ package com.nimmesh.app
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.Intent
+import android.util.Log
+import android.os.Build
 import android.os.Bundle
 import android.view.ViewGroup
 import android.webkit.JsResult
@@ -124,6 +127,24 @@ class MainActivity : Activity() {
         webView.loadUrl(INDEX_URL)
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Permissions can be revoked from Settings while the app is backgrounded, so this is
+        // rechecked rather than assumed from launch. If they are gone the relay must stop:
+        // a foreground-service notification claiming to carry payments, over a radio that
+        // cannot start, is a lie the user is looking at.
+        val radio = MeshHost.radio
+        if (radio != null && !radio.hasPermissions()) {
+            MeshService.stop(this)
+            return
+        }
+        // Offered only once the mesh can actually run, and only when it would change
+        // something. A brand-new user meets onboarding first, not a system settings screen.
+        if (radio != null && radio.hasPermissions() && radio.bluetoothEnabled()) {
+            offerBatteryExemptionOnce()
+        }
+    }
+
     /**
      * Asked at launch rather than at first use, because the mesh is the point of the app:
      * a wallet that quietly is not relaying is worse than one prompt. Declined is a
@@ -132,7 +153,7 @@ class MainActivity : Activity() {
     private fun requestBluetoothPermissionsIfNeeded() {
         val missing = com.nimmesh.app.ble.BleMeshRadio.REQUIRED_PERMISSIONS
             .filter { checkSelfPermission(it) != android.content.pm.PackageManager.PERMISSION_GRANTED }
-        if (missing.isEmpty()) MeshHost.onPermissionsGranted()
+        if (missing.isEmpty()) onMeshReady()
         else requestPermissions(missing.toTypedArray(), REQUEST_BLUETOOTH)
     }
 
@@ -146,7 +167,51 @@ class MainActivity : Activity() {
         // The radio was built before the user was asked, so its first startAdvertising and
         // startScanning were no-ops. Nothing else would ever call them again.
         if (grantResults.isNotEmpty() && grantResults.all { it == android.content.pm.PackageManager.PERMISSION_GRANTED }) {
-            MeshHost.onPermissionsGranted()
+            onMeshReady()
+        }
+    }
+
+    /**
+     * The radio has what it needs, so bring it up and start relaying in the background.
+     *
+     * The notification permission is asked for SEPARATELY and afterwards, because the
+     * service runs either way: without it the relay still works and only the status
+     * notification is hidden. Bundling it with the Bluetooth prompt would make a refusal
+     * look like it disabled the mesh.
+     */
+    private fun onMeshReady() {
+        MeshHost.onPermissionsGranted()
+        MeshService.start(this)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), REQUEST_NOTIFICATIONS)
+        }
+    }
+
+    /**
+     * Offer the battery-optimisation exemption, once, and only when it would change
+     * something.
+     *
+     * `ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS` opens the system list rather than
+     * `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, which needs a permission Google
+     * restricts and which several OEM builds simply refuse. One extra tap for the user, no
+     * restricted permission, and it works everywhere.
+     *
+     * ⚠ Even exempt, several vendors kill background work anyway. This improves the odds; it
+     * does not guarantee anything, and the docs say so rather than implying otherwise.
+     */
+    private fun offerBatteryExemptionOnce() {
+        val prefs = Prefs(this)
+        if (prefs.getBool(Prefs.BATTERY_PROMPT_SHOWN)) return
+        val power = getSystemService(android.os.PowerManager::class.java) ?: return
+        if (power.isIgnoringBatteryOptimizations(packageName)) return
+        prefs.setBool(Prefs.BATTERY_PROMPT_SHOWN, true)
+        try {
+            startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+        } catch (e: Exception) {
+            Log.w(TAG, "no battery optimisation settings screen on this device", e)
         }
     }
 
@@ -168,6 +233,7 @@ class MainActivity : Activity() {
     companion object {
         private const val TAG = "nimmesh.app"
         private const val REQUEST_BLUETOOTH = 2
+        private const val REQUEST_NOTIFICATIONS = 3
         private const val ASSET_DOMAIN = "appassets.androidplatform.net"
         const val INDEX_URL = "https://$ASSET_DOMAIN/assets/webui/index.html"
     }
