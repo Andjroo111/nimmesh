@@ -93,6 +93,7 @@ anyone but its author. Treat it accordingly.
 | [docs/PROTOCOL.md](docs/PROTOCOL.md) | The NIMmesh wire format |
 | [docs/RISKS.md](docs/RISKS.md) | Offline payment hazard analysis and mitigations |
 | [docs/BALANCE-PROOF.md](docs/BALANCE-PROOF.md) | Trustless offline balance verification via Albatross accounts proofs |
+| [docs/LORA-GATEWAY.md](docs/LORA-GATEWAY.md) | Bridging NIMmesh onto an existing Meshtastic mesh |
 | [docs/MAINNET-GATING.md](docs/MAINNET-GATING.md) | The safety contract around real funds |
 | [docs/adr/](docs/adr/) | Architecture decisions |
 | [docs/LOOP.md](docs/LOOP.md) | The autonomous build contract this repo was written under |

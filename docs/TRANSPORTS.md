@@ -55,6 +55,9 @@ Ranked by what they cost us against what they buy us.
 
 The obvious move, and the one issue #17 was already reaching for.
 
+> Design pinned down in [LORA-GATEWAY.md](LORA-GATEWAY.md): the bridge frame, dedup
+> across the hop, portnum, topology, and build order (issue #6).
+
 - **Range.** Kilometres instead of the 30-ish metres BLE gives us. Range is dominated
   by antenna and elevation rather than the radio.
 - **Cost.** A Heltec V3 is [$20-30][devices]. The newer V4 pushes 28 dBm against the
