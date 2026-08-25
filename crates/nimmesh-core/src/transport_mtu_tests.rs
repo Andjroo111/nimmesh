@@ -23,7 +23,10 @@ const MESHTASTIC_MAX_PAYLOAD: usize = 237;
 /// Meshtastic's own header overhead inside that packet, subtracted before we measure.
 const MESHTASTIC_HEADER: usize = 16;
 
-/// One binary SMS under GSM 03.38, 8-bit encoding, no concatenation header.
+/// One binary SMS under GSM 03.38, 8-bit encoding, no concatenation header. This is
+/// the RAW PDU budget (modem-readable); the port-addressed form an Android app can
+/// receive pays a 7-byte UDH, leaving 133 — see docs/SMS-TRANSPORT.md for the
+/// 130-byte compact form that fits it.
 const SMS_BINARY_MAX_PAYLOAD: usize = 140;
 
 /// The smallest nimmesh BLE padding block (PROTOCOL.md: PKCS#7 to 256/512/1024/2048).

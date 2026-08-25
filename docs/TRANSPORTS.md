@@ -90,8 +90,12 @@ building a network, we would be joining one that already exists.
 Already scoped as issue #24, and the numbers are almost comic.
 
 A single SMS carries [exactly 140 bytes][sms] of user data under 8-bit encoding. A
-basic Nimiq transaction is 139 bytes. It fits with **one byte to spare**, no
-concatenation, no 6-byte User Data Header eating into the budget.
+basic Nimiq transaction is 139 bytes. At the raw PDU level it fits with **one byte to
+spare** — but the path an app can actually receive on is port-addressed, and the
+application-port UDH costs 7 bytes, leaving 133. The fix is a 130-byte compact form
+that a gateway re-inflates; the full accounting is in [SMS-TRANSPORT.md](SMS-TRANSPORT.md)
+(issue #7), which also owns the Android mechanics, cost/abuse rules, and the carrier
+test matrix.
 
 This covers the case where there is cell signal but no data, which is enormously common
 in rural areas, on prepaid plans, and during network congestion after a disaster. It

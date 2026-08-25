@@ -92,6 +92,7 @@ anyone but its author. Treat it accordingly.
 | [docs/GOAL.md](docs/GOAL.md) | North star, the magic moment, the demo loop, core values |
 | [docs/PROTOCOL.md](docs/PROTOCOL.md) | The NIMmesh wire format |
 | [docs/RISKS.md](docs/RISKS.md) | Offline payment hazard analysis and mitigations |
+| [docs/SMS-TRANSPORT.md](docs/SMS-TRANSPORT.md) | One transaction in one binary SMS, honestly budgeted |
 | [docs/MAINNET-GATING.md](docs/MAINNET-GATING.md) | The safety contract around real funds |
 | [docs/adr/](docs/adr/) | Architecture decisions |
 | [docs/LOOP.md](docs/LOOP.md) | The autonomous build contract this repo was written under |
