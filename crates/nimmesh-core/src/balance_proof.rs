@@ -20,12 +20,13 @@
 //! | ---- | ---- | ------ |
 //! | 1 | `nimiqBalanceProof` (`0x37`) wire envelope, exact + panic-free | **here** |
 //! | 2 | header ↔ beacon binding: `Blake2b-256(header) == beacon.blockHash` | **here** |
-//! | 3 | `stateRoot` extraction from the header (nimiq-serde layout) | staged |
+//! | 3 | `stateRoot` extraction from the header (postcard layout) | **here** ([`state_root_for_bound_proof`]) |
 //! | 4 | the `TrieProof` walk against `stateRoot` (post-order, Blake2b) | staged |
 //!
-//! Steps 3–4 need byte-fidelity against `nimiq-serde` (postcard-style) test vectors from
-//! a real node, and a gateway needs a proof *source* (the JSON-RPC surface has none — see
-//! the design doc). Until they land, nothing here upgrades a cached balance to verified:
+//! Step 3 rides [`crate::nimiq::header`], whose encoding is differential-tested against
+//! `postcard-bytes` (the exact serde crate the chain uses). Step 4 still needs a proof
+//! *source* (the JSON-RPC surface has none — see the design doc) and real-node fixture
+//! vectors. Until it lands, nothing here upgrades a cached balance to verified:
 //! decoding + relaying a `0x37` is safe today, and registering the type NOW means every
 //! shipped relay carries proofs blindly the day gateways start emitting them.
 //!
@@ -180,6 +181,27 @@ pub enum BindVerdict {
     /// Heights and network match but `Blake2b-256(header)` is not the beacon's hash: the
     /// header is forged, corrupted, or from a competing fork.
     HeaderMismatch,
+}
+
+/// Step 3: the accounts-trie `state_root` a **bound** proof's header commits to — the
+/// root the step-4 `TrieProof` walk will verify against. `Some` only when
+/// [`bind_to_beacon`] returns [`BindVerdict::Bound`] AND the parsed header's own
+/// `block_number`/`network` agree with the proof envelope (a bound hash already implies
+/// an honest header, so a disagreement here means a malformed envelope — reject).
+/// `None` also when the header is not a parseable **micro** header (a macro-block head
+/// is not supported yet); the balance then simply stays untrusted — fail-closed.
+pub fn state_root_for_bound_proof(
+    proof: &BalanceProof,
+    beacon: &HeadBeacon,
+) -> Option<[u8; BLOCK_HASH_LEN]> {
+    if bind_to_beacon(proof, beacon) != BindVerdict::Bound {
+        return None;
+    }
+    let header = crate::nimiq::header::decode_micro_header(&proof.header)?;
+    if header.block_number != proof.head_height || header.network != proof.network_id {
+        return None;
+    }
+    Some(header.state_root)
 }
 
 /// Bind a proof to the freshest head beacon: same network, same height, and the header
@@ -388,6 +410,61 @@ mod tests {
             bind_to_beacon(&proof, &cache.latest_beacon().unwrap()),
             BindVerdict::Bound
         );
+    }
+
+    #[test]
+    fn a_bound_real_layout_header_yields_its_state_root_and_nothing_less_does() {
+        use crate::nimiq::header::{encode_micro_header, MicroHeader, VRF_SEED_LEN};
+
+        let header = MicroHeader {
+            network: 5,
+            version: 2,
+            block_number: 4_700_000,
+            timestamp: 1_756_200_000_000,
+            parent_hash: [0x10; 32],
+            seed: [0x20; VRF_SEED_LEN],
+            extra_data: vec![],
+            state_root: [0x77; 32],
+            body_root: [0x40; 32],
+            diff_root: [0x50; 32],
+            history_root: [0x60; 32],
+        };
+        let header_bytes = encode_micro_header(&header);
+        let proof = BalanceProof {
+            address: addr(0x01),
+            head_height: header.block_number,
+            network_id: header.network,
+            header: header_bytes.clone(),
+            proof: vec![0xAB; 32],
+        };
+        let mut beacon = HeadBeacon::new(header.block_number, header.network);
+        beacon.block_hash = block_hash_of_header(&header_bytes);
+
+        // The full step-1..3 chain: bound, parsed, cross-checked → the root.
+        assert_eq!(
+            state_root_for_bound_proof(&proof, &beacon),
+            Some([0x77; 32])
+        );
+
+        // Unbound (wrong hash) → no root, even though the header itself parses.
+        let mut cold = beacon;
+        cold.block_hash = [0x0F; 32];
+        assert_eq!(state_root_for_bound_proof(&proof, &cold), None);
+
+        // Bound hash but a header whose own fields disagree with the envelope → reject.
+        let mut lying = proof.clone();
+        lying.head_height += 1;
+        let mut moved = beacon;
+        moved.height += 1;
+        assert_eq!(state_root_for_bound_proof(&lying, &moved), None);
+
+        // A bound blob that is not a real micro-header layout → fail closed.
+        let junk: Vec<u8> = vec![0xFF; 300];
+        let mut junk_beacon = HeadBeacon::new(proof.head_height, proof.network_id);
+        junk_beacon.block_hash = block_hash_of_header(&junk);
+        let mut junk_proof = proof.clone();
+        junk_proof.header = junk;
+        assert_eq!(state_root_for_bound_proof(&junk_proof, &junk_beacon), None);
     }
 
     #[test]

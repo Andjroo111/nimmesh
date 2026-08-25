@@ -172,3 +172,8 @@ blake2 = "0.10"
 proptest = "1.8.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# The header-codec fidelity anchor (nimiq/header.rs): `postcard-bytes` is the published
+# fork of postcard that `nimiq-serde` wraps ON CHAIN — the differential test serializes a
+# mirror struct with it and asserts byte-equality with our hand-rolled encoder. Dev-only;
+# the shipped core never links it.
+postcard = { package = "postcard-bytes", version = "0.1", features = ["use-std"] }
