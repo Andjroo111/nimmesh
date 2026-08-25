@@ -359,6 +359,38 @@ mod tests {
     }
 
     #[test]
+    fn a_gateway_sourced_beacon_binds_a_proof_end_to_end() {
+        // The whole chain this feature exists for: an RPC that serves the head hash → a
+        // gateway beacon carrying it → the node's HeadCache retaining it → a proof whose
+        // header hashes to it binds. Mock RPC, but every seam is the production one.
+        use crate::beacon::HeadCache;
+        use crate::gateway::{MeshGateway, RpcGateway};
+        use crate::rpc::MockRpc;
+        use std::sync::Arc;
+
+        let header: Vec<u8> = (0u8..=255).cycle().take(300).collect();
+        let rpc = Arc::new(MockRpc::new(4_600_000));
+        rpc.set_head_hash(block_hash_of_header(&header));
+        let gw = RpcGateway::new(rpc);
+
+        let beacon = gw.head_beacon().expect("mock head is live");
+        let mut cache = HeadCache::new(beacon.network_id);
+        assert!(cache.accept(&beacon));
+
+        let proof = BalanceProof {
+            address: addr(0x99),
+            head_height: 4_600_000,
+            network_id: beacon.network_id,
+            header,
+            proof: vec![0xEE; 64],
+        };
+        assert_eq!(
+            bind_to_beacon(&proof, &cache.latest_beacon().unwrap()),
+            BindVerdict::Bound
+        );
+    }
+
+    #[test]
     fn the_type_byte_roundtrips_through_the_registry() {
         assert_eq!(MessageType::NimiqBalanceProof.to_u8(), 0x37);
         assert_eq!(

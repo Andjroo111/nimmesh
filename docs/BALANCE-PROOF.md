@@ -91,13 +91,14 @@ core dependency), and steps 3–4 need a small parser, not a consensus client.
 
 ## The two gaps on the gateway side
 
-### 1. The beacon's block hash is still zeroed
+### 1. ~~The beacon's block hash is still zeroed~~ — resolved
 
-The G8 RPC seam exposes only `getBlockNumber`, so gateways today emit beacons with a
-zeroed `blockHash` — there is nothing to bind against, and `bind_to_beacon` says so
-explicitly (`BeaconUnhashed`). Prerequisite work: one RPC slice (`getLatestBlock` /
-`getBlockByNumber`, both standard Albatross JSON-RPC) so the beacon carries the real
-hash. Small, and useful beyond proofs.
+The G8 seam now reads `getLatestBlock` (`GatewayRpc::latest_block`), the gateway beacon
+carries the real head hash, and the node's `HeadCache` retains the whole beacon so
+`bind_to_beacon` has its anchor (`latest_beacon()`). An RPC client without the
+capability still serves a zeroed hash, which reads as honestly unbindable
+(`BeaconUnhashed`) — never as a wrong hash. The mock-to-bind chain is asserted end to
+end in `balance_proof.rs::a_gateway_sourced_beacon_binds_a_proof_end_to_end`.
 
 ### 2. JSON-RPC has no accounts-proof method
 

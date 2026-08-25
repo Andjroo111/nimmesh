@@ -165,12 +165,33 @@ pub struct RpcHistoryTx {
     pub block_number: Option<u32>,
 }
 
+/// The chain head as the node reports it: height plus the head block's hash. The hash is
+/// what a `nimiqHeadBeacon` (`0x32`) carries so a phone can bind an accounts proof to it
+/// (`docs/BALANCE-PROOF.md`); zeroed when the client cannot source it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RpcHead {
+    /// Head block height.
+    pub height: u32,
+    /// Blake2b-256 hash of the head block, or all-zero if unavailable.
+    pub hash: [u8; 32],
+}
+
 /// The blocking JSON-RPC slice the gateway broadcast path needs. Kept as a trait so the
 /// engine/gateway depend only on this seam: tests inject [`MockRpc`] (offline,
 /// deterministic) and the live example injects [`HttpGatewayRpc`].
 pub trait GatewayRpc: Send + Sync {
     /// Current head block height — the input to the validity-window check (RISKS.md #1).
     fn block_number(&self) -> Result<u32, RpcError>;
+    /// Current head height **plus the head block hash** (`getLatestBlock`) — the beacon
+    /// anchor for accounts-proof binding. Default: height via [`GatewayRpc::block_number`]
+    /// with a zeroed hash, so impls that predate the proof work stay correct (a zeroed
+    /// hash reads as "unbindable", never as a wrong hash).
+    fn latest_block(&self) -> Result<RpcHead, RpcError> {
+        Ok(RpcHead {
+            height: self.block_number()?,
+            hash: [0u8; 32],
+        })
+    }
     /// Public account state for an address; `None` if the account does not exist yet.
     fn get_account(&self, address: &str) -> Result<Option<RpcAccount>, RpcError>;
     /// Broadcast a client-signed raw transaction (lowercase hex) and return its hash.
@@ -217,6 +238,8 @@ pub struct MockRpc {
     /// NIM funding-verifier tests). Addresses not seeded here keep the legacy answer (an
     /// existing zero-balance basic account).
     accounts: Mutex<HashMap<String, RpcAccount>>,
+    /// The head block hash served by `latest_block` (zero until a test sets one).
+    head_hash: Mutex<[u8; 32]>,
 }
 
 impl MockRpc {
@@ -230,7 +253,14 @@ impl MockRpc {
             txs: Mutex::new(HashMap::new()),
             history: Mutex::new(Vec::new()),
             accounts: Mutex::new(HashMap::new()),
+            head_hash: Mutex::new([0u8; 32]),
         }
+    }
+
+    /// Set the head block hash `latest_block` serves (models a node whose `getLatestBlock`
+    /// answers; the default zero hash models the pre-proof world).
+    pub fn set_head_hash(&self, hash: [u8; 32]) {
+        *self.head_hash.lock().unwrap() = hash;
     }
 
     /// A2b: seed the account state served for `address` (user-friendly `NQ…` form) — e.g. a
@@ -320,6 +350,14 @@ impl GatewayRpc for MockRpc {
         Ok(*self.head.lock().unwrap())
     }
 
+    fn latest_block(&self) -> Result<RpcHead, RpcError> {
+        self.transient_guard()?;
+        Ok(RpcHead {
+            height: *self.head.lock().unwrap(),
+            hash: *self.head_hash.lock().unwrap(),
+        })
+    }
+
     fn get_account(&self, address: &str) -> Result<Option<RpcAccount>, RpcError> {
         self.transient_guard()?;
         if let Some(acct) = self.accounts.lock().unwrap().get(address) {
@@ -374,7 +412,7 @@ mod http {
     use std::time::Duration;
 
     use super::{
-        guard_testnet, GatewayRpc, RpcAccount, RpcError, RpcHistoryTx, RpcTransaction,
+        guard_testnet, GatewayRpc, RpcAccount, RpcError, RpcHead, RpcHistoryTx, RpcTransaction,
         DEFAULT_TESTNET_RPC_URL,
     };
     use crate::NetworkId;
@@ -488,6 +526,25 @@ mod http {
             })
         }
 
+        /// `getLatestBlock(false)` — header-only. Fail-closed: a response missing the
+        /// number or a well-formed 32-byte hex hash is `BadResponse`, never a zero hash
+        /// (a zero hash means "honestly unbindable"; a garbled one must not pass as it).
+        fn latest_block(&self) -> Result<RpcHead, RpcError> {
+            let v = self.call("getLatestBlock", serde_json::json!([false]))?;
+            let bad = || RpcError::BadResponse {
+                method: "getLatestBlock".to_string(),
+            };
+            let height = v
+                .get("number")
+                .and_then(|n| n.as_u64())
+                .map(|n| n as u32)
+                .ok_or_else(bad)?;
+            let hash_hex = v.get("hash").and_then(|h| h.as_str()).ok_or_else(bad)?;
+            let bytes = crate::nimiq::hex::hex_to_bytes(hash_hex).map_err(|_| bad())?;
+            let hash: [u8; 32] = bytes.try_into().map_err(|_| bad())?;
+            Ok(RpcHead { height, hash })
+        }
+
         fn get_account(&self, address: &str) -> Result<Option<RpcAccount>, RpcError> {
             let v = self.call("getAccountByAddress", serde_json::json!([address]))?;
             if v.is_null() {
@@ -594,6 +651,20 @@ mod tests {
         // The mainnet host is refused outright, regardless of the requested network enum.
         let err = guard_testnet("https://rpc.nimiqwatch.com", NetworkId::Testnet).unwrap_err();
         assert!(matches!(err, RpcError::NotTestnet { .. }));
+    }
+
+    #[test]
+    fn mock_latest_block_serves_the_set_hash_and_defaults_to_zero() {
+        let rpc = MockRpc::new(777);
+        // Default: height flows, hash is honestly zero (the pre-proof world).
+        let head = rpc.latest_block().unwrap();
+        assert_eq!(head.height, 777);
+        assert_eq!(head.hash, [0u8; 32]);
+        // Set: the beacon anchor a proof can bind to.
+        rpc.set_head_hash([0xCD; 32]);
+        rpc.set_head(778);
+        let head = rpc.latest_block().unwrap();
+        assert_eq!((head.height, head.hash), (778, [0xCD; 32]));
     }
 
     #[test]

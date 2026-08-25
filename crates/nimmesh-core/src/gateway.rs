@@ -332,14 +332,17 @@ impl MeshGateway for RpcGateway {
         }
     }
 
-    /// G9: snapshot the live head height from the RPC (`block_number`) into a beacon on this
-    /// gateway's testnet `networkId`. A transient RPC failure yields `None`, so no stale
-    /// beacon is emitted. The `blockHash` is zeroed — G8's RPC exposes only the height, and
-    /// height is the validity anchor (the hash is informational, sourced once a `getBlock`
-    /// slice exists). No NEW networking: reuses the existing read-only `block_number` call.
+    /// G9: snapshot the live head from the RPC (`latest_block`) into a beacon on this
+    /// gateway's testnet `networkId` — height **and the real block hash**, so a phone can
+    /// bind an accounts proof to the beacon (`docs/BALANCE-PROOF.md`). A transient RPC
+    /// failure yields `None`, so no stale beacon is emitted; an RPC client without the
+    /// `latest_block` capability serves a zeroed hash, which downstream reads as honestly
+    /// unbindable (`BindVerdict::BeaconUnhashed`), never as a wrong hash. Read-only.
     fn head_beacon(&self) -> Option<HeadBeacon> {
-        let height = self.rpc.block_number().ok()?;
-        Some(HeadBeacon::new(height, self.network_id))
+        let head = self.rpc.latest_block().ok()?;
+        let mut beacon = HeadBeacon::new(head.height, self.network_id);
+        beacon.block_hash = head.hash;
+        Some(beacon)
     }
 
     /// G15: read the address's public balance via the existing read-only `get_account`, anchored
