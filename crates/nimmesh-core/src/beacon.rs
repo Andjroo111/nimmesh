@@ -25,9 +25,10 @@
 //!
 //! **Non-money-path.** Nothing here signs, broadcasts, or touches key material — it reads
 //! a public head height and carries opaque references (core value #1). The `blockHash`
-//! field is carried for protocol fidelity; G8's RPC seam exposes only `getBlockNumber`
-//! (height), so a gateway emits a zeroed hash until a `getBlock` slice exists — the
-//! **height is the validity anchor**, the hash is informational.
+//! field is sourced from the RPC's `getLatestBlock` (an RPC client without that
+//! capability serves a zeroed hash, which downstream reads as honestly unbindable). The
+//! **height is the validity anchor**; the hash is the accounts-proof binding anchor
+//! (`docs/BALANCE-PROOF.md`).
 
 use std::sync::atomic::Ordering;
 
@@ -86,15 +87,16 @@ pub(crate) fn select_beacon(
 pub struct HeadBeacon {
     /// The head block height (the validity anchor — `validUntil = height + VALIDITY_WINDOW`).
     pub height: u32,
-    /// The head block hash (Blake2b-256). Informational; zeroed until a `getBlock` RPC
-    /// slice exists (G8 exposes only `getBlockNumber`).
+    /// The head block hash (Blake2b-256) — the accounts-proof binding anchor. Zeroed
+    /// when the emitting gateway's RPC client cannot source it (reads as unbindable).
     pub block_hash: [u8; BLOCK_HASH_LEN],
     /// The Albatross network id this head is for (a node ignores a mismatched beacon).
     pub network_id: u8,
 }
 
 impl HeadBeacon {
-    /// A beacon for `height` on `network_id` with a zeroed (not-yet-sourced) block hash.
+    /// A beacon for `height` on `network_id` with a zeroed (not-sourced) block hash;
+    /// callers with a real head hash fill `block_hash` afterwards.
     pub fn new(height: u32, network_id: u8) -> Self {
         HeadBeacon {
             height,
@@ -150,17 +152,22 @@ pub fn is_expired(head: Option<u32>, valid_until: Option<u32>) -> bool {
     }
 }
 
-/// Every node's cache of the freshest head height it has heard via a beacon.
+/// Every node's cache of the freshest head it has heard via a beacon.
 ///
 /// **Monotonic:** an older (or equal) beacon is ignored, so a deep-offline signer always
 /// anchors to the newest head it has seen — never a stale replay. Beacons for a different
-/// `networkId` are rejected outright.
+/// `networkId` are rejected outright. The whole beacon (hash included) is retained, so
+/// the accounts-proof path can bind against the cached head's block hash
+/// (`docs/BALANCE-PROOF.md`). A same-height beacon with a *different* hash is ignored
+/// like any non-newer beacon (first at a height wins); a proof carrying the loser's
+/// header simply fails to bind and the balance stays untrusted — never wrong, per the
+/// fail-closed rule.
 #[derive(Debug, Clone)]
 pub struct HeadCache {
     /// The network this node operates on; a beacon for any other network is ignored.
     network_id: u8,
-    /// The freshest head height heard so far, or `None` before any valid beacon.
-    height: Option<u32>,
+    /// The freshest beacon heard so far, or `None` before any valid one.
+    latest: Option<HeadBeacon>,
 }
 
 impl HeadCache {
@@ -168,7 +175,7 @@ impl HeadCache {
     pub fn new(network_id: u8) -> Self {
         HeadCache {
             network_id,
-            height: None,
+            latest: None,
         }
     }
 
@@ -178,10 +185,10 @@ impl HeadCache {
         if beacon.network_id != self.network_id {
             return false;
         }
-        match self.height {
-            Some(h) if beacon.height <= h => false,
+        match self.latest {
+            Some(b) if beacon.height <= b.height => false,
             _ => {
-                self.height = Some(beacon.height);
+                self.latest = Some(*beacon);
                 true
             }
         }
@@ -189,13 +196,19 @@ impl HeadCache {
 
     /// The freshest head height heard, or `None` if no valid beacon has arrived.
     pub fn latest(&self) -> Option<u32> {
-        self.height
+        self.latest.map(|b| b.height)
+    }
+
+    /// The freshest whole beacon heard (hash included) — the anchor the accounts-proof
+    /// binding checks against ([`crate::balance_proof::bind_to_beacon`]).
+    pub fn latest_beacon(&self) -> Option<HeadBeacon> {
+        self.latest
     }
 
     /// The `validUntil` budget a tx signed against the freshest head would carry
     /// (`latest + VALIDITY_WINDOW`), or `None` if no head has been heard.
     pub fn valid_until(&self) -> Option<u32> {
-        self.height.map(|h| h.saturating_add(VALIDITY_WINDOW))
+        self.latest().map(|h| h.saturating_add(VALIDITY_WINDOW))
     }
 }
 
@@ -312,6 +325,27 @@ mod tests {
         let bytes = encode_beacon(&beacon);
         assert_eq!(bytes.len(), BEACON_PAYLOAD_LEN);
         assert_eq!(decode_beacon(&bytes), Some(beacon));
+    }
+
+    #[test]
+    fn head_cache_retains_the_freshest_beacon_hash_included() {
+        let mut cache = HeadCache::new(DEFAULT_NETWORK_ID);
+        assert_eq!(cache.latest_beacon(), None);
+        let mut first = HeadBeacon::new(100, DEFAULT_NETWORK_ID);
+        first.block_hash = [0x11; BLOCK_HASH_LEN];
+        assert!(cache.accept(&first));
+        assert_eq!(cache.latest_beacon(), Some(first));
+        // A same-height beacon with a different hash does not displace the holder.
+        let mut rival = first;
+        rival.block_hash = [0x22; BLOCK_HASH_LEN];
+        assert!(!cache.accept(&rival));
+        assert_eq!(cache.latest_beacon(), Some(first));
+        // A fresher head replaces beacon and hash together.
+        let mut newer = HeadBeacon::new(101, DEFAULT_NETWORK_ID);
+        newer.block_hash = [0x33; BLOCK_HASH_LEN];
+        assert!(cache.accept(&newer));
+        assert_eq!(cache.latest_beacon(), Some(newer));
+        assert_eq!(cache.latest(), Some(101));
     }
 
     #[test]
