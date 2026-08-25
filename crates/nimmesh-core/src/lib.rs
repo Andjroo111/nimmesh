@@ -405,6 +405,12 @@ pub mod beacon;
 // head height. The answer is UNVERIFIED/last-known until an accounts-proof binds it to the
 // head-beacon hash (follow-up). Read-only public state — no keys, no signing (non-money-path).
 pub mod balance;
+// G15 part 3 (issue #5): the trustless balance upgrade — the `0x37` wire envelope that
+// carries an Albatross block header + accounts TrieProof (both opaque chain primitives),
+// and the Blake2b binding of that header to the G9 head-beacon block hash. The trie-walk
+// verify + the gateway proof source are staged (docs/BALANCE-PROOF.md); until they land a
+// balance stays exactly as untrusted as `balance` labels it.
+pub mod balance_proof;
 
 // G18: "pay me X NIM" request links (non-money-path). `request_uri` is the pure, key-free
 // codec for the standard `nimiq:<address>?amount=<NIM>&message=<text>` URI a payee shows as a

@@ -91,6 +91,11 @@ pub enum MessageType {
     /// (G15). The balance as the gateway read it at `headHeight`; **unverified** (a relay is
     /// untrusted) until a future accounts-proof. Read-only, non-money-path.
     NimiqBalanceResponse = 0x34,
+    /// `0x37` — a gateway → mesh **balance proof** (G15 part 3): a serialized Albatross
+    /// block header + accounts `TrieProof`, binding a balance to the head-beacon block
+    /// hash so a phone can verify it without trusting the gateway. Exceeds one BLE frame,
+    /// so it usually arrives reassembled from `fragment` packets. Read-only, non-money-path.
+    NimiqBalanceProof = 0x37,
     /// `0x40` — a **swap proposal** (mesh swap F2): terms of an offline cross-chain HTLC atomic
     /// swap (amounts, hashlock, addresses, timelocks). Private 1:1 (rides Noise). Carries no keys.
     SwapPropose = 0x40,
@@ -144,6 +149,7 @@ impl MessageType {
             0x35 => Some(MessageType::NimiqTxHistoryQuery),
             0x36 => Some(MessageType::NimiqTxHistoryResponse),
             0x34 => Some(MessageType::NimiqBalanceResponse),
+            0x37 => Some(MessageType::NimiqBalanceProof),
             0x40 => Some(MessageType::SwapPropose),
             0x41 => Some(MessageType::SwapAccept),
             0x42 => Some(MessageType::SwapFundingProof),
