@@ -19,6 +19,7 @@
 //! to the mesh via [`crate::node::MeshNode::submit_signed_transfer`] as opaque bytes.
 
 pub mod address;
+pub mod header;
 pub mod hex;
 pub mod htlc;
 pub mod signer;

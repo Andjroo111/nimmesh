@@ -74,17 +74,24 @@ address(20) | headHeight(4) | networkId(1)
 | ---- | ---- | ------ |
 | 1 | wire envelope codec, exact + panic-free | **landed** (`balance_proof.rs`) |
 | 2 | `Blake2b-256(header) == beacon.blockHash` binding, all six verdicts | **landed** (`bind_to_beacon`) |
-| 3 | `state_root` extraction from the serialized header | staged |
+| 3 | `state_root` extraction from the serialized header | **landed** (`nimiq/header.rs`, `state_root_for_bound_proof`) |
 | 4 | the `TrieProof` post-order walk against `state_root` | staged |
 
-Steps 3–4 are deliberately not faked. Both parse `nimiq-serde` (postcard-style)
-serializations, and a hand-rolled parser that has never been checked against bytes from
-a real node would be **self-consistent rather than chain-faithful** — it could pass its
-own tests and still accept a proof no Albatross node would. They land together with
-fixture vectors captured from a live testnet node, the same way the G3 signer was
-asserted byte-exact against `@nimiq/core` fixtures. Until then, nothing upgrades a
-cached balance to verified: `BindVerdict::Bound` is a necessary gate, not yet a
-sufficient one, and the app keeps labeling every balance untrusted.
+Step 3 is a full micro-header codec for the chain's postcard layout (field order cited
+to `primitives/block/src/micro_block.rs`), with its encoding **differential-tested
+against `postcard-bytes`** — the published fork of postcard that `nimiq-serde` wraps on
+chain, taken as a dev-dependency and asserted byte-for-byte against a mirror struct.
+`state_root_for_bound_proof` releases a root only for a proof that is *Bound* and whose
+parsed header agrees with the envelope; a macro-block head or any non-conforming blob
+fails closed. Two honest limits remain: no byte vector captured from a **real node** is
+committed yet (see the JSON-RPC finding below for why that is harder than it sounds),
+and macro headers are not parsed (once per batch the head is one; that proof simply
+stays untrusted).
+
+Step 4 is deliberately not faked: the `TrieProof` node walk lands with real-node
+fixture vectors, the same way the G3 signer was asserted byte-exact against
+`@nimiq/core` fixtures. Until then, nothing upgrades a cached balance to verified, and
+the app keeps labeling every balance untrusted.
 
 The phone side stays dependency-light throughout: step 2 needs only `blake2` (already a
 core dependency), and steps 3–4 need a small parser, not a consensus client.
@@ -107,6 +114,12 @@ Verified against the [`rpc-interface`] source: the Albatross JSON-RPC surface ha
 lives in the light-client network protocol instead: `RequestTrieProof { keys } →
 ResponseTrieProof { proof, block_hash }` (request type 215, [`consensus/src/messages`]),
 served by full nodes over libp2p.
+
+A second, related finding: the JSON-RPC `Block` type **omits the header's `diffRoot`**
+(checked against `rpc-interface/src/types.rs`), so a header can never be byte-exactly
+reconstructed from RPC JSON — not by the gateway, and not by a test capturing fixtures.
+Raw header bytes must come from a source that has them (the network protocol, or a
+node's own storage), which sharpens the options below.
 
 Options, in preference order:
 
