@@ -1,0 +1,24 @@
+# Cloudflare Pages reads this file. The deploy publishes the repo root, so the
+# paths below are the live URLs under /ota/.
+#
+# The plist line is the one that matters. iOS fetches it over
+# itms-services://?action=download-manifest and Apple is strict about the type;
+# Pages was serving it as application/octet-stream, guessing from the .plist
+# extension, and an install started from /ota/ fails on that alone even though
+# the file itself is correct. Content-Disposition must stay inline too, or
+# Safari saves the manifest instead of reading it.
+#
+# The apk is already served correctly by Pages today. It is pinned anyway so a
+# change in their default extension map cannot quietly break Android later.
+
+/ota/manifest.plist
+  Content-Type: application/xml
+  Content-Disposition: inline
+
+/ota/nimmesh.ipa
+  Content-Type: application/octet-stream
+  Content-Disposition: attachment; filename="nimmesh.ipa"
+
+/ota/nimmesh.apk
+  Content-Type: application/vnd.android.package-archive
+  Content-Disposition: attachment; filename="nimmesh.apk"
