@@ -123,19 +123,21 @@ node's own storage), which sharpens the options below.
 
 Options, in preference order:
 
-1. **Upstream a `getTrieProof` RPC method** to `core-rs-albatross`. The node already
-   has the machinery (the network handler builds proofs from the same blockchain
-   state); the dispatcher addition is small. Best for the ecosystem — any project gets
-   trustless reads over plain HTTP. This is worth an upstream issue before any
-   workaround is built.
-2. **A gateway-local full node.** A gateway operator who runs their own node can build
-   proofs in-process (the blockchain crate exposes the proof constructor). Fits the
-   self-hosted gateway story; useless for phone gateways on public RPC.
+1. **A gateway-local full node with a one-method patch** — the chosen path, written up
+   in [`contrib/albatross-gettrieproof/`](../contrib/albatross-gettrieproof/). A full
+   node already holds the whole accounts trie, and `Blockchain::get_accounts_proof` is
+   already public; the patch surfaces it (plus the raw header bytes) through the node's
+   own JSON-RPC. No consensus change, no permission needed from anyone. Runs as a
+   second, non-validator node so a block producer never restarts for a NIMmesh deploy.
+2. **Upstream the same method** to `core-rs-albatross`, so every gateway operator gets
+   trustless reads over plain HTTP. Better for the ecosystem, and a separate decision —
+   explicitly **not** a prerequisite for us.
 3. **Embed the light-client network stack in the gateway.** Heaviest option (libp2p),
    listed for completeness only.
 
-Until one of these lands, `0x37` has a verifier waiting and no emitter — which is the
-honest order. The wire format and phone-side checks do not depend on which option wins.
+Until option 1 is built and running, `0x37` has a verifier waiting and no emitter — which
+is the honest order. The wire format and phone-side checks do not depend on which option
+wins.
 
 ## What this buys, and what it cannot
 
