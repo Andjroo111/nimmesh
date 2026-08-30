@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>How Nimmesh works</title>
+<title>How NIMmesh works</title>
 <meta name="description" content="A payment needs more than one phone. What travels over the mesh, the three roles, and why your first send might do nothing.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -38,26 +38,24 @@
   <div class="wrap">
     <h2>A mesh needs more than one phone</h2>
     <p>
-      This is the part that is easy to miss, and it is the whole shape of the thing. Nimmesh
-      is not a wallet that magically reaches the internet on its own. It is a wallet that
-      hands a payment to <strong>somebody else's phone</strong>.
+      NIMmesh does not reach the internet on its own. It hands your payment to
+      <strong>somebody else's phone</strong>.
     </p>
     <p>
-      So one phone running Nimmesh, alone in a field, cannot send anything. It will sign the
-      transaction happily and then sit there holding it, because there is nobody to hand it
-      to. Two phones in the same room can already do something. A dozen phones spread across a
+      One phone alone cannot send anything. It signs the transaction and holds it, because
+      there is nobody to hand it to. Two phones in the same room can. A dozen phones across a
       building start to look like a network.
     </p>
 
     <div class="callout">
       <p>
-        <strong>The short version.</strong> Your payment needs at least one other device
-        running Nimmesh within Bluetooth range, and somewhere down the line, one device that
-        has an internet connection. Those can be the same device or ten hops apart.
+        Your payment needs one other phone running NIMmesh within Bluetooth range, and
+        somewhere down the line one device with an internet connection. Those can be the same
+        device or ten hops apart.
       </p>
     </div>
 
-    <h2>What actually travels</h2>
+    <h2>What travels</h2>
     <p>
       A signed Nimiq transaction is a self contained blob of about <strong>139 bytes</strong>.
       It carries its own signature, so nothing can tamper with it in transit, and it stays
@@ -66,8 +64,8 @@
     <p>
       The Nimiq network does not care how those bytes reached it. There is no rule that says a
       transaction has to arrive over the internet. It only has to be valid and arrive inside
-      its window. That is the whole trick: the internet is needed at the <strong>last hop
-      only</strong>, and every hop before it can be a phone in someone's pocket.
+      its window. The internet is needed at the <strong>last hop only</strong>, and every hop
+      before it can be a phone in someone's pocket.
     </p>
 
     <h2>The three roles</h2>
@@ -78,7 +76,7 @@
     </p>
     <h3>The relay</h3>
     <p>
-      Any nearby phone running Nimmesh. It receives the packet, checks it has not already seen
+      Any nearby phone running NIMmesh. It receives the packet, checks it has not already seen
       it, decrements a hop counter, and passes it on. A relay <strong>never reads what it is
       carrying</strong>, and could not spend it if it tried. Relaying costs the carrier
       nothing and earns them nothing today.
@@ -90,9 +88,9 @@
       sees the payment settle. Nobody chooses to be the gateway. Whoever has signal is it.
     </p>
 
-    <h2>Why your first send might do nothing</h2>
+    <h2>When a send does nothing</h2>
     <p>
-      If you install Nimmesh, go offline, and send, the most likely outcome is that nothing
+      If you install NIMmesh, go offline, and send, the most likely outcome is that nothing
       happens, and nothing is broken. You were the only node. The transaction is sitting on
       your phone waiting for a neighbour, and it will go out the moment one appears or the
       moment you come back online.
