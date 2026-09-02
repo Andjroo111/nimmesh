@@ -14,14 +14,10 @@ have a connection, *anyone* at all, broadcasts it to the Nimiq network for you.
 </p>
 <p align="center"><em>Phone A has cellular data and Wi-Fi off, Bluetooth on: alone at first, then meshed. Phone B is online over Wi-Fi and sees the same mesh from the other side.</em></p>
 
-The whole idea rests on one fact. A signed Albatross transaction is a self contained
-**~139 byte blob** carrying its own Ed25519 proof, valid for roughly two hours. The chain does
-not care how those bytes reached a node, only that they are valid and arrive inside their
-window. So the internet is needed at the **final hop only**. Everything before it can be a mesh
-of phones passing bytes over Bluetooth.
-
-It is a Nimiq take on [Bitchat](https://github.com/permissionlesstech/bitchat): the same BLE
-mesh and store and forward, but the payload is a signed transaction instead of a chat message.
+A signed Nimiq transaction is **139 bytes**, carries its own proof, and stays valid about two
+hours. The chain does not care how the bytes arrived, so the internet is needed at the final hop
+only. A Nimiq take on [Bitchat](https://github.com/permissionlesstech/bitchat): same mesh, a
+signed transaction instead of a chat message.
 
 ## How it works
 
@@ -35,7 +31,8 @@ mesh and store and forward, but the payload is a signed transaction instead of a
         +---------------- "pending -> settled" (store and forward back to Alice) <------+
 ```
 
-Only Carol's one egress hop was ever online. Bob never sees what he carried.
+
+Only Carol's hop was online. Bob never sees what he carried.
 
 ## Proven on mainnet
 
@@ -47,7 +44,10 @@ Every claim here has an on chain or in repo receipt. Nothing below is a simulati
 | Phone to phone, no Mac | 1 + 15 + 2 NIM, blocks **56054933 / 56055090 / 56055105**. Airplane mode iPhone 17 relayed to an iPhone 12 Pro that broadcast them. |
 | Bitchat interoperability | Live both directions, phone to phone, no Mac. A NIMmesh message rendered in real Bitchat `#mesh`, and a Bitchat message rendered in NIMmesh. `shared/BitchatKit.swift` is byte exact against their wire format. |
 
-**Not yet proven, and labelled as such.** Cash links exist in the app: created, funded (over
+<details>
+<summary><b>Not yet proven.</b> Cash links over the mesh, mainnet swaps, Android to Android.</summary>
+
+Cash links exist in the app: created, funded (over
 the mesh when offline), shared, and claimable. But no cashlink has been handed over the mesh
 and swept end to end, so that claim carries no receipt and does not belong in the table above.
 Cross chain NIM to USDC atomic swaps run end to end
@@ -55,7 +55,10 @@ and settle, but on Nimiq testnet and Polygon Amoy. Three consecutive clean soak 
 roughly 30 seconds each. The phone to phone **mainnet** swap has not been run. Do not read the
 swap code as mainnet proven.
 
-## Architecture
+</details>
+
+<details>
+<summary><b>Architecture.</b> Shared Rust core over UniFFI, Swift and Kotlin shells, the wallet's own UI.</summary>
 
 See [ADR-0001](docs/adr/0001-native-rust-core-uniffi-stack.md).
 
@@ -73,6 +76,8 @@ See [ADR-0001](docs/adr/0001-native-rust-core-uniffi-stack.md).
 Secret material never crosses the FFI boundary. The recovery phrase and derived key live in
 Swift and the Keychain; only public, broadcast safe bytes ride the mesh.
 
+</details>
+
 ## Install
 
 Android APK and the Ad Hoc iPhone build, with hashes to check: **https://nimiq.tech/download/**
@@ -83,9 +88,8 @@ your device UDID first. There is no TestFlight step and no trust step.
 
 ## Status
 
-Version **0.89.4**, mainnet by default, real funds. This is field tested software, not audited
-software. Two phones and one Mac gateway have carried real value; it has not been reviewed by
-anyone but its author. Treat it accordingly.
+Android **0.89.7**, iPhone **0.89.11**, mainnet by default, real funds. Field tested by its author,
+not audited. Treat it accordingly.
 
 ## Docs
 
