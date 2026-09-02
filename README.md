@@ -65,7 +65,8 @@ See [ADR-0001](docs/adr/0001-native-rust-core-uniffi-stack.md).
 - **iOS** in Swift with CoreBluetooth, running central and peripheral roles concurrently.
   That is what makes it a real mesh rather than a hub and spoke.
   It is also why NIMmesh can never be a WebView mini app. Web Bluetooth is central role only.
-- **Android** planned in Kotlin on `android.bluetooth.le`. The core is already UniFFI ready.
+- **Android** in Kotlin on `android.bluetooth.le`, over the same core through UniFFI. The wallet is
+  proven on mainnet; two Android phones have not yet passed a payment between them.
 - **UI** is the Nimiq wallet's own design language, running in a WKWebView over the native core.
 - **Protocol** ported from Bitchat, public domain. See [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
@@ -74,10 +75,11 @@ Swift and the Keychain; only public, broadcast safe bytes ride the mesh.
 
 ## Install
 
-iOS, Ad Hoc signed: **https://nimiq-nimmesh.pages.dev/ota/**
+Android APK and the Ad Hoc iPhone build, with hashes to check: **https://nimiq.tech/download/**
 
-Open that page in **Safari** on the iPhone and tap Install. There is no TestFlight step and no
-trust step. Ad Hoc builds install on registered devices only, so send your device UDID first.
+On Android, tap the APK and compare the two hashes printed on that page. On iPhone, open the
+page in **Safari** and tap Install. Ad Hoc builds install on registered devices only, so send
+your device UDID first. There is no TestFlight step and no trust step.
 
 ## Status
 
