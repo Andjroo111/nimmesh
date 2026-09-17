@@ -1,0 +1,120 @@
+name: privacy gate
+
+# Keeps personal information out of the PUBLIC export (Andjroo111/nimiq-kids).
+#
+# Lives in the private repo because the export replaces the public tree wholesale
+# (~/Scripts/nimiq-kids-publish.sh step 3), so anything added only to the public
+# repo is erased by the next publish. Riding in from here, it survives every export.
+#
+# The term list is NOT in this file. It is the repo secret PRIVACY_PATTERNS, one
+# extended-regex alternation, seeded from ~/.git-privacy/blocklist.txt plus the
+# host/tunnel sweep the publish script adds. Set or rotate it with:
+#   gh secret set PRIVACY_PATTERNS --repo Andjroo111/nimiq-kids  < patterns.txt
+#   gh secret set PRIVACY_PATTERNS --repo Andjroo111/nimiq.kids  < patterns.txt
+#
+# A hit is reported as path:line ONLY. The matched text is never printed: these
+# Actions logs are public on the public repo, so echoing a hit would publish the
+# exact string the gate exists to hide.
+#
+# STRICT on any PUBLIC repo: a hit fails the run. Keyed on visibility, not a repo name,
+# so a repo that flips public is covered the moment it flips.
+# WARN on a private repo: a private tree legitimately carries these terms
+# until the scrub branch merges, and a permanently red check teaches people to
+# ignore it.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  identity:
+    name: commit identity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: New commits must carry a noreply identity
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          STRICT: ${{ github.event.repository.private == false }}
+        run: |
+          set -u
+          zero=0000000000000000000000000000000000000000
+          if [ -n "${BASE:-}" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            commits=$(git rev-list "$BASE..$AFTER")
+          elif [ -n "${BEFORE:-}" ] && [ "$BEFORE" != "$zero" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            commits=$(git rev-list "$BEFORE..$AFTER")
+          else
+            commits=$(git rev-list -n 1 "$AFTER")
+          fi
+          [ -n "$commits" ] || { echo "no new commits"; exit 0; }
+
+          bad=0
+          for c in $commits; do
+            for e in $(git show -s --format='%ae%n%ce' "$c"); do
+              case "$e" in
+                *@users.noreply.github.com|noreply@nimiq.kids) ;;
+                *)
+                  if [ "$STRICT" = "true" ]; then
+                    echo "::error::$(git rev-parse --short "$c") commits as $e; the public repo takes noreply identities only"
+                  else
+                    echo "::warning::$(git rev-parse --short "$c") commits as $e; this would be blocked on the public repo"
+                  fi
+                  bad=1 ;;
+              esac
+            done
+          done
+          if [ "$bad" = 1 ] && [ "$STRICT" = "true" ]; then
+            echo "Fix: git config --global user.email Andjroo111@users.noreply.github.com, then rewrite the offending commits."
+            exit 1
+          fi
+          [ "$bad" = 0 ] && echo "clean: $(echo "$commits" | wc -w | tr -d ' ') commit(s), noreply throughout"
+          exit 0
+
+  content:
+    name: no private terms
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Strict term scan
+        env:
+          PATTERNS: ${{ secrets.PRIVACY_PATTERNS }}
+          IS_FORK: ${{ github.event.pull_request.head.repo.fork }}
+          STRICT: ${{ github.event.repository.private == false }}
+        run: |
+          set -u
+          if [ -z "${PATTERNS:-}" ]; then
+            if [ "${IS_FORK:-false}" = "true" ]; then
+              echo "::warning::fork PR: PRIVACY_PATTERNS is unavailable to forks, term scan skipped"
+              exit 0
+            fi
+            echo "::error::PRIVACY_PATTERNS is not set on this repo; the gate cannot run and will not pass silently"
+            exit 1
+          fi
+
+          # path:line only. The matched text never reaches these logs.
+          hits=$(git grep -nIiE -e "$PATTERNS" -- . ':!bun.lock' 2>/dev/null \
+                 | grep -vE 'docs/boards|data:image|base64|/Users/USERNAME/' \
+                 | cut -d: -f1,2 | sort -u || true)
+
+          if [ -n "$hits" ]; then
+            n=$(echo "$hits" | wc -l | tr -d ' ')
+            if [ "$STRICT" = "true" ]; then
+              echo "::error::privacy gate: $n line(s) match a private term"
+            else
+              echo "::warning::privacy gate: $n line(s) match a private term; this would block the public export"
+            fi
+            echo "$hits" | head -60
+            echo "Reproduce locally: ~/Scripts/nimiq-kids-publish.sh <ref>   (prints the matched lines)"
+            [ "$STRICT" = "true" ] && exit 1
+            exit 0
+          fi
+          echo "clean: $(git ls-files | wc -l | tr -d ' ') tracked files, 0 hits"
